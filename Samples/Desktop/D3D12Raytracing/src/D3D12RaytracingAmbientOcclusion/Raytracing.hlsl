@@ -122,7 +122,11 @@ float4 TraceRadianceRay(in Ray ray, in UINT currentRayRecursionDepth)
     rayDesc.TMax = 10000;
     RayPayload rayPayload = { float4(0, 0, 0, 0), currentRayRecursionDepth + 1 };
     TraceRay(g_scene,
-        RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+#if FACE_CULLING
+		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+#else
+		0,
+#endif
 		TraceRayParameters::InstanceMask,
         TraceRayParameters::HitGroup::Offset[RayType::Radiance],
         TraceRayParameters::HitGroup::GeometryStride,
@@ -155,7 +159,11 @@ bool TraceShadowRayAndReportIfHit(in Ray ray, in UINT currentRayRecursionDepth)
     // Shadow miss shader, if called, will set it to false.
     ShadowRayPayload shadowPayload = { true };
     TraceRay(g_scene,
+#if FACE_CULLING
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES
+#else
+		0
+#endif
 		| RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH
         | RAY_FLAG_FORCE_OPAQUE             // ~skip any hit shaders
         | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, // ~skip closest hit shaders,
@@ -183,7 +191,11 @@ GBufferRayPayload TraceGBufferRay(in Ray ray)
 	rayDesc.TMax = 10000;
 	GBufferRayPayload rayPayload = {false, (float3)0, (float3)0 };
 	TraceRay(g_scene,
+#if FACE_CULLING
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES
+#else
+		0
+#endif
 		| RAY_FLAG_FORCE_OPAQUE,             // ~skip any hit shaders,
 		TraceRayParameters::InstanceMask,
 		TraceRayParameters::HitGroup::Offset[RayType::GBuffer],

@@ -21,6 +21,7 @@ using namespace SceneParser;
 using namespace std;
 
 #define TEAPOT_HACK 1 // ToDo remove
+#define SKIP_TTEXTURE_ASSETS 1
 
 namespace PBRTParser
 {
@@ -150,7 +151,7 @@ namespace PBRTParser
 
         outputScene.m_Camera.m_LookAt =   ConvertToVector3(pfnHomogenize(XMVector3Transform(m_lookAt, m_currentTransform)));
         outputScene.m_Camera.m_Position = ConvertToVector3(pfnHomogenize(XMVector3Transform(m_camPos, m_currentTransform)));
-
+		outputScene.m_transform = m_currentTransform;
 #ifndef TEAPOT_HACK
         XMVECTOR normal = XMVector3Transform(m_camUp, m_currentTransform);
         outputScene.m_Camera.m_Up = ConvertToVector3(XMVector3Normalize(normal));
@@ -220,6 +221,10 @@ namespace PBRTParser
         std::string materialType;
 
         auto lineStream = GetLineStream();
+#if SKIP_TTEXTURE_ASSETS
+		lastParsedWord = "";
+		return;
+#endif
 
         lineStream >> lastParsedWord;
         material.m_MaterialName = CorrectNameString(lastParsedWord);
@@ -366,6 +371,10 @@ namespace PBRTParser
         // "float uscale"[20.000000] "float vscale"[20.000000] "rgb tex1"[0.325000 0.310000 0.250000] "rgb tex2"[0.725000 0.710000 0.680000]
         auto &lineStream = GetLineStream();
 
+#if SKIP_TTEXTURE_ASSETS
+		lastParsedWord = "";
+		return;
+#endif
         std::string textureName;
         lineStream >> textureName;
         textureName = CorrectNameString(textureName);
@@ -423,8 +432,8 @@ namespace PBRTParser
         }
         else
         {
-            ThrowIfTrue(true);
-        }
+		    ThrowIfTrue(true);
+		}
     }
 
     std::string PBRTParser::GenerateCheckerboardTexture(std::string fileName, float uScaleFloat, float vScaleFloat, Vector3 color1, Vector3 color2)
@@ -540,7 +549,7 @@ namespace PBRTParser
         string correctedMaterialName = CorrectNameString(m_CurrentMaterial);
         pMesh->m_pMaterial = &outputScene.m_Materials[correctedMaterialName];
         ThrowIfTrue(pMesh->m_pMaterial == nullptr, "Material name not found");
-
+		pMesh->m_transform = m_currentTransform;
         ParseShape(fileStream, outputScene, *pMesh);
     }
 
@@ -641,7 +650,7 @@ namespace PBRTParser
 
                         vertex.Normal.x = x;
                         vertex.Normal.y = y;
-                        vertex.Normal.z = z;
+                        vertex.Normal.z = -z;
                     }
                     else
                     {
@@ -774,25 +783,25 @@ namespace PBRTParser
         ThrowIfTrue(argCount != 16, "Transform arguments not formatted correctly");
 
         m_currentTransform = XMMATRIX(
-            mat[0][0],
-            mat[1][0],
-            mat[2][0],
-            mat[3][0],
+			mat[0][0],
+			mat[0][1],
+			mat[0][2],
+			mat[0][3],
 
-            mat[0][1],
-            mat[1][1],
-            mat[2][1],
-            mat[3][1],
+			mat[1][0],
+			mat[1][1],
+			mat[1][2],
+			mat[1][3],
 
-            mat[0][2],
-            mat[1][2],
-            mat[2][2],
-            mat[3][2],
+			mat[2][0],
+			mat[2][1],
+			mat[2][2],
+			mat[2][3],
 
-            mat[0][3],
-            mat[1][3],
-            mat[2][3],
-            mat[3][3]);
+			mat[3][0],
+			mat[3][1],
+			mat[3][2],
+			mat[3][3]);
     }
 }
 

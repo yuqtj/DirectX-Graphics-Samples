@@ -117,6 +117,7 @@ namespace SceneParser
         Material *m_pMaterial;
         std::vector<Index> m_IndexBuffer;
         std::vector<Vertex> m_VertexBuffer;
+		XMMATRIX m_transform;
 
         bool m_AreTangentsValid;
     };
@@ -144,6 +145,7 @@ namespace SceneParser
         std::vector<AreaLight> m_AreaLights;
         std::vector<Mesh> m_Meshes;
         EnvironmentMap m_EnvironmentMap;
+		XMMATRIX m_transform;
     };
 
     class BadFormatException : public std::exception

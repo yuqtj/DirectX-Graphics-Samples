@@ -123,7 +123,17 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 		return XMFLOAT2(v.x, v.y);
 	};
 
-	PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);
+	// Work with hacks
+	//PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\car2\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\staircase2\\scene.pbrt", m_pbrtScene);
+	PBRTParser::PBRTParser().Parse("Assets\\classroom\\scene.pbrt", m_pbrtScene);
+	
+	// Have missing faces even with hacks
+	//PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\staircase\\scene.pbrt", m_pbrtScene);
 
 	m_camera.Set(
 		Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Position),
@@ -139,11 +149,16 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 	auto& geometryInstances = m_geometryInstances[GeometryType::PBRT];
 	geometryInstances.reserve(numGeometries);
 
+	XMVECTOR test = XMVector3TransformNormal(XMVectorSet(0, -1, 0, 0), m_pbrtScene.m_transform);
 	// ToDo
 	m_numTriangles[GeometryType::PBRT] = 0;
 	for (UINT i = 0; i < m_pbrtScene.m_Meshes.size(); i++)
 	{
 		auto &mesh = m_pbrtScene.m_Meshes[i];
+		if (mesh.m_VertexBuffer.size() == 0 || mesh.m_IndexBuffer.size() == 0)
+		{
+			continue;
+		}
 		vector<VertexPositionNormalTextureTangent> vertexBuffer;
 		vector<Index> indexBuffer;
 		vertexBuffer.reserve(mesh.m_VertexBuffer.size());
@@ -163,38 +178,80 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 		for (auto &parserVertex : mesh.m_VertexBuffer)
 		{
 			VertexPositionNormalTextureTangent vertex;
-			vertex.normal = Vec3ToXMFLOAT3(parserVertex.Normal);
-			vertex.position = Vec3ToXMFLOAT3(parserVertex.Position);
+			XMStoreFloat3(&vertex.normal, XMVector3TransformNormal(Vec3ToXMVECTOR(parserVertex.Normal), mesh.m_transform));
+			XMStoreFloat3(&vertex.position, XMVector3TransformCoord(Vec3ToXMVECTOR(parserVertex.Position), mesh.m_transform));
 			vertex.tangent = Vec3ToXMFLOAT3(parserVertex.Tangents);
 			vertex.textureCoordinate = Vec3ToXMFLOAT2(parserVertex.UV);
 			vertexBuffer.push_back(vertex);
 		}
 		desc.vb.vertices = vertexBuffer.data();
 
+		bool skip = false;
+
+		struct ZeroNormal{
+			XMFLOAT3* zeroNormal; XMFLOAT3 faceNormal;
+			ZeroNormal(XMFLOAT3* _zeroNormal, XMFLOAT3 _faceNormal) : zeroNormal(_zeroNormal), faceNormal(_faceNormal) {}
+		};
+		vector<ZeroNormal> verticesZeroNormal;
 		auto IsTriangleClockwiseWinded = [&](UINT index0)
 		{
 			UINT indices[3] = { mesh.m_IndexBuffer[index0], mesh.m_IndexBuffer[index0 + 1], mesh.m_IndexBuffer[index0 + 2] };
-			SceneParser::Vertex vertices[3] = { mesh.m_VertexBuffer[indices[0]], mesh.m_VertexBuffer[indices[1]], mesh.m_VertexBuffer[indices[2]] };
-			XMVECTOR v01 = XMLoadFloat3(&vertexBuffer[indices[1]].position) - XMLoadFloat3(&vertexBuffer[indices[0]].position);
-			XMVECTOR v02 = XMLoadFloat3(&vertexBuffer[indices[2]].position) - XMLoadFloat3(&vertexBuffer[indices[0]].position);
-			XMVECTOR normal = XMLoadFloat3(&vertexBuffer[indices[0]].normal) +
-				XMLoadFloat3(&vertexBuffer[indices[1]].normal) +
-				XMLoadFloat3(&vertexBuffer[indices[2]].normal);
+			auto& v0 = vertexBuffer[indices[0]];
+			auto& v1 = vertexBuffer[indices[1]];
+			auto& v2 = vertexBuffer[indices[2]];
+
+			XMVECTOR v01 = XMLoadFloat3(&v1.position) - XMLoadFloat3(&v0.position);
+			XMVECTOR v02 = XMLoadFloat3(&v2.position) - XMLoadFloat3(&v0.position);
+			XMVECTOR normal = XMLoadFloat3(&v0.normal) + XMLoadFloat3(&v1.normal) + XMLoadFloat3(&v2.normal);
+			XMVECTOR up = XMVector3Normalize(XMVector3Cross(v01, v02));
+			if (XMVectorGetX(XMVector3LengthSq(normal)) < 0.001f)
+			{
+				XMFLOAT3 faceNormal;
+				// ToDo - why is -up?
+				XMStoreFloat3(&faceNormal, -up);
+				//skip = true;
+				verticesZeroNormal.push_back(ZeroNormal(&v0.normal, faceNormal));
+				verticesZeroNormal.push_back(ZeroNormal(&v1.normal, faceNormal));
+				verticesZeroNormal.push_back(ZeroNormal(&v2.normal, faceNormal));
+				return false;
+			}
 			return XMVectorGetX(XMVector3Dot(XMVector3Cross(v01, v02), normal)) > 0;
 		};
+
+
 
 #if 0 //ToDo scene is mirrored 
 		for (UINT j = 0; j < vertexBuffer.size(); j += 1)
 		{
 			vertexBuffer[j].position.z = -vertexBuffer[j].position.z;
 		}
+
 #endif
-		// Make sure the triangles are in LH clockwise order 
-		if (!IsTriangleClockwiseWinded(0))
+
+#if HACK_FLIP_Z
+		for (UINT j = 0; j < vertexBuffer.size(); j++)
+		{
+			XMStoreFloat3(&vertexBuffer[j].normal, XMVectorSetZ(XMLoadFloat3(&vertexBuffer[j].normal), -vertexBuffer[j].normal.z));
+			XMStoreFloat3(&vertexBuffer[j].position, XMVectorSetZ(XMLoadFloat3(&vertexBuffer[j].position), -vertexBuffer[j].position.z));
+		}
+#endif
+			// Make sure the triangles are in LH clockwise order 
 			for (UINT j = 0; j < indexBuffer.size(); j += 3)
 			{
-				swap(indexBuffer[j], indexBuffer[j + 2]);
+				if (!IsTriangleClockwiseWinded(j))
+				{
+					swap(indexBuffer[j], indexBuffer[j + 2]);
+					//XMFLOAT3 normals[3] = { vertexBuffer[indexBuffer[j]].normal, vertexBuffer[indexBuffer[j+1]].normal, vertexBuffer[indexBuffer[j+2]].normal };
+					//normals[0].y = -normals[0].z;
+				}
 			}
+			if (skip)
+					continue;
+
+#if HACK_REPLACE_ZERO_VERTEX_NORMALS_WITH_FACE_NORMAL
+			for (auto& zeroNormal: verticesZeroNormal)
+				*zeroNormal.zeroNormal = zeroNormal.faceNormal;
+#endif
 		auto& geometry = geometries[i];
 		CreateGeometry(device, commandList, m_cbvSrvUavHeap.get(), desc, &geometry);
 		ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
