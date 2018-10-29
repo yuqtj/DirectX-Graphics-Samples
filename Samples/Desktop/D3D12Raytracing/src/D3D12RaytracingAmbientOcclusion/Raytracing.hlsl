@@ -207,7 +207,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 
 		// ToDo hitPosition adjustment - fix crease artifacts
 		// Todo fix noise on flat surface / box
-		Ray shadowRay = { hitPosition + 0.0001f * surfaceNormal, normalize(rayDirection) };
+		Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
 
 		if (TraceShadowRayAndReportIfHit(shadowRay, 0))
 		{
@@ -299,12 +299,13 @@ void MyRayGenShader_AO()
 #endif
 }
 
-// ToDo PIX feedback
+// ToDo PIX feedbackpix
 // - Add resource names to Resources tab
 // - Keep Show/Hide DXR resource state across events
 // - There's no shader item in DispatchRays like it is in Dispatch
-// - Material structured buffer in GRS doesn't show up in PIX
 // - For shader records - rename root sig to local root sig.
+// - Pipeline tab - show DXR resources can take a lot of time (10s for 2k records) - show first 20 right away? Resizing the tab is slow as well.
+//  Sart analysis on the right side of the window
 
 //***************************************************************************
 //******************------ Closest hit shaders -------***********************
@@ -352,8 +353,10 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
     // Shadow component.
     // Trace a shadow ray.
     float3 hitPosition = HitWorldPosition();
-    Ray shadowRay = { hitPosition + 0.0001f * triangleNormal, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
-    bool shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, rayPayload.recursionDepth);
+	
+	// ToDo
+//    Ray shadowRay = { hitPosition + 0.0001f * triangleNormal, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
+  //  bool shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, rayPayload.recursionDepth);
 	
     // Calculate final color.
 	float ambientCoef = CalculateAO(HitWorldPosition(), triangleNormal);
@@ -408,8 +411,14 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 	PrimitiveMaterialBuffer material = g_materials[rayPayload.materialID];
 	if (material.isMirror && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
 	{
+#if TURN_MIRRORS_SEETHROUGH
+		Ray passThroughRay = { rayPayload.hitPosition + 0.05f*WorldRayDirection(), WorldRayDirection() };
+		rayPayload = TraceGBufferRay(passThroughRay, rayPayload.rayRecursionDepth);
+
+#else
 		Ray reflectionRay = { rayPayload.hitPosition, reflect(WorldRayDirection(), rayPayload.surfaceNormal) };
 		rayPayload = TraceGBufferRay(reflectionRay, rayPayload.rayRecursionDepth);
+#endif
 	}
 #endif
 }

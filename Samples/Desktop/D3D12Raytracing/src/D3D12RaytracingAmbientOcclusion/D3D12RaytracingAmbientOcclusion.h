@@ -79,6 +79,8 @@ private:
 	const float m_geometryRadius = 3.0f;
 #endif
 
+	const UINT MaxGeometryTransforms = 10000;
+
 	std::vector<UINT> m_bottomLevelASdescritorHeapIndices;
 	std::vector<UINT> m_bottomLevelASinstanceDescsDescritorHeapIndices;
 	UINT m_topLevelASdescritorHeapIndex;
@@ -177,7 +179,7 @@ private:
 	
 	// AO
 	// ToDo fix artifacts at 4. Looks like selfshadowing on some AOrays in SquidScene
-	const UINT c_sppAO = 25;	// Samples per pixel for Ambient Occlusion.
+	const UINT c_sppAO = 144;	// Samples per pixel for Ambient Occlusion.
 
 	// UI
 	std::unique_ptr<UILayer> m_uiLayer;

@@ -20,7 +20,7 @@
 using namespace SceneParser;
 using namespace std;
 
-#define TEAPOT_HACK 1 // ToDo remove
+#define DISABLE_CAMERA_TRANSFORMS / ToDo remove
 #define SKIP_TEXTURE_ASSETS 1
 
 namespace PBRTParser
@@ -270,6 +270,10 @@ namespace PBRTParser
 				GetLineStream();
 				fileStream >> lastParsedWord;
 			}
+			else if (!lastParsedWord.compare("Transform"))
+			{
+				ParseTransform();
+			}
             else
             {
                 fileStream >> lastParsedWord;
@@ -300,10 +304,10 @@ namespace PBRTParser
 
         auto pfnHomogenize = [](const XMVECTOR &vec4) { return vec4 / XMVectorGetW(vec4); };
 
+#ifndef DISABLE_CAMERA_TRANSFORMS
         outputScene.m_Camera.m_LookAt =   ConvertToVector3(pfnHomogenize(XMVector3Transform(outputScene.m_Camera.m_LookAt.GetXMVECTOR(), m_currentTransform)));
         outputScene.m_Camera.m_Position = ConvertToVector3(pfnHomogenize(XMVector3Transform(outputScene.m_Camera.m_Position.GetXMVECTOR(), m_currentTransform)));
 		outputScene.m_transform = m_currentTransform;
-#ifndef TEAPOT_HACK
         XMVECTOR normal = XMVector3Transform(m_camUp, m_currentTransform);
         outputScene.m_Camera.m_Up = ConvertToVector3(XMVector3Normalize(normal));
 #endif

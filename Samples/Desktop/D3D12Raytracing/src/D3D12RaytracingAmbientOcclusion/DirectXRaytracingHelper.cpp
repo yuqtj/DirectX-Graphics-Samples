@@ -96,6 +96,7 @@ void BottomLevelAccelerationStructure::BuildGeometryDescs(DXGI_FORMAT indexForma
 		geometryDesc.Triangles.IndexCount = geometry.ib.count;
 		geometryDesc.Triangles.VertexBuffer = geometry.vb.vertexBuffer;
 		geometryDesc.Triangles.VertexCount = geometry.vb.count;
+		geometryDesc.Triangles.Transform3x4 = geometry.transform;
 
 		m_geometryDescs.push_back(geometryDesc);
 	}

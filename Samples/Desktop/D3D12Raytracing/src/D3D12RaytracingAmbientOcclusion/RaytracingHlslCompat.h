@@ -25,7 +25,13 @@
 
 #define DEBUG_AS 0
 
-#define ALLOW_MIRRORS 0
+#define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
+
+#define ALLOW_MIRRORS 1
+#if ALLOW_MIRRORS
+// Use anyhit instead??
+#define TURN_MIRRORS_SEETHROUGH 0
+#endif
 
 #define DOUBLE_ALL_FACES 0
 #define ADD_INVERTED_FACE 0
@@ -37,12 +43,13 @@
 
 #define CAMERA_JITTER 0
 
+#define AO_ONLY 0
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 0
+#define PBRT_SCENE 1
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
@@ -54,13 +61,14 @@
 #define CAMERA_Y_SCALE 1
 #define FLAT_FACE_NORMALS 0
 #define INDEX_FORMAT_UINT 1
+#define NUM_GEOMETRIES 1
 #else
 #define AO_RAY_T_MAX 0.06
 #define FACE_CULLING 1
 #define INDEX_FORMAT_UINT 0
 #define FLAT_FACE_NORMALS 1
 #define CAMERA_Y_SCALE 1.3f
-#define NUM_GEOMETRIES 1
+#define NUM_GEOMETRIES 100000
 
 #endif
 
@@ -69,7 +77,7 @@
 #define TESSELATED_GEOMETRY_TEAPOT 1
 #define TESSELATED_GEOMETRY_BOX_TETRAHEDRON 1
 #define TESSELATED_GEOMETRY_BOX_TETRAHEDRON_REMOVE_BOTTOM_TRIANGLE 1
-#define TESSELATED_GEOMETRY_THIN 0
+#define TESSELATED_GEOMETRY_THIN 1
 #define TESSELATED_GEOMETRY_TILES 0
 #define TESSELATED_GEOMETRY_TILES_WIDTH 4
 #define TESSELATED_GEOMETRY_ASPECT_RATIO_DIMENSIONS 1
@@ -105,12 +113,11 @@ typedef UINT16 Index;
 #endif
 #endif
 
-#define AO_ONLY 1
 
 // ToDo revise
 // PERFORMANCE TIP: Set max recursion depth as low as needed
 // as drivers may apply optimization strategies for low recursion depths.
-#define MAX_RAY_RECURSION_DEPTH 2    // ~ primary rays + reflections + shadow rays from reflected geometry.  
+#define MAX_RAY_RECURSION_DEPTH 3    // ~ primary rays + reflections + shadow rays from reflected geometry.  
 
 // ToDo:
 // Options:
@@ -168,9 +175,6 @@ struct SceneConstantBuffer
 {
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
     XMVECTOR cameraPosition;
-    XMVECTOR lightPosition;
-    XMVECTOR lightAmbientColor;
-    XMVECTOR lightDiffuseColor;		// ToDo change to float3
     float    reflectance;
     float    elapsedTime;                 // Elapsed application time.
     UINT seed;
@@ -180,12 +184,20 @@ struct SceneConstantBuffer
     XMFLOAT2 cameraJitter;
 	XMFLOAT2 padding;
 };
-
+ 
+// ToDo explain padding
 struct ComposeRenderPassesConstantBuffer
 {
 	XMUINT2 rtDimensions;
+	XMFLOAT2 padding1;
 	XMFLOAT3 cameraPosition;
-	XMUINT3 padding;
+	float padding2;
+	XMFLOAT3 lightPosition;
+	float padding3;
+	XMFLOAT3 lightAmbientColor;
+	float padding4;
+	XMFLOAT3 lightDiffuseColor;		
+	float padding5;
 };
 
 // Attributes per primitive type.

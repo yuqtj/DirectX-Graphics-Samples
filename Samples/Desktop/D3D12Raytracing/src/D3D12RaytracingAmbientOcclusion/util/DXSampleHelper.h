@@ -369,9 +369,9 @@ public:
 	UINT ElementSize() { return sizeof(T); }
     UINT NumInstances() { return m_staging.size(); }
     size_t InstanceSize() { return NumElementsPerInstance() * ElementSize(); }
-    D3D12_GPU_VIRTUAL_ADDRESS GpuVirtualAddress(UINT instanceIndex = 0)
+    D3D12_GPU_VIRTUAL_ADDRESS GpuVirtualAddress(UINT instanceIndex = 0, UINT elementIndex = 0)
     {
-        return m_resource->GetGPUVirtualAddress() + instanceIndex * InstanceSize();
+        return m_resource->GetGPUVirtualAddress() + instanceIndex * InstanceSize() + elementIndex * ElementSize();
     }
 };
 
@@ -698,7 +698,7 @@ public:
 
 	GeometryInstance() {}
 
-	GeometryInstance(const D3DGeometry& geometry, UINT _materialID) : materialID(_materialID)
+	GeometryInstance(const D3DGeometry& geometry, UINT _materialID) : materialID(_materialID), transform(0)
 	{
 		ib.startIndex = 0;
 		ib.count = static_cast<UINT>(geometry.ib.buffer.resource->GetDesc().Width / sizeof(Index));

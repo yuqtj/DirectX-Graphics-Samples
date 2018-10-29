@@ -84,12 +84,7 @@ namespace SceneArgs
 	// ToDo fix alias on TessFactor 2
     IntVar GeometryTesselationFactor(L"Geometry/Tesselation factor", 0/*14*/, 0, 80, 1, OnGeometryChange, nullptr);
     IntVar NumGeometriesPerBLAS(L"Geometry/# geometries per BLAS", // ToDo
-#if ONLY_SQUID_SCENE_BLAS
-		1,
-#else 
-		NUM_GEOMETRIES,
-#endif
-		1, 1000000, 1, OnGeometryChange, nullptr);
+		NUM_GEOMETRIES,	1, 1000000, 1, OnGeometryChange, nullptr);
     IntVar NumSphereBLAS(L"Geometry/# Sphere BLAS", 1, 1, D3D12RaytracingAmbientOcclusion::MaxBLAS, 1, OnASChange, nullptr);
 };
 
@@ -119,20 +114,22 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 	};
 
 	// Work
-	//PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);  // ToDo crashes
+#if 1
+	PBRTParser::PBRTParser().Parse("Assets\\car2\\scene.pbrt", m_pbrtScene);
+	PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);		// ToDo model is mirrored
+	PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene); // ToDo crashes
+#else
+	PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\car2\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\bmw-m6\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\staircase2\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\classroom\\scene.pbrt", m_pbrtScene);
-	PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene); // ToDo crashes
 	//PBRTParser::PBRTParser().Parse("Assets\\living-room-3\\scene.pbrt", m_pbrtScene); //rug geometry skipped
 	//PBRTParser::PBRTParser().Parse("Assets\\staircase\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\living-room\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\living-room-2\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
 	//PBRTParser::PBRTParser().Parse("Assets\\kitchen\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
-
+#endif
 
 	m_camera.Set(
 		Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Position),
@@ -176,8 +173,13 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 		for (auto &parseVertex : mesh.m_VertexBuffer)
 		{
 			VertexPositionNormalTextureTangent vertex;
+#if PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES
+			XMStoreFloat3(&vertex.normal, XMVector3TransformNormal(parseVertex.Normal.GetXMVECTOR(), mesh.m_transform));
+			XMStoreFloat3(&vertex.position, XMVector3TransformCoord(parseVertex.Position.GetXMVECTOR(), mesh.m_transform));
+#else
 			vertex.normal = parseVertex.Normal.xmFloat3;
 			vertex.position = parseVertex.Position.xmFloat3;
+#endif
 			vertex.tangent = parseVertex.Tangents.xmFloat3;
 			vertex.textureCoordinate = parseVertex.UV.xmFloat2;
 			vertexBuffer.push_back(vertex);
@@ -196,7 +198,10 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 		UINT materialID = static_cast<UINT>(m_materials.size());
 		m_materials.push_back(cb);
 		geometryInstances.push_back(GeometryInstance(geometry, materialID));
-
+#if !PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES
+		XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(m_geometryTransforms[i].transform3x4), mesh.m_transform);
+		geometryInstances.back().transform = m_geometryTransforms.GpuVirtualAddress(0, i);
+#endif
 		m_numTriangles[GeometryType::PBRT] += desc.ib.count / 3;
 	}
 }
@@ -265,6 +270,7 @@ D3D12RaytracingAmbientOcclusion::~D3D12RaytracingAmbientOcclusion()
 void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
 {
     m_sceneCB->cameraPosition = m_camera.Eye();
+	XMStoreFloat3(&m_csComposeRenderPassesCB->cameraPosition, m_camera.Eye());
 
 	XMMATRIX view, proj;
 	// ToDo camera is creating fisheye in spehere scene
@@ -469,18 +475,12 @@ void D3D12RaytracingAmbientOcclusion::InitializeScene()
     {
         // Initialize the lighting parameters.
 		// ToDo remove
-        XMFLOAT4 lightPosition;
-        XMFLOAT4 lightAmbientColor;
-        XMFLOAT4 lightDiffuseColor;
-		lightPosition = XMFLOAT4(0.0f, 50.0f, -60.0f, 0.0f);
-		m_sceneCB->lightPosition = XMLoadFloat4(&lightPosition);
+		m_csComposeRenderPassesCB->lightPosition = XMFLOAT3(-20.0f, 40.0f, 20.0f);
 
-        lightAmbientColor = XMFLOAT4(0.45f, 0.45f, 0.45f, 1.0f);
-        m_sceneCB->lightAmbientColor = XMLoadFloat4(&lightAmbientColor);
+		m_csComposeRenderPassesCB->lightAmbientColor = XMFLOAT3(0.45f, 0.45f, 0.45f);
 
-        float d = 0.6f;
-        lightDiffuseColor = XMFLOAT4(d, d, d, 1.0f);
-        m_sceneCB->lightDiffuseColor = XMLoadFloat4(&lightDiffuseColor);
+        float d = 0.6;
+		m_csComposeRenderPassesCB->lightDiffuseColor = XMFLOAT3(d, d, d);
     }
 }
 
@@ -593,6 +593,9 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 	auto device = m_deviceResources->GetD3DDevice();
 
     CreateAuxilaryDeviceResources();
+
+	// ToDo move
+	m_geometryTransforms.Create(device, MaxGeometryTransforms, 1, L"Structured buffer: Geometry desc transforms");
 
 	// Create a heap for descriptors.
 	CreateDescriptorHeaps();
@@ -938,7 +941,7 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
     CreateBufferSRV(device, ARRAYSIZE(vertices), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
-	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1), 50, false };
+	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), 50, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(planeMaterialCB);
 	m_geometryInstances[GeometryType::Plane].push_back(GeometryInstance(geometry, materialID));
@@ -1160,7 +1163,8 @@ void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
 #if !RUNTIME_AS_UPDATES
 	InitializeAccelerationStructures();
 
-#if !ONLY_SQUID_SCENE_BLAS
+#if ONLY_SQUID_SCENE_BLAS
+#else
 #if TESSELATED_GEOMETRY_BOX
 	UpdateGridGeometryTransforms();
 #else 
@@ -1261,7 +1265,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 		maxScratchResourceSize = max(m_vBottomLevelAS[0].RequiredScratchSize(), maxScratchResourceSize);
 		m_ASmemoryFootprint += m_vBottomLevelAS[0].RequiredResultDataSizeInBytes();
 
-		UINT numGeometryTransforms = SceneArgs::NumGeometriesPerBLAS;
+		UINT numGeometryTransforms = static_cast<UINT>(m_geometryInstances[geometryType].size());
 #else
 		m_numTrianglesInTheScene = 0;
 #if DEBUG_AS
@@ -1299,7 +1303,8 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 		UINT numGeometryTransforms = 1 + SceneArgs::NumSphereBLAS * SceneArgs::NumGeometriesPerBLAS;
 #endif
 
-		m_geometryTransforms.Create(device, numGeometryTransforms, FrameCount, L"Structured buffer: Geometry desc transforms");
+		// ToDo Allocate exactly as much is needed?
+		ThrowIfFalse(numGeometryTransforms <= MaxGeometryTransforms, L"Scene requires more transform space.");
     }
 
     GenerateBottomLevelASInstanceTransforms();
@@ -1530,8 +1535,8 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
         float secondsToRotateAround = 8.0f;
         float angleToRotateBy = -360.0f * (elapsedTime / secondsToRotateAround);
         XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
-        const XMVECTOR& prevLightPosition = m_sceneCB->lightPosition;
-        m_sceneCB->lightPosition = XMVector3Transform(prevLightPosition, rotate);
+		XMVECTOR prevLightPosition = XMLoadFloat3(&m_csComposeRenderPassesCB->lightPosition);
+		XMStoreFloat3(&m_csComposeRenderPassesCB->lightPosition, XMVector3Transform(prevLightPosition, rotate));
     }
     m_sceneCB->elapsedTime = static_cast<float>(m_timer.GetTotalSeconds());
 
@@ -1615,6 +1620,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructures(bool forceBui
 
 	m_gpuTimers[GpuTimers::UpdateBLAS].Start(commandList);
 	{
+		m_geometryTransforms.CopyStagingToGpu(frameIndex);
 #if ONLY_SQUID_SCENE_BLAS
 		// ToDo this should be per scene
 		// SquidRoom
@@ -1624,7 +1630,6 @@ void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructures(bool forceBui
 			m_vBottomLevelAS[0].Build(commandList, m_accelerationStructureScratch.Get(), m_cbvSrvUavHeap->GetHeap(), baseGeometryTransformGpuAddress, bUpdate);
 		}
 #else
-		m_geometryTransforms.CopyStagingToGpu(frameIndex);
 		// Plane
 		{
 			D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGpuAddress = 0;
@@ -1641,7 +1646,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructures(bool forceBui
             D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGpuAddress = 0;     
 #if USE_GPU_TRANSFORM
 			// ToDo - remove: skip past plane transform
-            baseGeometryTransformGpuAddress = m_geometryTransforms.GpuVirtualAddress(frameIndex) + 1 * m_geometryTransforms.ElementSize();
+            baseGeometryTransformGpuAddress = m_geometryTransforms.GpuVirtualAddress(frameIndex, 1);
 #endif
 			m_vBottomLevelAS[BottomLevelASType::Sphere].Build(commandList, m_accelerationStructureScratch.Get(), m_cbvSrvUavHeap->GetHeap(), baseGeometryTransformGpuAddress, bUpdate);
         }
@@ -1835,7 +1840,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS()
 
 	// Update constant buffer.
 	{
-		XMStoreFloat3(&m_csComposeRenderPassesCB->cameraPosition, m_camera.Eye());
 		m_csComposeRenderPassesCB->rtDimensions = XMUINT2(m_width, m_height);
 		m_csComposeRenderPassesCB.CopyStagingToGpu(frameIndex);
 	}
