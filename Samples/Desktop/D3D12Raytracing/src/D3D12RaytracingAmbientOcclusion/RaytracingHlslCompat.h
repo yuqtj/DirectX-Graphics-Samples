@@ -25,62 +25,73 @@
 
 #define DEBUG_AS 0
 
-#define HACK_FLIP_Z 1
-#define HACK_REPLACE_ZERO_VERTEX_NORMALS_WITH_FACE_NORMAL 1
+#define ALLOW_MIRRORS 0
 
-#define RAYGEN_SINGLE_COLOR_SHADING 0
+#define DOUBLE_ALL_FACES 0
+#define ADD_INVERTED_FACE 0
+#define CORRECT_NORMALS 0
+
 #define SAMPLES_CS_VISUALIZATION 1
 
 #define GBUFFER_AO_NORMAL_VISUALIZATION 0
 #define GBUFFER_AO_COUNT_AO_HITS 1
-#define GBUFFER_AO_USE_ALBEDO 1
 #define AO_ANY_HIT_FULL_OCCLUSION 0
 
+#define CAMERA_JITTER 0
 
-#define FACE_CULLING 1
+// ToDO this wasn't necessary before..
+#define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
+
+	// ToDo - SquidRoom has acne issues without culling 
 #define GBUFFER_AO_SEPRATE_PATHS 1
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define PBRT_SCENE 0
+#define FACE_CULLING !PBRT_SCENE
+#if PBRT_SCENE
+#define DISTANCE_FALLOFF 0.000002
+#define AO_RAY_T_MAX 1
+#else
+#define DISTANCE_FALLOFF 0
+#define AO_RAY_T_MAX 35
+#endif
 #define CAMERA_Y_SCALE 1
 #define FLAT_FACE_NORMALS 0
 #define INDEX_FORMAT_UINT 1
 #else
-
+#define AO_RAY_T_MAX 0.06
+#define FACE_CULLING 1
 #define INDEX_FORMAT_UINT 0
 #define FLAT_FACE_NORMALS 1
 #define CAMERA_Y_SCALE 1.3f
-#define NUM_GEOMETRIES_1000 1
-#define NUM_GEOMETRIES_100000 0
-#define NUM_GEOMETRIES_1000000 0
-#ifndef HLSL
-static_assert(NUM_GEOMETRIES_1000 + NUM_GEOMETRIES_100000  + NUM_GEOMETRIES_1000000 == 1, L"Pick only 1.");
-#endif
+#define NUM_GEOMETRIES 1
+
 #endif
 
 #define AO_OVERDOSE_BEND_NORMALS_DOWN 0
 #define TESSELATED_GEOMETRY_BOX 1
+#define TESSELATED_GEOMETRY_TEAPOT 1
 #define TESSELATED_GEOMETRY_BOX_TETRAHEDRON 1
 #define TESSELATED_GEOMETRY_BOX_TETRAHEDRON_REMOVE_BOTTOM_TRIANGLE 1
-#define TESSELATED_GEOMETRY_THIN 1
+#define TESSELATED_GEOMETRY_THIN 0
 #define TESSELATED_GEOMETRY_TILES 0
 #define TESSELATED_GEOMETRY_TILES_WIDTH 4
 #define TESSELATED_GEOMETRY_ASPECT_RATIO_DIMENSIONS 1
 
-#if ONLY_SQUID_SCENE_BLAS 
-#define AO_RAY_T_MAX 35
-#else
-#define AO_RAY_T_MAX 0.06
-#endif
 
 // ToDo separate per-vertex attributes from VB
 
 // ToDo move
 namespace ReduceSumCS {
-	namespace ThreadGroup
-	{
+	namespace ThreadGroup {
 		enum Enum { Width = 8, Height = 16, Size = Width * Height, NumElementsToLoadPerThread = 10 };	
+	}
+}
+
+namespace ComposeRenderPassesCS {
+	namespace ThreadGroup {
+		enum Enum { Width = 8, Height = 8, Size = Width * Height };
 	}
 }
 
@@ -101,9 +112,10 @@ typedef UINT16 Index;
 
 #define AO_ONLY 1
 
+// ToDo revise
 // PERFORMANCE TIP: Set max recursion depth as low as needed
 // as drivers may apply optimization strategies for low recursion depths.
-#define MAX_RAY_RECURSION_DEPTH 3    // ~ primary rays + reflections + shadow rays from reflected geometry.
+#define MAX_RAY_RECURSION_DEPTH 2    // ~ primary rays + reflections + shadow rays from reflected geometry.  
 
 // ToDo:
 // Options:
@@ -114,7 +126,7 @@ typedef UINT16 Index;
 // - Update/Build
 #define ALBEDO_SHADING 0
 #define NORMAL_SHADING 0
-#define DEPTH_SHADING 1
+#define DEPTH_SHADING 0
 #define SINGLE_COLOR_SHADING 0
 
 struct ProceduralPrimitiveAttributes
@@ -131,8 +143,12 @@ struct RayPayload
 struct GBufferRayPayload
 {
 	bool hit;
+	UINT materialID;
 	XMFLOAT3 hitPosition;
 	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
+#if ALLOW_MIRRORS
+	UINT rayRecursionDepth;
+#endif
 };
 
 struct ShadowRayPayload
@@ -159,28 +175,40 @@ struct SceneConstantBuffer
     XMVECTOR cameraPosition;
     XMVECTOR lightPosition;
     XMVECTOR lightAmbientColor;
-    XMVECTOR lightDiffuseColor;
+    XMVECTOR lightDiffuseColor;		// ToDo change to float3
     float    reflectance;
     float    elapsedTime;                 // Elapsed application time.
     UINT seed;
     UINT numSamples;
     UINT numSampleSets;
     UINT numSamplesToUse;    
-    XMFLOAT2 padding;
+    XMFLOAT2 cameraJitter;
+	XMFLOAT2 padding;
+};
+
+struct ComposeRenderPassesConstantBuffer
+{
+	XMUINT2 rtDimensions;
+	XMFLOAT3 cameraPosition;
+	XMUINT3 padding;
 };
 
 // Attributes per primitive type.
+// ToDo remove redundant data
 struct PrimitiveConstantBuffer
 {
-    XMFLOAT4 albedo;
-    float reflectanceCoef;
-    float diffuseCoef;
-    float specularCoef;
-    float specularPower;
-    float stepScale;                      // Step scale for ray marching of signed distance primitives. 
-                                          // - Some object transformations don't preserve the distances and 
-                                          //   thus require shorter steps.
-    XMFLOAT3 padding;
+	UINT     materialID;
+	XMUINT3  padding;
+};
+
+
+struct PrimitiveMaterialBuffer
+{
+	XMFLOAT3 diffuse;
+	XMFLOAT3 specular;
+	float specularPower;
+	UINT isMirror;
+	//UINT padding;
 };
 
 // Attributes per primitive instance.

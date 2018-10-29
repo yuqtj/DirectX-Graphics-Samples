@@ -75,11 +75,12 @@ class PBRTParser : public SceneParser::SceneParserClass
     public:
         PBRTParser();
         ~PBRTParser();
-        virtual void Parse(std::string filename, SceneParser::Scene &outputScene);
+        virtual void Parse(std::string filename, SceneParser::Scene &outputScene, bool bClockwiseWindingORder = true, bool rhCoords = false);
 
     private:
         void ParseFilm(std::ifstream &fileStream, SceneParser::Scene &outputScene);
-        void ParseCamera(std::ifstream &fileStream, SceneParser::Scene &outputScene);
+        void ParseLookAt(std::ifstream &fileStream, SceneParser::Scene &outputScene);
+		void ParseCamera(std::ifstream &fileStream, SceneParser::Scene &outputScene);
         void ParseWorld(std::ifstream &fileStream, SceneParser::Scene &outputScene);
         void ParseMaterial(std::ifstream &fileStream, SceneParser::Scene &outputScene);
         void ParseMesh(std::ifstream &fileStream, SceneParser::Scene &outputScene);
@@ -92,6 +93,9 @@ class PBRTParser : public SceneParser::SceneParserClass
 
         void ParseBracketedVector3(std::istream, float &x, float &y, float &z);
 
+		void SetWindingOrder(bool bSetClockwiseOrder, SceneParser::Scene &scene);
+		void SwapGeometryCoordinateSystem(SceneParser::Scene &scene);
+		void FixZeroVertexNormals(SceneParser::Scene &scene);
         void InitializeDefaults(SceneParser::Scene &outputScene);
         void InitializeCameraDefaults(SceneParser::Camera &camera);
 
@@ -159,9 +163,6 @@ class PBRTParser : public SceneParser::SceneParserClass
         std::unordered_map<std::string, std::string> m_TextureNameToFileName;
 
         XMMATRIX m_currentTransform;
-        XMVECTOR m_lookAt;
-        XMVECTOR m_camPos;
-        XMVECTOR m_camUp;
 
         // Shouldn't be accessed directly outside of GetTempCharBuffer
         char _m_buffer[500];

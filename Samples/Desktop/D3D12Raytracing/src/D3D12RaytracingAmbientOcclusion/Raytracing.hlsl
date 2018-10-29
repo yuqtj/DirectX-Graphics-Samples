@@ -18,6 +18,7 @@
 #include "RandomNumberGenerator.hlsli"
 
 // ToDo dedupe code triangle normal calc,..
+// ToDo pix doesn't show output for AO pass
 
 //***************************************************************************
 //*****------ Shader resources bound via root signatures -------*************
@@ -31,18 +32,26 @@ RWTexture2D<float4> g_renderTarget : register(u0);
 
 // ToDo move this to local ray gen root sig
 RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
-RWTexture2D<float4> g_rtGBufferPosition : register(u6);
-RWTexture2D<float4> g_rtGBufferNormal : register(u7);
-Texture2D<uint> g_texGBufferPositionHit : register(t8);
-Texture2D<float4> g_texGBufferPositionRT : register(t9);
-Texture2D<float4> g_texGBufferNormal : register(t10);
-RWTexture2D<uint> g_rtAORayHits : register(u8);
+RWTexture2D<uint> g_rtGBufferMaterialID : register(u6);
+RWTexture2D<float4> g_rtGBufferPosition : register(u7);
+RWTexture2D<float4> g_rtGBufferNormal : register(u8);
+Texture2D<uint> g_texGBufferPositionHits : register(t5);
+Texture2D<uint> g_texGBufferMaterialID : register(t6);
+Texture2D<float4> g_texGBufferPositionRT : register(t7);
+Texture2D<float4> g_texGBufferNormal : register(t8);
+RWTexture2D<float> g_rtAOcoefficient : register(u9);
+RWTexture2D<uint> g_rtAORayHits : register(u10);
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
+StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
+
+
 
 // Per-object resources
 ConstantBuffer<PrimitiveConstantBuffer> l_materialCB : register(b1);
+
+
 #if ONLY_SQUID_SCENE_BLAS
 StructuredBuffer<Index> l_indices : register(t1, space0);
 StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices : register(t2, space0);
@@ -52,52 +61,6 @@ StructuredBuffer<VertexPositionNormalTexture> l_vertices : register(t2, space0);
 #endif
 
 
-//***************************************************************************
-//****************------ Utility functions -------***************************
-//***************************************************************************
-
-// Diffuse lighting calculation.
-float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 incidentLightRay, in float3 normal)
-{
-    float fNDotL = saturate(dot(-incidentLightRay, normal));
-    return fNDotL;
-}
-
-// Phong lighting specular component
-float4 CalculateSpecularCoefficient(in float3 hitPosition, in float3 incidentLightRay, in float3 normal, in float specularPower)
-{
-    float3 reflectedLightRay = normalize(reflect(incidentLightRay, normal));
-    return pow(saturate(dot(reflectedLightRay, normalize (-WorldRayDirection()))), specularPower);
-}
-
-
-// Phong lighting model = ambient + diffuse + specular components.
-float4 CalculatePhongLighting(in float4 albedo, in float3 normal, in bool isInShadow, in float diffuseCoef = 1.0, in float specularCoef = 1.0, in float specularPower = 50)
-{
-    float3 hitPosition = HitWorldPosition();
-    float3 lightPosition = g_sceneCB.lightPosition.xyz;
-    float shadowFactor = isInShadow ? InShadowRadiance : 1.0;
-    float3 incidentLightRay = normalize(hitPosition - lightPosition);
-
-    // Diffuse component.
-    float4 lightDiffuseColor = g_sceneCB.lightDiffuseColor;
-    float Kd = CalculateDiffuseCoefficient(hitPosition, incidentLightRay, normal);
-    float4 diffuseColor = shadowFactor * diffuseCoef * Kd * lightDiffuseColor * albedo;
-
-    // Specular component.
-    float4 specularColor = float4(0, 0, 0, 0);
-    if (!isInShadow)
-    {
-        float4 lightSpecularColor = float4(1, 1, 1, 1);
-        float4 Ks = CalculateSpecularCoefficient(hitPosition, incidentLightRay, normal, specularPower);
-        specularColor = specularCoef * Ks * lightSpecularColor;
-    }
-
-    // Ambient component.
-    float4 ambientColor = g_sceneCB.lightAmbientColor * albedo;
-    
-    return ambientColor + diffuseColor + specularColor;
-}
 
 //***************************************************************************
 //*****------ TraceRay wrappers for radiance and shadow rays. -------********
@@ -177,7 +140,7 @@ bool TraceShadowRayAndReportIfHit(in Ray ray, in UINT currentRayRecursionDepth)
 }
 
 // Trace a camera ray into the scene.
-GBufferRayPayload TraceGBufferRay(in Ray ray)
+GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth)
 {
 	// Set the ray's extents.
 	RayDesc rayDesc;
@@ -189,7 +152,11 @@ GBufferRayPayload TraceGBufferRay(in Ray ray)
 	// ToDo Tmin
 	rayDesc.TMin = 0.001;
 	rayDesc.TMax = 10000;
-	GBufferRayPayload rayPayload = {false, (float3)0, (float3)0 };
+#if ALLOW_MIRRORS
+	GBufferRayPayload rayPayload = {false, 0, (float3)0, (float3)0, currentRayRecursionDepth + 1 };
+#else
+	GBufferRayPayload rayPayload = { false, 0, (float3)0, (float3)0 };
+#endif
 	TraceRay(g_scene,
 #if FACE_CULLING
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES
@@ -209,7 +176,7 @@ GBufferRayPayload TraceGBufferRay(in Ray ray)
 
 
 // ToDo comment
-float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint shadowRayHits)
+float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numShadowRayHits)
 {
 	uint seed = DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x + g_sceneCB.seed;
 
@@ -217,7 +184,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint shado
 	uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
 
 	uint sampleJump = RNG::Random(RNGState, 0, g_sceneCB.numSamples - 1);
-	shadowRayHits = 0;
+	numShadowRayHits = 0;
 	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
 	{
 		float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % g_sceneCB.numSamples].value;
@@ -244,16 +211,23 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint shado
 
 		if (TraceShadowRayAndReportIfHit(shadowRay, 0))
 		{
-			shadowRayHits++;
+			numShadowRayHits++;
 		}
 	}
 #if AO_ANY_HIT_FULL_OCCLUSION
-	float ambientCoef = shadowRayHits > 0 ? 0 : 1;
+	float ambientCoef = numShadowRayHits > 0 ? 0 : 1;
 #else
-	float ambientCoef = 1.f - ((float)shadowRayHits / g_sceneCB.numSamplesToUse);
+	float ambientCoef = 1.f - ((float)numShadowRayHits / g_sceneCB.numSamplesToUse);
 #endif
 	
 	return ambientCoef;
+}
+
+
+float CalculateAO(in float3 hitPosition, in float3 surfaceNormal)
+{
+	uint numShadowRayHits;
+	return CalculateAO(hitPosition, surfaceNormal, numShadowRayHits);
 }
 
 //***************************************************************************
@@ -281,19 +255,26 @@ void MyRayGenShader_PrimaryAndAO()
 [shader("raygeneration")]
 void MyRayGenShader_GBuffer()
 {
-#if RAYGEN_SINGLE_COLOR_SHADING
-	g_renderTarget[DispatchRaysIndex().xy] = float4(0, 1, 0, 1);
-	return;
+#if CAMERA_JITTER
+	uint seed = DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x;// +g_sceneCB.seed;
+	uint RNGState = RNG::SeedThread(seed);
+	float2 cameraJitter = 2 * (float2(RNG::Random01(RNGState), RNG::Random01(RNGState)) - 0.5f);
+	cameraJitter *= 0.5f;
+#else
+	float2 cameraJitter = float2(0, 0);
 #endif
+
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
-	Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
+	Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
 
 	// Cast a ray into the scene and retrieve GBuffer information.
-	GBufferRayPayload rayPayload = TraceGBufferRay(ray);
+	UINT currentRayRecursionDepth = 0;
+	GBufferRayPayload rayPayload = TraceGBufferRay(ray, currentRayRecursionDepth);
 
 	// Write out GBuffer information to rendertargets.
 	// ToDo Test conditional write
 	g_rtGBufferCameraRayHits[DispatchRaysIndex().xy] = (rayPayload.hit ? 1 : 0);
+	g_rtGBufferMaterialID[DispatchRaysIndex().xy] = rayPayload.materialID;
 	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
 	g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, 0);
 }
@@ -301,66 +282,38 @@ void MyRayGenShader_GBuffer()
 [shader("raygeneration")]
 void MyRayGenShader_AO()
 {
-#if RAYGEN_SINGLE_COLOR_SHADING
-	g_renderTarget[DispatchRaysIndex().xy] = float4(0, 0, 1, 1);
-	return;
-#endif
-
-	bool hit = g_texGBufferPositionHit[DispatchRaysIndex().xy].x > 0.5;
+	bool hit = g_texGBufferPositionHits[DispatchRaysIndex().xy] > 0;
 	uint shadowRayHits = 0;
-	float4 color;
+	float ambientCoef = 0;
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DispatchRaysIndex().xy].xyz;
 		float3 surfaceNormal = g_texGBufferNormal[DispatchRaysIndex().xy].xyz;
-		float ambientCoef = CalculateAO(hitPosition, surfaceNormal, shadowRayHits);
-		
-
-#if NORMAL_SHADING
-		color = float4(surfaceNormal, 1);
-#else
-		// ToDo remove albedo
-		color = ambientCoef;
-#if GBUFFER_AO_USE_ALBEDO
-		float4 albedo = float4(0.75f, 0.75f, 0.75f, 1.0f);
-		color *= albedo;
-#endif
-#endif
-	}
-	else
-	{
-		color = BackgroundColor;
+		ambientCoef = CalculateAO(hitPosition, surfaceNormal, shadowRayHits);
 	}
 
-	// Write the raytraced color to the output texture.
-	g_renderTarget[DispatchRaysIndex().xy] = color;
+	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
 #if GBUFFER_AO_COUNT_AO_HITS
 	// ToDo test perf impact of writing this
 	g_rtAORayHits[DispatchRaysIndex().xy] = shadowRayHits;
 #endif
 }
 
+// ToDo PIX feedback
+// - Add resource names to Resources tab
+// - Keep Show/Hide DXR resource state across events
+// - There's no shader item in DispatchRays like it is in Dispatch
+// - Material structured buffer in GRS doesn't show up in PIX
+// - For shader records - rename root sig to local root sig.
 
 //***************************************************************************
 //******************------ Closest hit shaders -------***********************
 //***************************************************************************
 
+// ToDo remove
 [shader("closesthit")]
 void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersectionAttributes attr)
 {
-#if ALBEDO_SHADING
-	rayPayload.color = l_materialCB.albedo;
-	return;
-#endif
-
-#if DEPTH_SHADING
-	rayPayload.color = (log(RayTCurrent() / 100 + 1));// +2) / 4;
-	return;
-#endif
-#if SINGLE_COLOR_SHADING
-	rayPayload.color = float4(1, 0, 0, 1);
-	return;
-#endif
 #if ONLY_SQUID_SCENE_BLAS
 	uint startIndex = PrimitiveIndex() * 3;
 	const uint3 indices = {l_indices[startIndex], l_indices[startIndex + 1], l_indices[startIndex + 2]};
@@ -392,35 +345,21 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
 
     // PERFORMANCE TIP: it is recommended to avoid values carry over across TraceRay() calls. 
     // Therefore, in cases like retrieving HitWorldPosition(), it is recomputed every time.
-#if !AO_ONLY
+#if AO_ONLY
+	float ambientCoef = CalculateAO(HitWorldPosition(), triangleNormal);
+	float4 color = ambientCoef * float4(0.75, 0.75, 0.75, 0.75);
+#else
     // Shadow component.
     // Trace a shadow ray.
     float3 hitPosition = HitWorldPosition();
     Ray shadowRay = { hitPosition + 0.0001f * triangleNormal, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
     bool shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, rayPayload.recursionDepth);
-
-    float checkers = 1.0f;// AnalyticalCheckersTexture(HitWorldPosition(), triangleNormal, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin );
-
-    // Reflected component.
-    float4 reflectedColor = float4(0, 0, 0, 0);
-    if (l_materialCB.reflectanceCoef > 0.001 )
-    {
-        // Trace a reflection ray.
-        Ray reflectionRay = { HitWorldPosition(), reflect(WorldRayDirection(), triangleNormal) };
-        float4 reflectionColor = TraceRadianceRay(reflectionRay, rayPayload.recursionDepth);
-
-        float3 fresnelR = FresnelReflectanceSchlick(WorldRayDirection(), triangleNormal, l_materialCB.albedo.xyz);
-        reflectedColor = l_materialCB.reflectanceCoef * float4(fresnelR, 1) * reflectionColor;
-    }
-
+	
     // Calculate final color.
-    float4 phongColor = CalculatePhongLighting(l_materialCB.albedo, triangleNormal, shadowRayHit, l_materialCB.diffuseCoef, l_materialCB.specularCoef, l_materialCB.specularPower);
-    float4 color = checkers * (phongColor + reflectedColor);
-#else
-
-	uint shadowRayHits;
-	float ambientCoef = CalculateAO(HitWorldPosition(), triangleNormal, shadowRayHits);
-    float4 color = ambientCoef * l_materialCB.albedo;
+	float ambientCoef = CalculateAO(HitWorldPosition(), triangleNormal);
+	float4 color = float4(1, 0, 0, 0); //ToDo
+    //float3 phongColor = CalculatePhongLighting(triangleNormal, shadowRayHit, ambient, l_materialCB.diffuse, l_materialCB.specular, l_materialCB.specularPower);
+	//float4 color =  float4(phongColor, 1);
 #endif     
 
     rayPayload.color = color;
@@ -456,9 +395,23 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 	float3 triangleNormal = HitAttribute(vertexNormals, attr);
 #endif
 
+#if !FACE_CULLING
+	float orientation = HitKind() == HIT_KIND_TRIANGLE_FRONT_FACE ? 1 : -1;
+	triangleNormal *= orientation;
+#endif
 	rayPayload.hit = true;
+	rayPayload.materialID = l_materialCB.materialID;
 	rayPayload.hitPosition = HitWorldPosition();
 	rayPayload.surfaceNormal = triangleNormal;
+
+#if ALLOW_MIRRORS
+	PrimitiveMaterialBuffer material = g_materials[rayPayload.materialID];
+	if (material.isMirror && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
+	{
+		Ray reflectionRay = { rayPayload.hitPosition, reflect(WorldRayDirection(), rayPayload.surfaceNormal) };
+		rayPayload = TraceGBufferRay(reflectionRay, rayPayload.rayRecursionDepth);
+	}
+#endif
 }
 
 

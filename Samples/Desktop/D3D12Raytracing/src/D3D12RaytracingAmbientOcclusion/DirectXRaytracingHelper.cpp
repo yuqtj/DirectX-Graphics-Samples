@@ -159,6 +159,7 @@ void BottomLevelAccelerationStructure::Build(ID3D12GraphicsCommandList* commandL
 		bottomLevelBuildDesc.DestAccelerationStructureData = m_accelerationStructure->GetGPUVirtualAddress();
 	}
 
+	g_pSample->GetDxrCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
 	g_pSample->GetDxrCommandList()->BuildRaytracingAccelerationStructure(&bottomLevelBuildDesc, 0, nullptr);
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_accelerationStructure.Get()));
 
@@ -253,6 +254,8 @@ void TopLevelAccelerationStructure::Build(ID3D12GraphicsCommandList* commandList
     }
 
     topLevelInputs.InstanceDescs = m_dxrInstanceDescs.GpuVirtualAddress();
+
+	g_pSample->GetDxrCommandList()->SetDescriptorHeaps(1, &descriptorHeap);
 	g_pSample->GetDxrCommandList()->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
 
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_accelerationStructure.Get()));

@@ -15,6 +15,7 @@
 #include "EngineTuning.h"
 #include "CompiledShaders\Raytracing.hlsl.h"
 #include "CompiledShaders\RNGVisualizerCS.hlsl.h"
+#include "CompiledShaders\ComposeRenderPassesCS.hlsl.h"
 #include "SquidRoom.h"
 
 using namespace std;
@@ -85,14 +86,8 @@ namespace SceneArgs
     IntVar NumGeometriesPerBLAS(L"Geometry/# geometries per BLAS", // ToDo
 #if ONLY_SQUID_SCENE_BLAS
 		1,
-#else
-#if NUM_GEOMETRIES_1000
-		1000, 
-#elif NUM_GEOMETRIES_100000
-		100000,
-#elif NUM_GEOMETRIES_1000000
-		1000000,
-#endif
+#else 
+		NUM_GEOMETRIES,
 #endif
 		1, 1000000, 1, OnGeometryChange, nullptr);
     IntVar NumSphereBLAS(L"Geometry/# Sphere BLAS", 1, 1, D3D12RaytracingAmbientOcclusion::MaxBLAS, 1, OnASChange, nullptr);
@@ -123,24 +118,27 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 		return XMFLOAT2(v.x, v.y);
 	};
 
-	// Work with hacks
-	//PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);
+	// Work
+	//PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);  // ToDo crashes
 	//PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\car2\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\bmw-m6\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\staircase2\\scene.pbrt", m_pbrtScene);
-	PBRTParser::PBRTParser().Parse("Assets\\classroom\\scene.pbrt", m_pbrtScene);
-	
-	// Have missing faces even with hacks
-	//PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\classroom\\scene.pbrt", m_pbrtScene);
+	PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene); // ToDo crashes
+	//PBRTParser::PBRTParser().Parse("Assets\\living-room-3\\scene.pbrt", m_pbrtScene); //rug geometry skipped
 	//PBRTParser::PBRTParser().Parse("Assets\\staircase\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\living-room\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\living-room-2\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
+	//PBRTParser::PBRTParser().Parse("Assets\\kitchen\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
+
 
 	m_camera.Set(
 		Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Position),
 		Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_LookAt),
 		Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Up));
-	m_camera.fov = m_pbrtScene.m_Camera.m_FieldOfView;
-
+	m_camera.fov = 2 * m_pbrtScene.m_Camera.m_FieldOfView;
 	UINT numGeometries = static_cast<UINT>(m_pbrtScene.m_Meshes.size());
 
 	auto& geometries = m_geometries[GeometryType::PBRT];
@@ -175,88 +173,29 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 		}
 		desc.ib.indices = indexBuffer.data();
 		
-		for (auto &parserVertex : mesh.m_VertexBuffer)
+		for (auto &parseVertex : mesh.m_VertexBuffer)
 		{
 			VertexPositionNormalTextureTangent vertex;
-			XMStoreFloat3(&vertex.normal, XMVector3TransformNormal(Vec3ToXMVECTOR(parserVertex.Normal), mesh.m_transform));
-			XMStoreFloat3(&vertex.position, XMVector3TransformCoord(Vec3ToXMVECTOR(parserVertex.Position), mesh.m_transform));
-			vertex.tangent = Vec3ToXMFLOAT3(parserVertex.Tangents);
-			vertex.textureCoordinate = Vec3ToXMFLOAT2(parserVertex.UV);
+			vertex.normal = parseVertex.Normal.xmFloat3;
+			vertex.position = parseVertex.Position.xmFloat3;
+			vertex.tangent = parseVertex.Tangents.xmFloat3;
+			vertex.textureCoordinate = parseVertex.UV.xmFloat2;
 			vertexBuffer.push_back(vertex);
 		}
 		desc.vb.vertices = vertexBuffer.data();
 
-		bool skip = false;
-
-		struct ZeroNormal{
-			XMFLOAT3* zeroNormal; XMFLOAT3 faceNormal;
-			ZeroNormal(XMFLOAT3* _zeroNormal, XMFLOAT3 _faceNormal) : zeroNormal(_zeroNormal), faceNormal(_faceNormal) {}
-		};
-		vector<ZeroNormal> verticesZeroNormal;
-		auto IsTriangleClockwiseWinded = [&](UINT index0)
-		{
-			UINT indices[3] = { mesh.m_IndexBuffer[index0], mesh.m_IndexBuffer[index0 + 1], mesh.m_IndexBuffer[index0 + 2] };
-			auto& v0 = vertexBuffer[indices[0]];
-			auto& v1 = vertexBuffer[indices[1]];
-			auto& v2 = vertexBuffer[indices[2]];
-
-			XMVECTOR v01 = XMLoadFloat3(&v1.position) - XMLoadFloat3(&v0.position);
-			XMVECTOR v02 = XMLoadFloat3(&v2.position) - XMLoadFloat3(&v0.position);
-			XMVECTOR normal = XMLoadFloat3(&v0.normal) + XMLoadFloat3(&v1.normal) + XMLoadFloat3(&v2.normal);
-			XMVECTOR up = XMVector3Normalize(XMVector3Cross(v01, v02));
-			if (XMVectorGetX(XMVector3LengthSq(normal)) < 0.001f)
-			{
-				XMFLOAT3 faceNormal;
-				// ToDo - why is -up?
-				XMStoreFloat3(&faceNormal, -up);
-				//skip = true;
-				verticesZeroNormal.push_back(ZeroNormal(&v0.normal, faceNormal));
-				verticesZeroNormal.push_back(ZeroNormal(&v1.normal, faceNormal));
-				verticesZeroNormal.push_back(ZeroNormal(&v2.normal, faceNormal));
-				return false;
-			}
-			return XMVectorGetX(XMVector3Dot(XMVector3Cross(v01, v02), normal)) > 0;
-		};
-
-
-
-#if 0 //ToDo scene is mirrored 
-		for (UINT j = 0; j < vertexBuffer.size(); j += 1)
-		{
-			vertexBuffer[j].position.z = -vertexBuffer[j].position.z;
-		}
-
-#endif
-
-#if HACK_FLIP_Z
-		for (UINT j = 0; j < vertexBuffer.size(); j++)
-		{
-			XMStoreFloat3(&vertexBuffer[j].normal, XMVectorSetZ(XMLoadFloat3(&vertexBuffer[j].normal), -vertexBuffer[j].normal.z));
-			XMStoreFloat3(&vertexBuffer[j].position, XMVectorSetZ(XMLoadFloat3(&vertexBuffer[j].position), -vertexBuffer[j].position.z));
-		}
-#endif
-			// Make sure the triangles are in LH clockwise order 
-			for (UINT j = 0; j < indexBuffer.size(); j += 3)
-			{
-				if (!IsTriangleClockwiseWinded(j))
-				{
-					swap(indexBuffer[j], indexBuffer[j + 2]);
-					//XMFLOAT3 normals[3] = { vertexBuffer[indexBuffer[j]].normal, vertexBuffer[indexBuffer[j+1]].normal, vertexBuffer[indexBuffer[j+2]].normal };
-					//normals[0].y = -normals[0].z;
-				}
-			}
-			if (skip)
-					continue;
-
-#if HACK_REPLACE_ZERO_VERTEX_NORMALS_WITH_FACE_NORMAL
-			for (auto& zeroNormal: verticesZeroNormal)
-				*zeroNormal.zeroNormal = zeroNormal.faceNormal;
-#endif
 		auto& geometry = geometries[i];
 		CreateGeometry(device, commandList, m_cbvSrvUavHeap.get(), desc, &geometry);
 		ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
-		geometryInstances.push_back(GeometryInstance(geometry));
+		// ToDo texture support
+		PrimitiveMaterialBuffer cb;
+		cb.diffuse = mesh.m_pMaterial->m_Diffuse.xmFloat3;
+		cb.specular = mesh.m_pMaterial->m_Specular.xmFloat3;
+		cb.isMirror = mesh.m_pMaterial->m_Opacity.r < 0.5f ? 1 : 0;
+		UINT materialID = static_cast<UINT>(m_materials.size());
+		m_materials.push_back(cb);
+		geometryInstances.push_back(GeometryInstance(geometry, materialID));
 
 		m_numTriangles[GeometryType::PBRT] += desc.ib.count / 3;
 	}
@@ -281,13 +220,6 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     UpdateForSizeChange(width, height);
     m_bottomLevelASdescritorHeapIndices.resize(MaxBLAS, UINT_MAX);
     m_bottomLevelASinstanceDescsDescritorHeapIndices.resize(MaxBLAS, UINT_MAX);
-    m_topLevelASdescritorHeapIndex = UINT_MAX;
-	m_raytracingOutput.descriptorHeapIndex = UINT_MAX;
-	for (auto& gbufferResource : m_GBufferResources)
-	{
-		gbufferResource.descriptorHeapIndex = UINT_MAX;
-	}
-	m_AORayHits.descriptorHeapIndex = UINT_MAX;
 	m_generatorURNG.seed(1729);
 }
 
@@ -517,9 +449,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeScene()
             //attributes.specularPower = specularPower;
             //attributes.stepScale = stepScale;
         };
-
-        m_planeMaterialCB = { XMFLOAT4(0.75f, 0.75f, 0.75f, 1.0f), 0.0f, 1, 0.4f, 50, 1};
-
+		
         // Albedos
         XMFLOAT4 green = XMFLOAT4(0.1f, 1.0f, 0.5f, 1.0f);
         XMFLOAT4 red = XMFLOAT4(1.0f, 0.5f, 0.5f, 1.0f);
@@ -573,29 +503,28 @@ void D3D12RaytracingAmbientOcclusion::CreateSamplesRNG()
 
     // Create root signature.
     {
-		using namespace ComputeShader::RootSignature;
+		using namespace ComputeShader::RootSignature::HemisphereSampleSetVisualization;
 
         CD3DX12_DESCRIPTOR_RANGE ranges[1]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
 
-        CD3DX12_ROOT_PARAMETER rootParameters[HemisphereSampleSetVisualization::Slot::Count];
-        rootParameters[HemisphereSampleSetVisualization::Slot::OutputView].InitAsDescriptorTable(1, &ranges[0]);
-
-        rootParameters[HemisphereSampleSetVisualization::Slot::SampleBuffers].InitAsShaderResourceView(1);
-        rootParameters[HemisphereSampleSetVisualization::Slot::SceneConstant].InitAsConstantBufferView(0);
+        CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+        rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
+        rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(1);
+        rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);
 
         CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
-		SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[ComputeShader::Type::HemisphereSampleSetVisualization], L"Root signature: CS hemisphere sample set visualization");
+		SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::HemisphereSampleSetVisualization], L"Root signature: CS hemisphere sample set visualization");
     }
 
     // Create compute pipeline state.
     {
         D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
-        descComputePSO.pRootSignature = m_computeRootSigs[ComputeShader::Type::HemisphereSampleSetVisualization].Get();
+        descComputePSO.pRootSignature = m_computeRootSigs[CSType::HemisphereSampleSetVisualization].Get();
         descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pRNGVisualizerCS, ARRAYSIZE(g_pRNGVisualizerCS));
 
-        ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[ComputeShader::Type::HemisphereSampleSetVisualization])));
-        m_computePSOs[ComputeShader::Type::HemisphereSampleSetVisualization]->SetName(L"PSO: CS hemisphere sample set visualization");
+        ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[CSType::HemisphereSampleSetVisualization])));
+        m_computePSOs[CSType::HemisphereSampleSetVisualization]->SetName(L"PSO: CS hemisphere sample set visualization");
     }
 
 
@@ -614,6 +543,48 @@ void D3D12RaytracingAmbientOcclusion::CreateSamplesRNG()
             m_hemisphereSamplesGPUBuffer[i].value = p;
         }
     }
+}
+
+
+void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
+{
+	auto device = m_deviceResources->GetD3DDevice();
+	auto frameCount = m_deviceResources->GetBackBufferCount();
+
+	// Create root signature.
+	{
+		using namespace CSRootSignature::ComposeRenderPassesCS;
+
+		CD3DX12_DESCRIPTOR_RANGE ranges[3]; // Perfomance TIP: Order from most frequent to least frequent.
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);  // 4 input GBuffer textures
+		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 input AO texture
+
+		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+		rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
+		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
+		rootParameters[Slot::AO].InitAsDescriptorTable(1, &ranges[2]);
+		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(5);
+		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+		SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::ComposeRenderPassesCS], L"Root signature: ComposeRenderPassesCS");
+	}
+
+	// Create shader resources
+	{
+		m_csComposeRenderPassesCB.Create(device, FrameCount, L"Constant Buffer: ComposeRenderPassesCS");
+	}
+
+	// Create compute pipeline state.
+	{
+		D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+		descComputePSO.pRootSignature = m_computeRootSigs[CSType::ComposeRenderPassesCS].Get();
+		descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pComposeRenderPassesCS, ARRAYSIZE(g_pComposeRenderPassesCS));
+
+		ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[CSType::ComposeRenderPassesCS])));
+		m_computePSOs[CSType::ComposeRenderPassesCS]->SetName(L"PSO: ComposeRenderPassesCS");
+	}
 }
 
 // Create resources that depend on the device.
@@ -660,6 +631,7 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 
 	// ToDo move
     CreateSamplesRNG();
+	CreateComposeRenderPassesCSResources();
 
 }
 
@@ -670,22 +642,24 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
+		using namespace GlobalRootSignature;
+
         CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output textures
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 3, 5);  // 3 output textures
-		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 8);  // 3 input textures
-		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 8);  // 1 output textures
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 4, 5);  // 4 output textures
+		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input textures
+		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 9);  // 2 output textures
 
 
-        CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignature::Slot::Count];
-        rootParameters[GlobalRootSignature::Slot::OutputView].InitAsDescriptorTable(1, &ranges[0]);
-		rootParameters[GlobalRootSignature::Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
-		rootParameters[GlobalRootSignature::Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[2]);
-		rootParameters[GlobalRootSignature::Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[3]);
-        rootParameters[GlobalRootSignature::Slot::AccelerationStructure].InitAsShaderResourceView(0);
-        rootParameters[GlobalRootSignature::Slot::SceneConstant].InitAsConstantBufferView(0);
-        rootParameters[GlobalRootSignature::Slot::AABBattributeBuffer].InitAsShaderResourceView(3);
-        rootParameters[GlobalRootSignature::Slot::SampleBuffers].InitAsShaderResourceView(4);
+        CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+        rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
+		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
+		rootParameters[Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[2]);
+		rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[3]);
+        rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
+        rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);
+        rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
+        rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(4);
         
         CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
 		SerializeAndCreateRootSignature(device, globalRootSignatureDesc, &m_raytracingGlobalRootSignature, L"Global root signature");
@@ -696,13 +670,14 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
     {
         // Triangle geometry
         {
+			using namespace LocalRootSignature::Triangle;
+
             CD3DX12_DESCRIPTOR_RANGE ranges[1]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);  // 2 static index and vertex buffers.
 
-            namespace RootSignatureSlots = LocalRootSignature::Triangle::Slot;
-            CD3DX12_ROOT_PARAMETER rootParameters[RootSignatureSlots::Count];
-            rootParameters[RootSignatureSlots::MaterialConstant].InitAsConstants(SizeOfInUint32(PrimitiveConstantBuffer), 1);
-            rootParameters[RootSignatureSlots::VertexBuffers].InitAsDescriptorTable(1, &ranges[0]);
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::MaterialID].InitAsConstants(SizeOfInUint32(PrimitiveConstantBuffer), 1);
+            rootParameters[Slot::VertexBuffers].InitAsDescriptorTable(1, &ranges[0]);
 
             CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
@@ -797,8 +772,8 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
     // Shader config
     // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
     auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-    UINT payloadSize = max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload));
-    UINT attributeSize = sizeof(struct ProceduralPrimitiveAttributes); // ToDo
+    UINT payloadSize = max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload));		// ToDo revise
+    UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics
     shaderConfig->Config(payloadSize, attributeSize);
 
     // Local root signature and shader association
@@ -840,39 +815,33 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
 	// ToDo tune formats
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	for (auto& resource : m_GBufferResources)
+
+	// Preallocate subsequent descriptor indices for both SRV and UAV groups.
+	m_GBufferResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count, m_GBufferResources[0].uavDescriptorHeapIndex);
+	m_GBufferResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count, m_GBufferResources[0].srvDescriptorHeapIndex);
+	for (UINT i = 0; i < GBufferResource::Count; i++)
 	{
-		resource.rwFlags = ResourceRWFlags::AllowWrite;
+		m_GBufferResources[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+		m_GBufferResources[i].uavDescriptorHeapIndex = m_GBufferResources[0].uavDescriptorHeapIndex + i;
+		m_GBufferResources[i].srvDescriptorHeapIndex = m_GBufferResources[0].srvDescriptorHeapIndex + i;
 	}
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Hit], initialResourceState);
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::MaterialID], initialResourceState);
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState);
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormal], initialResourceState);
-	ThrowIfFalse(m_GBufferResources[GBufferResource::HitPosition].descriptorHeapIndex == m_GBufferResources[GBufferResource::Hit].descriptorHeapIndex + 1, 
-		L"GBuffer RT resources are expecected to be subsequent in the heap.");
-	ThrowIfFalse(m_GBufferResources[GBufferResource::SurfaceNormal].descriptorHeapIndex == m_GBufferResources[GBufferResource::Hit].descriptorHeapIndex + 2,
-		L"GBuffer RT resources are expecected to be subsequent in the heap.");
-
-	// ToDo move
-	m_AORayHits.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_AORayHits, initialResourceState);
-
-	// Create SRVs
-	// ToDo store these with the resource? Or make them optional in Create...()
-	D3D12_CPU_DESCRIPTOR_HANDLE dummyHandle;
-	UINT heapIndices[3] = { UINT_MAX, UINT_MAX, UINT_MAX };
-	CreateTextureSRV(device, m_GBufferResources[GBufferResource::Hit].resource.Get(), m_cbvSrvUavHeap.get(), &heapIndices[0], &dummyHandle, &m_GBufferResources[GBufferResource::Hit].gpuDescriptorReadAccess);
-	CreateTextureSRV(device, m_GBufferResources[GBufferResource::HitPosition].resource.Get(), m_cbvSrvUavHeap.get(), &heapIndices[1], &dummyHandle, &m_GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess);
-	CreateTextureSRV(device, m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), m_cbvSrvUavHeap.get(), &heapIndices[2], &dummyHandle, &m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess);
-	ThrowIfFalse(heapIndices[1] == heapIndices[0] + 1,
-		L"GBuffer RT resources are expecected to be subsequent in the heap.");
-	ThrowIfFalse(heapIndices[2] == heapIndices[0] + 2,
-		L"GBuffer RT resources are expecected to be subsequent in the heap.");
-
-	// ToDo cleanup?
-	for (auto& resource : m_GBufferResources)
+	
+	// Preallocate subsequent descriptor indices for both SRV and UAV groups.
+	m_AOResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOResources[0].uavDescriptorHeapIndex);
+	m_AOResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOResources[0].srvDescriptorHeapIndex);
+	for (UINT i = 0; i < AOResource::Count; i++)
 	{
-		resource.rwFlags |= ResourceRWFlags::AllowRead;
+		m_AOResources[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+		m_AOResources[i].uavDescriptorHeapIndex = m_AOResources[0].uavDescriptorHeapIndex + i;
+		m_AOResources[i].srvDescriptorHeapIndex = m_AOResources[0].srvDescriptorHeapIndex + i;
 	}
+	// ToDo use less than 32bits?
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState);
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState);
 
 	// ToDo
 	// Describe and create the point clamping sampler used for reading from the GBuffer resources.
@@ -969,7 +938,10 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
     CreateBufferSRV(device, ARRAYSIZE(vertices), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
-	m_geometryInstances[GeometryType::Plane].push_back(GeometryInstance(geometry));
+	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1), 50, false };
+	UINT materialID = static_cast<UINT>(m_materials.size());
+	m_materials.push_back(planeMaterialCB);
+	m_geometryInstances[GeometryType::Plane].push_back(GeometryInstance(geometry, materialID));
 }
 
 void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
@@ -1028,7 +1000,6 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
 		return XMLoadFloat3(&vertices[v1].position) - XMLoadFloat3(&vertices[v0].position);
 	};
 
-	// ToDo, normalizing face or vertex normals skews normal in the shader.?
 	XMVECTOR faceNormals[4] =
 	{
 		XMVector3Cross(Edge(0, 3), Edge(0, 1)),
@@ -1039,13 +1010,13 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
 
 	
 #if 1 // ToDo
-	XMStoreFloat3(&vertices[0].normal, (faceNormals[0] + faceNormals[2] + faceNormals[3]));
-	XMStoreFloat3(&vertices[1].normal, (faceNormals[0] + faceNormals[1] + faceNormals[3]));
-	XMStoreFloat3(&vertices[2].normal, (faceNormals[1] + faceNormals[2] + faceNormals[3]));
+	XMStoreFloat3(&vertices[0].normal, XMVector3Normalize(faceNormals[0] + faceNormals[2] + faceNormals[3]));
+	XMStoreFloat3(&vertices[1].normal, XMVector3Normalize(faceNormals[0] + faceNormals[1] + faceNormals[3]));
+	XMStoreFloat3(&vertices[2].normal, XMVector3Normalize(faceNormals[1] + faceNormals[2] + faceNormals[3]));
 #if AO_OVERDOSE_BEND_NORMALS_DOWN
-	XMStoreFloat3(&vertices[3].normal, (faceNormals[0] + faceNormals[1] + faceNormals[2]) * XMVectorSet(1, 0.01f, 1, 0));
+	XMStoreFloat3(&vertices[3].normal, XMVector3Normalize(faceNormals[0] + faceNormals[1] + faceNormals[2]) * XMVectorSet(1, 0.01f, 1, 0));
 #else
-	XMStoreFloat3(&vertices[3].normal, (faceNormals[0] + faceNormals[1] + faceNormals[2]) * XMVectorSet(1, 0.01f, 1, 0));
+	XMStoreFloat3(&vertices[3].normal, XMVector3Normalize(faceNormals[0] + faceNormals[1] + faceNormals[2]));
 #endif
 	float a = 2;
 #endif
@@ -1058,6 +1029,8 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
         // 24 indices
 #if TESSELATED_GEOMETRY_BOX_TETRAHEDRON
 		GeometricPrimitive::CreateTetrahedron(vertices, indices, m_boxSize.x, RhCoords);
+#elif TESSELATED_GEOMETRY_TEAPOT
+		GeometricPrimitive::CreateTeapot(vertices, indices, m_geometryRadius, 10, RhCoords);
 #elif TESSELATED_GEOMETRY_BOX
 		GeometricPrimitive::CreateBox(vertices, indices, m_boxSize, RhCoords);
 #else
@@ -1083,6 +1056,15 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
         const float Diameter = 2 * m_geometryRadius;
         GeometricPrimitive::CreateSphere(vertices, indices, Diameter, SceneArgs::GeometryTesselationFactor, RhCoords);
     }
+#endif
+
+#if TESSELATED_GEOMETRY_TEAPOT
+	XMMATRIX rotation = XMMatrixIdentity();// XMMatrixRotationY(XM_PIDIV2);
+	for (auto& vertex : vertices)
+	{
+		XMStoreFloat3(&vertex.position, XMVector3TransformCoord(XMLoadFloat3(&vertex.position), rotation));
+		XMStoreFloat3(&vertex.normal, XMVector3TransformNormal(XMLoadFloat3(&vertex.normal), rotation));
+	}
 #endif
 #if TESSELATED_GEOMETRY_THIN
 #if TESSELATED_GEOMETRY_BOX_TETRAHEDRON
@@ -1117,7 +1099,12 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
     CreateBufferSRV(device, numIndexBufferElements, 0, m_cbvSrvUavHeap.get(), &geometry.ib.buffer);
     CreateBufferSRV(device, static_cast<UINT>(vertices.size()), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
-	m_geometryInstances[GeometryType::Sphere].resize(SceneArgs::NumGeometriesPerBLAS, GeometryInstance(geometry));
+
+
+	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1), 50, false };
+	UINT materialID = static_cast<UINT>(m_materials.size());
+	m_materials.push_back(materialCB);
+	m_geometryInstances[GeometryType::Sphere].resize(SceneArgs::NumGeometriesPerBLAS, GeometryInstance(geometry, materialID));
 
 	m_numTriangles[GeometryType::Sphere] = static_cast<UINT>(indices.size()) / 3;
 }
@@ -1139,9 +1126,14 @@ void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
 		&geometry,
 		&m_geometryInstances[GeometryType::SquidRoom]);
 
+	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.25f, 0.25f), XMFLOAT3(1, 1, 1), 50, false };
+	UINT materialID = static_cast<UINT>(m_materials.size());
+	m_materials.push_back(materialCB);
+
 	m_numTriangles[GeometryType::SquidRoom] = 0;
 	for (auto& geometry : m_geometryInstances[GeometryType::SquidRoom])
 	{
+		geometry.materialID = materialID; // ToDo
 		m_numTriangles[GeometryType::SquidRoom] += geometry.ib.count / 3;
 	}
 #if PBRT_SCENE
@@ -1152,6 +1144,7 @@ void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
 // Build geometry used in the sample.
 void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
 {
+	auto device = m_deviceResources->GetD3DDevice();
     BuildTesselatedGeometry();
     BuildPlaneGeometry();   
 
@@ -1160,6 +1153,9 @@ void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
 #if ONLY_SQUID_SCENE_BLAS
 	LoadSceneGeometry();
 #endif
+
+	m_materialBuffer.Create(device, static_cast<UINT>(m_materials.size()), 1, L"Structured buffer: materials");
+	copy(m_materials.begin(), m_materials.end(), m_materialBuffer.begin());
 
 #if !RUNTIME_AS_UPDATES
 	InitializeAccelerationStructures();
@@ -1175,6 +1171,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
 
 	UpdateAccelerationStructures(m_isASrebuildRequested);
 #endif
+	m_materialBuffer.CopyStagingToGpu();
 	m_deviceResources->ExecuteCommandList();
 }
 
@@ -1302,7 +1299,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 		UINT numGeometryTransforms = 1 + SceneArgs::NumSphereBLAS * SceneArgs::NumGeometriesPerBLAS;
 #endif
 
-		m_geometryTransforms.Create(device, numGeometryTransforms, FrameCount, L"Geometry descs transforms");
+		m_geometryTransforms.Create(device, numGeometryTransforms, FrameCount, L"Structured buffer: Geometry desc transforms");
     }
 
     GenerateBottomLevelASInstanceTransforms();
@@ -1445,7 +1442,7 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 			for (auto& geometryInstance: *geometryInstances)
 			{
 				LocalRootSignature::Triangle::RootArguments rootArgs;
-				rootArgs.materialCb = m_planeMaterialCB;	// ToDo
+				rootArgs.materialID = geometryInstance.materialID;
 				memcpy(&rootArgs.vertexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
 
 				for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
@@ -1696,9 +1693,7 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracing()
     auto SetCommonPipelineState = [&](auto* descriptorSetCommandList)
     {
         descriptorSetCommandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-        // Set index and successive vertex buffer decriptor tables.
-
-        commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::OutputView, m_raytracingOutput.gpuDescriptorWriteAccess);
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Output, m_raytracingOutput.gpuDescriptorWriteAccess);
     };
 
     commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
@@ -1731,6 +1726,8 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracing()
 	DispatchRays(m_rayGenShaderTables[RayGenShaderType::PrimaryAndAO].Get(), &m_gpuTimers[GpuTimers::Raytracing_PrimaryAndAO]);
 }
 
+
+// ToDo split
 void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
 {
 	auto device = m_deviceResources->GetD3DDevice();
@@ -1748,7 +1745,7 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
 		switch (type)
 		{
 		case ReduceSumCalculations::CameraRayHits: inputResource = &m_GBufferResources[GBufferResource::Hit]; break;
-		case ReduceSumCalculations::AORayHits: inputResource = &m_AORayHits; break;
+		case ReduceSumCalculations::AORayHits: inputResource = &m_AOResources[AOResource::HitCount]; break;
 		}
 
 		m_gpuTimers[GpuTimers::ReduceSum].Start(commandList, type);
@@ -1770,7 +1767,16 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
 	m_sceneCB->seed = seedDistribution(m_generatorURNG);
 	m_sceneCB->numSamples = m_randomSampler.NumSamples();
 	m_sceneCB->numSampleSets = m_randomSampler.NumSampleSets();
-	m_sceneCB->numSamplesToUse = m_randomSampler.NumSamples();    
+	m_sceneCB->numSamplesToUse = m_randomSampler.NumSamples(); 
+	static UINT counter = 0;
+	switch (counter++ % 4)
+	{
+	case 0: m_sceneCB->cameraJitter = XMFLOAT2(-0.25f, -0.25f); break;
+	case 1: m_sceneCB->cameraJitter = XMFLOAT2(0.25f, -0.25f); break;
+	case 2: m_sceneCB->cameraJitter = XMFLOAT2(-0.25f, 0.25f); break;
+	case 3: m_sceneCB->cameraJitter = XMFLOAT2(0.25f, 0.25f); break;
+	};
+	
 	UINT NumFramesPerIter = 400;
 
 	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
@@ -1782,17 +1788,19 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
 		m_sceneCB.CopyStagingToGpu(frameIndex);
 	}
 
-	// Transition GBuffer resources to render target state.
+	// Transition all output resources to render target state.
 	{
-		D3D12_RESOURCE_BARRIER barriers[GBufferResource::Count + 1];
 		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Hit].resource.Get(), before, after);
-		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after);
-		barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after);
-		barriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(m_AORayHits.resource.Get(), before, after);
+		D3D12_RESOURCE_BARRIER barriers[] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Hit].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MaterialID].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after) 
+		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-
 	}
 
 
@@ -1800,25 +1808,24 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_topLevelAS.GetResource()->GetGPUVirtualAddress());
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
 	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
+	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
 
 	// Bind output RTs.
-	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResources, m_GBufferResources[GBufferResource::Hit].gpuDescriptorWriteAccess);
-
-#if RAYGEN_SINGLE_COLOR_SHADING
-	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::OutputView, m_raytracingOutput.gpuDescriptorWriteAccess);
-#endif
-
+	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorWriteAccess);
+	
 	// Dispatch Rays.
 	DispatchRays(m_rayGenShaderTables[RayGenShaderType::GBuffer].Get(), &m_gpuTimers[GpuTimers::Raytracing_GBuffer]);
 
 	// Transition GBuffer resources to shader resource state.
 	{
-		D3D12_RESOURCE_BARRIER barriers[GBufferResource::Count];
 		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Hit].resource.Get(), before, after);
-		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after);
-		barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after);
+		D3D12_RESOURCE_BARRIER barriers[] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Hit].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MaterialID].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after)
+		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
 
@@ -1831,26 +1838,75 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
 	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
 
 	// Bind inputs.
-	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResourcesIn, m_GBufferResources[GBufferResource::Hit].gpuDescriptorReadAccess);
+	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResourcesIn, m_GBufferResources[0].gpuDescriptorReadAccess);
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
 	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
+	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
 
 	// Bind output RT.
-	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::OutputView, m_raytracingOutput.gpuDescriptorWriteAccess);
-	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOResourcesOut, m_AORayHits.gpuDescriptorWriteAccess);
+	// ToDo remove output and rename AOout
+	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Output, m_raytracingOutput.gpuDescriptorWriteAccess);
+	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOResourcesOut, m_AOResources[0].gpuDescriptorWriteAccess);
 
 	// Bind the heaps, acceleration structure and dispatch rays. 
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_topLevelAS.GetResource()->GetGPUVirtualAddress());
 	DispatchRays(m_rayGenShaderTables[RayGenShaderType::AO].Get(), &m_gpuTimers[GpuTimers::Raytracing_AO]);
 
-	// Transition AORayHits resource to shader resource state.
+	// Transition AO resources to shader resource state.
 	{
 		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AORayHits.resource.Get(), before, after));
+		D3D12_RESOURCE_BARRIER barriers[] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after)
+		};
+		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
 
 	CalculateRayHitCount(ReduceSumCalculations::AORayHits);
+}
+
+// Composite results from multiple passed into a final image.
+void D3D12RaytracingAmbientOcclusion::ComposeRenderPassesCS()
+{
+	auto commandList = m_deviceResources->GetCommandList();
+	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+
+	PIXBeginEvent(commandList, 0, L"ComposeRenderPassesCS");
+
+	// Update constant buffer.
+	{
+		XMStoreFloat3(&m_csComposeRenderPassesCB->cameraPosition, m_camera.Eye());
+		m_csComposeRenderPassesCB->rtDimensions = XMUINT2(m_width, m_height);
+		m_csComposeRenderPassesCB.CopyStagingToGpu(frameIndex);
+	}
+
+	// Set pipeline state.
+	{
+		using namespace ComputeShader::RootSignature::ComposeRenderPassesCS;
+
+		commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
+		commandList->SetComputeRootSignature(m_computeRootSigs[CSType::ComposeRenderPassesCS].Get());
+		commandList->SetPipelineState(m_computePSOs[CSType::ComposeRenderPassesCS].Get());
+
+		// Bind outputs.
+		commandList->SetComputeRootDescriptorTable(Slot::Output, m_raytracingOutput.gpuDescriptorWriteAccess);
+		
+		// Bind inputs.
+		commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorReadAccess);
+		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
+		commandList->SetComputeRootShaderResourceView(Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
+		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
+	}
+
+	// Dispatch.
+	XMUINT2 groupSize(CeilDivide(m_width, ComposeRenderPassesCS::ThreadGroup::Width), CeilDivide(m_height, ComposeRenderPassesCS::ThreadGroup::Height));
+
+	m_gpuTimers[GpuTimers::ComposeRenderPassesCS].Start(commandList);
+	commandList->Dispatch(groupSize.x, groupSize.y, 1);
+	m_gpuTimers[GpuTimers::ComposeRenderPassesCS].Stop(commandList);
+
+	PIXEndEvent(commandList);
 }
 
 // Copy the raytracing output to the backbuffer.
@@ -1886,8 +1942,10 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
                << m_deviceResources->GetAdapterDescription() << L"\n";
         wLabel << fixed << L" FPS: " << m_fps << L"\n";
 #if GBUFFER_AO_SEPRATE_PATHS
+		wLabel.precision(2);
 		wLabel << fixed << L" CameraRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS() << L"ms\n";
 		wLabel << fixed << L" AORay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS() << L"ms\n";
+		wLabel.precision(1);
 		wLabel << fixed << L" DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS() << L"ms"
 			   << L"     ~Million Primary Rays/s: " << NumCameraRaysPerSecond()
    			   << L"   ~Million AO rays/s" << NumRayGeometryHitsPerSecond(ReduceSumCalculations::CameraRayHits) * c_sppAO
@@ -2087,13 +2145,12 @@ void D3D12RaytracingAmbientOcclusion::RenderRNGVisualizations()
 		using namespace ComputeShader::RootSignature::HemisphereSampleSetVisualization;
 
 		commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-		commandList->SetComputeRootSignature(m_computeRootSigs[ComputeShader::Type::HemisphereSampleSetVisualization].Get());
+		commandList->SetComputeRootSignature(m_computeRootSigs[CSType::HemisphereSampleSetVisualization].Get());
+		commandList->SetPipelineState(m_computePSOs[CSType::HemisphereSampleSetVisualization].Get());
 
 		commandList->SetComputeRootConstantBufferView(Slot::SceneConstant, m_csHemisphereVisualizationCB.GpuVirtualAddress(frameIndex));
 		commandList->SetComputeRootShaderResourceView(Slot::SampleBuffers, m_samplesGPUBuffer.GpuVirtualAddress(frameIndex));
-		commandList->SetComputeRootDescriptorTable(Slot::OutputView, m_raytracingOutput.gpuDescriptorWriteAccess);
-
-		commandList->SetPipelineState(m_computePSOs[ComputeShader::Type::HemisphereSampleSetVisualization].Get());
+		commandList->SetComputeRootDescriptorTable(Slot::Output, m_raytracingOutput.gpuDescriptorWriteAccess);
 	}
 
 	// Dispatch.
@@ -2130,6 +2187,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     // Render.
 #if GBUFFER_AO_SEPRATE_PATHS
 	DoRaytracingGBufferAndAOPasses();
+	ComposeRenderPassesCS();
 #else
 	DoRaytracing();
 #endif

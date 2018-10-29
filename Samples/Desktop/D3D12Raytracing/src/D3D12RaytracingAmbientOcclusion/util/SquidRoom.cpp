@@ -31,6 +31,7 @@ void SquidRoomAssets::LoadGeometry(
 	UINT fileSize = 0;
 	UINT8* pAssetData = nullptr;
 
+	// Convert handedness by flipping z coordinate.
 	auto ConvertRHtoLHGeometry = [&]()
 	{
 		VertexPositionNormalTextureTangent* vertices = reinterpret_cast<VertexPositionNormalTextureTangent*>(pAssetData + SquidRoomAssets::VertexDataOffset);
@@ -91,8 +92,11 @@ void SquidRoomAssets::LoadGeometry(
 		PIXBeginEvent(commandList, 0, L"Copy index buffer data to default resource...");
 
 		UpdateSubresources<1>(commandList, geometry->ib.buffer.resource.Get(), geometry->ib.upload.Get(), 0, 0, 1, &indexData);
+#if VBIB_AS_NON_PIXEL_SHADER_RESOURCE
+		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->ib.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+#else
 		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->ib.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
-
+#endif
 		PIXEndEvent(commandList);
 #if INDEX_FORMAT_UINT
 		UINT elementStride = sizeof(Index);
@@ -143,8 +147,11 @@ void SquidRoomAssets::LoadGeometry(
 		PIXBeginEvent(commandList, 0, L"Copy vertex buffer data to default resource...");
 
 		UpdateSubresources<1>(commandList, geometry->vb.buffer.resource.Get(), geometry->vb.upload.Get(), 0, 0, 1, &vertexData);
+#if VBIB_AS_NON_PIXEL_SHADER_RESOURCE
+		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->vb.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+#else
 		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->vb.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
-
+#endif
 		PIXEndEvent(commandList);
 
 		UINT numElements = SquidRoomAssets::VertexDataSize / SquidRoomAssets::StandardVertexStride;
@@ -159,6 +166,7 @@ void SquidRoomAssets::LoadGeometry(
 	{
 		auto& ib = (*geometryInstances)[i].ib;
 		auto& vb = (*geometryInstances)[i].vb;
+		(*geometryInstances)[i].materialID = 0; // ToDo
 
 		ib.startIndex = SquidRoomAssets::Draws[i].IndexStart;
 		ib.count = SquidRoomAssets::Draws[i].IndexCount;
@@ -174,7 +182,6 @@ void SquidRoomAssets::LoadGeometry(
 		UINT vbHeapIndex = UINT_MAX;
 		CreateBufferSRV(geometry->ib.buffer.resource.Get(), device, ib.count, SquidRoomAssets::StandardIndexStride, descriptorHeap, &dummyCpuHandle, &ib.gpuDescriptorHandle, &ibHeapIndex, ib.startIndex);
 		CreateBufferSRV(geometry->vb.buffer.resource.Get(), device, vb.count, SquidRoomAssets::StandardVertexStride, descriptorHeap, &dummyCpuHandle, &vb.gpuDescriptorHandle, &vbHeapIndex, vb.startIndex);
-
 		ThrowIfFalse(vbHeapIndex == ibHeapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 	}
 

@@ -39,10 +39,10 @@ void main(uint2 DTid : SV_DispatchThreadID, uint GIndex: SV_GroupIndex, uint2 Gi
 	uint sum = 0;
 
 	// Load the input data.
-	uint2 index = DTid.xy + uint2(Gid.x * ((ReduceSumCS::ThreadGroup::NumElementsToLoadPerThread - 1) * ReduceSumCS::ThreadGroup::Width), 0);
+	uint2 index = DTid + uint2(Gid.x * ((ReduceSumCS::ThreadGroup::NumElementsToLoadPerThread - 1) * ReduceSumCS::ThreadGroup::Width), 0);
 	for (UINT i = 0; i < ReduceSumCS::ThreadGroup::NumElementsToLoadPerThread; i++)
 	{
-		sum += g_texInput[index].x;
+		sum += g_texInput[index];
 		index += uint2(ReduceSumCS::ThreadGroup::Width, 0);
 	}
 

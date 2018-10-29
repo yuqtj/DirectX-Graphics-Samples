@@ -95,7 +95,7 @@ void CameraController::Update(float deltaTime)
 		yaw += GameInput::GetAnalogInput(GameInput::kAnalogMouseX) * m_MouseSensitivityX;
 		pitch += GameInput::GetAnalogInput(GameInput::kAnalogMouseY) * m_MouseSensitivityY;
 	}
-	else if (GameInput::IsPressed(GameInput::kMouse1))
+ 	else if (GameInput::IsPressed(GameInput::kMouse1))
 	{
 		yaw += -1 * GameInput::GetAnalogInput(GameInput::kAnalogMouseX) * m_MouseSensitivityX;
 		pitch += -1 * GameInput::GetAnalogInput(GameInput::kAnalogMouseY) * m_MouseSensitivityY;

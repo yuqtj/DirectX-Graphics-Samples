@@ -21,18 +21,10 @@ using namespace SceneParser;
 using namespace std;
 
 #define TEAPOT_HACK 1 // ToDo remove
-#define SKIP_TTEXTURE_ASSETS 1
+#define SKIP_TEXTURE_ASSETS 1
 
 namespace PBRTParser
 {
-    void ThrowIfTrue(bool expression, std::string errorMessage = "")
-    {
-        if (expression)
-        {
-            throw new BadFormatException(errorMessage.c_str());
-        }
-    }
-
     PBRTParser::PBRTParser()
     {
         m_AttributeStack.push(Attributes());
@@ -44,49 +36,191 @@ namespace PBRTParser
         assert(m_AttributeStack.size() == 0);
     }
 
-    void PBRTParser::Parse(std::string filename, SceneParser::Scene &outputScene)
-    {
-        m_fileStream = ifstream(filename);
-     
-        {
-            UINT relativeDirEnd = static_cast<UINT>(filename.find_last_of('\\'));
-            m_relativeDirectory = filename.substr(0, relativeDirEnd + 1);
-        }
+	void PBRTParser::Parse(std::string filename, SceneParser::Scene &outputScene, bool bClockwiseWindingORder, bool rhCoords)
+	{
+		m_fileStream = ifstream(filename);
 
-        m_currentTransform = XMMatrixIdentity();
+		{
+			UINT relativeDirEnd = static_cast<UINT>(filename.find_last_of('\\'));
+			m_relativeDirectory = filename.substr(0, relativeDirEnd + 1);
+		}
 
-        if (!m_fileStream.good())
-        {
-            assert(false); // file not found
-        }
+		m_currentTransform = XMMatrixIdentity();
 
-        InitializeDefaults(outputScene);
+		if (!m_fileStream.good())
+		{
+			assert(false); // file not found
+		}
 
-        while (m_fileStream.good())
-        {
-            if (!lastParsedWord.compare("Film"))
-            {
-                ParseFilm(m_fileStream, outputScene);
-            }
-            else if (!lastParsedWord.compare("Camera"))
-            {
-                ParseCamera(m_fileStream, outputScene);
-            }
-            else if (!lastParsedWord.compare("Transform"))
-            {
-                ParseTransform();
-            }
-            else if (!lastParsedWord.compare("WorldBegin"))
-            {
-                m_currentTransform = XMMatrixIdentity();
-                ParseWorld(m_fileStream, outputScene);
-            }
-            else
-            {
-                m_fileStream >> lastParsedWord;
-            }
-        }
+		InitializeDefaults(outputScene);
+
+		while (m_fileStream.good())
+		{
+			if (!lastParsedWord.compare("Film"))
+			{
+				ParseFilm(m_fileStream, outputScene);
+			}
+			else if (!lastParsedWord.compare("LookAt"))
+			{
+				ParseLookAt(m_fileStream, outputScene);
+			}
+			else if (!lastParsedWord.compare("Camera"))
+			{
+				ParseCamera(m_fileStream, outputScene);
+			}
+			else if (!lastParsedWord.compare("Transform"))
+			{
+				ParseTransform();
+			}
+			else if (!lastParsedWord.compare("WorldBegin"))
+			{
+				m_currentTransform = XMMatrixIdentity();
+				ParseWorld(m_fileStream, outputScene);
+			}
+			else if (!lastParsedWord.compare("#"))
+			{
+				GetLineStream();
+				m_fileStream >> lastParsedWord;
+			}
+
+			else
+			{
+				m_fileStream >> lastParsedWord;
+			}
+		}
+
+		FixZeroVertexNormals(outputScene);
+
+		if (!rhCoords)
+		{
+			SwapGeometryCoordinateSystem(outputScene);
+		}
+
+		SetWindingOrder(bClockwiseWindingORder, outputScene);
     }
+
+
+	// Calculates vertex normals where one is not set.
+	void PBRTParser::SwapGeometryCoordinateSystem(SceneParser::Scene &scene)
+	{
+		for (auto& mesh : scene.m_Meshes)
+			for (auto& vertex : mesh.m_VertexBuffer)
+			{
+				vertex.Position.z = -vertex.Position.z;
+				vertex.Normal.z = -vertex.Normal.z;
+			}
+		scene.m_Camera.m_Position.z = -scene.m_Camera.m_Position.z;
+		scene.m_Camera.m_LookAt.z = -scene.m_Camera.m_LookAt.z;
+		scene.m_Camera.m_Up.z = -scene.m_Camera.m_Up.z;
+	}
+	// Calculates vertex normals where one is not set.
+	void PBRTParser::FixZeroVertexNormals(SceneParser::Scene &scene)
+	{
+		for (auto& mesh : scene.m_Meshes)
+		{
+			const UINT numVertices = static_cast<UINT>(mesh.m_VertexBuffer.size());
+
+			// Since some vertices may be shared across faces,
+			// update a copy of vertex normals while evaluating all the faces.
+			vector<UINT> vertexFaceCountContributions;
+			vertexFaceCountContributions.resize(numVertices, 0);
+			vector<XMVECTOR> vertexNormalsSum;
+			vertexNormalsSum.resize(numVertices, XMVectorZero());
+
+			for (UINT i = 0; i < mesh.m_IndexBuffer.size(); i += 3)
+			{
+				UINT indices[3] = { mesh.m_IndexBuffer[i], mesh.m_IndexBuffer[i + 1], mesh.m_IndexBuffer[i + 2] };
+				auto& v0 = mesh.m_VertexBuffer[indices[0]];
+				auto& v1 = mesh.m_VertexBuffer[indices[1]];
+				auto& v2 = mesh.m_VertexBuffer[indices[2]];
+				XMVECTOR normals[3] = { 
+					XMVector3Normalize(v0.Normal.GetXMVECTOR()), 
+					XMVector3Normalize(v1.Normal.GetXMVECTOR()), 
+					XMVector3Normalize(v2.Normal.GetXMVECTOR()) 
+				};
+				bool isZeroNormal[3] = { 
+					XMVectorGetX(XMVector3LengthSq(normals[0])) < 0.001f, 
+					XMVectorGetX(XMVector3LengthSq(normals[1])) < 0.001f, 
+					XMVectorGetX(XMVector3LengthSq(normals[2])) < 0.001f 
+				};
+				XMVECTOR* nSums[3] = { &vertexNormalsSum[indices[0]], &vertexNormalsSum[indices[1]], &vertexNormalsSum[indices[2]] };
+
+				for (UINT i = 0; i < 3; i++)
+				{
+					vertexFaceCountContributions[indices[i]]++;
+				}
+				
+				UINT numZeroNormals = isZeroNormal[0] + isZeroNormal[1] + isZeroNormal[2];
+				if (numZeroNormals == 0)
+				{
+					for (UINT i = 0; i < 3; i++)
+					{
+						*nSums[i] += normals[i];
+					}
+				}
+				// Replace zero normals based on the faceNormal.
+				else
+				{
+					XMVECTOR v01 = XMLoadFloat3(&v1.Position.xmFloat3) - XMLoadFloat3(&v0.Position.xmFloat3);
+					XMVECTOR v02 = XMLoadFloat3(&v2.Position.xmFloat3) - XMLoadFloat3(&v0.Position.xmFloat3);
+					XMVECTOR faceNormal = XMVector3Normalize(XMVector3Cross(v01, v02));
+
+					for (UINT i = 0; i < 3; i++)
+					{
+						switch (numZeroNormals)
+						{
+						case 1:
+						case 2:ThrowIfTrue(true, L"Not implemented");
+							break;
+						case 3:
+							*nSums[i] += faceNormal;
+							break;
+						}
+					}
+				}
+			}
+
+			// Update the vertices with normalized normals across all contributing faces.
+			for (UINT i = 0; i < mesh.m_VertexBuffer.size(); i++)
+			{
+				XMStoreFloat3(&mesh.m_VertexBuffer[i].Normal.xmFloat3, vertexNormalsSum[i] / static_cast<float>(vertexFaceCountContributions[i]));
+			}
+		}
+	}
+
+
+	void PBRTParser::SetWindingOrder(bool bSetClockwiseOrder, SceneParser::Scene &scene)
+	{
+		// Ensure LH clockwise triangle vertices order 
+		for (auto& mesh : scene.m_Meshes)
+		{
+			auto IsTriangleClockwiseWinded = [&](UINT index0)
+			{
+				UINT indices[3] = { mesh.m_IndexBuffer[index0], mesh.m_IndexBuffer[index0 + 1], mesh.m_IndexBuffer[index0 + 2] };
+				auto& v0 = mesh.m_VertexBuffer[indices[0]];
+				auto& v1 = mesh.m_VertexBuffer[indices[1]];
+				auto& v2 = mesh.m_VertexBuffer[indices[2]];
+
+				XMVECTOR v01 = v1.Position.GetXMVECTOR() - v0.Position.GetXMVECTOR();
+				XMVECTOR v02 = v2.Position.GetXMVECTOR() - v0.Position.GetXMVECTOR();
+				XMVECTOR n0 = v0.Normal.GetXMVECTOR();
+				XMVECTOR n1 = v1.Normal.GetXMVECTOR();
+				XMVECTOR n2 = v2.Normal.GetXMVECTOR();
+				XMVECTOR normal = n0 + n1 + n2;
+				XMVECTOR faceNormal = XMVector3Cross(v01, v02);
+
+				return XMVectorGetX(XMVector3Dot(faceNormal, normal)) > 0;
+			};
+
+			for (UINT j = 0; j < mesh.m_IndexBuffer.size(); j += 3)
+			{
+				if (bSetClockwiseOrder != IsTriangleClockwiseWinded(j))
+				{
+					swap(mesh.m_IndexBuffer[j], mesh.m_IndexBuffer[j + 2]);
+				}
+			}
+		}
+	};
 
     void PBRTParser::ParseWorld(std::ifstream &fileStream, SceneParser::Scene &outputScene)
     {
@@ -131,6 +265,11 @@ namespace PBRTParser
             {
                 break;
             }
+			else if (!lastParsedWord.compare("#"))
+			{
+				GetLineStream();
+				fileStream >> lastParsedWord;
+			}
             else
             {
                 fileStream >> lastParsedWord;
@@ -138,19 +277,31 @@ namespace PBRTParser
         }
     }
 
+	void PBRTParser::ParseLookAt(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+	{
+		char *pTempBuffer = GetLine();
+
+		UINT argCount = sscanf_s(pTempBuffer, " %f %f %f   %f %f %f   %f %f %f",
+			&outputScene.m_Camera.m_Position.x, &outputScene.m_Camera.m_Position.y, &outputScene.m_Camera.m_Position.z,
+			&outputScene.m_Camera.m_LookAt.x, &outputScene.m_Camera.m_LookAt.y, &outputScene.m_Camera.m_LookAt.z,
+			&outputScene.m_Camera.m_Up.x, &outputScene.m_Camera.m_Up.y, &outputScene.m_Camera.m_Up.z);
+
+		ThrowIfTrue(argCount != 9, L"LookAt arguments not formatted correctly");
+	}
+
     void PBRTParser::ParseCamera(std::ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         char *pTempBuffer = GetLine();
 
-        UINT argCount = sscanf_s(pTempBuffer, " \"perspective\" \"float fov\" \[ %f \]",
+        UINT argCount = sscanf_s(pTempBuffer, " \"perspective\" \"float fov\" [ %f ]",
             &outputScene.m_Camera.m_FieldOfView);
 
-        ThrowIfTrue(argCount != 1, "Camera arguments not formatted correctly");
+        ThrowIfTrue(argCount != 1, L"Camera arguments not formatted correctly");
 
         auto pfnHomogenize = [](const XMVECTOR &vec4) { return vec4 / XMVectorGetW(vec4); };
 
-        outputScene.m_Camera.m_LookAt =   ConvertToVector3(pfnHomogenize(XMVector3Transform(m_lookAt, m_currentTransform)));
-        outputScene.m_Camera.m_Position = ConvertToVector3(pfnHomogenize(XMVector3Transform(m_camPos, m_currentTransform)));
+        outputScene.m_Camera.m_LookAt =   ConvertToVector3(pfnHomogenize(XMVector3Transform(outputScene.m_Camera.m_LookAt.GetXMVECTOR(), m_currentTransform)));
+        outputScene.m_Camera.m_Position = ConvertToVector3(pfnHomogenize(XMVector3Transform(outputScene.m_Camera.m_Position.GetXMVECTOR(), m_currentTransform)));
 		outputScene.m_transform = m_currentTransform;
 #ifndef TEAPOT_HACK
         XMVECTOR normal = XMVector3Transform(m_camUp, m_currentTransform);
@@ -163,12 +314,13 @@ namespace PBRTParser
         char *pTempBuffer = GetLine();
 
         char fileName[PBRTPARSER_STRINGBUFFERSIZE];
-        UINT argCount = sscanf_s(pTempBuffer, " \"image\" \"integer xresolution\" \[ %u \] \"integer yresolution\" \[ %u \] \"string filename\" \[ \"%s\" \]",
+        UINT argCount = sscanf_s(pTempBuffer, " \"image\" \"integer xresolution\" [ %u ] \"integer yresolution\" [ %u ] \"string filename\" [ \"%s\" ]",
             &outputScene.m_Film.m_ResolutionX,
             &outputScene.m_Film.m_ResolutionY,
-            fileName, ARRAYSIZE(fileName));
+            fileName, 
+			static_cast<UINT>(_countof(fileName)));
 
-        ThrowIfTrue(argCount != 3, "Film arguments not formatted correctly");
+        ThrowIfTrue(argCount != 3, L"Film arguments not formatted correctly");
 
         // Sometimes scanf pulls more than it needs to, make sure to clean up 
         // any extra characters on the file name
@@ -184,7 +336,7 @@ namespace PBRTParser
     void PBRTParser::ParseBracketedVector3(std::istream is, float &x, float &y, float &z)
     {
         is >> lastParsedWord;
-        ThrowIfTrue(lastParsedWord.compare("["), "Expect '[' at beginning of vector");
+        ThrowIfTrue(lastParsedWord.compare("["), L"Expect '[' at beginning of vector");
 
         is >> x;
         is >> y;
@@ -193,7 +345,7 @@ namespace PBRTParser
         ThrowIfTrue(!is.good());
 
         is >> lastParsedWord;
-        ThrowIfTrue(lastParsedWord.compare("]"), "Expect '[' at beginning of vector");
+        ThrowIfTrue(lastParsedWord.compare("]"), L"Expect '[' at beginning of vector");
     }
 
     float PBRTParser::ParseFloat1(std::istream &inStream)
@@ -217,19 +369,16 @@ namespace PBRTParser
     void PBRTParser::ParseMaterial(std::ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         Material material;
+		material.m_Opacity = Vector3(1, 1, 1);
         char materialName[PBRTPARSER_STRINGBUFFERSIZE];
         std::string materialType;
 
         auto lineStream = GetLineStream();
-#if SKIP_TTEXTURE_ASSETS
-		lastParsedWord = "";
-		return;
-#endif
 
         lineStream >> lastParsedWord;
         material.m_MaterialName = CorrectNameString(lastParsedWord);
 
-        auto pfnParseMaterialColor = [=](std::istream &inStream, Vector3 &color, std::string &textureFileName)
+        auto pfnParseMaterialColor = [&](std::istream &inStream, Vector3 &color, std::string &textureFileName)
         {
             inStream >> lastParsedWord;
             ThrowIfTrue(lastParsedWord.compare("["));
@@ -243,12 +392,18 @@ namespace PBRTParser
             else
             {
                 inStream.clear();
-
+#
                 std::string textureName;
                 inStream >> textureName;
                 textureName = CorrectNameString(textureName);
+#if SKIP_TEXTURE_ASSETS
+				material.m_Diffuse = Vector3(1, 1, 1);
+				material.m_Specular = Vector3(1, 1, 1);
+				material.m_Opacity = Vector3(1, 1, 1);
+#else
                 textureFileName = m_TextureNameToFileName[textureName];
                 ThrowIfTrue(textureFileName.size() == 0);
+#endif
             }
 
             inStream >> lastParsedWord;
@@ -273,7 +428,7 @@ namespace PBRTParser
                 }
                 else
                 {
-                    ThrowIfTrue(false, "string not followed up with recognized token");
+                    ThrowIfTrue(false, L"string not followed up with recognized token");
                 }
             }
             else if (!lastParsedWord.compare("\"rgb") || !lastParsedWord.compare("\"texture"))
@@ -287,6 +442,10 @@ namespace PBRTParser
                 {
                     pfnParseMaterialColor(lineStream, material.m_Specular, material.m_SpecularTextureFilename);
                 }
+				else if (!lastParsedWord.compare("opacity\""))
+				{
+					pfnParseMaterialColor(lineStream, material.m_Opacity, material.m_OpacityTextureFilename);
+				}
             }
             else if (!lastParsedWord.compare("\"float"))
             {
@@ -317,9 +476,7 @@ namespace PBRTParser
             std::string expectedWords[] = { "\"string", "mapname\"" };
             ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
 
-            ThrowIfTrue(
-                outputScene.m_EnvironmentMap.m_FileName.size() > 0,
-                "Multiple environment maps defined");
+            ThrowIfTrue(outputScene.m_EnvironmentMap.m_FileName.size() > 0, L"Multiple environment maps defined");
             outputScene.m_EnvironmentMap.m_FileName = m_relativeDirectory + CorrectNameString(ParseString(lineStream));
         }
     }
@@ -371,7 +528,7 @@ namespace PBRTParser
         // "float uscale"[20.000000] "float vscale"[20.000000] "rgb tex1"[0.325000 0.310000 0.250000] "rgb tex2"[0.725000 0.710000 0.680000]
         auto &lineStream = GetLineStream();
 
-#if SKIP_TTEXTURE_ASSETS
+#if SKIP_TEXTURE_ASSETS
 		lastParsedWord = "";
 		return;
 #endif
@@ -474,24 +631,24 @@ namespace PBRTParser
         img = (unsigned char *)malloc(3 * width*height);
         memset(img, 0, sizeof(img));
 
-        for (int i = 0; i<width; i++)
+        for (UINT i = 0; i < width; i++)
         {
-            for (int j = 0; j<height; j++)
+            for (UINT j = 0; j < height; j++)
             {
 
                 auto pixel = pImageData[i + j * width];
 
                 int x = i; 
                 int y = (height - 1) - j;
-                int r = pixel.r * 255;
-                int g = pixel.g * 255;
-                int b = pixel.b * 255;
+                UINT r = static_cast<UINT>(pixel.r * 255);
+                UINT g = static_cast<UINT>(pixel.g * 255);
+                UINT b = static_cast<UINT>(pixel.b * 255);
                 if (r > 255) r = 255;
                 if (g > 255) g = 255;
                 if (b > 255) b = 255;
-                img[(x + y*width) * 3 + 2] = (unsigned char)(r);
-                img[(x + y*width) * 3 + 1] = (unsigned char)(g);
-                img[(x + y*width) * 3 + 0] = (unsigned char)(b);
+                img[(x + y*width) * 3 + 2] = static_cast<UCHAR>(r);
+                img[(x + y*width) * 3 + 1] = static_cast<UCHAR>(g);
+                img[(x + y*width) * 3 + 0] = static_cast<UCHAR>(b);
             }
         }
 
@@ -499,27 +656,33 @@ namespace PBRTParser
         unsigned char bmpinfoheader[40] = { 40,0,0,0, 0,0,0,0, 0,0,0,0, 1,0, 24,0 };
         unsigned char bmppad[3] = { 0,0,0 };
 
-        bmpfileheader[2] = (unsigned char)(filesize);
-        bmpfileheader[3] = (unsigned char)(filesize >> 8);
-        bmpfileheader[4] = (unsigned char)(filesize >> 16);
-        bmpfileheader[5] = (unsigned char)(filesize >> 24);
+        bmpfileheader[2] = static_cast<UCHAR>(filesize);
+        bmpfileheader[3] = static_cast<UCHAR>(filesize >> 8);
+        bmpfileheader[4] = static_cast<UCHAR>(filesize >> 16);
+        bmpfileheader[5] = static_cast<UCHAR>(filesize >> 24);
 
-        bmpinfoheader[4] = (unsigned char)(width);
-        bmpinfoheader[5] = (unsigned char)(width >> 8);
-        bmpinfoheader[6] = (unsigned char)(width >> 16);
-        bmpinfoheader[7] = (unsigned char)(width >> 24);
-        bmpinfoheader[8] = (unsigned char)(height);
-        bmpinfoheader[9] = (unsigned char)(height >> 8);
-        bmpinfoheader[10] = (unsigned char)(height >> 16);
-        bmpinfoheader[11] = (unsigned char)(height >> 24);
+        bmpinfoheader[4] = static_cast<UCHAR>(width);
+        bmpinfoheader[5] = static_cast<UCHAR>(width >> 8);
+        bmpinfoheader[6] = static_cast<UCHAR>(width >> 16);
+        bmpinfoheader[7] = static_cast<UCHAR>(width >> 24);
+        bmpinfoheader[8] = static_cast<UCHAR>(height);
+        bmpinfoheader[9] = static_cast<UCHAR>(height >> 8);
+        bmpinfoheader[10] = static_cast<UCHAR>(height >> 16);
+        bmpinfoheader[11] = static_cast<UCHAR>(height >> 24);
 
-        for (auto bit : bmpfileheader) bmpFile << bit;
-        for (auto bit : bmpinfoheader) bmpFile << bit;
-        for (int i = 0; i<height; i++)
+		for (auto bit : bmpfileheader)
+		{
+			bmpFile << bit;
+		}
+		for (auto bit : bmpinfoheader)
+		{
+			bmpFile << bit;
+		}
+        for (UINT i = 0; i < height; i++)
         {
-            for (int j = 0; j < width * 3; j++)
+            for (UINT j = 0; j < width * 3; j++)
             {
-                bmpFile << *(img + (width*(height - i - 1) * 3) + j);
+                bmpFile << *(img + (width * (height - i - 1) * 3) + j);
             }
             for (UINT j = 0; j < (4 - (width * 3) % 4) % 4; j++)
             {
@@ -548,7 +711,7 @@ namespace PBRTParser
         }
         string correctedMaterialName = CorrectNameString(m_CurrentMaterial);
         pMesh->m_pMaterial = &outputScene.m_Materials[correctedMaterialName];
-        ThrowIfTrue(pMesh->m_pMaterial == nullptr, "Material name not found");
+        ThrowIfTrue(pMesh->m_pMaterial == nullptr, L"Material name not found");
 		pMesh->m_transform = m_currentTransform;
         ParseShape(fileStream, outputScene, *pMesh);
     }
@@ -571,10 +734,10 @@ namespace PBRTParser
             if (!lastParsedWord.compare("\"integer"))
             {
                 fileStream >> lastParsedWord;
-                ThrowIfTrue(lastParsedWord.compare("indices\""), "\"integer\" expected to be followed up with \"integer\"");
+                ThrowIfTrue(lastParsedWord.compare("indices\""), L"\"integer\" expected to be followed up with \"integer\"");
 
                 fileStream >> lastParsedWord;
-                ThrowIfTrue(lastParsedWord.compare("["), "\"indices\" expected to be followed up with \"[\"");
+                ThrowIfTrue(lastParsedWord.compare("["), L"\"indices\" expected to be followed up with \"[\"");
 
                 while (fileStream.good())
                 {
@@ -588,7 +751,7 @@ namespace PBRTParser
                     {
                         fileStream.clear(std::ios::goodbit);
                         fileStream >> lastParsedWord;
-                        ThrowIfTrue(lastParsedWord.compare("]"), "Expected closing ']' after indices");
+                        ThrowIfTrue(lastParsedWord.compare("]"), L"Expected closing ']' after indices");
                         break;
                     }
                 }
@@ -599,10 +762,10 @@ namespace PBRTParser
             if (!lastParsedWord.compare("\"point"))
             {
                 fileStream >> lastParsedWord;
-                ThrowIfTrue(lastParsedWord.compare("P\""), "Expecting \"point\" syntax to be followed by \"P\"");
+                ThrowIfTrue(lastParsedWord.compare("P\""), L"Expecting \"point\" syntax to be followed by \"P\"");
 
                 fileStream >> lastParsedWord;
-                ThrowIfTrue(lastParsedWord.compare("["), "'P' expected to be followed up with \"[\"");
+                ThrowIfTrue(lastParsedWord.compare("["), L"'P' expected to be followed up with \"[\"");
 
                 while (fileStream.good())
                 {
@@ -619,7 +782,7 @@ namespace PBRTParser
                     {
                         fileStream.clear(std::ios::goodbit);
                         fileStream >> lastParsedWord;
-                        ThrowIfTrue(lastParsedWord.compare("]"), "Expected closing ']' after positions");
+                        ThrowIfTrue(lastParsedWord.compare("]"), L"Expected closing ']' after positions");
                         break;
                     }
                 }
@@ -630,10 +793,10 @@ namespace PBRTParser
             if (!lastParsedWord.compare("\"normal"))
             {
                 fileStream >> lastParsedWord;
-                ThrowIfTrue(lastParsedWord.compare("N\""), "Expecting \"normal\" syntax to be followed by an \"N\"");
+                ThrowIfTrue(lastParsedWord.compare("N\""), L"Expecting \"normal\" syntax to be followed by an \"N\"");
 
                 fileStream >> lastParsedWord;
-                ThrowIfTrue(lastParsedWord.compare("["), "'N' expected to be followed up with \"[\"");
+                ThrowIfTrue(lastParsedWord.compare("["), L"'N' expected to be followed up with \"[\"");
 
                 UINT vertexIndex = 0;
                 while (fileStream.good())
@@ -644,7 +807,7 @@ namespace PBRTParser
                     fileStream >> z;
                     if (fileStream.good())
                     {
-                        ThrowIfTrue(vertexIndex >= mesh.m_VertexBuffer.size(), "More position values specified than normals");
+                        ThrowIfTrue(vertexIndex >= mesh.m_VertexBuffer.size(), L"More position values specified than normals");
                         SceneParser::Vertex &vertex = mesh.m_VertexBuffer[vertexIndex];
                         vertexIndex++;
 
@@ -656,7 +819,7 @@ namespace PBRTParser
                     {
                         fileStream.clear(std::ios::goodbit);
                         fileStream >> lastParsedWord;
-                        ThrowIfTrue(lastParsedWord.compare("]"), "Expected closing ']' after positions");
+                        ThrowIfTrue(lastParsedWord.compare("]"), L"Expected closing ']' after positions");
                         break;
                     }
                 }
@@ -667,10 +830,10 @@ namespace PBRTParser
             if (!lastParsedWord.compare("\"float"))
             {
                 fileStream >> lastParsedWord;
-                ThrowIfTrue(lastParsedWord.compare("uv\""), "Expecting \"float\" syntax to be followed by \"uv\"");
+                ThrowIfTrue(lastParsedWord.compare("uv\""), L"Expecting \"float\" syntax to be followed by \"uv\"");
 
                 fileStream >> lastParsedWord;
-                ThrowIfTrue(lastParsedWord.compare("["), "'UV' expected to be followed up with \"[\"");
+                ThrowIfTrue(lastParsedWord.compare("["), L"'UV' expected to be followed up with \"[\"");
 
                 UINT vertexIndex = 0;
                 while (fileStream.good())
@@ -680,7 +843,7 @@ namespace PBRTParser
                     fileStream >> v;
                     if (fileStream.good())
                     {
-                        ThrowIfTrue(vertexIndex >= mesh.m_VertexBuffer.size(), "More UV values specified than normals");
+                        ThrowIfTrue(vertexIndex >= mesh.m_VertexBuffer.size(), L"More UV values specified than normals");
                         SceneParser::Vertex &vertex = mesh.m_VertexBuffer[vertexIndex];
                         vertexIndex++;
 
@@ -691,7 +854,7 @@ namespace PBRTParser
                     {
                         fileStream.clear(std::ios::goodbit);
                         fileStream >> lastParsedWord;
-                        ThrowIfTrue(lastParsedWord.compare("]"), "Expected closing ']' after positions");
+                        ThrowIfTrue(lastParsedWord.compare("]"), L"Expected closing ']' after positions");
                         break;
                     }
                 }
@@ -712,7 +875,7 @@ namespace PBRTParser
     {
         string correctedString(pString);
         UINT startIndex = 0;
-        UINT endIndex = correctedString.size();
+        UINT endIndex = static_cast<UINT>(correctedString.size());
         if (correctedString.size())
         {
             // sscanf often pulls extra quotations, cut these out
@@ -736,19 +899,11 @@ namespace PBRTParser
 
     void PBRTParser::InitializeCameraDefaults(Camera &camera)
     {
-#if TEAPOT_HACK
-        m_lookAt = XMVectorSet(0.0f, 0.0f, 1.0f, 1.0f);
-        m_camPos = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
-#else
-        m_lookAt = XMVectorSet(0.0f, 2.0f, 1.0f, 1.0f);
-        m_camPos = XMVectorSet(0.0f, 2.0f, 0.0f, 1.0f);
-#endif
+		camera.m_LookAt = Vector3(0.0f, 0.0f, 1.0f);
+		camera.m_Position = Vector3(0.0f, 0.0f, 0.0f);
+		camera.m_Up = Vector3(0.0f, 1.0f, 0.0f);
 
-        m_camUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-
-        camera.m_FieldOfView = 90;
-        camera.m_LookAt = ConvertToVector3(m_lookAt);
-        camera.m_Position = ConvertToVector3(m_camPos);
+        camera.m_FieldOfView = 45;
         camera.m_Up = Vector3(0.0f, 1.0f, 0.0f);
         camera.m_NearPlane = 0.001f;
         camera.m_FarPlane = 999999.0f;
@@ -759,7 +914,7 @@ namespace PBRTParser
         char *pTempBuffer = GetLine();
         float mat[4][4];
 
-        UINT argCount = sscanf_s(pTempBuffer, " \[ %f %f %f %f  %f %f %f %f  %f %f %f %f  %f %f %f %f \] ",
+        UINT argCount = sscanf_s(pTempBuffer, " [ %f %f %f %f  %f %f %f %f  %f %f %f %f  %f %f %f %f ] ",
             &mat[0][0],
             &mat[0][1],
             &mat[0][2],
@@ -780,7 +935,7 @@ namespace PBRTParser
             &mat[3][2],
             &mat[3][3]);
 
-        ThrowIfTrue(argCount != 16, "Transform arguments not formatted correctly");
+        ThrowIfTrue(argCount != 16, L"Transform arguments not formatted correctly");
 
         m_currentTransform = XMMATRIX(
 			mat[0][0],

@@ -73,6 +73,16 @@ inline void ThrowIfFalse(bool value, const wchar_t* msg)
     ThrowIfFailed(value ? S_OK : E_FAIL, msg);
 }
 
+inline void ThrowIfTrue(bool value)
+{
+	ThrowIfFalse(!value);
+}
+
+inline void ThrowIfTrue(bool value, const wchar_t* msg)
+{
+	ThrowIfFalse(!value, msg);
+}
+
 
 inline void GetAssetsPath(_Out_writes_(pathSize) WCHAR* path, UINT pathSize)
 {
@@ -396,17 +406,38 @@ public:
 	UINT DescriptorSize() { return m_descriptorSize; }
 
 	// Allocate a descriptor and return its index. 
-	// If the passed descriptorIndexToUse is valid, it will be used instead of allocating a new one.
+	// Passing descriptorIndexToUse as UINT_MAX will allocate next available descriptor.
+	// Otherwise the descriptorIndexToUse will be used instead of allocating a new one.
 	UINT AllocateDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE* cpuDescriptor, UINT descriptorIndexToUse = UINT_MAX)
 	{
-		auto descriptorHeapCpuBase = m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
-		if (descriptorIndexToUse >= m_descriptorHeap->GetDesc().NumDescriptors)
+		if (descriptorIndexToUse == UINT_MAX)
 		{
 			ThrowIfFalse(m_descriptorsAllocated < m_descriptorHeap->GetDesc().NumDescriptors, L"Ran out of descriptors on the heap!");
 			descriptorIndexToUse = m_descriptorsAllocated++;
 		}
+		else
+		{
+			ThrowIfFalse(descriptorIndexToUse < m_descriptorHeap->GetDesc().NumDescriptors, L"Requested descriptor index is out of bounds!");
+			m_descriptorsAllocated = max(descriptorIndexToUse + 1, m_descriptorsAllocated);
+		}
+
+		auto descriptorHeapCpuBase = m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
 		*cpuDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(descriptorHeapCpuBase, descriptorIndexToUse, m_descriptorSize);
 		return descriptorIndexToUse;
+	}
+
+	// Allocate multiple descriptor indices and return an index of a first one. 
+	// Passing firstDescriptorIndexToUse as UINT_MAX will allocate next available descriptors.
+	// Otherwise the firstDescriptorIndexToUse will be used instead of allocating a new one.
+	UINT AllocateDescriptorIndices(UINT numDescriptors, UINT firstDescriptorIndexToUse = UINT_MAX)
+	{
+		firstDescriptorIndexToUse = AllocateDescriptor(&D3D12_CPU_DESCRIPTOR_HANDLE(), firstDescriptorIndexToUse);
+
+		for (UINT i = 1; i < numDescriptors; i++)
+		{
+			AllocateDescriptor(&D3D12_CPU_DESCRIPTOR_HANDLE(), firstDescriptorIndexToUse + i);
+		}
+		return firstDescriptorIndexToUse;
 	}
 };
 
@@ -451,7 +482,8 @@ struct RWGpuResource
 	ComPtr<ID3D12Resource> resource;
 	D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorReadAccess = { UINT64_MAX };
 	D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorWriteAccess = { UINT64_MAX };
-	UINT descriptorHeapIndex = UINT_MAX;
+	UINT srvDescriptorHeapIndex = UINT_MAX;
+	UINT uavDescriptorHeapIndex = UINT_MAX;
 };
 
 
@@ -503,18 +535,18 @@ inline void CreateRenderTargetResource(
 	if (dest->rwFlags & ResourceRWFlags::AllowWrite)
 	{
 		D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptorHandle;
-		dest->descriptorHeapIndex = descriptorHeap->AllocateDescriptor(&uavDescriptorHandle, dest->descriptorHeapIndex);
+		dest->uavDescriptorHeapIndex = descriptorHeap->AllocateDescriptor(&uavDescriptorHandle, dest->uavDescriptorHeapIndex);
 		D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc = {};
 		UAVDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 		device->CreateUnorderedAccessView(dest->resource.Get(), nullptr, &UAVDesc, uavDescriptorHandle);
-		dest->gpuDescriptorWriteAccess = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(), dest->descriptorHeapIndex, descriptorHeap->DescriptorSize());
+		dest->gpuDescriptorWriteAccess = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(), dest->uavDescriptorHeapIndex, descriptorHeap->DescriptorSize());
 	}
 
 	if (dest->rwFlags & ResourceRWFlags::AllowRead)
 	{
 		// ToDo cleanup and combine
 		D3D12_CPU_DESCRIPTOR_HANDLE dummyHandle;
-		CreateTextureSRV(device, dest->resource.Get(), descriptorHeap, &dest->descriptorHeapIndex, &dummyHandle, &dest->gpuDescriptorReadAccess);
+		CreateTextureSRV(device, dest->resource.Get(), descriptorHeap, &dest->srvDescriptorHeapIndex, &dummyHandle, &dest->gpuDescriptorReadAccess);
 	}
 }
 
@@ -552,7 +584,7 @@ inline void AllocateUAVBuffer(
 	{
 		assert(descriptorHeap);
 		D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptorHandle;
-		dest->descriptorHeapIndex = descriptorHeap->AllocateDescriptor(&uavDescriptorHandle, dest->descriptorHeapIndex);
+		dest->uavDescriptorHeapIndex = descriptorHeap->AllocateDescriptor(&uavDescriptorHandle, dest->uavDescriptorHeapIndex);
 		D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc = {};
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -561,7 +593,7 @@ inline void AllocateUAVBuffer(
 		UAVDesc.Format = format;
 		UAVDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
 		device->CreateUnorderedAccessView(dest->resource.Get(), nullptr, &UAVDesc, uavDescriptorHandle);
-		dest->gpuDescriptorWriteAccess = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(), dest->descriptorHeapIndex, descriptorHeap->DescriptorSize());
+		dest->gpuDescriptorWriteAccess = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(), dest->uavDescriptorHeapIndex, descriptorHeap->DescriptorSize());
 	}
 
 	if (dest->rwFlags & ResourceRWFlags::AllowRead)
@@ -666,14 +698,14 @@ public:
 
 	GeometryInstance() {}
 
-	GeometryInstance(D3DGeometry& geometry)
+	GeometryInstance(const D3DGeometry& geometry, UINT _materialID) : materialID(_materialID)
 	{
 		ib.startIndex = 0;
 		ib.count = static_cast<UINT>(geometry.ib.buffer.resource->GetDesc().Width / sizeof(Index));
 		ib.indexBuffer = geometry.ib.buffer.resource->GetGPUVirtualAddress();
 		ib.gpuDescriptorHandle = geometry.ib.buffer.gpuDescriptorHandle;
 		vb.startIndex = 0;
-#if ONLY_SQUID_SCENE_BLAS
+#if ONLY_SQUID_SCENE_BLAS  // ToDo Unify
 		vb.count = static_cast<UINT>(geometry.vb.buffer.resource->GetDesc().Width / sizeof(VertexPositionNormalTextureTangent));
 		vb.vertexBuffer.StrideInBytes = sizeof(VertexPositionNormalTextureTangent);
 #else
@@ -697,6 +729,7 @@ public:
 	Buffer vb;
 	Buffer ib;
 	D3D12_GPU_VIRTUAL_ADDRESS transform;
+	UINT materialID;
 };
 
 
@@ -799,7 +832,11 @@ inline void CreateGeometry(
 		PIXBeginEvent(commandList, 0, L"Copy index buffer data to default resource...");
 		{
 			UpdateSubresources<1>(commandList, geometry->ib.buffer.resource.Get(), geometry->ib.upload.Get(), 0, 0, 1, &indexData);
+#if VBIB_AS_NON_PIXEL_SHADER_RESOURCE
+			commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->ib.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+#else
 			commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->ib.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
+#endif
 		}
 		PIXEndEvent(commandList);
 
@@ -842,7 +879,11 @@ inline void CreateGeometry(
 		PIXBeginEvent(commandList, 0, L"Copy vertex buffer data to default resource...");
 		{
 			UpdateSubresources<1>(commandList, geometry->vb.buffer.resource.Get(), geometry->vb.upload.Get(), 0, 0, 1, &vertexData);
+#if VBIB_AS_NON_PIXEL_SHADER_RESOURCE
+			commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->vb.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+#else
 			commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->vb.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+#endif
 		}
 		PIXEndEvent(commandList);
 

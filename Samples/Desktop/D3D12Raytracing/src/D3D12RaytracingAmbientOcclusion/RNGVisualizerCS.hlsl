@@ -17,10 +17,6 @@
 ConstantBuffer<RNGConstantBuffer> rngCB: register(b0);
 RWTexture2D<float4> g_renderTarget : register(u0);
 StructuredBuffer<AlignedUnitSquareSample2D> g_sampleSets : register(t1);
-Texture2D<float4> g_texGBufferPositionHit : register(t2);
-Texture2D<float4> g_texGBufferPositionRT : register(t3);
-Texture2D<float4> g_texGBufferNormal : register(t4);
-
 
 // ToDo inc numThreads
 [numthreads(1, 1, 1)]

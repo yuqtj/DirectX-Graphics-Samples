@@ -99,9 +99,10 @@ float3 HitAttribute(float3 vertexAttribute[3], BuiltInTriangleIntersectionAttrib
         attr.barycentrics.y * (vertexAttribute[2] - vertexAttribute[0]);
 }
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
-inline Ray GenerateCameraRay(uint2 index, in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
+inline Ray GenerateCameraRay(uint2 index, in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin, float2 jitter = float2(0, 0))
 {
     float2 xy = index + 0.5f; // center in the middle of the pixel.
+	xy += jitter;
     float2 screenPos = xy / DispatchRaysDimensions().xy * 2.0 - 1.0;
 
     // Invert Y for DirectX-style coordinates.

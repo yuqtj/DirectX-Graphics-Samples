@@ -89,12 +89,18 @@ private:
 
 	// Compute resources.
 	Samplers::MultiJittered m_randomSampler;
+
+	ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
 	ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
+	// ToDo cleanup - ReduceSum objects are in m_reduceSumKernel.
 	ComPtr<ID3D12PipelineState>         m_computePSOs[ComputeShader::Type::Count];
 	ComPtr<ID3D12RootSignature>         m_computeRootSigs[ComputeShader::Type::Count];
 
 	GpuKernels::ReduceSum				m_reduceSumKernel;
 	UINT								m_numRayGeometryHits[ReduceSumCalculations::Count];
+
+	ComPtr<ID3D12RootSignature>         m_rootSignature;
+	ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
 
 	ComPtr<ID3D12Fence>                 m_fence;
 	UINT64                              m_fenceValues[FrameCount];
@@ -109,10 +115,10 @@ private:
 
 	// Raytracing scene
 	ConstantBuffer<SceneConstantBuffer> m_sceneCB;
+	std::vector<PrimitiveMaterialBuffer> m_materials;	// ToDO dedupe mats - hash materials
+	StructuredBuffer<PrimitiveMaterialBuffer> m_materialBuffer;
 
-	// Root constants
-	PrimitiveConstantBuffer m_planeMaterialCB;
-
+	
 	// Geometry
 
 	DX::GPUTimer m_gpuTimers[GpuTimers::Count];
@@ -144,7 +150,7 @@ private:
 	// ToDo use the struct
 	RWGpuResource m_raytracingOutput;
 	RWGpuResource m_GBufferResources[GBufferResource::Count];
-	RWGpuResource m_AORayHits;
+	RWGpuResource m_AOResources[AOResource::Count];
 
 
 	// Shader tables
@@ -171,7 +177,7 @@ private:
 	
 	// AO
 	// ToDo fix artifacts at 4. Looks like selfshadowing on some AOrays in SquidScene
-	const UINT c_sppAO = 16;	// Samples per pixel for Ambient Occlusion.
+	const UINT c_sppAO = 25;	// Samples per pixel for Ambient Occlusion.
 
 	// UI
 	std::unique_ptr<UILayer> m_uiLayer;
@@ -184,6 +190,7 @@ private:
 	bool m_isASrebuildRequested;
 	bool m_isSceneInitializationRequested;
 
+	void CreateComposeRenderPassesCSResources();
 	void ParseCommandLineArgs(WCHAR* argv[], int argc);
 	void RecreateD3D();
 	void LoadPBRTScene();
@@ -197,6 +204,7 @@ private:
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer);
     void DoRaytracing();
 	void DoRaytracingGBufferAndAOPasses();
+	void ComposeRenderPassesCS();
     void CreateConstantBuffers();
     void CreateSamplesRNG();
 	void UpdateUI();

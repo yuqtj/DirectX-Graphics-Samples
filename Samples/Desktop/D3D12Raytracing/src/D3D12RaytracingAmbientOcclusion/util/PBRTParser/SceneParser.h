@@ -17,6 +17,7 @@
 
 namespace SceneParser
 {
+
 	struct Vector2
 	{
 		union {
@@ -26,6 +27,7 @@ namespace SceneParser
 			struct {
 				float u, v;
 			};
+			DirectX::XMFLOAT2 xmFloat2;
 		};
 
 		float &operator[](UINT i)
@@ -41,6 +43,8 @@ namespace SceneParser
 				return y;
 			}
 		}
+
+		XMVECTOR ToXMVECTOR() { return XMLoadFloat2(&xmFloat2); }
 	};
 
 	struct Vector3
@@ -70,7 +74,9 @@ namespace SceneParser
 			struct {
 				float r, g, b;
 			};
+			DirectX::XMFLOAT3 xmFloat3;
 		};
+		XMVECTOR GetXMVECTOR() { return XMLoadFloat3(&xmFloat3); }
 	};
 
 	struct Film
@@ -96,10 +102,12 @@ namespace SceneParser
 		std::string m_MaterialName;
 		Vector3 m_Diffuse;
 		Vector3 m_Specular;
+		Vector3 m_Opacity;
 		float m_URoughness;
 		float m_VRoughness;
 		std::string m_DiffuseTextureFilename;
 		std::string m_SpecularTextureFilename;
+		std::string m_OpacityTextureFilename;
 	};
 
 	struct Vertex
@@ -156,6 +164,6 @@ namespace SceneParser
 
     class SceneParserClass
     {
-        virtual void Parse(std::string filename, Scene &outputScene) = 0;
+        virtual void Parse(std::string filename, Scene &outputScene, bool bClockwiseWindingORder = true, bool rhCoords = false) = 0;
     };
 };

@@ -160,7 +160,6 @@ namespace GpuKernels
 			D3D12_PLACED_SUBRESOURCE_FOOTPRINT bufferFootprint = {};
 			bufferFootprint.Offset = 0;
 			bufferFootprint.Footprint.Width = static_cast<UINT>(destDesc.Width / sizeof(ResultType));
-			//ToDo check width is FrameCount;
 			bufferFootprint.Footprint.Height = 1;
 			bufferFootprint.Footprint.Depth = 1;
 			bufferFootprint.Footprint.RowPitch = Align(static_cast<UINT>(destDesc.Width) * sizeof(ResultType), D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
@@ -184,7 +183,7 @@ namespace GpuKernels
 		}
 
 		// Performance optimization.
-		// To avoid stalling on CPU until GPU is done, grab the data from finished frame FrameCount ago.
+		// To avoid stalling CPU until GPU is done, grab the data from a finished frame FrameCount ago.
 		// This is fine for the informational purposes of using the value for UI display only.
 		UINT* mappedData = nullptr;
 		CD3DX12_RANGE readRange(readBackBaseOffset, readBackBaseOffset + sizeof(ResultType));

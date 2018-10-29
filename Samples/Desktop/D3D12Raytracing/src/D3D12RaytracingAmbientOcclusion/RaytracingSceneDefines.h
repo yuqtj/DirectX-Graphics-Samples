@@ -19,6 +19,7 @@ namespace ComputeShader {
 		enum Enum {
 			HemisphereSampleSetVisualization = 0,
 			ReduceSum,
+			ComposeRenderPassesCS,
 			Count
 		};
 	}
@@ -26,7 +27,7 @@ namespace ComputeShader {
 		namespace HemisphereSampleSetVisualization {
 			namespace Slot {
 				enum Enum {
-					OutputView = 0,
+					Output = 0,
 					SampleBuffers,
 					SceneConstant,
 					Count
@@ -42,6 +43,19 @@ namespace ComputeShader {
 				};
 			}
 		}
+
+		namespace ComposeRenderPassesCS {
+			namespace Slot {
+				enum Enum {
+					Output = 0,
+					GBufferResources,
+					AO,
+					MaterialBuffer,
+					ConstantBuffer,
+					Count
+				};
+			}
+		}
 	}
 	namespace RS = RootSignature;
 }
@@ -53,13 +67,13 @@ namespace CSRootSignature = ComputeShader::RootSignature;
 namespace GlobalRootSignature {
     namespace Slot {
         enum Enum {
-            OutputView = 0,
+            Output = 0,
 			GBufferResources,
 			GBufferResourcesIn,
 			AOResourcesOut,	// ToDo cleanup, move to local root sigs 
             AccelerationStructure,
             SceneConstant,
-            AABBattributeBuffer,
+			MaterialBuffer,
             SampleBuffers,
             Count
         };
@@ -80,13 +94,14 @@ namespace LocalRootSignature {
     namespace Triangle {
         namespace Slot {
             enum Enum {
-                MaterialConstant = 0,
+                MaterialID = 0,
                 VertexBuffers,
                 Count
             };
         }
         struct RootArguments {
-            PrimitiveConstantBuffer materialCb;
+            UINT materialID;
+			XMUINT3 padding;		// ToDo explain why
             D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
         };
     }
@@ -132,6 +147,7 @@ namespace GpuTimers {
 		UpdateBLAS,
 		ReduceSum,
 		UpdateTLAS,
+		ComposeRenderPassesCS,
 		Count
 	};
 }
@@ -150,11 +166,21 @@ namespace UIParameters {
 namespace GBufferResource {
 	enum Enum {
 		Hit = 0,
+		MaterialID,
 		HitPosition,
 		SurfaceNormal,
 		Count
 	};
 }
+
+namespace AOResource {
+	enum Enum {
+		Coefficient = 0,
+		HitCount,
+		Count
+	};
+}
+
 
 
 namespace Scene {

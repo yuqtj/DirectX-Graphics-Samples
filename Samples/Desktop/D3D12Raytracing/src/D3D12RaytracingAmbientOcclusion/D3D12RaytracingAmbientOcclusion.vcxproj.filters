@@ -188,6 +188,9 @@
     <FxCompile Include="util\ReduceSumCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
+    <FxCompile Include="ComposeRenderPassesCS.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">
