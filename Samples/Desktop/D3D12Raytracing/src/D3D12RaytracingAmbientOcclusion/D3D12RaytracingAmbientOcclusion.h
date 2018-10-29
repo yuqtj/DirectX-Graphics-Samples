@@ -190,6 +190,13 @@ private:
 	bool m_isASrebuildRequested;
 	bool m_isSceneInitializationRequested;
 
+	// Render passes
+	void RenderPass_GenerateGBuffers();
+	void RenderPass_CalculateAmbientOcclusion();
+	void RenderPass_ComposeRenderPassesCS();
+
+	// ToDo cleanup
+	// Utility functions
 	void CreateComposeRenderPassesCSResources();
 	void ParseCommandLineArgs(WCHAR* argv[], int argc);
 	void RecreateD3D();
@@ -202,9 +209,8 @@ private:
     void InitializeScene();
 	void UpdateAccelerationStructures(bool forceBuild = false);
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer);
-    void DoRaytracing();
-	void DoRaytracingGBufferAndAOPasses();
-	void ComposeRenderPassesCS();
+	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
+
     void CreateConstantBuffers();
     void CreateSamplesRNG();
 	void UpdateUI();

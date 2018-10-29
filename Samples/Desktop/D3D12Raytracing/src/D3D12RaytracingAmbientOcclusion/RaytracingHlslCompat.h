@@ -31,8 +31,6 @@
 #define ADD_INVERTED_FACE 0
 #define CORRECT_NORMALS 0
 
-#define SAMPLES_CS_VISUALIZATION 1
-
 #define GBUFFER_AO_NORMAL_VISUALIZATION 0
 #define GBUFFER_AO_COUNT_AO_HITS 1
 #define AO_ANY_HIT_FULL_OCCLUSION 0
@@ -41,9 +39,6 @@
 
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
-
-	// ToDo - SquidRoom has acne issues without culling 
-#define GBUFFER_AO_SEPRATE_PATHS 1
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS

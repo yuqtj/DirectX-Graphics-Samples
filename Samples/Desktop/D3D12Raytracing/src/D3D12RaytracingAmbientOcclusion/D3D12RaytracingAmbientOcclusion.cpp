@@ -1683,91 +1683,47 @@ void D3D12RaytracingAmbientOcclusion::DispatchRays(ID3D12Resource* rayGenShaderT
 	gpuTimer->Stop(commandList);
 };
 
-
-void D3D12RaytracingAmbientOcclusion::DoRaytracing()
+void D3D12RaytracingAmbientOcclusion::CalculateRayHitCount(ReduceSumCalculations::Enum type)
 {
-    auto commandList = m_deviceResources->GetCommandList();
-    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-	
-	// ToDo dedupe
-    auto SetCommonPipelineState = [&](auto* descriptorSetCommandList)
-    {
-        descriptorSetCommandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-        commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Output, m_raytracingOutput.gpuDescriptorWriteAccess);
-    };
+	auto device = m_deviceResources->GetD3DDevice();
+	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+	auto commandList = m_deviceResources->GetCommandList();
 
-    commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
+	RWGpuResource* inputResource = nullptr;
+	switch (type)
+	{
+	case ReduceSumCalculations::CameraRayHits: inputResource = &m_GBufferResources[GBufferResource::Hit]; break;
+	case ReduceSumCalculations::AORayHits: inputResource = &m_AOResources[AOResource::HitCount]; break;
+	}
 
-	uniform_int_distribution<UINT> seedDistribution(0, UINT_MAX);
-	
-	static UINT seed = 0;
-    m_sceneCB->seed = seedDistribution(m_generatorURNG);
-    m_sceneCB->numSamples = m_randomSampler.NumSamples();
-    m_sceneCB->numSampleSets = m_randomSampler.NumSampleSets();
-#if 1
-    m_sceneCB->numSamplesToUse = m_randomSampler.NumSamples();    
-#else
-    UINT NumFramesPerIter = 100;
-    static UINT frameID = NumFramesPerIter * 4;
-    m_sceneCB->numSamplesToUse = (frameID++ / NumFramesPerIter) % m_randomSampler.NumSamples();
-#endif
-    // Copy dynamic buffers to GPU.
-    {
-        m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
-        commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
+	m_gpuTimers[GpuTimers::ReduceSum].Start(commandList, type);
+	m_reduceSumKernel.Execute(
+		device,
+		commandList,
+		m_cbvSrvUavHeap->GetHeap(),
+		frameIndex,
+		inputResource->gpuDescriptorReadAccess,
+		type,
+		&m_numRayGeometryHits[type]);
+	m_gpuTimers[GpuTimers::ReduceSum].Stop(commandList, type);
+};
 
-        m_sceneCB.CopyStagingToGpu(frameIndex);
-        commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
-    }
-
-    // Bind the heaps, acceleration structure and dispatch rays. 
-    SetCommonPipelineState(commandList);
-    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_topLevelAS.GetResource()->GetGPUVirtualAddress());
-	DispatchRays(m_rayGenShaderTables[RayGenShaderType::PrimaryAndAO].Get(), &m_gpuTimers[GpuTimers::Raytracing_PrimaryAndAO]);
-}
-
-
-// ToDo split
-void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
+void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 {
 	auto device = m_deviceResources->GetD3DDevice();
 	auto commandList = m_deviceResources->GetCommandList();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
-	auto SetCommonPipelineState = [&]()
-	{
-		commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-	};
-
-	auto CalculateRayHitCount = [&](ReduceSumCalculations::Enum type)
-	{
-		RWGpuResource* inputResource = nullptr;
-		switch (type)
-		{
-		case ReduceSumCalculations::CameraRayHits: inputResource = &m_GBufferResources[GBufferResource::Hit]; break;
-		case ReduceSumCalculations::AORayHits: inputResource = &m_AOResources[AOResource::HitCount]; break;
-		}
-
-		m_gpuTimers[GpuTimers::ReduceSum].Start(commandList, type);
-		m_reduceSumKernel.Execute(
-			device,
-			commandList,
-			m_cbvSrvUavHeap->GetHeap(),
-			frameIndex,
-			inputResource->gpuDescriptorReadAccess,
-			type,
-			&m_numRayGeometryHits[type]);
-		m_gpuTimers[GpuTimers::ReduceSum].Stop(commandList, type);
-	};
-
 	uniform_int_distribution<UINT> seedDistribution(0, UINT_MAX);
-
-	// ToDo remove?
-	static UINT seed = 0;
 	m_sceneCB->seed = seedDistribution(m_generatorURNG);
 	m_sceneCB->numSamples = m_randomSampler.NumSamples();
 	m_sceneCB->numSampleSets = m_randomSampler.NumSampleSets();
-	m_sceneCB->numSamplesToUse = m_randomSampler.NumSamples(); 
+	m_sceneCB->numSamplesToUse = m_randomSampler.NumSamples();
+
+#if CAMERA_JITTER
+
+	// ToDo remove?
+	static UINT seed = 0;
 	static UINT counter = 0;
 	switch (counter++ % 4)
 	{
@@ -1776,16 +1732,16 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
 	case 2: m_sceneCB->cameraJitter = XMFLOAT2(-0.25f, 0.25f); break;
 	case 3: m_sceneCB->cameraJitter = XMFLOAT2(0.25f, 0.25f); break;
 	};
-	
-	UINT NumFramesPerIter = 400;
+#endif
 
+	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
 	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
-	SetCommonPipelineState();
 
 	// Copy dynamic buffers to GPU.
 	{
-		m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
+		// ToDo copy on change
 		m_sceneCB.CopyStagingToGpu(frameIndex);
+		m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
 	}
 
 	// Transition all output resources to render target state.
@@ -1830,10 +1786,13 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
 	}
 
 	CalculateRayHitCount(ReduceSumCalculations::CameraRayHits);
+}
 
-	//*************************
-	// AO pass
-	//*************************
+void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
+{
+	auto device = m_deviceResources->GetD3DDevice();
+	auto commandList = m_deviceResources->GetCommandList();
+	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
 	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
 
@@ -1867,7 +1826,7 @@ void D3D12RaytracingAmbientOcclusion::DoRaytracingGBufferAndAOPasses()
 }
 
 // Composite results from multiple passed into a final image.
-void D3D12RaytracingAmbientOcclusion::ComposeRenderPassesCS()
+void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS()
 {
 	auto commandList = m_deviceResources->GetCommandList();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
@@ -1941,7 +1900,6 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
         wLabel << L" GPU[" << m_deviceResources->GetAdapterID() << L"]: " 
                << m_deviceResources->GetAdapterDescription() << L"\n";
         wLabel << fixed << L" FPS: " << m_fps << L"\n";
-#if GBUFFER_AO_SEPRATE_PATHS
 		wLabel.precision(2);
 		wLabel << fixed << L" CameraRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS() << L"ms\n";
 		wLabel << fixed << L" AORay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS() << L"ms\n";
@@ -1950,14 +1908,6 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
 			   << L"     ~Million Primary Rays/s: " << NumCameraRaysPerSecond()
    			   << L"   ~Million AO rays/s" << NumRayGeometryHitsPerSecond(ReduceSumCalculations::CameraRayHits) * c_sppAO
                << L"\n";
-#else
-		wLabel << fixed << L" CameraRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_PrimaryAndAO].GetAverageMS() << L"ms\n";
-		wLabel << fixed << L" AORay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_PrimaryAndAO].GetAverageMS() << L"ms\n";
-		wLabel << fixed << L" DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_PrimaryAndAO].GetAverageMS() << L"ms"
-			<< L"     ~Million Primary Rays/s: " << NumCameraRaysPerSecond()
-			<< L"   ~Million AO rays/s" << NumRayGeometryHitsPerSecond(ReduceSumCalculations::CameraRayHits) * c_sppAO
-			<< L"\n";
-#endif
         wLabel << fixed << L" AS update (BLAS / TLAS / Total): "
                << m_gpuTimers[GpuTimers::UpdateBLAS].GetElapsedMS() << L"ms / "
                << m_gpuTimers[GpuTimers::UpdateTLAS].GetElapsedMS() << L"ms / "
@@ -2174,7 +2124,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
         gpuTimer.BeginFrame(commandList);
     }
 
-#if ENABLE_RAYTRACING
 #if RUNTIME_AS_UPDATES
     // Update acceleration structures.
     if (m_isASrebuildRequested && SceneArgs::EnableGeometryAndASBuildsAndUpdates)
@@ -2185,17 +2134,11 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #endif
 
     // Render.
-#if GBUFFER_AO_SEPRATE_PATHS
-	DoRaytracingGBufferAndAOPasses();
-	ComposeRenderPassesCS();
-#else
-	DoRaytracing();
-#endif
-#endif
+	RenderPass_GenerateGBuffers();
+	RenderPass_CalculateAmbientOcclusion();
+	RenderPass_ComposeRenderPassesCS();
 
-#if SAMPLES_CS_VISUALIZATION 
     RenderRNGVisualizations();
-#endif
 
 	// UILayer will transition backbuffer to a present state.
     CopyRaytracingOutputToBackbuffer(m_enableUI ? D3D12_RESOURCE_STATE_RENDER_TARGET : D3D12_RESOURCE_STATE_PRESENT);
