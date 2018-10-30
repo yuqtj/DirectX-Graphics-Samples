@@ -27,7 +27,7 @@
 
 #define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
 
-#define ALLOW_MIRRORS 1
+#define ALLOW_MIRRORS 0
 #if ALLOW_MIRRORS
 // Use anyhit instead??
 #define TURN_MIRRORS_SEETHROUGH 0
@@ -184,6 +184,8 @@ struct SceneConstantBuffer
 	XMVECTOR lightPosition;
     float    reflectance;
     float    elapsedTime;                 // Elapsed application time.
+	float Zmin;
+	float Zmax;
     UINT seed;
     UINT numSamples;
     UINT numSampleSets;

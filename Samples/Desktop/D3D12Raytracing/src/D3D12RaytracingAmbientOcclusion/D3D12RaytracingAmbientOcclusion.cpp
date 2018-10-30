@@ -283,6 +283,8 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
 	view = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_camera.At() - m_camera.Eye(), 1), m_camera.Up());
 	XMMATRIX viewProj = view * proj;
 	m_sceneCB->projectionToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj);
+	m_sceneCB->Zmin = m_camera.ZMin;
+	m_sceneCB->Zmax = m_camera.ZMax;
 }
 
 void D3D12RaytracingAmbientOcclusion::UpdateBottomLevelASTransforms()
@@ -559,16 +561,16 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 
 		CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
 		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);  // 4 input GBuffer textures
-		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 input AO texture
-		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input Visibility texture
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);  // 5 input GBuffer textures
+		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input AO texture
+		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // 1 input Visibility texture
 
 		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
 		rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
 		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
 		rootParameters[Slot::AO].InitAsDescriptorTable(1, &ranges[2]);
 		rootParameters[Slot::Visibility].InitAsDescriptorTable(1, &ranges[3]);
-		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(6);
+		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(7);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -695,10 +697,10 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 
         CD3DX12_DESCRIPTOR_RANGE ranges[5]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output textures
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 4, 5);  // 4 output textures
-		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input textures
-		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 9);  // 2 output textures
-		ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 11);  // 1 output texture
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 5);  // 5 output GBuffer textures
+		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input GBuffer textures
+		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 10);  // 2 output AO textures
+		ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 12);  // 1 output visibility texture
 
 
         CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
@@ -706,7 +708,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
 		rootParameters[Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[2]);
 		rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[3]);
-		rootParameters[Slot::ShadowResource].InitAsDescriptorTable(1, &ranges[4]);
+		rootParameters[Slot::VisibilityResource].InitAsDescriptorTable(1, &ranges[4]);
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);
         rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
@@ -880,7 +882,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::MaterialID], initialResourceState);
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState);
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormal], initialResourceState);
-	
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Depth], initialResourceState);
+
 	// Preallocate subsequent descriptor indices for both SRV and UAV groups.
 	m_AOResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOResources[0].uavDescriptorHeapIndex);
 	m_AOResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOResources[0].srvDescriptorHeapIndex);
@@ -1797,6 +1800,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	};
 #endif
 
+	PIXBeginEvent(commandList, 0, L"GenerateGBuffer");
+
 	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
 	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
 
@@ -1816,6 +1821,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MaterialID].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Depth].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after)
@@ -1844,12 +1850,15 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Hit].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MaterialID].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after)
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Depth].resource.Get(), before, after)			
 		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
 
 	CalculateRayHitCount(ReduceSumCalculations::CameraRayHits);
+
+	PIXEndEvent(commandList);
 }
 
 // ToDo - rename to hardshadows?
@@ -1866,9 +1875,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	// Bind inputs.
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResourcesIn, m_GBufferResources[0].gpuDescriptorReadAccess);
 	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
-
+	
 	// Bind output RT.
-	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ShadowResource, m_VisibilityResource.gpuDescriptorWriteAccess);
+	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::VisibilityResource, m_VisibilityResource.gpuDescriptorWriteAccess);
 
 	// Bind the heaps, acceleration structure and dispatch rays. 
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_topLevelAS.GetResource()->GetGPUVirtualAddress());

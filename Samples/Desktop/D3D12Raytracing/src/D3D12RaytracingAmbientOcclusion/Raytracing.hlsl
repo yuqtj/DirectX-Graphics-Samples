@@ -28,21 +28,24 @@
 //  g_* - bound via a global root signature.
 //  l_* - bound via a local root signature.
 RaytracingAccelerationStructure g_scene : register(t0, space0);
-RWTexture2D<float4> g_renderTarget : register(u0);
+RWTexture2D<float4> g_renderTarget : register(u0);			// ToDo remove
 
 // ToDo move this to local ray gen root sig
 RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
 RWTexture2D<uint> g_rtGBufferMaterialID : register(u6);
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
 RWTexture2D<float4> g_rtGBufferNormal : register(u8);
+RWTexture2D<float> g_rtGBufferDepth : register(u9);
 Texture2D<uint> g_texGBufferPositionHits : register(t5);
 Texture2D<uint> g_texGBufferMaterialID : register(t6);
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<float4> g_texGBufferNormal : register(t8);
+Texture2D<float4> g_texGBufferDepth : register(t9);
 // ToDo remove AOcoefficient and use AO hits instead?
-RWTexture2D<float> g_rtAOcoefficient : register(u9);
-RWTexture2D<uint> g_rtAORayHits : register(u10);
-RWTexture2D<float> g_rtVisibilityCoefficient : register(u11);
+RWTexture2D<float> g_rtAOcoefficient : register(u10);
+RWTexture2D<uint> g_rtAORayHits : register(u11);
+RWTexture2D<float> g_rtVisibilityCoefficient : register(u12);
+
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
@@ -257,6 +260,7 @@ void MyRayGenShader_Visibility()
 [shader("raygeneration")]
 void MyRayGenShader_GBuffer()
 {
+	// ToDo remove
 #if CAMERA_JITTER
 	uint seed = DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x;// +g_sceneCB.seed;
 	uint RNGState = RNG::SeedThread(seed);
@@ -279,6 +283,22 @@ void MyRayGenShader_GBuffer()
 	g_rtGBufferMaterialID[DispatchRaysIndex().xy] = rayPayload.materialID;
 	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
 	g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, 0);
+
+	// Calculate depth in [0,1] by doing a dot on a forward camera ray and remapping it to [Zmin, Zmax].
+	float depth;
+	if (rayPayload.hit)
+	{
+		Ray forwardRay = GenerateForwardCameraRay(g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
+		float projectedDistance = dot(rayPayload.hitPosition - g_sceneCB.cameraPosition.xyz, forwardRay.direction);
+
+		// ToDo use the Zmin, Zmax for camera ray generation
+		depth = RemapToRange(projectedDistance, g_sceneCB.Zmin, g_sceneCB.Zmax);
+	}
+	else
+	{
+		depth = 1;
+	}
+	g_rtGBufferDepth[DispatchRaysIndex().xy] = depth;
 }
 
 [shader("raygeneration")]
@@ -300,14 +320,6 @@ void MyRayGenShader_AO()
 	g_rtAORayHits[DispatchRaysIndex().xy] = shadowRayHits;
 #endif
 }
-
-// ToDo PIX feedbackpix
-// - Add resource names to Resources tab
-// - Keep Show/Hide DXR resource state across events
-// - There's no shader item in DispatchRays like it is in Dispatch
-// - For shader records - rename root sig to local root sig.
-// - Pipeline tab - show DXR resources can take a lot of time (10s for 2k records) - show first 20 right away? Resizing the tab is slow as well.
-//  Sart analysis on the right side of the window
 
 //***************************************************************************
 //******************------ Closest hit shaders -------***********************
