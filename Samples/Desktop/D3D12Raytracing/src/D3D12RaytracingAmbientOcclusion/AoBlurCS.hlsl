@@ -49,7 +49,8 @@ float SmartBlur( float a, float b, float c, float d, float e, bool Left, bool Mi
     a = Left ? a : b;
     d = Right | Middle ? d : c;
     e = Right ? e : d;
-    return ((a + e) / 2.0 + b + c + d) / 4.0;
+    //return ((a + e) / 2.0 + b + c + d) / 4.0;
+    return (a + e + (b + d) * 4.0 + c * 6.0) / 16.0;
 }
 
 bool CompareDeltas( float d1, float d2, float l1, float l2 )

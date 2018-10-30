@@ -602,7 +602,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAoBlurCSResources()
 	{
 		using namespace CSRootSignature::AoBlurCS;
 
-		CD3DX12_DESCRIPTOR_RANGE ranges[2]; // Perfomance TIP: Order from most frequent to least frequent.
+		CD3DX12_DESCRIPTOR_RANGE ranges[3]; // Perfomance TIP: Order from most frequent to least frequent.
 		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
 		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
         ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input texture
@@ -628,7 +628,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAoBlurCSResources()
 	{
 		D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
 		descComputePSO.pRootSignature = m_computeRootSigs[CSType::AoBlurCS].Get();
-		descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pAoBlurCS, ARRAYSIZE(g_pAoBlurCS));
+		descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void*)g_pAoBlurCS, ARRAYSIZE(g_pAoBlurCS));
 
 		ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[CSType::AoBlurCS])));
 		m_computePSOs[CSType::AoBlurCS]->SetName(L"PSO: AoBlurCS");
@@ -684,6 +684,7 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
     CreateSamplesRNG();
 	CreateComposeRenderPassesCSResources();
 
+    CreateAoBlurCSResources();
 }
 
 void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
@@ -1939,50 +1940,60 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 
 	PIXBeginEvent(commandList, 0, L"BlurAmbientOcclusion");
 
-	// Update constant buffer.
-	{
-		m_csAoBlurCB->kRcpBufferDim.x = 1.0f / m_width;
-        m_csAoBlurCB->kRcpBufferDim.y = 1.0f / m_height;
-		m_csAoBlurCB->kStepSize = 1.0f; // TODO
-        m_csAoBlurCB->kBlurTolerance = 1e-6f; // TODO
-		m_csAoBlurCB.CopyStagingToGpu(frameIndex);
-	}
+	// Update constant buffer
+    const float kStepSize = 1920.0f / m_width;
+    const float kBlurTolerance = 1.0f - 1e-5f * kStepSize;
+	m_csAoBlurCB->kRcpBufferDim.x = 1.0f / m_width;
+    m_csAoBlurCB->kRcpBufferDim.y = 1.0f / m_height;
+	m_csAoBlurCB->kStepSize = kStepSize;
+    m_csAoBlurCB->kBlurTolerance = kBlurTolerance * kBlurTolerance;
+	m_csAoBlurCB.CopyStagingToGpu(frameIndex);
 
-	// Set pipeline state.
-	{
-		using namespace ComputeShader::RootSignature::AoBlurCS;
+	// Set common pipeline state
+	using namespace ComputeShader::RootSignature::AoBlurCS;
 
-		commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-		commandList->SetComputeRootSignature(m_computeRootSigs[CSType::AoBlurCS].Get());
-		commandList->SetPipelineState(m_computePSOs[CSType::AoBlurCS].Get());
-
-		// Bind outputs.
-		commandList->SetComputeRootDescriptorTable(Slot::Output, m_AOResources[AOResource::Smoothed].gpuDescriptorWriteAccess);
-		
-		// Bind inputs.
-		commandList->SetComputeRootDescriptorTable(Slot::InputDepth, m_GBufferResources[0].gpuDescriptorReadAccess);
-		commandList->SetComputeRootDescriptorTable(Slot::InputAO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
-		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csAoBlurCB.GpuVirtualAddress(frameIndex));
-	}
-
-	// Dispatch.
+	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
+	commandList->SetComputeRootSignature(m_computeRootSigs[CSType::AoBlurCS].Get());
+	commandList->SetPipelineState(m_computePSOs[CSType::AoBlurCS].Get());
+	commandList->SetComputeRootDescriptorTable(Slot::InputDepth, m_GBufferResources[GBufferResource::Depth].gpuDescriptorReadAccess);
+	commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csAoBlurCB.GpuVirtualAddress(frameIndex));
 	XMUINT2 groupSize(CeilDivide(m_width, ComposeRenderPassesCS::ThreadGroup::Width), CeilDivide(m_height, ComposeRenderPassesCS::ThreadGroup::Height));
 
+    // Begin timing actual work
 	m_gpuTimers[GpuTimers::Raytracing_BlurAO].Start(commandList);
+
+    // Pass 1:  Blurs once to "Smoothed" buffer
+	commandList->SetComputeRootDescriptorTable(Slot::Output, m_AOResources[AOResource::Smoothed].gpuDescriptorWriteAccess);
+	commandList->SetComputeRootDescriptorTable(Slot::InputAO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
 	commandList->Dispatch(groupSize.x, groupSize.y, 1);
+
+	D3D12_RESOURCE_BARRIER barriers1[] =
+    {
+		CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+		CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(),
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+	};
+	commandList->ResourceBarrier(2, barriers1);
+
+    // Pass 2:  Blurs a second time back to "Coefficient" buffer
+	commandList->SetComputeRootDescriptorTable(Slot::Output, m_AOResources[AOResource::Coefficient].gpuDescriptorWriteAccess);
+	commandList->SetComputeRootDescriptorTable(Slot::InputAO, m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess);
+	commandList->Dispatch(groupSize.x, groupSize.y, 1);
+
+	D3D12_RESOURCE_BARRIER barriers2[] =
+    {
+		CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+		CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(),
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+	};
+	commandList->ResourceBarrier(2, barriers2);
+
+    // Done with actual work
 	m_gpuTimers[GpuTimers::Raytracing_BlurAO].Stop(commandList);
 
-	{
-		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		D3D12_RESOURCE_BARRIER barriers[] = {
-			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), before, after)
-		};
-		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-	}
-
 	PIXEndEvent(commandList);
-
 }
 
 // Composite results from multiple passed into a final image.
@@ -2012,8 +2023,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS()
 		
 		// Bind inputs.
 		commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorReadAccess);
-		//commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
-        commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess);
+		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
 		commandList->SetComputeRootDescriptorTable(Slot::Visibility, m_VisibilityResource.gpuDescriptorReadAccess);
 		commandList->SetComputeRootShaderResourceView(Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
