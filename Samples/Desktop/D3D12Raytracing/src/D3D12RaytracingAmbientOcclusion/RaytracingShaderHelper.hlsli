@@ -32,6 +32,12 @@ float length_toPow2(float3 p)
     return dot(p, p);
 }
 
+// Remaps a value to [0,1] for a given range.
+float RemapToRange(in float value, in float rangeMin, in float rangeMax)
+{
+	return saturate((value - rangeMin) / (rangeMax - rangeMin));
+}
+
 // Returns a cycling <0 -> 1 -> 0> animation interpolant 
 float CalculateAnimationInterpolant(in float elapsedTime, in float cycleDuration)
 {
@@ -98,6 +104,25 @@ float3 HitAttribute(float3 vertexAttribute[3], BuiltInTriangleIntersectionAttrib
         attr.barycentrics.x * (vertexAttribute[1] - vertexAttribute[0]) +
         attr.barycentrics.y * (vertexAttribute[2] - vertexAttribute[0]);
 }
+
+// ToDo merge with GenerateCameraRay?
+inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
+{
+	float2 screenPos = float2(0, 0);
+	
+	// Unproject the pixel coordinate into a world positon.
+	float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
+	//world.xyz /= world.w;
+
+	Ray ray;
+	ray.origin = cameraPosition;
+	// Since the camera's eye was at 0,0,0 in projectionToWorldWithCameraEyeAtOrigin 
+	// the world.xyz is the direction.
+	ray.direction = normalize(world.xyz);
+
+	return ray;
+}
+
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
 inline Ray GenerateCameraRay(uint2 index, in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin, float2 jitter = float2(0, 0))
 {

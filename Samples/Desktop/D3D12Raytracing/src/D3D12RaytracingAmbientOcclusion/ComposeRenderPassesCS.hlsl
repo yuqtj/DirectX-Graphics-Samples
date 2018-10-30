@@ -21,10 +21,11 @@ ConstantBuffer<ComposeRenderPassesConstantBuffer> g_CB : register(b0);
 Texture2D<uint> g_texGBufferPositionHits : register(t0);
 Texture2D<uint> g_texGBufferMaterialID : register(t1);
 Texture2D<float4> g_texGBufferPositionRT : register(t2);
-Texture2D<float4> g_texGBufferNormal : register(t3);
-Texture2D<float> g_texAO : register(t4);
-Texture2D<float> g_texVisibility : register(t5);
-StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t6);
+Texture2D<float4> g_texGBufferNormal : register(t3);	// ToDo merge some GBuffers resources ?
+Texture2D<float> g_texGBufferDepth : register(t4);		// ToDo remove?
+Texture2D<float> g_texAO : register(t5);
+Texture2D<float> g_texVisibility : register(t6);
+StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
 
 
 float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 toLightRay, in float3 normal);

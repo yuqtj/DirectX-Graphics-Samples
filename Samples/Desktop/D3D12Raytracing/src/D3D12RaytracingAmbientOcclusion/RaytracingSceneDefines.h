@@ -72,7 +72,7 @@ namespace GlobalRootSignature {
 			GBufferResources,
 			GBufferResourcesIn,
 			AOResourcesOut,	// ToDo cleanup, move to local root sigs 
-			ShadowResource,	// ToDo cleanup, move to local root sigs 
+			VisibilityResource,	// ToDo cleanup, move to local root sigs 
             AccelerationStructure,
             SceneConstant,
 			MaterialBuffer,
@@ -162,10 +162,11 @@ namespace UIParameters {
 
 namespace GBufferResource {
 	enum Enum {
-		Hit = 0,
-		MaterialID,
-		HitPosition,
-		SurfaceNormal,
+		Hit = 0,		// Geometry hit or not.
+		MaterialID,		// Material ID of the object hit.
+		HitPosition,	// 3D position of hit.
+		SurfaceNormal,	// 3D normal at a hit.
+		Depth,			// Linear depth of the hit in [0,1].
 		Count
 	};
 }
