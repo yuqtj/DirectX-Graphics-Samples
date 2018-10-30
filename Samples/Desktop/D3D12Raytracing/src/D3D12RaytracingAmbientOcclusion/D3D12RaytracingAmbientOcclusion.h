@@ -245,7 +245,7 @@ private:
 	float NumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_width, m_height); }
 	float NumRayGeometryHitsPerSecond(ReduceSumCalculations::Enum type) { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS(type), m_numRayGeometryHits[type], 1); }
 #else
-	float NumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_PrimaryAndAO].GetAverageMS(), m_width, m_height); }
-	float NumRayGeometryHitsPerSecond(ReduceSumCalculations::Enum type) { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_PrimaryAndAO].GetAverageMS(type), m_width, m_height); }
+	float NumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_width, m_height); }
+	float NumRayGeometryHitsPerSecond(ReduceSumCalculations::Enum type) { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(type), m_width, m_height); }
 #endif
 };

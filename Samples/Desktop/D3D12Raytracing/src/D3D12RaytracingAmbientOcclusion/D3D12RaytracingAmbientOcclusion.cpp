@@ -880,7 +880,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 
     for (auto& gpuTimer : m_gpuTimers)
     {
-		gpuTimer.SetAvgRefreshPeriod(500);
+		gpuTimer.SetAvgRefreshPeriod(1000);
         gpuTimer.RestoreDevice(device, commandQueue, FrameCount);
     }
 
@@ -1957,13 +1957,16 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
                << m_deviceResources->GetAdapterDescription() << L"\n";
         wLabel << fixed << L" FPS: " << m_fps << L"\n";
 		wLabel.precision(2);
-		wLabel << fixed << L" CameraRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS() << L"ms\n";
-		wLabel << fixed << L" AORay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS() << L"ms\n";
+		wLabel << fixed << L" CameraRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS() << L"ms  ~" << 
+			0.001f* NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_width, m_height)  << " GigaRay/s\n";
+
+		float numAOGigaRays = (1/1e9)*(m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * c_sppAO) / (m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS()/1e3);
+		wLabel << fixed << L" AORay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS() << L"ms  ~" <<	numAOGigaRays << " GigaRay/s\n";
+
+		float numVisibilityRays = (1/1e9)*(m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits]) / (m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() / 1e3);
+		wLabel << fixed << L" VisibilityRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() << L"ms  ~" << numVisibilityRays << " GigaRay/s\n";
+		wLabel << fixed << L" Composition/Shading: " << m_gpuTimers[GpuTimers::ComposeRenderPassesCS].GetAverageMS() << L"ms\n";
 		wLabel.precision(1);
-		wLabel << fixed << L" DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS() << L"ms"
-			   << L"     ~Million Primary Rays/s: " << NumCameraRaysPerSecond()
-   			   << L"   ~Million AO rays/s" << NumRayGeometryHitsPerSecond(ReduceSumCalculations::CameraRayHits) * c_sppAO
-               << L"\n";
         wLabel << fixed << L" AS update (BLAS / TLAS / Total): "
                << m_gpuTimers[GpuTimers::UpdateBLAS].GetElapsedMS() << L"ms / "
                << m_gpuTimers[GpuTimers::UpdateTLAS].GetElapsedMS() << L"ms / "
