@@ -39,8 +39,10 @@ Texture2D<uint> g_texGBufferPositionHits : register(t5);
 Texture2D<uint> g_texGBufferMaterialID : register(t6);
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<float4> g_texGBufferNormal : register(t8);
+// ToDo remove AOcoefficient and use AO hits instead?
 RWTexture2D<float> g_rtAOcoefficient : register(u9);
 RWTexture2D<uint> g_rtAORayHits : register(u10);
+RWTexture2D<float> g_rtVisibilityCoefficient : register(u11);
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
@@ -101,7 +103,7 @@ float4 TraceRadianceRay(in Ray ray, in UINT currentRayRecursionDepth)
 
 // Trace a shadow ray and return true if it hits any geometry.
 // ToDo add surface normal and skip tracing a ray for surfaces facing away.
-bool TraceShadowRayAndReportIfHit(in Ray ray, in UINT currentRayRecursionDepth)
+bool TraceShadowRayAndReportIfHit(in Ray ray, in UINT currentRayRecursionDepth, in float TMax = 10000)
 {
     if (currentRayRecursionDepth >= MAX_RAY_RECURSION_DEPTH)
     {
@@ -115,7 +117,7 @@ bool TraceShadowRayAndReportIfHit(in Ray ray, in UINT currentRayRecursionDepth)
     // Set TMin to a zero value to avoid aliasing artifcats along contact areas.
     // Note: make sure to enable back-face culling so as to avoid surface face fighting.
     rayDesc.TMin = 0.0;
-	rayDesc.TMax = AO_RAY_T_MAX;// 0000;	// ToDo set this to dist to light
+	rayDesc.TMax = TMax;	// ToDo set this to dist to light
 
     // Initialize shadow ray payload.
     // Set the initial value to true since closest and any hit shaders are skipped. 
@@ -209,7 +211,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 		// Todo fix noise on flat surface / box
 		Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
 
-		if (TraceShadowRayAndReportIfHit(shadowRay, 0))
+		if (TraceShadowRayAndReportIfHit(shadowRay, 0, AO_RAY_T_MAX))
 		{
 			numShadowRayHits++;
 		}
@@ -235,21 +237,21 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal)
 //***************************************************************************
 
 [shader("raygeneration")]
-void MyRayGenShader_PrimaryAndAO()
+void MyRayGenShader_Visibility()
 {
-#if RAYGEN_SINGLE_COLOR_SHADING
-	g_renderTarget[DispatchRaysIndex().xy] = float4(1,0,0,1);
-	return;
-#endif
-    // Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
-    Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin );
- 
-    // Cast a ray into the scene and retrieve a shaded color.
-    UINT currentRecursionDepth = 0;
-	float4 color = TraceRadianceRay(ray, currentRecursionDepth);
+	bool hit = g_texGBufferPositionHits[DispatchRaysIndex().xy] > 0;
+	uint shadowRayHits = 0;
+	bool inShadow = false;
+	if (hit)
+	{
+		float3 hitPosition = g_texGBufferPositionRT[DispatchRaysIndex().xy].xyz;
+		float3 surfaceNormal = g_texGBufferNormal[DispatchRaysIndex().xy].xyz;
+		Ray visibilityRay = { hitPosition + 0.001f * surfaceNormal, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
+		inShadow = TraceShadowRayAndReportIfHit(visibilityRay, 0);
+	}
 
-    // Write the raytraced color to the output texture.
-    g_renderTarget[DispatchRaysIndex().xy] = color;
+	// ToDo add option to be true distance and do contact hardening
+	g_rtVisibilityCoefficient[DispatchRaysIndex().xy] = inShadow ? 0 : 1;
 }
 
 [shader("raygeneration")]

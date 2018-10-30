@@ -696,7 +696,7 @@ class GeometryInstance
 {
 public:
 
-	GeometryInstance() {}
+	GeometryInstance() : transform(0) {}
 
 	GeometryInstance(const D3DGeometry& geometry, UINT _materialID) : materialID(_materialID), transform(0)
 	{

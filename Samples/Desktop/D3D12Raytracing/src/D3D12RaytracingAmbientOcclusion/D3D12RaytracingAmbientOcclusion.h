@@ -153,6 +153,7 @@ private:
 	RWGpuResource m_raytracingOutput;
 	RWGpuResource m_GBufferResources[GBufferResource::Count];
 	RWGpuResource m_AOResources[AOResource::Count];
+	RWGpuResource m_VisibilityResource;
 
 
 	// Shader tables
@@ -179,7 +180,7 @@ private:
 	
 	// AO
 	// ToDo fix artifacts at 4. Looks like selfshadowing on some AOrays in SquidScene
-	const UINT c_sppAO = 144;	// Samples per pixel for Ambient Occlusion.
+	const UINT c_sppAO = 25;	// Samples per pixel for Ambient Occlusion.
 
 	// UI
 	std::unique_ptr<UILayer> m_uiLayer;
@@ -194,6 +195,7 @@ private:
 
 	// Render passes
 	void RenderPass_GenerateGBuffers();
+	void RenderPass_CalculateVisibility();
 	void RenderPass_CalculateAmbientOcclusion();
 	void RenderPass_ComposeRenderPassesCS();
 

@@ -43,17 +43,17 @@
 
 #define CAMERA_JITTER 0
 
-#define AO_ONLY 0
+#define AO_ONLY 1
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 1
+#define PBRT_SCENE 0
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
-#define AO_RAY_T_MAX 1
+#define AO_RAY_T_MAX 2
 #else
 #define DISTANCE_FALLOFF 0
 #define AO_RAY_T_MAX 35
@@ -175,6 +175,7 @@ struct SceneConstantBuffer
 {
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
     XMVECTOR cameraPosition;
+	XMVECTOR lightPosition;
     float    reflectance;
     float    elapsedTime;                 // Elapsed application time.
     UINT seed;
@@ -269,8 +270,8 @@ struct VertexPositionNormalTextureTangent
 namespace RayGenShaderType {
 	enum Enum {
 		GBuffer = 0,
-		PrimaryAndAO,
 		AO,
+		Visibility,
 		Count
 	};
 }

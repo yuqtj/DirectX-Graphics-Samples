@@ -50,6 +50,7 @@ namespace ComputeShader {
 					Output = 0,
 					GBufferResources,
 					AO,
+					Visibility,
 					MaterialBuffer,
 					ConstantBuffer,
 					Count
@@ -71,6 +72,7 @@ namespace GlobalRootSignature {
 			GBufferResources,
 			GBufferResourcesIn,
 			AOResourcesOut,	// ToDo cleanup, move to local root sigs 
+			ShadowResource,	// ToDo cleanup, move to local root sigs 
             AccelerationStructure,
             SceneConstant,
 			MaterialBuffer,
@@ -143,6 +145,7 @@ namespace GpuTimers {
 		Raytracing_PrimaryAndAO = 0,
 		Raytracing_AO ,
 #endif
+		Raytracing_Visibility,
 		Raytracing_GBuffer,
 		UpdateBLAS,
 		ReduceSum,
@@ -180,8 +183,6 @@ namespace AOResource {
 		Count
 	};
 }
-
-
 
 namespace Scene {
 	namespace Type {

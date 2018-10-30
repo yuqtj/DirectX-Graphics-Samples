@@ -31,7 +31,7 @@ HWND g_hWnd = 0;
 const wchar_t* D3D12RaytracingAmbientOcclusion::c_rayGenShaderNames[] = 
 {
 	// ToDo reorder
-	L"MyRayGenShader_GBuffer", L"MyRayGenShader_PrimaryAndAO", L"MyRayGenShader_AO"
+	L"MyRayGenShader_GBuffer", L"MyRayGenShader_AO", L"MyRayGenShader_Visibility"
 };
 const wchar_t* D3D12RaytracingAmbientOcclusion::c_closestHitShaderNames[] =
 {
@@ -476,10 +476,11 @@ void D3D12RaytracingAmbientOcclusion::InitializeScene()
         // Initialize the lighting parameters.
 		// ToDo remove
 		m_csComposeRenderPassesCB->lightPosition = XMFLOAT3(-20.0f, 40.0f, 20.0f);
+		m_sceneCB->lightPosition = XMLoadFloat3(&m_csComposeRenderPassesCB->lightPosition);
 
 		m_csComposeRenderPassesCB->lightAmbientColor = XMFLOAT3(0.45f, 0.45f, 0.45f);
 
-        float d = 0.6;
+        float d = 0.6f;
 		m_csComposeRenderPassesCB->lightDiffuseColor = XMFLOAT3(d, d, d);
     }
 }
@@ -555,16 +556,18 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 	{
 		using namespace CSRootSignature::ComposeRenderPassesCS;
 
-		CD3DX12_DESCRIPTOR_RANGE ranges[3]; // Perfomance TIP: Order from most frequent to least frequent.
+		CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
 		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
 		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);  // 4 input GBuffer textures
 		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 input AO texture
+		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input Visibility texture
 
 		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
 		rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
 		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
 		rootParameters[Slot::AO].InitAsDescriptorTable(1, &ranges[2]);
-		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(5);
+		rootParameters[Slot::Visibility].InitAsDescriptorTable(1, &ranges[3]);
+		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(6);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -647,11 +650,12 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
     {
 		using namespace GlobalRootSignature;
 
-        CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
+        CD3DX12_DESCRIPTOR_RANGE ranges[5]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output textures
 		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 4, 5);  // 4 output textures
 		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input textures
 		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 9);  // 2 output textures
+		ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 11);  // 1 output texture
 
 
         CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
@@ -659,6 +663,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
 		rootParameters[Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[2]);
 		rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[3]);
+		rootParameters[Slot::ShadowResource].InitAsDescriptorTable(1, &ranges[4]);
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);
         rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
@@ -846,6 +851,11 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState);
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState);
 
+
+	m_VisibilityResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_VisibilityResource, initialResourceState);
+
+	
 	// ToDo
 	// Describe and create the point clamping sampler used for reading from the GBuffer resources.
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetHeap()->GetCPUDescriptorHandleForHeapStart());
@@ -1129,7 +1139,7 @@ void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
 		&geometry,
 		&m_geometryInstances[GeometryType::SquidRoom]);
 
-	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.25f, 0.25f), XMFLOAT3(1, 1, 1), 50, false };
+	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1), 50, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(materialCB);
 
@@ -1519,13 +1529,16 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     if (m_animateCamera)
     {
 		// ToDo
-#if 0
         float secondsToRotateAround = 48.0f;
         float angleToRotateBy = 360.0f * (elapsedTime / secondsToRotateAround);
         XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
-        m_eye = m_at + XMVector3TransformCoord(m_eye - m_at, rotate);
-        m_up = XMVector3TransformCoord(m_up, rotate);
-#endif
+		XMVECTOR eye =  m_camera.Eye();
+		XMVECTOR at = m_camera.At();
+		XMVECTOR up = m_camera.Up();		
+		at = XMVector3TransformCoord(at, rotate);
+		eye = XMVector3TransformCoord(eye, rotate);
+		up = XMVector3TransformNormal(up, rotate);
+		m_camera.Set(eye, at, up);
     }
 	UpdateCameraMatrices();
 
@@ -1537,6 +1550,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
         XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
 		XMVECTOR prevLightPosition = XMLoadFloat3(&m_csComposeRenderPassesCB->lightPosition);
 		XMStoreFloat3(&m_csComposeRenderPassesCB->lightPosition, XMVector3Transform(prevLightPosition, rotate));
+		m_sceneCB->lightPosition = XMLoadFloat3(&m_csComposeRenderPassesCB->lightPosition);
     }
     m_sceneCB->elapsedTime = static_cast<float>(m_timer.GetTotalSeconds());
 
@@ -1759,7 +1773,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after) 
+			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after)
 		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
@@ -1793,11 +1808,45 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	CalculateRayHitCount(ReduceSumCalculations::CameraRayHits);
 }
 
+// ToDo - rename to hardshadows?
+void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
+{
+	auto device = m_deviceResources->GetD3DDevice();
+	auto commandList = m_deviceResources->GetCommandList();
+	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+
+	PIXBeginEvent(commandList, 0, L"CalculateVisibility");
+
+	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
+
+	// Bind inputs.
+	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResourcesIn, m_GBufferResources[0].gpuDescriptorReadAccess);
+	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
+
+	// Bind output RT.
+	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ShadowResource, m_VisibilityResource.gpuDescriptorWriteAccess);
+
+	// Bind the heaps, acceleration structure and dispatch rays. 
+	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_topLevelAS.GetResource()->GetGPUVirtualAddress());
+	DispatchRays(m_rayGenShaderTables[RayGenShaderType::Visibility].Get(), &m_gpuTimers[GpuTimers::Raytracing_Visibility]);
+
+	// Transition shadow resources to shader resource state.
+	{
+		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after));
+	}
+
+	PIXEndEvent(commandList);
+}
+
 void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 {
 	auto device = m_deviceResources->GetD3DDevice();
 	auto commandList = m_deviceResources->GetCommandList();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+
+	PIXBeginEvent(commandList, 0, L"CalculateAmbientOcclusion");
 
 	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
 
@@ -1828,6 +1877,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 	}
 
 	CalculateRayHitCount(ReduceSumCalculations::AORayHits);
+
+	PIXEndEvent(commandList);
 }
 
 // Composite results from multiple passed into a final image.
@@ -1858,6 +1909,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS()
 		// Bind inputs.
 		commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorReadAccess);
 		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
+		commandList->SetComputeRootDescriptorTable(Slot::Visibility, m_VisibilityResource.gpuDescriptorReadAccess);
 		commandList->SetComputeRootShaderResourceView(Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
 	}
@@ -2140,6 +2192,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     // Render.
 	RenderPass_GenerateGBuffers();
 	RenderPass_CalculateAmbientOcclusion();
+	RenderPass_CalculateVisibility();
 	RenderPass_ComposeRenderPassesCS();
 
     RenderRNGVisualizations();
