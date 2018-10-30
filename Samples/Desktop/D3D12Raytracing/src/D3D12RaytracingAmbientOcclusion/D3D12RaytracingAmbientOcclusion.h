@@ -93,6 +93,7 @@ private:
 	Samplers::MultiJittered m_randomSampler;
 
 	ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
+    ConstantBuffer<AoBlurConstantBuffer> m_csAoBlurCB;
 	ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
 	// ToDo cleanup - ReduceSum objects are in m_reduceSumKernel.
 	ComPtr<ID3D12PipelineState>         m_computePSOs[ComputeShader::Type::Count];
@@ -197,11 +198,13 @@ private:
 	void RenderPass_GenerateGBuffers();
 	void RenderPass_CalculateVisibility();
 	void RenderPass_CalculateAmbientOcclusion();
+    void RenderPass_BlurAmbientOcclusion();
 	void RenderPass_ComposeRenderPassesCS();
 
 	// ToDo cleanup
 	// Utility functions
 	void CreateComposeRenderPassesCSResources();
+    void CreateAoBlurCSResources();
 	void ParseCommandLineArgs(WCHAR* argv[], int argc);
 	void RecreateD3D();
 	void LoadPBRTScene();

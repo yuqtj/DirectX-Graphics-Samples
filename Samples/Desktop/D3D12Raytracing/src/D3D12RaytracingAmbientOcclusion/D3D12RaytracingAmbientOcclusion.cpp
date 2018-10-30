@@ -16,6 +16,7 @@
 #include "CompiledShaders\Raytracing.hlsl.h"
 #include "CompiledShaders\RNGVisualizerCS.hlsl.h"
 #include "CompiledShaders\ComposeRenderPassesCS.hlsl.h"
+#include "CompiledShaders\AoBlurCS.hlsl.h"
 #include "SquidRoom.h"
 
 using namespace std;
@@ -590,6 +591,48 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 	}
 }
 
+void D3D12RaytracingAmbientOcclusion::CreateAoBlurCSResources()
+{
+	auto device = m_deviceResources->GetD3DDevice();
+	auto frameCount = m_deviceResources->GetBackBufferCount();
+
+	// Create root signature.
+	{
+		using namespace CSRootSignature::AoBlurCS;
+
+		CD3DX12_DESCRIPTOR_RANGE ranges[2]; // Perfomance TIP: Order from most frequent to least frequent.
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input texture
+
+		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+		rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
+		rootParameters[Slot::InputDepth].InitAsDescriptorTable(1, &ranges[1]);
+        rootParameters[Slot::InputAO].InitAsDescriptorTable(1, &ranges[2]);
+		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
+		SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::AoBlurCS], L"Root signature: ComposeRenderPassesCS");
+	}
+
+	// Create shader resources
+	{
+		m_csAoBlurCB.Create(device, FrameCount, L"Constant Buffer: AoBlurCS");
+	}
+
+	// Create compute pipeline state.
+	{
+		D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+		descComputePSO.pRootSignature = m_computeRootSigs[CSType::AoBlurCS].Get();
+		descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pAoBlurCS, ARRAYSIZE(g_pAoBlurCS));
+
+		ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[CSType::AoBlurCS])));
+		m_computePSOs[CSType::AoBlurCS]->SetName(L"PSO: AoBlurCS");
+	}
+}
+
 // Create resources that depend on the device.
 void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 {
@@ -849,6 +892,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 	}
 	// ToDo use less than 32bits?
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState);
+    CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_width, m_height, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState);
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState);
 
 
@@ -1877,8 +1921,59 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 	}
 
 	CalculateRayHitCount(ReduceSumCalculations::AORayHits);
+}
+
+void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
+{
+	auto commandList = m_deviceResources->GetCommandList();
+	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+
+	PIXBeginEvent(commandList, 0, L"BlurAmbientOcclusion");
+
+	// Update constant buffer.
+	{
+		m_csAoBlurCB->kRcpBufferDim.x = 1.0f / m_width;
+        m_csAoBlurCB->kRcpBufferDim.y = 1.0f / m_height;
+		m_csAoBlurCB->kStepSize = 1.0f; // TODO
+        m_csAoBlurCB->kBlurTolerance = 1e-6f; // TODO
+		m_csAoBlurCB.CopyStagingToGpu(frameIndex);
+	}
+
+	// Set pipeline state.
+	{
+		using namespace ComputeShader::RootSignature::AoBlurCS;
+
+		commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
+		commandList->SetComputeRootSignature(m_computeRootSigs[CSType::AoBlurCS].Get());
+		commandList->SetPipelineState(m_computePSOs[CSType::AoBlurCS].Get());
+
+		// Bind outputs.
+		commandList->SetComputeRootDescriptorTable(Slot::Output, m_AOResources[AOResource::Smoothed].gpuDescriptorWriteAccess);
+		
+		// Bind inputs.
+		commandList->SetComputeRootDescriptorTable(Slot::InputDepth, m_GBufferResources[0].gpuDescriptorReadAccess);
+		commandList->SetComputeRootDescriptorTable(Slot::InputAO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
+		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csAoBlurCB.GpuVirtualAddress(frameIndex));
+	}
+
+	// Dispatch.
+	XMUINT2 groupSize(CeilDivide(m_width, ComposeRenderPassesCS::ThreadGroup::Width), CeilDivide(m_height, ComposeRenderPassesCS::ThreadGroup::Height));
+
+	m_gpuTimers[GpuTimers::Raytracing_BlurAO].Start(commandList);
+	commandList->Dispatch(groupSize.x, groupSize.y, 1);
+	m_gpuTimers[GpuTimers::Raytracing_BlurAO].Stop(commandList);
+
+	{
+		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		D3D12_RESOURCE_BARRIER barriers[] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), before, after)
+		};
+		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+	}
 
 	PIXEndEvent(commandList);
+
 }
 
 // Composite results from multiple passed into a final image.
@@ -1908,7 +2003,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS()
 		
 		// Bind inputs.
 		commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorReadAccess);
-		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
+		//commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
+        commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess);
 		commandList->SetComputeRootDescriptorTable(Slot::Visibility, m_VisibilityResource.gpuDescriptorReadAccess);
 		commandList->SetComputeRootShaderResourceView(Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
@@ -1960,10 +2056,10 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
 		wLabel << fixed << L" CameraRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS() << L"ms  ~" << 
 			0.001f* NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_width, m_height)  << " GigaRay/s\n";
 
-		float numAOGigaRays = (1/1e9)*(m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * c_sppAO) / (m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS()/1e3);
+		float numAOGigaRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * c_sppAO / m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS();
 		wLabel << fixed << L" AORay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS() << L"ms  ~" <<	numAOGigaRays << " GigaRay/s\n";
 
-		float numVisibilityRays = (1/1e9)*(m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits]) / (m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() / 1e3);
+		float numVisibilityRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] / m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS();
 		wLabel << fixed << L" VisibilityRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() << L"ms  ~" << numVisibilityRays << " GigaRay/s\n";
 		wLabel << fixed << L" Composition/Shading: " << m_gpuTimers[GpuTimers::ComposeRenderPassesCS].GetAverageMS() << L"ms\n";
 		wLabel.precision(1);
@@ -1975,12 +2071,12 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
 		wLabel << fixed << L" CameraRayGeometryHits: #/%%/time " 
 			   << m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] << "/"
 			   << ((m_width * m_height) > 0 ? (100.f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits]) / (m_width*m_height) : 0) << "%%/"
-			   << 1000 * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::CameraRayHits) << L"us \n";
+			   << 1000.0f * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::CameraRayHits) << L"us \n";
 		wLabel << fixed << L" AORayGeometryHits: #/%%/time "
 			   << m_numRayGeometryHits[ReduceSumCalculations::AORayHits] << "/"
 			   << ((m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * c_sppAO) > 0 ?
-				   (100.f * m_numRayGeometryHits[ReduceSumCalculations::AORayHits]) / (m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * c_sppAO) : 0) << "%%/"
-			   << 1000 * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::AORayHits) << L"us \n";
+				   (100.0f * m_numRayGeometryHits[ReduceSumCalculations::AORayHits]) / (m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * c_sppAO) : 0) << "%%/"
+			   << 1000.0f * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::AORayHits) << L"us \n";
     
         labels.push_back(wLabel.str());
     }
@@ -2195,6 +2291,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     // Render.
 	RenderPass_GenerateGBuffers();
 	RenderPass_CalculateAmbientOcclusion();
+    RenderPass_BlurAmbientOcclusion();
 	RenderPass_CalculateVisibility();
 	RenderPass_ComposeRenderPassesCS();
 

@@ -98,6 +98,12 @@ namespace ComposeRenderPassesCS {
 	}
 }
 
+namespace AoBlurCS {
+    namespace ThreadGroup {
+		enum Enum { Width = 8, Height = 8, Size = Width * Height };
+    }
+}
+
 #ifdef HLSL
 #include "util\HlslCompat.h"
 #if INDEX_FORMAT_UINT
@@ -199,6 +205,13 @@ struct ComposeRenderPassesConstantBuffer
 	float padding4;
 	XMFLOAT3 lightDiffuseColor;		
 	float padding5;
+};
+
+struct AoBlurConstantBuffer
+{
+	XMFLOAT2 kRcpBufferDim;
+	float kStepSize;
+	float kBlurTolerance;
 };
 
 // Attributes per primitive type.
