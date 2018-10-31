@@ -32,6 +32,10 @@ float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 toLightRay, i
 float3 CalculateSpecularCoefficient(in float3 hitPosition, in float3 toEyeRay, in float3 toLightRay, in float3 normal, in float specularPower);
 float3 CalculatePhongLighting(in float3 normal, in float3 hitPosition, in float3 toEyeRay, in float visibilityCoefficient, in float ambientCoef, in float3 diffuse, in float3 specular, in float specularPower = 50);
 
+float3 ApplySRGB(float3 x)
+{
+    return x < 0.0031308 ? 12.92 * x : 1.055 * pow(abs(x), 1.0 / 2.4) - 0.055;
+}
 
 [numthreads(ComposeRenderPassesCS::ThreadGroup::Width, ComposeRenderPassesCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID )
@@ -79,7 +83,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
 	}
 
 	// Write the composited color to the output texture.
-    g_renderTarget[DTid] = color;
+    g_renderTarget[DTid] = float4(ApplySRGB(color.rgb), color.a);
 }
 
 

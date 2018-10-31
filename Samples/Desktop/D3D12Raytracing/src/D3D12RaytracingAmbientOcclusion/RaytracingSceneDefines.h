@@ -20,6 +20,7 @@ namespace ComputeShader {
 			HemisphereSampleSetVisualization = 0,
 			ReduceSum,
 			ComposeRenderPassesCS,
+            AoBlurCS,
 			Count
 		};
 	}
@@ -57,6 +58,19 @@ namespace ComputeShader {
 				};
 			}
 		}
+		
+		namespace AoBlurCS {
+			namespace Slot {
+				enum Enum {
+					Output = 0,
+					InputDepth,
+                    InputAO,
+					ConstantBuffer,
+					Count
+				};
+			}
+		}
+		
 	}
 	namespace RS = RootSignature;
 }
@@ -142,6 +156,7 @@ namespace GpuTimers {
 		Raytracing_Visibility,
 		ComposeRenderPassesCS,
 		Raytracing_GBuffer,
+        Raytracing_BlurAO,
 		UpdateBLAS,
 		ReduceSum,
 		UpdateTLAS,
@@ -174,6 +189,7 @@ namespace GBufferResource {
 namespace AOResource {
 	enum Enum {
 		Coefficient = 0,
+        Smoothed,
 		HitCount,
 		Count
 	};

@@ -93,6 +93,7 @@ private:
 	Samplers::MultiJittered m_randomSampler;
 
 	ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
+    ConstantBuffer<AoBlurConstantBuffer> m_csAoBlurCB;
 	ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
 	// ToDo cleanup - ReduceSum objects are in m_reduceSumKernel.
 	ComPtr<ID3D12PipelineState>         m_computePSOs[ComputeShader::Type::Count];
@@ -180,7 +181,7 @@ private:
 	
 	// AO
 	// ToDo fix artifacts at 4. Looks like selfshadowing on some AOrays in SquidScene
-	const UINT c_sppAO = 25;	// Samples per pixel for Ambient Occlusion.
+	const UINT c_sppAO = 16;	// Samples per pixel for Ambient Occlusion.
 
 	// UI
 	std::unique_ptr<UILayer> m_uiLayer;
@@ -197,11 +198,13 @@ private:
 	void RenderPass_GenerateGBuffers();
 	void RenderPass_CalculateVisibility();
 	void RenderPass_CalculateAmbientOcclusion();
+    void RenderPass_BlurAmbientOcclusion();
 	void RenderPass_ComposeRenderPassesCS();
 
 	// ToDo cleanup
 	// Utility functions
 	void CreateComposeRenderPassesCSResources();
+    void CreateAoBlurCSResources();
 	void ParseCommandLineArgs(WCHAR* argv[], int argc);
 	void RecreateD3D();
 	void LoadPBRTScene();
@@ -212,7 +215,7 @@ private:
     void UpdateGridGeometryTransforms();
     void InitializeScene();
 	void UpdateAccelerationStructures(bool forceBuild = false);
-	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer);
+	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
 
     void CreateConstantBuffers();

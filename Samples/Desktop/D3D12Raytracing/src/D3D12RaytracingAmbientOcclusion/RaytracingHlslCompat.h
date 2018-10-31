@@ -40,10 +40,11 @@
 #define GBUFFER_AO_NORMAL_VISUALIZATION 0
 #define GBUFFER_AO_COUNT_AO_HITS 1
 #define AO_ANY_HIT_FULL_OCCLUSION 0
+#define QUARTER_RES_AO 1
 
 #define CAMERA_JITTER 0
 
-#define AO_ONLY 1
+#define AO_ONLY 0
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
 
@@ -96,6 +97,16 @@ namespace ComposeRenderPassesCS {
 	namespace ThreadGroup {
 		enum Enum { Width = 8, Height = 8, Size = Width * Height };
 	}
+}
+
+namespace AoBlurCS {
+    namespace ThreadGroup {
+#if QUARTER_RES_AO
+		enum Enum { Width = 16, Height = 16 };
+#else
+		enum Enum { Width = 8, Height = 8 };
+#endif
+    }
 }
 
 #ifdef HLSL
@@ -201,6 +212,14 @@ struct ComposeRenderPassesConstantBuffer
 	float padding4;
 	XMFLOAT3 lightDiffuseColor;		
 	float padding5;
+};
+
+struct AoBlurConstantBuffer
+{
+	XMFLOAT2 kRcpBufferDim;
+	float kStepSize;
+	float kBlurTolerance;
+    float kUpsampleTolerance;
 };
 
 // Attributes per primitive type.
