@@ -15,7 +15,7 @@
 // Ref: http://www.reedbeta.com/blog/quick-and-easy-gpu-random-numbers-in-d3d11/
 namespace RNG
 {
-    // Create an initial random number for a thread.
+    // Create an initial random number for this thread
     uint SeedThread(uint seed)
     {
         // Thomas Wang hash 
@@ -28,7 +28,7 @@ namespace RNG
         return seed;
     }
 
-    // Generate a random number [0, UINT_MAX].
+    // Generate a random 32-bit integer
     uint Random(inout uint state)
     {
         // Xorshift algorithm from George Marsaglia's paper.
@@ -38,25 +38,22 @@ namespace RNG
         return state;
     }
 
-    // Generate a random number [0,1].
+    // Generate a random float in the range [0.0f, 1.0f]
     float Random01(inout uint state)
     {
-        uint UintMax = 0xffffffff;
-        return Random(state) / float(UintMax);
+        return Random(state) / float(0xffffffff);
     }
 
-    // Generate a random number [0,1).
+    // Generate a random float in the range [0.0f, 1.0f)
     float Random01ex(inout uint state)
     {
-        uint UintMax = 0xffffffff;
-        return Random(state) / (float(UintMax) + 1.0f);
+        return asfloat(0x3f800000 | Random(state) >> 9) - 1.0;
     }
 
-    // Generate a random number [_min,_max].
-    uint Random(inout uint state, uint _min, uint _max)
+    // Generate a random integer in the range [lower, upper]
+    uint Random(inout uint state, uint lower, uint upper)
     {
-        // min is here just for safety so as not to return _max + 1 due float imprecision.
-        return min(_min + floor((_max - _min + 1) * Random01ex(state)), _max);
+        return lower + uint(float(upper - lower + 1) * Random01ex(state));
     }
 }
 #endif // RANDOMNUMBERGENERATOR_H

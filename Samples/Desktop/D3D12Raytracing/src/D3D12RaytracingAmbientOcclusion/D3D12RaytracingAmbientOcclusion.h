@@ -181,7 +181,7 @@ private:
 	
 	// AO
 	// ToDo fix artifacts at 4. Looks like selfshadowing on some AOrays in SquidScene
-	const UINT c_sppAO = 25;	// Samples per pixel for Ambient Occlusion.
+	const UINT c_sppAO = 16;	// Samples per pixel for Ambient Occlusion.
 
 	// UI
 	std::unique_ptr<UILayer> m_uiLayer;
@@ -215,7 +215,7 @@ private:
     void UpdateGridGeometryTransforms();
     void InitializeScene();
 	void UpdateAccelerationStructures(bool forceBuild = false);
-	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer);
+	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
 
     void CreateConstantBuffers();

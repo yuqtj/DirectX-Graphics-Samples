@@ -183,13 +183,14 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth)
 // ToDo comment
 float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numShadowRayHits)
 {
-	uint seed = DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x + g_sceneCB.seed;
+    numShadowRayHits = 0;
 
+#if 0
+    uint seed = DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x + g_sceneCB.seed;
 	uint RNGState = RNG::SeedThread(seed);
 	uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
-
 	uint sampleJump = RNG::Random(RNGState, 0, g_sceneCB.numSamples - 1);
-	numShadowRayHits = 0;
+
 	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
 	{
 		float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % g_sceneCB.numSamples].value;
@@ -213,11 +214,26 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 		// ToDo hitPosition adjustment - fix crease artifacts
 		// Todo fix noise on flat surface / box
 		Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
+#else
+    uint2 BTid = DispatchRaysIndex().xy & 3; // 4x4 BlockThreadID
+	uint RNGState = RNG::SeedThread(g_sceneCB.seed + (BTid.y << 2 | BTid.x));
+
+	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
+	{
+        // Compute random normal using cylindrical coordinates
+        float theta = RNG::Random01ex(RNGState) * 6.2831853;
+        float height = RNG::Random01(RNGState) * 2.0 - 1.0;
+        float radius = sqrt(1.0 - height * height);
+        float sinT, cosT; sincos(theta, sinT, cosT);
+        float3 rayDirection = float3(cosT*radius, sinT*radius, height);
+        if (dot(rayDirection, surfaceNormal) < 0.0)
+            rayDirection = -rayDirection;
+
+        Ray shadowRay = { hitPosition + 0.001 * surfaceNormal, rayDirection };
+#endif
 
 		if (TraceShadowRayAndReportIfHit(shadowRay, 0, AO_RAY_T_MAX))
-		{
 			numShadowRayHits++;
-		}
 	}
 #if AO_ANY_HIT_FULL_OCCLUSION
 	float ambientCoef = numShadowRayHits > 0 ? 0 : 1;
@@ -304,13 +320,19 @@ void MyRayGenShader_GBuffer()
 [shader("raygeneration")]
 void MyRayGenShader_AO()
 {
-	bool hit = g_texGBufferPositionHits[DispatchRaysIndex().xy] > 0;
+    uint2 DTid = DispatchRaysIndex().xy;
+
+#if QUARTER_RES_AO
+    DTid *= 2;
+#endif
+
+	bool hit = g_texGBufferPositionHits[DTid] > 0;
 	uint shadowRayHits = 0;
 	float ambientCoef = 0;
 	if (hit)
 	{
-		float3 hitPosition = g_texGBufferPositionRT[DispatchRaysIndex().xy].xyz;
-		float3 surfaceNormal = g_texGBufferNormal[DispatchRaysIndex().xy].xyz;
+		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
+		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 		ambientCoef = CalculateAO(hitPosition, surfaceNormal, shadowRayHits);
 	}
 
