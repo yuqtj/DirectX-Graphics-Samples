@@ -1792,8 +1792,11 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
 	uniform_int_distribution<UINT> seedDistribution(0, UINT_MAX);
-	//m_sceneCB->seed = seedDistribution(m_generatorURNG);
-    m_sceneCB->seed = 0xDEADBEEF;
+#if AO_RANDOM_SEED_EVERY_FRAME
+	m_sceneCB->seed = seedDistribution(m_generatorURNG);
+#else
+	m_sceneCB->seed = 1879;
+#endif
 	m_sceneCB->numSamples = m_randomSampler.NumSamples();
 	m_sceneCB->numSampleSets = m_randomSampler.NumSampleSets();
 	m_sceneCB->numSamplesToUse = m_randomSampler.NumSamples();
@@ -1991,7 +1994,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 	commandList->SetComputeRootDescriptorTable(Slot::InputAO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
 	commandList->Dispatch(groupSize.x, groupSize.y, 1);
 
-#ifdef TWO_STAGE_AO_BLUR
+#if TWO_STAGE_AO_BLUR
 	D3D12_RESOURCE_BARRIER barriers[] =
     {
 		CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(),
@@ -2052,7 +2055,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS()
 		
 		// Bind inputs.
 		commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorReadAccess);
-#ifdef TWO_STAGE_AO_BLUR
+#if TWO_STAGE_AO_BLUR || !DENOISE_AO
 		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
 #else
 		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess);
@@ -2344,7 +2347,9 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     // Render.
 	RenderPass_GenerateGBuffers();
 	RenderPass_CalculateAmbientOcclusion();
+#if DENOISE_AO
     RenderPass_BlurAmbientOcclusion();
+#endif
 	RenderPass_CalculateVisibility();
 	RenderPass_ComposeRenderPassesCS();
 
