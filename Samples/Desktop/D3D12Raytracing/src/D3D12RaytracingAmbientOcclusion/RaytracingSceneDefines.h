@@ -63,7 +63,8 @@ namespace ComputeShader {
 			namespace Slot {
 				enum Enum {
 					Output = 0,
-					InputDepth,
+					InputNormal,
+                    InputDistance,
                     InputAO,
 					ConstantBuffer,
 					Count
@@ -180,8 +181,8 @@ namespace GBufferResource {
 		Hit = 0,		// Geometry hit or not.
 		MaterialID,		// Material ID of the object hit.
 		HitPosition,	// 3D position of hit.
-		SurfaceNormal,	// 3D normal at a hit.
-		Depth,			// Linear depth of the hit in [0,1].
+		SurfaceNormal,	// 3D normal at a hit and dot(normal, rayDir) in W
+        Distance,       // Length along ray of hit
 		Count
 	};
 }

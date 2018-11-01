@@ -35,12 +35,12 @@ RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
 RWTexture2D<uint> g_rtGBufferMaterialID : register(u6);
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
 RWTexture2D<float4> g_rtGBufferNormal : register(u8);
-RWTexture2D<float> g_rtGBufferDepth : register(u9);
+RWTexture2D<float> g_rtGBufferDistance : register(u9);
 Texture2D<uint> g_texGBufferPositionHits : register(t5);
 Texture2D<uint> g_texGBufferMaterialID : register(t6);
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<float4> g_texGBufferNormal : register(t8);
-Texture2D<float4> g_texGBufferDepth : register(t9);
+Texture2D<float4> g_texGBufferDistance : register(t9);
 // ToDo remove AOcoefficient and use AO hits instead?
 RWTexture2D<float> g_rtAOcoefficient : register(u10);
 RWTexture2D<uint> g_rtAORayHits : register(u11);
@@ -298,23 +298,17 @@ void MyRayGenShader_GBuffer()
 	g_rtGBufferCameraRayHits[DispatchRaysIndex().xy] = (rayPayload.hit ? 1 : 0);
 	g_rtGBufferMaterialID[DispatchRaysIndex().xy] = rayPayload.materialID;
 	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
-	g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, 0);
 
-	// Calculate depth in [0,1] by doing a dot on a forward camera ray and remapping it to [Zmin, Zmax].
-	float depth;
-	if (rayPayload.hit)
-	{
-		Ray forwardRay = GenerateForwardCameraRay(g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
-		float projectedDistance = dot(rayPayload.hitPosition - g_sceneCB.cameraPosition.xyz, forwardRay.direction);
-
-		// ToDo use the Zmin, Zmax for camera ray generation
-		depth = RemapToRange(projectedDistance, g_sceneCB.Zmin, g_sceneCB.Zmax);
-	}
-	else
-	{
-		depth = 1;
-	}
-	g_rtGBufferDepth[DispatchRaysIndex().xy] = depth;
+    float rayLength = 0, obliqueness = 0;
+    if (rayPayload.hit)
+    {
+        float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
+        float rayLength = length(raySegment);
+        float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
+        float obliqueness = rcp(forwardFacing + 1e-8);
+    }
+    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
+    g_rtGBufferDistance[DispatchRaysIndex().xy] = rayLength;
 }
 
 [shader("raygeneration")]

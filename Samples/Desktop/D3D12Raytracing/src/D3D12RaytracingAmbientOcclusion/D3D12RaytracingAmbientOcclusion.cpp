@@ -606,15 +606,17 @@ void D3D12RaytracingAmbientOcclusion::CreateAoBlurCSResources()
 	{
 		using namespace CSRootSignature::AoBlurCS;
 
-		CD3DX12_DESCRIPTOR_RANGE ranges[3]; // Perfomance TIP: Order from most frequent to least frequent.
-		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
-        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input texture
+		CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // smooth AO output
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // normal texture
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // distance texture
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // noisy AO texture
 
 		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
 		rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
-		rootParameters[Slot::InputDepth].InitAsDescriptorTable(1, &ranges[1]);
-        rootParameters[Slot::InputAO].InitAsDescriptorTable(1, &ranges[2]);
+		rootParameters[Slot::InputNormal].InitAsDescriptorTable(1, &ranges[1]);
+        rootParameters[Slot::InputDistance].InitAsDescriptorTable(1, &ranges[2]);
+        rootParameters[Slot::InputAO].InitAsDescriptorTable(1, &ranges[3]);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
         CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
@@ -890,8 +892,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Hit], initialResourceState);
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::MaterialID], initialResourceState);
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState);
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormal], initialResourceState);
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Depth], initialResourceState);
+	CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormal], initialResourceState);
+    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Distance], initialResourceState);
 
 	// Preallocate subsequent descriptor indices for both SRV and UAV groups.
 	m_AOResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOResources[0].uavDescriptorHeapIndex);
@@ -1831,7 +1833,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MaterialID].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Depth].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Distance].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after)
@@ -1861,7 +1863,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MaterialID].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Depth].resource.Get(), before, after)			
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Distance].resource.Get(), before, after),
 		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
@@ -1946,8 +1948,10 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 	CalculateRayHitCount(ReduceSumCalculations::AORayHits);
 }
 
-NumVar g_BlurTolerance(L"AO Blur Tolerance (log10)", -3.0f, -8.0f, -1.0f, 0.25f);
-NumVar g_UpsampleTolerance(L"AO Upsample Tolerance (log10)", -5.0f, -12.0f, -1.0f, 0.5f);
+//NumVar g_NormalTolerance(L"AO Normal Tolerance (log10)", -0.7f, -1.0f, 0.0f, 0.1f);
+//NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", -5.0f, -8.0f, -2.0f, 0.5f);
+NumVar g_NormalTolerance(L"AO Normal Tolerance (log10)", -0.7f, -1.0f, 0.0f, 0.1f);
+NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", -8.0f, -32.0f, 32.0f, 0.5f);
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 {
@@ -1956,20 +1960,10 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 
 	PIXBeginEvent(commandList, 0, L"BlurAmbientOcclusion");
 
-	// Update constant buffer
-#if QUARTER_RES_AO
-    const float kStepSize = 1920.0f / m_width * 2.0f;
-#else
-    const float kStepSize = 1920.0f / m_width;
-#endif
-    const float kBlurTolerance = 1.0f - powf(10.0f, (float)g_BlurTolerance) * kStepSize;
-    const float kUpsampleTolerance = powf(10.0f, (float)g_UpsampleTolerance);
-
     m_csAoBlurCB->kRcpBufferDim.x = 1.0f / m_width;
     m_csAoBlurCB->kRcpBufferDim.y = 1.0f / m_height;
-	m_csAoBlurCB->kStepSize = kStepSize;
-    m_csAoBlurCB->kBlurTolerance = kBlurTolerance * kBlurTolerance;
-    m_csAoBlurCB->kUpsampleTolerance = kUpsampleTolerance;
+	m_csAoBlurCB->kNormalTolerance = powf(10.0f, g_NormalTolerance);
+    m_csAoBlurCB->kDistanceTolerance = powf(10.0f, g_DistanceTolerance);
 	m_csAoBlurCB.CopyStagingToGpu(frameIndex);
 
 	// Set common pipeline state
@@ -1978,7 +1972,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
 	commandList->SetComputeRootSignature(m_computeRootSigs[CSType::AoBlurCS].Get());
 	commandList->SetPipelineState(m_computePSOs[CSType::AoBlurCS].Get());
-	commandList->SetComputeRootDescriptorTable(Slot::InputDepth, m_GBufferResources[GBufferResource::Depth].gpuDescriptorReadAccess);
+	commandList->SetComputeRootDescriptorTable(Slot::InputNormal, m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess);
+    commandList->SetComputeRootDescriptorTable(Slot::InputDistance, m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess);
 	commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csAoBlurCB.GpuVirtualAddress(frameIndex));
 	XMUINT2 groupSize(CeilDivide(m_width, AoBlurCS::ThreadGroup::Width), CeilDivide(m_height, AoBlurCS::ThreadGroup::Height));
 

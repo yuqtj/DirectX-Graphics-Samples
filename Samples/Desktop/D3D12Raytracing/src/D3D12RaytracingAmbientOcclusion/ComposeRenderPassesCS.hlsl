@@ -12,7 +12,6 @@
 #define HLSL
 #include "RaytracingHlslCompat.h"
 
-
 // Output.
 RWTexture2D<float4> g_renderTarget : register(u0);
 
@@ -20,9 +19,8 @@ RWTexture2D<float4> g_renderTarget : register(u0);
 ConstantBuffer<ComposeRenderPassesConstantBuffer> g_CB : register(b0);
 Texture2D<uint> g_texGBufferPositionHits : register(t0);
 Texture2D<uint> g_texGBufferMaterialID : register(t1);
-Texture2D<float4> g_texGBufferPositionRT : register(t2);
-Texture2D<float4> g_texGBufferNormal : register(t3);	// ToDo merge some GBuffers resources ?
-Texture2D<float> g_texGBufferDepth : register(t4);		// ToDo remove?
+Texture2D<float3> g_texGBufferPositionRT : register(t2);
+Texture2D<float3> g_texGBufferNormal : register(t3);	// ToDo merge some GBuffers resources ?
 Texture2D<float> g_texAO : register(t5);
 Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
@@ -51,8 +49,8 @@ void main(uint2 DTid : SV_DispatchThreadID )
 
 	if (hit)
 	{
-		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
-		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
+		float3 hitPosition = g_texGBufferPositionRT[DTid];
+		float3 surfaceNormal = g_texGBufferNormal[DTid];
 		float visibilityCoefficient = g_texVisibility[DTid];
 		float ambientCoef = g_texAO[DTid];
 

@@ -217,9 +217,8 @@ struct ComposeRenderPassesConstantBuffer
 struct AoBlurConstantBuffer
 {
 	XMFLOAT2 kRcpBufferDim;
-	float kStepSize;
-	float kBlurTolerance;
-    float kUpsampleTolerance;
+	float kNormalTolerance;
+	float kDistanceTolerance;
 };
 
 // Attributes per primitive type.
