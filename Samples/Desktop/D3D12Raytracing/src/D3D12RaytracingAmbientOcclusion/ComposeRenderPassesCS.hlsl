@@ -83,7 +83,11 @@ void main(uint2 DTid : SV_DispatchThreadID )
 	}
 
 	// Write the composited color to the output texture.
+#if AO_ONLY
     g_renderTarget[DTid] = float4(ApplySRGB(color.rgb), color.a);
+#else
+	g_renderTarget[DTid] = color;
+#endif
 }
 
 

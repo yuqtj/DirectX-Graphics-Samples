@@ -178,18 +178,51 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth)
 	return rayPayload;
 }
 
+/***************************************************************/
+// 3D value noise
+// Ref: https://www.shadertoy.com/view/XsXfRH
+#if 1
+float hash(float3 p)  // replace this by something better
+{
+	p = frac(p*0.3183099 + .1);
+	p *= 17.0;
+	return frac(p.x*p.y*p.z*(p.x + p.y + p.z));
+}
 
+float noise(in float3 x)
+{
+	float3 p = floor(x);
+	float3 f = frac(x);
+	f = f * f*(3.0 - 2.0*f);
+
+	return lerp(lerp(lerp(hash(p + float3(0, 0, 0)),
+		hash(p + float3(1, 0, 0)), f.x),
+		lerp(hash(p + float3(0, 1, 0)),
+			hash(p + float3(1, 1, 0)), f.x), f.y),
+		lerp(lerp(hash(p + float3(0, 0, 1)),
+			hash(p + float3(1, 0, 1)), f.x),
+			lerp(hash(p + float3(0, 1, 1)),
+				hash(p + float3(1, 1, 1)), f.x), f.y), f.z);
+}
+#endif
+
+/***************************************************************/
 
 // ToDo comment
 float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numShadowRayHits)
 {
     numShadowRayHits = 0;
 
-#if 0
-    uint seed = DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x + g_sceneCB.seed;
+#if AO_HITPOSITION_BASED_SEED
+	// Seed:
+	// - DispatchRaysDimensions to break correlation among neighboring pixels.
+	// - hash(hitPosition) to break correlation for the same pixel but differet hitPOsition when moving camera/objects.
+	uint seed = (DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x) * hash(hitPosition);
+
+
 	uint RNGState = RNG::SeedThread(seed);
 	uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
-	uint sampleJump = RNG::Random(RNGState, 0, g_sceneCB.numSamples - 1);
+	uint sampleJump = 0; RNG::Random(RNGState, 0, g_sceneCB.numSamples - 1);
 
 	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
 	{
@@ -203,8 +236,40 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 		float x = RNG::Random01(RNGState);
 		float y = RNG::Random01(RNGState);
 		float z = RNG::Random01(RNGState);
-		float3 right = normalize(float3(x, y, z) + 0.001f*w.yzx);
+		float3 right = normalize(float3(x, y, z));
 
+		//        float3 right = normalize(float3(0.0072, 1.0, 0.0034));
+		v = normalize(cross(w, right));
+		u = cross(v, w);
+
+		float3 rayDirection = sample.x * u + sample.y * v + sample.z * w;
+
+		// ToDo hitPosition adjustment - fix crease artifacts
+		// Todo fix noise on flat surface / box
+		Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
+#elif 1
+    uint seed = DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x + g_sceneCB.seed;
+	uint RNGState = RNG::SeedThread(seed);
+	uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
+	uint sampleJump = RNG::Random(RNGState, 0, g_sceneCB.numSamples - 1);
+
+	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
+	{
+		float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % g_sceneCB.numSamples].value;
+
+		// Calculate coordinate system for the hemisphere
+		float3 u, v, w;
+		w = surfaceNormal;
+
+#if 1
+		// Break hemisphere coordinate correlation
+		float x = RNG::Random01(RNGState);
+		float y = RNG::Random01(RNGState);
+		float z = RNG::Random01(RNGState);
+		float3 right = normalize(float3(x, y, z));
+#else // This has some blockiness in AO
+		float3 right = normalize(w.yzx);
+#endif
 		//        float3 right = normalize(float3(0.0072, 1.0, 0.0034));
 		v = normalize(cross(w, right));
 		u = cross(v, w);
