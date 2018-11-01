@@ -226,6 +226,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 
 	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
 	{
+		// Load a pregenerated random sample from the sample set.
 		float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % g_sceneCB.numSamples].value;
 
 		// Calculate coordinate system for the hemisphere
