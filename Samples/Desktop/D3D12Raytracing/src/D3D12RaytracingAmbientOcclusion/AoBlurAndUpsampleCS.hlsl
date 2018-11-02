@@ -170,14 +170,14 @@ void main( uint GI : SV_GroupIndex, uint2 GTid : SV_GroupThreadID, uint2 DTid : 
     uint Idx0 = GTid.x + GTid.y * 16;
     float4 AOs = float4(AOCache1[Idx0+16], AOCache1[Idx0+17], AOCache1[Idx0+1], AOCache1[Idx0]);
 
-    uint Idx1 = Idx0 + 32 + 2;
+    uint Idx1 = Idx0 + 17 * 2;
     float4 SampleDistances = float4(DCache[Idx1+16], DCache[Idx1+17], DCache[Idx1+1], DCache[Idx1]);
 
     int2 OutST = DTid * 2;
     float4 TargetDistances = Distance.Gather(LinearSampler, OutST * kRcpBufferDim);
 
-    AoResult[OutST + int2(-1,  0)] = BilateralUpsample(TargetDistances.x, SampleDistances.xyzw, AOs.xyzw);
-    AoResult[OutST + int2( 0,  0)] = BilateralUpsample(TargetDistances.y, SampleDistances.yzwx, AOs.yzwx);
-    AoResult[OutST + int2( 0, -1)] = BilateralUpsample(TargetDistances.z, SampleDistances.zwxy, AOs.zwxy);
-    AoResult[OutST + int2(-1, -1)] = BilateralUpsample(TargetDistances.w, SampleDistances.wxyz, AOs.wxyz);
+    AoResult[OutST + int2(0, 1)] = BilateralUpsample(TargetDistances.x, SampleDistances.xyzw, AOs.xyzw);
+    AoResult[OutST + int2(1, 1)] = BilateralUpsample(TargetDistances.y, SampleDistances.yzwx, AOs.yzwx);
+    AoResult[OutST + int2(1, 0)] = BilateralUpsample(TargetDistances.z, SampleDistances.zwxy, AOs.zwxy);
+    AoResult[OutST + int2(0, 0)] = BilateralUpsample(TargetDistances.w, SampleDistances.wxyz, AOs.wxyz);
 }
