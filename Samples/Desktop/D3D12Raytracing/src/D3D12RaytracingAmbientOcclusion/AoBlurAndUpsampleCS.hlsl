@@ -61,13 +61,11 @@ float SmartBlur(
     float zA, float zB, float zC, float zD, float zE)
 {
     const float ZTol = kDistanceTolerance * nC.w;
-    float wA = 0.5 * dot(nA.xyz, nC.xyz) * (1 - smoothstep(0, 2.0*ZTol, abs(zA - zC)));
-    float wB = 1.0 * dot(nB.xyz, nC.xyz) * (1 - smoothstep(0, 1.0*ZTol, abs(zB - zC)));
-    float wC = 1.0;
-    float wD = 1.0 * dot(nD.xyz, nC.xyz) * (1 - smoothstep(0, 1.0*ZTol, abs(zD - zC)));
-    float wE = 0.5 * dot(nE.xyz, nC.xyz) * (1 - smoothstep(0, 2.0*ZTol, abs(zE - zC)));
-
-    return (wA*aoA + wB*aoB + wC*aoC + wD*aoD + wE*aoE) * rcp(wA + wB + wC + wD + wE);
+    float wA = 0.5 * max(0, dot(nA.xyz, nC.xyz)) * smoothstep(2.0*ZTol, 0, abs(zA - zC));
+    float wB = 1.0 * max(0, dot(nB.xyz, nC.xyz)) * smoothstep(1.0*ZTol, 0, abs(zB - zC));
+    float wD = 1.0 * max(0, dot(nD.xyz, nC.xyz)) * smoothstep(1.0*ZTol, 0, abs(zD - zC));
+    float wE = 0.5 * max(0, dot(nE.xyz, nC.xyz)) * smoothstep(2.0*ZTol, 0, abs(zE - zC));
+    return (wA*aoA + wB*aoB + aoC + wD*aoD + wE*aoE) * rcp(wA + wB + 1.0 + wD + wE);
 }
 
 void BlurHorizontally( uint leftMostIndex )

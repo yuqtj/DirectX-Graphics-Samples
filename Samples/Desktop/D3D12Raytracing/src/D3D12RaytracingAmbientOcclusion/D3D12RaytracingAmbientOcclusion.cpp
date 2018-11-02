@@ -1906,7 +1906,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	PIXEndEvent(commandList);
 }
 
-BoolVar g_QuarterResAO(L"QuarterRes AO", true);
+BoolVar g_QuarterResAO(L"QuarterRes AO", false);
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 {

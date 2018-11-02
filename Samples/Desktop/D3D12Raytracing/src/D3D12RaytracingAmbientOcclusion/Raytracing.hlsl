@@ -297,7 +297,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
         if (dot(rayDirection, surfaceNormal) < 0.0)
             rayDirection = -rayDirection;
 
-        Ray shadowRay = { hitPosition + 0.001 * surfaceNormal, rayDirection };
+        Ray shadowRay = { hitPosition + 1e-3 * surfaceNormal, rayDirection };
 #endif
 
 		if (TraceShadowRayAndReportIfHit(shadowRay, 0, AO_RAY_T_MAX))
@@ -373,7 +373,7 @@ void MyRayGenShader_GBuffer()
         float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
         rayLength = length(raySegment);
         float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
-        obliqueness = rcp(max(forwardFacing, 1e-6));
+        obliqueness = min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
     }
     g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
     g_rtGBufferDistance[DispatchRaysIndex().xy] = rayLength;
