@@ -30,7 +30,7 @@ CameraController::CameraController(Camera& camera) : m_camera(camera)
 
     m_FineMovement = false;
     m_FineRotation = false;
-    m_Momentum = true;
+    m_Momentum = false;
 
     m_LastYaw = 0.0f;
     m_LastPitch = 0.0f;
@@ -101,7 +101,11 @@ void CameraController::Update(float deltaTime)
 		pitch += -1 * GameInput::GetAnalogInput(GameInput::kAnalogMouseY) * m_MouseSensitivityY;
 	}
 	// ToDo camera moves too fast sometimes going foward/back (when moving mouse as well?)
+#if CAMERA_PRESERVE_UP_ORIENTATION
+	m_camera.RotateAroundYAxis(yaw);
+#else
 	m_camera.RotateYaw(yaw);
+#endif
 	m_camera.RotatePitch(pitch);
 	m_camera.TranslateRightUpForward(strafe, ascent, forward);
 
