@@ -88,13 +88,13 @@ void BlurHorizontally( uint leftMostIndex )
     float4 n5 = NCache[leftMostIndex+5];
     float4 n6 = NCache[leftMostIndex+6];
 
-    float z0 = ZCache[leftMostIndex  ];
-    float z1 = ZCache[leftMostIndex+1];
-    float z2 = ZCache[leftMostIndex+2];
-    float z3 = ZCache[leftMostIndex+3];
-    float z4 = ZCache[leftMostIndex+4];
-    float z5 = ZCache[leftMostIndex+5];
-    float z6 = ZCache[leftMostIndex+6];
+    float z0 = DCache[leftMostIndex  ];
+    float z1 = DCache[leftMostIndex+1];
+    float z2 = DCache[leftMostIndex+2];
+    float z3 = DCache[leftMostIndex+3];
+    float z4 = DCache[leftMostIndex+4];
+    float z5 = DCache[leftMostIndex+5];
+    float z6 = DCache[leftMostIndex+6];
 
     AOCache2[leftMostIndex  ] = SmartBlur( ao0, ao1, ao2, ao3, ao4, n0, n1, n2, n3, n4, z0, z1, z2, z3, z4 );
     AOCache2[leftMostIndex+1] = SmartBlur( ao1, ao2, ao3, ao4, ao5, n1, n2, n3, n4, n5, z1, z2, z3, z4, z5 );
@@ -117,12 +117,12 @@ void BlurVertically( uint topMostIndex )
     float4 n4 = NCache[topMostIndex+66];
     float4 n5 = NCache[topMostIndex+82];
 
-    float z0 = ZCache[topMostIndex+ 2];
-    float z1 = ZCache[topMostIndex+18];
-    float z2 = ZCache[topMostIndex+34];
-    float z3 = ZCache[topMostIndex+50];
-    float z4 = ZCache[topMostIndex+66];
-    float z5 = ZCache[topMostIndex+82];
+    float z0 = DCache[topMostIndex+ 2];
+    float z1 = DCache[topMostIndex+18];
+    float z2 = DCache[topMostIndex+34];
+    float z3 = DCache[topMostIndex+50];
+    float z4 = DCache[topMostIndex+66];
+    float z5 = DCache[topMostIndex+82];
 
     AOCache1[topMostIndex   ] = SmartBlur( ao0, ao1, ao2, ao3, ao4, n0, n1, n2, n3, n4, z0, z1, z2, z3, z4 );
     AOCache1[topMostIndex+16] = SmartBlur( ao1, ao2, ao3, ao4, ao5, n1, n2, n3, n4, n5, z1, z2, z3, z4, z5 );
@@ -135,8 +135,8 @@ void BlurVertically( uint topMostIndex )
 // buffer has a lot of small holes in it causing the low-res depth buffer to inaccurately represent it.
 float BilateralUpsample( float ActualDistance, float4 SampleDistances, float4 SampleAOs )
 {
-    float4 weights = float4(9, 3, 1, 3) / (abs(ActualDistance - SampleDistances) + kDistanceTolerance);
-    return dot(weights, SampleAOs) / dot(weights, 1);
+    float4 weights = float4(9, 3, 1, 3) / (abs(ActualDistance - SampleDistances) + 1e-6 * ActualDistance);
+    return (dot(weights, SampleAOs) + 1e-3) / (dot(weights, 1) + 1e-3);
 }
 
 [numthreads( 8, 8, 1 )]

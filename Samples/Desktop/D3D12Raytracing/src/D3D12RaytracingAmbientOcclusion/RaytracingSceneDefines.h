@@ -21,6 +21,7 @@ namespace ComputeShader {
 			ReduceSum,
 			ComposeRenderPassesCS,
             AoBlurCS,
+            AoBlurAndUpsampleCS,
 			Count
 		};
 	}
@@ -63,8 +64,8 @@ namespace ComputeShader {
 			namespace Slot {
 				enum Enum {
 					Output = 0,
-					InputNormal,
-                    InputDistance,
+					Normal,
+                    Distance,
                     InputAO,
 					ConstantBuffer,
 					Count

@@ -214,6 +214,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
     numShadowRayHits = 0;
 
 #if AO_HITPOSITION_BASED_SEED
+# if 1
 	// Seed:
 	// - DispatchRaysDimensions to break correlation among neighboring pixels.
 	// - hash(hitPosition) to break correlation for the same pixel but differet hitPOsition when moving camera/objects.
@@ -248,7 +249,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 		// ToDo hitPosition adjustment - fix crease artifacts
 		// Todo fix noise on flat surface / box
 		Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
-#elif 1
+# else
     uint seed = DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x + g_sceneCB.seed;
 	uint RNGState = RNG::SeedThread(seed);
 	uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
@@ -262,15 +263,15 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 		float3 u, v, w;
 		w = surfaceNormal;
 
-#if 1
+#  if 1
 		// Break hemisphere coordinate correlation
 		float x = RNG::Random01(RNGState);
 		float y = RNG::Random01(RNGState);
 		float z = RNG::Random01(RNGState);
 		float3 right = normalize(float3(x, y, z));
-#else // This has some blockiness in AO
+#  else // This has some blockiness in AO
 		float3 right = normalize(w.yzx);
-#endif
+#  endif
 		//        float3 right = normalize(float3(0.0072, 1.0, 0.0034));
 		v = normalize(cross(w, right));
 		u = cross(v, w);
@@ -280,6 +281,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 		// ToDo hitPosition adjustment - fix crease artifacts
 		// Todo fix noise on flat surface / box
 		Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
+# endif
 #else
     uint2 BTid = DispatchRaysIndex().xy & 3; // 4x4 BlockThreadID
 	uint RNGState = RNG::SeedThread(g_sceneCB.seed + (BTid.y << 2 | BTid.x));
@@ -365,13 +367,13 @@ void MyRayGenShader_GBuffer()
 	g_rtGBufferMaterialID[DispatchRaysIndex().xy] = rayPayload.materialID;
 	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
 
-    float rayLength = 0, obliqueness = 0;
+    float rayLength = 0.0, obliqueness = 0.0;
     if (rayPayload.hit)
     {
         float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
-        float rayLength = length(raySegment);
+        rayLength = length(raySegment);
         float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
-        float obliqueness = rcp(forwardFacing + 1e-8);
+        obliqueness = rcp(max(forwardFacing, 1e-6));
     }
     g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
     g_rtGBufferDistance[DispatchRaysIndex().xy] = rayLength;
@@ -382,9 +384,27 @@ void MyRayGenShader_AO()
 {
     uint2 DTid = DispatchRaysIndex().xy;
 
-#if QUARTER_RES_AO
-    DTid *= 2;
+	bool hit = g_texGBufferPositionHits[DTid] > 0;
+	uint shadowRayHits = 0;
+	float ambientCoef = 0;
+	if (hit)
+	{
+		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
+		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
+		ambientCoef = CalculateAO(hitPosition, surfaceNormal, shadowRayHits);
+	}
+
+	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
+#if GBUFFER_AO_COUNT_AO_HITS
+	// ToDo test perf impact of writing this
+	g_rtAORayHits[DispatchRaysIndex().xy] = shadowRayHits;
 #endif
+}
+
+[shader("raygeneration")]
+void MyRayGenShaderQuarterRes_AO()
+{
+    uint2 DTid = DispatchRaysIndex().xy * 2;
 
 	bool hit = g_texGBufferPositionHits[DTid] > 0;
 	uint shadowRayHits = 0;

@@ -30,6 +30,11 @@ float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 toLightRay, i
 float3 CalculateSpecularCoefficient(in float3 hitPosition, in float3 toEyeRay, in float3 toLightRay, in float3 normal, in float specularPower);
 float3 CalculatePhongLighting(in float3 normal, in float3 hitPosition, in float3 toEyeRay, in float visibilityCoefficient, in float ambientCoef, in float3 diffuse, in float3 specular, in float specularPower = 50);
 
+float3 RemoveSRGB(float3 x)
+{
+    return x < 0.04045 ? x / 12.92 : pow( (x + 0.055) / 1.055, 2.4 );
+}
+
 float3 ApplySRGB(float3 x)
 {
     return x < 0.0031308 ? 12.92 * x : 1.055 * pow(abs(x), 1.0 / 2.4) - 0.055;
@@ -67,7 +72,9 @@ void main(uint2 DTid : SV_DispatchThreadID )
 		UINT materialID = g_texGBufferMaterialID[DTid];
 		PrimitiveMaterialBuffer material = g_materials[materialID];
 		float3 toEyeRay = normalize(g_CB.cameraPosition.xyz - hitPosition);
-		float3 phongColor = CalculatePhongLighting(surfaceNormal, hitPosition, toEyeRay, visibilityCoefficient, ambientCoef, material.diffuse, material.specular, material.specularPower);
+        float3 diffuse = RemoveSRGB(material.diffuse);
+        float3 specular = RemoveSRGB(material.specular);
+		float3 phongColor = CalculatePhongLighting(surfaceNormal, hitPosition, toEyeRay, visibilityCoefficient, ambientCoef, diffuse, specular, material.specularPower);
 		color = float4(phongColor, 1);
 #endif
 
@@ -81,11 +88,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
 	}
 
 	// Write the composited color to the output texture.
-#if AO_ONLY
     g_renderTarget[DTid] = float4(ApplySRGB(color.rgb), color.a);
-#else
-	g_renderTarget[DTid] = color;
-#endif
 }
 
 

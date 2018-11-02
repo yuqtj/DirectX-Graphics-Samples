@@ -40,11 +40,10 @@
 #define GBUFFER_AO_NORMAL_VISUALIZATION 0
 #define GBUFFER_AO_COUNT_AO_HITS 1
 #define AO_ANY_HIT_FULL_OCCLUSION 0
-#define QUARTER_RES_AO 0
 #define DENOISE_AO 1
 #define TWO_STAGE_AO_BLUR 0
 #define AO_RANDOM_SEED_EVERY_FRAME 0
-#define AO_HITPOSITION_BASED_SEED 1
+#define AO_HITPOSITION_BASED_SEED 0
 
 #define CAMERA_JITTER 0
 
@@ -105,11 +104,7 @@ namespace ComposeRenderPassesCS {
 
 namespace AoBlurCS {
     namespace ThreadGroup {
-#if QUARTER_RES_AO
-		enum Enum { Width = 16, Height = 16 };
-#else
 		enum Enum { Width = 8, Height = 8 };
-#endif
     }
 }
 
@@ -294,7 +289,8 @@ struct VertexPositionNormalTextureTangent
 namespace RayGenShaderType {
 	enum Enum {
 		GBuffer = 0,
-		AO,
+		AOFullRes,
+        AOQuarterRes,
 		Visibility,
 		Count
 	};
