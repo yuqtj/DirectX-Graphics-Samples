@@ -136,7 +136,7 @@ void main( uint GI : SV_GroupIndex, uint2 GTid : SV_GroupThreadID, uint2 DTid : 
     //
     // Load 4 pixels per thread into LDS to fill the 16x16 LDS cache with depth and AO
     //
-    PrefetchData( GTid.x << 1 | GTid.y << 5, int2(DTid + GTid - 2) );
+    PrefetchData( GTid.x << 1 | GTid.y << 5, int2(DTid + GTid) - 1 );
     GroupMemoryBarrierWithGroupSync();
 
     // Goal:  End up with a 9x9 patch that is blurred.

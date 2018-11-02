@@ -176,8 +176,8 @@ void main( uint GI : SV_GroupIndex, uint2 GTid : SV_GroupThreadID, uint2 DTid : 
     int2 OutST = DTid * 2;
     float4 TargetDistances = Distance.Gather(LinearSampler, OutST * kRcpBufferDim);
 
-    AoResult[OutST + int2(0, 1)] = BilateralUpsample(TargetDistances.x, SampleDistances.xyzw, AOs.xyzw);
-    AoResult[OutST + int2(1, 1)] = BilateralUpsample(TargetDistances.y, SampleDistances.yzwx, AOs.yzwx);
-    AoResult[OutST + int2(1, 0)] = BilateralUpsample(TargetDistances.z, SampleDistances.zwxy, AOs.zwxy);
-    AoResult[OutST + int2(0, 0)] = BilateralUpsample(TargetDistances.w, SampleDistances.wxyz, AOs.wxyz);
+    AoResult[OutST + int2(-1,  0)] = BilateralUpsample(TargetDistances.x, SampleDistances.xyzw, AOs.xyzw);
+    AoResult[OutST + int2( 0,  0)] = BilateralUpsample(TargetDistances.y, SampleDistances.yzwx, AOs.yzwx);
+    AoResult[OutST + int2( 0, -1)] = BilateralUpsample(TargetDistances.z, SampleDistances.zwxy, AOs.zwxy);
+    AoResult[OutST + int2(-1, -1)] = BilateralUpsample(TargetDistances.w, SampleDistances.wxyz, AOs.wxyz);
 }
