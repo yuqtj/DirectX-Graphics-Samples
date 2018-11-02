@@ -1953,8 +1953,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
     RenderPass_BlurAmbientOcclusion();
 }
 
-NumVar g_NormalTolerance(L"AO Normal Tolerance (log10)", -0.7f, -1.0f, 0.0f, 0.1f);
-NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", 0.5f, -32.0f, 32.0f, 0.25f);
+NumVar g_NormalTolerance(L"AO Normal Tolerance", 0.0, 0.0f, 1.0f, 0.01f);
+NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", -2.5f, -32.0f, 32.0f, 0.25f);
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 {
