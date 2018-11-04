@@ -13,6 +13,7 @@
 #include "PerformanceTimers.h"
 #include "GpuKernels.h"
 #include "CompiledShaders\ReduceSumCS.hlsl.h"
+#include "CompiledShaders\DownsampleBoxFilter2x2CS.hlsl.h"
 
 using namespace std;
 
@@ -38,7 +39,7 @@ namespace GpuKernels
 
 			CD3DX12_DESCRIPTOR_RANGE ranges[2]; // Perfomance TIP: Order from most frequent to least frequent.
 			ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
-			ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // 1 output texture
+			ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
 
 			CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
 			rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
@@ -123,7 +124,7 @@ namespace GpuKernels
 		}
 
 		//
-		// Iterative sum reduce [m_width, m_height] to [1,1]
+		// Iterative sum reduce [width, height] to [1,1]
 		//
 		SIZE_T readBackBaseOffset = frameIndex * sizeof(ResultType);
 		{
@@ -190,6 +191,80 @@ namespace GpuKernels
 		ThrowIfFailed(m_readbackResources[invocationIndex]->Map(0, &readRange, reinterpret_cast<void**>(&mappedData)));
 		*resultSum = *mappedData;
 		m_readbackResources[invocationIndex]->Unmap(0, &CD3DX12_RANGE(0, 0));
+
+		PIXEndEvent(commandList);
+	}
+
+	namespace RootSignature {
+		namespace DownsampleBoxFilter2x2 {
+			namespace Slot {
+				enum Enum {
+					Output = 0,
+					Input,
+					Count
+				};
+			}
+		}
+	}
+
+	void DownsampleBoxFilter2x2::Initialize(ID3D12Device* device)
+	{
+		// Create root signature.
+		{
+			using namespace RootSignature::DownsampleBoxFilter2x2;
+
+			CD3DX12_DESCRIPTOR_RANGE ranges[2]; // Perfomance TIP: Order from most frequent to least frequent.
+			ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
+			ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+
+			CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+			rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
+			rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[1]);
+
+			CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+			SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleBoxFilter2x2");
+		}
+
+		// Create compute pipeline state.
+		{
+			D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+			descComputePSO.pRootSignature = m_rootSignature.Get();
+			descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pDownsampleBoxFilter2x2CS, ARRAYSIZE(g_pDownsampleBoxFilter2x2CS));
+
+			ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+			m_pipelineStateObject->SetName(L"Pipeline state object: DownsampleBoxFilter2x2");
+		}
+	}
+
+	// Downsamples input resource.
+	// width, height - dimensions of the input resource.
+	void DownsampleBoxFilter2x2::Execute(
+		ID3D12GraphicsCommandList* commandList,
+		UINT width,
+		UINT height,
+		ID3D12DescriptorHeap* descriptorHeap,
+		const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+		const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
+	{
+		using namespace RootSignature::DownsampleBoxFilter2x2;
+		using namespace DownsampleBoxFilter2x2;
+
+		PIXBeginEvent(commandList, 0, L"DownsampleBoxFilter2x2");
+
+		// Set pipeline state.
+		{
+			commandList->SetDescriptorHeaps(1, &descriptorHeap);
+			commandList->SetComputeRootSignature(m_rootSignature.Get());
+			commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
+			commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
+			commandList->SetPipelineState(m_pipelineStateObject.Get());
+		}
+
+		// ToDo handle misaligned input
+		XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
+
+		// Dispatch.
+		commandList->Dispatch(groupSize.x, groupSize.y, 1);
 
 		PIXEndEvent(commandList);
 	}

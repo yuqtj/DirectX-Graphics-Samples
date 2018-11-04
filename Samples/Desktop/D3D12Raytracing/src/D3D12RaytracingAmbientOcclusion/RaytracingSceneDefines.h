@@ -154,14 +154,15 @@ namespace GeometryType {
 // ToDo Gputimers bug out changing enums around
 namespace GpuTimers {
 	enum Enum {
-		Raytracing_AO = 0,
+		Raytracing_GBuffer = 0,
+		Raytracing_AO,
+		Raytracing_BlurAO,
 		Raytracing_Visibility,
 		ComposeRenderPassesCS,
-		Raytracing_GBuffer,
-        Raytracing_BlurAO,
 		UpdateBLAS,
 		ReduceSum,
 		UpdateTLAS,
+		DownsampleToBackbuffer,
 		Count
 	};
 }

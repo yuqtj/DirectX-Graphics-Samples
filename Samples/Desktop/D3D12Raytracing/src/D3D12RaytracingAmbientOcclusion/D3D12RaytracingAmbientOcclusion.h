@@ -46,6 +46,7 @@ public:
 	void RequestGeometryInitialization(bool bRequest) { m_isGeometryInitializationRequested = bRequest; }
 	void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
 	void RequestSceneInitialization() { m_isSceneInitializationRequested = true; }
+	void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
 	static const UINT MaxBLAS = 1000;
 
@@ -100,6 +101,7 @@ private:
 	ComPtr<ID3D12RootSignature>         m_computeRootSigs[ComputeShader::Type::Count];
 
 	GpuKernels::ReduceSum				m_reduceSumKernel;
+	GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
 	UINT								m_numRayGeometryHits[ReduceSumCalculations::Count];
 
 	ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -151,11 +153,14 @@ private:
 
 	// Raytracing output
 	// ToDo use the struct
+	RWGpuResource m_raytracingOutputIntermediate;
 	RWGpuResource m_raytracingOutput;
 	RWGpuResource m_GBufferResources[GBufferResource::Count];
 	RWGpuResource m_AOResources[AOResource::Count];
 	RWGpuResource m_VisibilityResource;
 
+	UINT m_raytracingWidth;
+	UINT m_raytracingHeight;
 
 	// Shader tables
 	static const wchar_t* c_hitGroupNames_TriangleGeometry[RayType::Count];
@@ -193,6 +198,7 @@ private:
 	bool m_isASinitializationRequested;
 	bool m_isASrebuildRequested;
 	bool m_isSceneInitializationRequested;
+	bool m_isRecreateRaytracingResourcesRequested;
 
 	// Render passes
 	void RenderPass_GenerateGBuffers();
@@ -217,6 +223,7 @@ private:
 	void UpdateAccelerationStructures(bool forceBuild = false);
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
+	void DownsampleRaytracingOutput();
 
     void CreateConstantBuffers();
     void CreateSamplesRNG();
@@ -244,11 +251,6 @@ private:
     void BuildShaderTables();
     void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
     void CalculateFrameStats();
-#if GBUFFER_AO_SEPRATE_PATHS
-	float NumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_width, m_height); }
-	float NumRayGeometryHitsPerSecond(ReduceSumCalculations::Enum type) { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS(type), m_numRayGeometryHits[type], 1); }
-#else
-	float NumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_width, m_height); }
-	float NumRayGeometryHitsPerSecond(ReduceSumCalculations::Enum type) { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(type), m_width, m_height); }
-#endif
+	float NumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_raytracingWidth, m_raytracingHeight); }
+	float NumRayGeometryHitsPerSecond(ReduceSumCalculations::Enum type) { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(type), m_raytracingWidth, m_raytracingHeight); }
 };

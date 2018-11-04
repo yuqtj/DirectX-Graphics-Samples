@@ -44,7 +44,9 @@
 #define AO_ANY_HIT_FULL_OCCLUSION 0
 #define TWO_STAGE_AO_BLUR 0
 #define AO_RANDOM_SEED_EVERY_FRAME 0
-#define AO_HITPOSITION_BASED_SEED 0
+#define AO_HITPOSITION_BASED_SEED 1
+
+#define RENDER_RNG_SAMPLE_VISUALIZATION 0
 
 #define CAMERA_JITTER 0
 
@@ -54,7 +56,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 0
+#define PBRT_SCENE 1
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
@@ -94,6 +96,12 @@
 namespace ReduceSumCS {
 	namespace ThreadGroup {
 		enum Enum { Width = 8, Height = 16, Size = Width * Height, NumElementsToLoadPerThread = 10 };	
+	}
+}
+
+namespace DownsampleBoxFilter2x2 {
+	namespace ThreadGroup {
+		enum Enum { Width = 8, Height = 8 };
 	}
 }
 

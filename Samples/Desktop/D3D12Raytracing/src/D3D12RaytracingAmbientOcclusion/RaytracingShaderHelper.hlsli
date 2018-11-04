@@ -208,5 +208,15 @@ float3 FresnelReflectanceSchlick(in float3 I, in float3 N, in float3 f0)
     return f0 + (1 - f0)*pow(1 - cosi, 5);
 }
 
+float3 RemoveSRGB(float3 x)
+{
+	return x < 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4);
+}
+
+float3 ApplySRGB(float3 x)
+{
+	return x < 0.0031308 ? 12.92 * x : 1.055 * pow(abs(x), 1.0 / 2.4) - 0.055;
+}
+
 
 #endif // RAYTRACINGSHADERHELPER_H

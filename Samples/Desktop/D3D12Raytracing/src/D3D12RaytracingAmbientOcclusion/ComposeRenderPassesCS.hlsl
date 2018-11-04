@@ -11,6 +11,7 @@
 
 #define HLSL
 #include "RaytracingHlslCompat.h"
+#include "RaytracingShaderHelper.hlsli"
 
 // Output.
 RWTexture2D<float4> g_renderTarget : register(u0);
@@ -29,16 +30,6 @@ StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
 float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 toLightRay, in float3 normal);
 float3 CalculateSpecularCoefficient(in float3 hitPosition, in float3 toEyeRay, in float3 toLightRay, in float3 normal, in float specularPower);
 float3 CalculatePhongLighting(in float3 normal, in float3 hitPosition, in float3 toEyeRay, in float visibilityCoefficient, in float ambientCoef, in float3 diffuse, in float3 specular, in float specularPower = 50);
-
-float3 RemoveSRGB(float3 x)
-{
-    return x < 0.04045 ? x / 12.92 : pow( (x + 0.055) / 1.055, 2.4 );
-}
-
-float3 ApplySRGB(float3 x)
-{
-    return x < 0.0031308 ? 12.92 * x : 1.055 * pow(abs(x), 1.0 / 2.4) - 0.055;
-}
 
 [numthreads(ComposeRenderPassesCS::ThreadGroup::Width, ComposeRenderPassesCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID )
