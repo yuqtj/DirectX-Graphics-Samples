@@ -24,7 +24,6 @@ cbuffer g_aoBlurCB : register(b0)
 }
 
 groupshared float4 NCache[256]; // Normal+Z
-groupshared float ZCache[256]; // 1/Distance
 groupshared float DCache[256]; // Distance
 groupshared float AOCache1[256];
 groupshared float AOCache2[256];
@@ -47,11 +46,6 @@ void PrefetchData( uint index, int2 ST )
     DCache[index+ 1] = Distance[2*ST + int2( 0, -2)];
     DCache[index+16] = Distance[2*ST + int2(-2,  0)];
     DCache[index+17] = Distance[2*ST + int2( 0,  0)];
-
-    ZCache[index   ] = 1.0 / DCache[index   ];
-    ZCache[index+ 1] = 1.0 / DCache[index+ 1];
-    ZCache[index+16] = 1.0 / DCache[index+16];
-    ZCache[index+17] = 1.0 / DCache[index+17];
 }
 
 float SampleInfluence(float3 N1, float3 N2, float DPTol, float deltaZ, float ZTol)
