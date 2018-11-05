@@ -1907,6 +1907,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 }
 
 BoolVar g_QuarterResAO(L"QuarterRes AO", false);
+NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", -2.5f, -32.0f, 32.0f, 0.25f);
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 {
@@ -1953,9 +1954,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
     RenderPass_BlurAmbientOcclusion();
 }
 
-NumVar g_NormalTolerance(L"AO Normal Tolerance", 0.0, 0.0f, 1.0f, 0.01f);
-NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", -2.5f, -32.0f, 32.0f, 0.25f);
-
 void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 {
 	auto commandList = m_deviceResources->GetCommandList();
@@ -1965,7 +1963,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 
     m_csAoBlurCB->kRcpBufferDim.x = 1.0f / m_width;
     m_csAoBlurCB->kRcpBufferDim.y = 1.0f / m_height;
-	m_csAoBlurCB->kNormalTolerance = powf(10.0f, g_NormalTolerance);
     m_csAoBlurCB->kDistanceTolerance = powf(10.0f, g_DistanceTolerance);
 	m_csAoBlurCB.CopyStagingToGpu(frameIndex);
 

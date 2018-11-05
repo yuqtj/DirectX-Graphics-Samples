@@ -20,7 +20,6 @@ SamplerState LinearSampler : register(s0);
 cbuffer g_aoBlurCB : register(b0)
 {
     float2 kRcpBufferDim;
-	float kNormalTolerance;
     float kDistanceTolerance;
 }
 
@@ -57,9 +56,9 @@ void PrefetchData( uint index, int2 ST )
     ZCache[index+17] = 1.0 / DCache[index+17];
 }
 
-float SampleInfluence(float3 N1, float3 N2, float Z1, float Z2, float ZTol)
+float SampleInfluence(float3 N1, float3 N2, float DPTol, float deltaZ, float ZTol)
 {
-    return max(0, dot(N1, N2)) * smoothstep(ZTol, 0, abs(Z1 - Z2));
+    return step(DPTol, dot(N1, N2)) * smoothstep(ZTol, 0.0, deltaZ);
 }
 
 float SmartBlur(
@@ -68,10 +67,10 @@ float SmartBlur(
     float zA, float zB, float zC, float zD, float zE)
 {
     float ZTol = kDistanceTolerance * nC.w * zC;
-    float wA = 0.5 * SampleInfluence(nA.xyz, nC.xyz, zA, zC, 2.0*ZTol);
-    float wB = 1.0 * SampleInfluence(nB.xyz, nC.xyz, zB, zC, 1.0*ZTol);
-    float wD = 1.0 * SampleInfluence(nD.xyz, nC.xyz, zD, zC, 1.0*ZTol);
-    float wE = 0.5 * SampleInfluence(nE.xyz, nC.xyz, zE, zC, 2.0*ZTol);
+    float wA = 0.5 * SampleInfluence(nA.xyz, nC.xyz, 0.6, 0.5*abs(zA-zC), ZTol);
+    float wB = 1.0 * SampleInfluence(nB.xyz, nC.xyz, 0.8, 1.0*abs(zB-zC), ZTol);
+    float wD = 1.0 * SampleInfluence(nD.xyz, nC.xyz, 0.8, 1.0*abs(zD-zC), ZTol);
+    float wE = 0.5 * SampleInfluence(nE.xyz, nC.xyz, 0.6, 0.5*abs(zE-zC), ZTol);
 
     return (wA*aoA + wB*aoB + aoC + wD*aoD + wE*aoE) / (wA + wB + 1.0 + wD + wE);
 }

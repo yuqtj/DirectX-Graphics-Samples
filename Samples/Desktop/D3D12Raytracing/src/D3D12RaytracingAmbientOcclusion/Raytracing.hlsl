@@ -511,7 +511,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 	// ToDo input normals should be normalized already
 	float3 triangleNormal = normalize(HitAttribute(vertexNormals, attrCenter));
 #else
-	float3 triangleNormal = HitAttribute(vertexNormals, attr);
+	float3 triangleNormal = normalize(HitAttribute(vertexNormals, attr));
 #endif
 
 #if !FACE_CULLING
