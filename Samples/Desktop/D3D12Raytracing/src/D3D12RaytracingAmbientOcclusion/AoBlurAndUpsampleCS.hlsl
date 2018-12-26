@@ -20,12 +20,10 @@ SamplerState LinearSampler : register(s0);
 cbuffer g_aoBlurCB : register(b0)
 {
     float2 kRcpBufferDim;
-	float kNormalTolerance;
     float kDistanceTolerance;
 }
 
 groupshared float4 NCache[256]; // Normal+Z
-groupshared float ZCache[256]; // 1/Distance
 groupshared float DCache[256]; // Distance
 groupshared float AOCache1[256];
 groupshared float AOCache2[256];
@@ -48,11 +46,11 @@ void PrefetchData( uint index, int2 ST )
     DCache[index+ 1] = Distance[2*ST + int2( 0, -2)];
     DCache[index+16] = Distance[2*ST + int2(-2,  0)];
     DCache[index+17] = Distance[2*ST + int2( 0,  0)];
+}
 
-    ZCache[index   ] = 1.0 / DCache[index   ];
-    ZCache[index+ 1] = 1.0 / DCache[index+ 1];
-    ZCache[index+16] = 1.0 / DCache[index+16];
-    ZCache[index+17] = 1.0 / DCache[index+17];
+float SampleInfluence(float3 N1, float3 N2, float DPTol, float deltaZ, float ZTol)
+{
+    return step(DPTol, dot(N1, N2)) * smoothstep(ZTol, 0.0, deltaZ);
 }
 
 float SmartBlur(
@@ -60,12 +58,13 @@ float SmartBlur(
     float4 nA, float4 nB, float4 nC, float4 nD, float4 nE,
     float zA, float zB, float zC, float zD, float zE)
 {
-    const float ZTol = kDistanceTolerance * nC.w;
-    float wA = 0.5 * max(0, dot(nA.xyz, nC.xyz)) * smoothstep(2.0*ZTol, 0, abs(zA - zC));
-    float wB = 1.0 * max(0, dot(nB.xyz, nC.xyz)) * smoothstep(1.0*ZTol, 0, abs(zB - zC));
-    float wD = 1.0 * max(0, dot(nD.xyz, nC.xyz)) * smoothstep(1.0*ZTol, 0, abs(zD - zC));
-    float wE = 0.5 * max(0, dot(nE.xyz, nC.xyz)) * smoothstep(2.0*ZTol, 0, abs(zE - zC));
-    return (wA*aoA + wB*aoB + aoC + wD*aoD + wE*aoE) * rcp(wA + wB + 1.0 + wD + wE);
+    float ZTol = kDistanceTolerance * nC.w * zC;
+    float wA = 0.5 * SampleInfluence(nA.xyz, nC.xyz, 0.6, 0.25*abs(zA-zC), ZTol);
+    float wB = 1.0 * SampleInfluence(nB.xyz, nC.xyz, 0.8, 0.50*abs(zB-zC), ZTol);
+    float wD = 1.0 * SampleInfluence(nD.xyz, nC.xyz, 0.8, 0.50*abs(zD-zC), ZTol);
+    float wE = 0.5 * SampleInfluence(nE.xyz, nC.xyz, 0.6, 0.25*abs(zE-zC), ZTol);
+
+    return (wA*aoA + wB*aoB + aoC + wD*aoD + wE*aoE) / (wA + wB + 1.0 + wD + wE);
 }
 
 void BlurHorizontally( uint leftMostIndex )
@@ -134,7 +133,7 @@ void BlurVertically( uint topMostIndex )
 float BilateralUpsample( float ActualDistance, float4 SampleDistances, float4 SampleAOs )
 {
     float4 weights = float4(9, 3, 1, 3) / (abs(ActualDistance - SampleDistances) + 1e-6 * ActualDistance);
-    return (dot(weights, SampleAOs) + 1e-3) / (dot(weights, 1) + 1e-3);
+    return dot(weights, SampleAOs) / dot(weights, 1);
 }
 
 [numthreads( 8, 8, 1 )]

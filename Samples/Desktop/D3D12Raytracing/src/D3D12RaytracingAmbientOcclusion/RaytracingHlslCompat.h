@@ -230,7 +230,6 @@ struct ComposeRenderPassesConstantBuffer
 struct AoBlurConstantBuffer
 {
 	XMFLOAT2 kRcpBufferDim;
-	float kNormalTolerance;
 	float kDistanceTolerance;
 };
 

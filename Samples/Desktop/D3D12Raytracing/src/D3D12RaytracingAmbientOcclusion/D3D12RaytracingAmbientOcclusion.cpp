@@ -1988,6 +1988,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	PIXEndEvent(commandList);
 }
 
+BoolVar g_QuarterResAO(L"QuarterRes AO", false);
+NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", -2.5f, -32.0f, 32.0f, 0.25f);
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 {
@@ -2034,9 +2036,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 
 	PIXEndEvent(commandList);
 }
-
-NumVar g_NormalTolerance(L"AO Normal Tolerance (log10)", -0.7f, -1.0f, 0.0f, 0.1f);
-NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", 0.5f, -32.0f, 32.0f, 0.25f);
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 {
