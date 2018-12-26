@@ -206,6 +206,12 @@
     <FxCompile Include="util\DownsampleGaussian25TapFilterCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
+    <FxCompile Include="util\PerPixelMeanSquareErrorCS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="util\ReduceSumFloatCS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">

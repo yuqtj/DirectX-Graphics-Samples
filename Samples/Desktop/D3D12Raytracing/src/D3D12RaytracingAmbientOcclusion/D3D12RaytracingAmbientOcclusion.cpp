@@ -2046,7 +2046,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 
     m_csAoBlurCB->kRcpBufferDim.x = 1.0f / m_raytracingWidth;
     m_csAoBlurCB->kRcpBufferDim.y = 1.0f / m_raytracingHeight;
-	m_csAoBlurCB->kNormalTolerance = powf(10.0f, g_NormalTolerance);
     m_csAoBlurCB->kDistanceTolerance = powf(10.0f, g_DistanceTolerance);
 	m_csAoBlurCB.CopyStagingToGpu(frameIndex);
 

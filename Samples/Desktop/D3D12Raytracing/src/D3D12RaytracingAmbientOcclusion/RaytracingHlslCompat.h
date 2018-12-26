@@ -99,6 +99,13 @@ namespace ReduceSumCS {
 	}
 }
 
+
+namespace PerPixelMeanSquareError {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 8, Size = Width * Height};
+    }
+}
+
 namespace DownsampleBoxFilter2x2 {
 	namespace ThreadGroup {
 		enum Enum { Width = 8, Height = 8 };
