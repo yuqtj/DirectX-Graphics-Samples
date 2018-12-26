@@ -49,7 +49,7 @@
 #define RENDER_RNG_SAMPLE_VISUALIZATION 0
 
 #define CAMERA_JITTER 0
-
+#define APPLY_SRGB_CORRECTION 0
 #define AO_ONLY 0
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
@@ -104,7 +104,12 @@ namespace DownsampleBoxFilter2x2 {
 		enum Enum { Width = 8, Height = 8 };
 	}
 }
-
+// ToDo cleanup
+namespace DownsampleGaussianFilter {
+	namespace ThreadGroup {
+		enum Enum { Width = 8, Height = 8 };
+	}
+}
 namespace ComposeRenderPassesCS {
 	namespace ThreadGroup {
 		enum Enum { Width = 8, Height = 8, Size = Width * Height };
@@ -227,6 +232,12 @@ struct AoBlurConstantBuffer
 	XMFLOAT2 kRcpBufferDim;
 	float kNormalTolerance;
 	float kDistanceTolerance;
+};
+
+struct DownsampleFilterConstantBuffer
+{
+	XMUINT2 inputTextureDimensions;
+	XMFLOAT2 invertedInputTextureDimensions;
 };
 
 // Attributes per primitive type.

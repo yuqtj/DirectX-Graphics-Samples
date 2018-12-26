@@ -214,7 +214,13 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
     numShadowRayHits = 0;
 
 #if AO_HITPOSITION_BASED_SEED
-# if 1
+#if AO_SAMPLES_SPREAD_ACCROSS_PIXELS
+	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
+	{
+
+	}
+
+#else
 	// Seed:
 	// - DispatchRaysDimensions to break correlation among neighboring pixels.
 	// - hash(hitPosition) to break correlation for the same pixel but differet hitPOsition when moving camera/objects.

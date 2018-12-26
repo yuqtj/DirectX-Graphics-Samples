@@ -73,7 +73,10 @@ namespace SceneArgs
 		g_pSample->RequestRecreateRaytracingResources();
 	}
 
-
+	void OnRecreateSamples(void*)
+	{
+		g_pSample->RequestRecreateAOSamples();
+	}
     BoolVar EnableGeometryAndASBuildsAndUpdates(L"Enable geometry & AS builds and updates", true);
 
 #if ONLY_SQUID_SCENE_BLAS
@@ -82,13 +85,18 @@ namespace SceneArgs
 	EnumVar SceneType(L"Scene", Scene::Type::SingleObject, Scene::Type::Count, Scene::Type::Names, OnSceneChange, nullptr);
 #endif
 
-    enum UpdateMode { Build = 0, Update, Update_BuildEveryXFrames };
-    const WCHAR* UpdateModes[] = { L"Build only", L"Update only", L"Update + build every X frames" };
-    EnumVar ASUpdateMode(L"Acceleration structure/Update mode", Build, _countof(UpdateModes), UpdateModes);
+    enum UpdateMode { Build = 0, Update, Update_BuildEveryXFrames, Count };
+    const WCHAR* UpdateModes[UpdateMode::Count] = { L"Build only", L"Update only", L"Update + build every X frames" };
+    EnumVar ASUpdateMode(L"Acceleration structure/Update mode", Build, UpdateMode::Count, UpdateModes);
     IntVar ASBuildFrequency(L"Acceleration structure/Rebuild frame frequency", 1, 1, 1200, 1);
     BoolVar ASMinimizeMemory(L"Acceleration structure/Minimize memory", false, OnASChange, nullptr);
     BoolVar ASAllowUpdate(L"Acceleration structure/Allow update", true, OnASChange, nullptr);
-	IntVar SuperSamplingScale(L"Supersampling scale NxN", 2, 1, 2, 1, OnRecreateRaytracingResources, nullptr);
+
+	const WCHAR* AntialiasingModes[DownsampleFilter::Count] = { L"OFF", L"SSAA 4x (BoxFilter2x2)", L"SSAA 4x (GaussianFilter9Tap)", L"SSAA 4x (GaussianFilter25Tap)" };
+	EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+
+	IntVar AOSampleCountPerDimension(L"AO samples NxN", 3, 1, 32, 1, OnRecreateSamples, nullptr);
+	BoolVar QuarterResAO(L"QuarterRes AO", false);
 
     // ToDo test tessFactor 16
 	// ToDo fix alias on TessFactor 2
@@ -229,11 +237,10 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     m_isASrebuildRequested(true),
 	m_isSceneInitializationRequested(false),
 	m_isRecreateRaytracingResourcesRequested(false),
+	m_isRecreateAOSamplesRequested(false),
     m_ASmemoryFootprint(0),
     m_numFramesSinceASBuild(0),
-	m_isCameraFrozen(false),
-	m_raytracingWidth(SceneArgs::SuperSamplingScale*width),
-	m_raytracingHeight(SceneArgs::SuperSamplingScale*height)
+	m_isCameraFrozen(false)
 {
     g_pSample = this;
     UpdateForSizeChange(width, height);
@@ -515,7 +522,8 @@ void D3D12RaytracingAmbientOcclusion::CreateSamplesRNG()
     auto device = m_deviceResources->GetD3DDevice(); 
     auto frameCount = m_deviceResources->GetBackBufferCount();
 
-    m_randomSampler.Reset(c_sppAO, 83, Samplers::HemisphereDistribution::Cosine);
+	m_sppAO = SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension;
+    m_randomSampler.Reset(m_sppAO, 1, Samplers::HemisphereDistribution::Cosine);
 
     // Create root signature.
     {
@@ -694,9 +702,6 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 	// Build shader tables, which define shaders and their local root arguments.
     BuildShaderTables();
 #endif
-    // Create an output 2D texture to store the raytracing result to.
-	// ToDo remove
-    CreateRaytracingOutputResource();
 
 	// ToDo move
     CreateSamplesRNG();
@@ -729,7 +734,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 		rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[3]);
 		rootParameters[Slot::VisibilityResource].InitAsDescriptorTable(1, &ranges[4]);
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
-        rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);
+        rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
         rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
         rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(4);
         
@@ -955,6 +960,8 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 	// ToDo move?
 	m_reduceSumKernel.Initialize(device);
 	m_downsampleBoxFilter2x2Kernel.Initialize(device);
+	m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9);
+	m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25);
 }
 
 void D3D12RaytracingAmbientOcclusion::CreateDescriptorHeaps()
@@ -1583,9 +1590,15 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 	{
 		m_isRecreateRaytracingResourcesRequested = false;
 		m_deviceResources->WaitForGpu();
-		m_raytracingWidth = SceneArgs::SuperSamplingScale * m_width;
-		m_raytracingHeight = SceneArgs::SuperSamplingScale * m_height;
+
 		OnCreateWindowSizeDependentResources();
+	}
+
+	if (m_isRecreateAOSamplesRequested)
+	{
+		m_isRecreateAOSamplesRequested = false;
+		m_deviceResources->WaitForGpu();
+		CreateSamplesRNG();
 	}
 
     CalculateFrameStats();
@@ -1814,13 +1827,38 @@ void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_raytracingOutputIntermediate.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
 	m_gpuTimers[GpuTimers::DownsampleToBackbuffer].Start(commandList);
-	m_downsampleBoxFilter2x2Kernel.Execute(
-		commandList,
-		m_raytracingWidth,
-		m_raytracingHeight,
-		m_cbvSrvUavHeap->GetHeap(),
-		m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
-		m_raytracingOutput.gpuDescriptorWriteAccess);
+
+	switch (SceneArgs::AntialiasingMode)
+	{
+	case DownsampleFilter::BoxFilter2x2:
+		m_downsampleBoxFilter2x2Kernel.Execute(
+			commandList,
+			m_raytracingWidth,
+			m_raytracingHeight,
+			m_cbvSrvUavHeap->GetHeap(),
+			m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
+			m_raytracingOutput.gpuDescriptorWriteAccess);
+		break;
+	case DownsampleFilter::GaussianFilter9Tap:
+		m_downsampleGaussian9TapFilterKernel.Execute(
+			commandList,
+			m_raytracingWidth,
+			m_raytracingHeight,
+			m_cbvSrvUavHeap->GetHeap(),
+			m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
+			m_raytracingOutput.gpuDescriptorWriteAccess);
+		break;
+	case DownsampleFilter::GaussianFilter25Tap:
+		m_downsampleGaussian25TapFilterKernel.Execute(
+			commandList,
+			m_raytracingWidth,
+			m_raytracingHeight,
+			m_cbvSrvUavHeap->GetHeap(),
+			m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
+			m_raytracingOutput.gpuDescriptorWriteAccess);
+		break;
+	}
+
 	m_gpuTimers[GpuTimers::DownsampleToBackbuffer].Stop(commandList);
 
 	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_raytracingOutputIntermediate.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
@@ -1950,7 +1988,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	PIXEndEvent(commandList);
 }
 
-BoolVar g_QuarterResAO(L"QuarterRes AO", false);
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 {
@@ -1975,10 +2012,10 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 	// Bind the heaps, acceleration structure and dispatch rays. 
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_topLevelAS.GetResource()->GetGPUVirtualAddress());
 
-    DispatchRays(m_rayGenShaderTables[g_QuarterResAO ? RayGenShaderType::AOQuarterRes : RayGenShaderType::AOFullRes].Get(), 
+    DispatchRays(m_rayGenShaderTables[SceneArgs::QuarterResAO ? RayGenShaderType::AOQuarterRes : RayGenShaderType::AOFullRes].Get(), 
         &m_gpuTimers[GpuTimers::Raytracing_AO],
-        g_QuarterResAO ? m_raytracingWidth / 2 : m_raytracingWidth,
-        g_QuarterResAO ? m_raytracingHeight / 2 : m_raytracingHeight);
+        SceneArgs::QuarterResAO ? m_raytracingWidth / 2 : m_raytracingWidth,
+        SceneArgs::QuarterResAO ? m_raytracingHeight / 2 : m_raytracingHeight);
 
 	// Transition AO resources to shader resource state.
 	{
@@ -2019,13 +2056,13 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 
 	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
 	commandList->SetComputeRootSignature(m_computeRootSigs[CSType::AoBlurCS].Get());
-	commandList->SetPipelineState(m_computePSOs[g_QuarterResAO ? CSType::AoBlurAndUpsampleCS : CSType::AoBlurCS].Get());
+	commandList->SetPipelineState(m_computePSOs[SceneArgs::QuarterResAO ? CSType::AoBlurAndUpsampleCS : CSType::AoBlurCS].Get());
 	commandList->SetComputeRootDescriptorTable(Slot::Normal, m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess);
     commandList->SetComputeRootDescriptorTable(Slot::Distance, m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess);
 	commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csAoBlurCB.GpuVirtualAddress(frameIndex));
 	XMUINT2 groupCount;
-    groupCount.x = CeilDivide(g_QuarterResAO ? m_raytracingWidth / 2 + 2 : m_raytracingWidth, AoBlurCS::ThreadGroup::Width);
-    groupCount.y = CeilDivide(g_QuarterResAO ? m_raytracingHeight / 2 + 2 : m_raytracingHeight, AoBlurCS::ThreadGroup::Height);
+    groupCount.x = CeilDivide(SceneArgs::QuarterResAO ? m_raytracingWidth / 2 + 2 : m_raytracingWidth, AoBlurCS::ThreadGroup::Width);
+    groupCount.y = CeilDivide(SceneArgs::QuarterResAO ? m_raytracingHeight / 2 + 2 : m_raytracingHeight, AoBlurCS::ThreadGroup::Height);
 
     // Begin timing actual work
 	m_gpuTimers[GpuTimers::Raytracing_BlurAO].Start(commandList);
@@ -2170,14 +2207,14 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
 		wLabel << fixed << L" CameraRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS() << L"ms  ~" << 
 			0.001f* NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_raytracingWidth, m_raytracingHeight)  << " GigaRay/s\n";
 
-		float numAOGigaRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * c_sppAO / m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS();
+		float numAOGigaRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO / m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS();
 		wLabel << fixed << L" AORay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS() << L"ms  ~" <<	numAOGigaRays << " GigaRay/s\n";
 		wLabel << fixed << L" AO Blurring: " << m_gpuTimers[GpuTimers::Raytracing_BlurAO].GetAverageMS() << L"ms\n";
 
 		float numVisibilityRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] / m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS();
 		wLabel << fixed << L" VisibilityRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() << L"ms  ~" << numVisibilityRays << " GigaRay/s\n";
-		wLabel << fixed << L" Composition/Shading: " << m_gpuTimers[GpuTimers::ComposeRenderPassesCS].GetAverageMS() << L"ms\n";
-		wLabel << fixed << L" DownsampleToBackbuffer: " << m_gpuTimers[GpuTimers::DownsampleToBackbuffer].GetAverageMS() << L"ms\n";
+		wLabel << fixed << L" Shading: " << m_gpuTimers[GpuTimers::ComposeRenderPassesCS].GetAverageMS() << L"ms\n";
+		wLabel << fixed << L" Downsample SSAA: " << m_gpuTimers[GpuTimers::DownsampleToBackbuffer].GetAverageMS() << L"ms\n";
 		wLabel.precision(1);
         wLabel << fixed << L" AS update (BLAS / TLAS / Total): "
                << m_gpuTimers[GpuTimers::UpdateBLAS].GetElapsedMS() << L"ms / "
@@ -2190,8 +2227,8 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
 			   << 1000.0f * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::CameraRayHits) << L"us \n";
 		wLabel << fixed << L" AORayGeometryHits: #/%%/time "
 			   << m_numRayGeometryHits[ReduceSumCalculations::AORayHits] << "/"
-			   << ((m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * c_sppAO) > 0 ?
-				   (100.0f * m_numRayGeometryHits[ReduceSumCalculations::AORayHits]) / (m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * c_sppAO) : 0) << "%%/"
+			   << ((m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO) > 0 ?
+				   (100.0f * m_numRayGeometryHits[ReduceSumCalculations::AORayHits]) / (m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO) : 0) << "%%/"
 			   << 1000.0f * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::AORayHits) << L"us \n";
     
         labels.push_back(wLabel.str());
@@ -2247,6 +2284,23 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
     auto commandQueue = m_deviceResources->GetCommandQueue();
     auto renderTargets = m_deviceResources->GetRenderTargets();
 
+	switch (SceneArgs::AntialiasingMode)
+	{
+	case DownsampleFilter::None:
+		m_raytracingWidth = m_width;
+		m_raytracingHeight = m_height;
+		break;
+	case DownsampleFilter::BoxFilter2x2:
+		m_raytracingWidth = c_SupersamplingScale * m_width;
+		m_raytracingHeight = c_SupersamplingScale * m_height;
+		break;
+	case DownsampleFilter::GaussianFilter9Tap:
+	case DownsampleFilter::GaussianFilter25Tap:
+		m_raytracingWidth = c_SupersamplingScale * m_width + 1;
+		m_raytracingHeight = c_SupersamplingScale * m_height + 1;
+		break;
+	}
+
     // Create an output 2D texture to store the raytracing result to.
     CreateRaytracingOutputResource();
 
@@ -2258,6 +2312,9 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
 		m_raytracingWidth,
 		m_raytracingHeight,
 		ReduceSumCalculations::Count);
+	m_downsampleBoxFilter2x2Kernel.CreateInputResourceSizeDependentResources(device, m_raytracingWidth, m_raytracingHeight);
+	m_downsampleGaussian9TapFilterKernel.CreateInputResourceSizeDependentResources(device, m_raytracingWidth, m_raytracingHeight);
+	m_downsampleGaussian25TapFilterKernel.CreateInputResourceSizeDependentResources(device, m_raytracingWidth, m_raytracingHeight);
         
     if (m_enableUI)
     {
@@ -2345,7 +2402,7 @@ void D3D12RaytracingAmbientOcclusion::RenderRNGVisualizations()
 		static UINT seed = 0;
 		UINT NumFramesPerIter = 400;
 		static UINT frameID = NumFramesPerIter * 4;
-		m_csHemisphereVisualizationCB->numSamplesToShow = c_sppAO;// (frameID++ / NumFramesPerIter) % m_randomSampler.NumSamples();
+		m_csHemisphereVisualizationCB->numSamplesToShow = m_sppAO;// (frameID++ / NumFramesPerIter) % m_randomSampler.NumSamples();
 		m_csHemisphereVisualizationCB->sampleSetBase = ((seed++ / NumFramesPerIter) % m_randomSampler.NumSampleSets()) * m_randomSampler.NumSamples();
 		m_csHemisphereVisualizationCB->stratums = XMUINT2(static_cast<UINT>(sqrt(m_randomSampler.NumSamples())),
 			static_cast<UINT>(sqrt(m_randomSampler.NumSamples())));
@@ -2471,11 +2528,7 @@ void D3D12RaytracingAmbientOcclusion::CalculateFrameStats()
 void D3D12RaytracingAmbientOcclusion::OnSizeChanged(UINT width, UINT height, bool minimized)
 {
     UpdateForSizeChange(width, height);
-
-	m_raytracingWidth = SceneArgs::SuperSamplingScale * width;
-	m_raytracingHeight = SceneArgs::SuperSamplingScale * height;
-
-
+	   
     if (!m_deviceResources->WindowSizeChanged(width, height, minimized))
     {
         return;

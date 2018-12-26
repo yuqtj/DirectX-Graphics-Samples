@@ -14,6 +14,8 @@
 #include "GpuKernels.h"
 #include "CompiledShaders\ReduceSumCS.hlsl.h"
 #include "CompiledShaders\DownsampleBoxFilter2x2CS.hlsl.h"
+#include "CompiledShaders\DownsampleGaussian9TapFilterCS.hlsl.h"
+#include "CompiledShaders\DownsampleGaussian25TapFilterCS.hlsl.h"
 
 using namespace std;
 
@@ -201,6 +203,7 @@ namespace GpuKernels
 				enum Enum {
 					Output = 0,
 					Input,
+					ConstantBuffer,
 					Count
 				};
 			}
@@ -220,8 +223,11 @@ namespace GpuKernels
 			CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
 			rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
 			rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[1]);
+			rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
-			CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+			CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+
+			CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
 			SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleBoxFilter2x2");
 		}
 
@@ -233,6 +239,20 @@ namespace GpuKernels
 
 			ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
 			m_pipelineStateObject->SetName(L"Pipeline state object: DownsampleBoxFilter2x2");
+		}
+	}
+
+	void DownsampleBoxFilter2x2::CreateInputResourceSizeDependentResources(
+		ID3D12Device* device,
+		UINT width,
+		UINT height)
+	{
+		// Create shader resources
+		{
+			m_CB.Create(device, 1, L"Constant Buffer: DownsampleBoxFilter2x2");
+			m_CB->inputTextureDimensions = XMUINT2(width, height);
+			m_CB->invertedInputTextureDimensions = XMFLOAT2(1.f/width, 1.f/height);
+			m_CB.CopyStagingToGpu();
 		}
 	}
 
@@ -257,6 +277,108 @@ namespace GpuKernels
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
 			commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
 			commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
+			commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress());
+			commandList->SetPipelineState(m_pipelineStateObject.Get());
+		}
+
+		// ToDo handle misaligned input
+		XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
+
+		// Dispatch.
+		commandList->Dispatch(groupSize.x, groupSize.y, 1);
+
+		PIXEndEvent(commandList);
+	}
+
+	namespace RootSignature {
+		namespace DownsampleGaussianFilter {
+			namespace Slot {
+				enum Enum {
+					Output = 0,
+					Input,
+					ConstantBuffer,
+					Count
+				};
+			}
+		}
+	}
+
+	void DownsampleGaussianFilter::Initialize(ID3D12Device* device, Type type)
+	{
+		// Create root signature.
+		{
+			using namespace RootSignature::DownsampleGaussianFilter;
+
+			CD3DX12_DESCRIPTOR_RANGE ranges[2]; // Perfomance TIP: Order from most frequent to least frequent.
+			ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
+			ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+
+			CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+			rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
+			rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[1]);
+			rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+
+			CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
+			SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleGaussianFilter");
+		}
+
+		// Create compute pipeline state.
+		{
+			D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+			descComputePSO.pRootSignature = m_rootSignature.Get();
+			switch (type)
+			{
+			case Tap9:
+				descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pDownsampleGaussian9TapFilterCS, ARRAYSIZE(g_pDownsampleGaussian9TapFilterCS));
+				break;
+			case Tap25:
+				descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pDownsampleGaussian25TapFilterCS, ARRAYSIZE(g_pDownsampleGaussian25TapFilterCS));
+				break;
+			}
+
+			ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+			m_pipelineStateObject->SetName(L"Pipeline state object: DownsampleGaussianFilter");
+		}
+	}
+
+	void DownsampleGaussianFilter::CreateInputResourceSizeDependentResources(
+		ID3D12Device* device,
+		UINT width,
+		UINT height)
+	{
+		// Create shader resources
+		{
+			m_CB.Create(device, 1, L"Constant Buffer: DownsampleGaussianFilter");
+			m_CB->inputTextureDimensions = XMUINT2(width, height);
+			m_CB->invertedInputTextureDimensions = XMFLOAT2(1.f / width, 1.f / height);
+			m_CB.CopyStagingToGpu();
+		}
+	}
+
+	// Downsamples input resource.
+	// width, height - dimensions of the input resource.
+	void DownsampleGaussianFilter::Execute(
+		ID3D12GraphicsCommandList* commandList,
+		UINT width,
+		UINT height,
+		ID3D12DescriptorHeap* descriptorHeap,
+		const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+		const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
+	{
+		using namespace RootSignature::DownsampleGaussianFilter;
+		using namespace DownsampleGaussianFilter;
+
+		PIXBeginEvent(commandList, 0, L"DownsampleGaussianFilter");
+
+		// Set pipeline state.
+		{
+			commandList->SetDescriptorHeaps(1, &descriptorHeap);
+			commandList->SetComputeRootSignature(m_rootSignature.Get());
+			commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
+			commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
+			commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress());
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
 		}
 

@@ -80,6 +80,15 @@ namespace CSType = ComputeShader::Type;
 namespace CSRootSignature = ComputeShader::RootSignature;
 
 
+namespace DownsampleFilter {
+	enum Enum {
+		None,
+		BoxFilter2x2,
+		GaussianFilter9Tap,
+		GaussianFilter25Tap,
+		Count
+	};
+}
 
 namespace GlobalRootSignature {
     namespace Slot {

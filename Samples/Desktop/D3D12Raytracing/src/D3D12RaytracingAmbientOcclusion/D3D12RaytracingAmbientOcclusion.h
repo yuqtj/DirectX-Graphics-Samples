@@ -47,6 +47,7 @@ public:
 	void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
 	void RequestSceneInitialization() { m_isSceneInitializationRequested = true; }
 	void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
+	void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
 
 	static const UINT MaxBLAS = 1000;
 
@@ -101,7 +102,11 @@ private:
 	ComPtr<ID3D12RootSignature>         m_computeRootSigs[ComputeShader::Type::Count];
 
 	GpuKernels::ReduceSum				m_reduceSumKernel;
+	// ToDo combine kernels to an array
 	GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
+	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
+	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
+	const UINT c_SupersamplingScale = 2;
 	UINT								m_numRayGeometryHits[ReduceSumCalculations::Count];
 
 	ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -186,7 +191,7 @@ private:
 	
 	// AO
 	// ToDo fix artifacts at 4. Looks like selfshadowing on some AOrays in SquidScene
-	const UINT c_sppAO = 16;	// Samples per pixel for Ambient Occlusion.
+	UINT m_sppAO;	// Samples per pixel for Ambient Occlusion.
 
 	// UI
 	std::unique_ptr<UILayer> m_uiLayer;
@@ -199,6 +204,7 @@ private:
 	bool m_isASrebuildRequested;
 	bool m_isSceneInitializationRequested;
 	bool m_isRecreateRaytracingResourcesRequested;
+	bool m_isRecreateAOSamplesRequested;
 
 	// Render passes
 	void RenderPass_GenerateGBuffers();

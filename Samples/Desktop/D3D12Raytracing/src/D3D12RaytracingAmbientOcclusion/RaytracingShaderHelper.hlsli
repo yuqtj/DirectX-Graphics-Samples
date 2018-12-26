@@ -210,12 +210,20 @@ float3 FresnelReflectanceSchlick(in float3 I, in float3 N, in float3 f0)
 
 float3 RemoveSRGB(float3 x)
 {
+#if APPLY_SRGB_CORRECTION
 	return x < 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4);
+#else
+	return x;
+#endif
 }
 
 float3 ApplySRGB(float3 x)
 {
+#if APPLY_SRGB_CORRECTION
 	return x < 0.0031308 ? 12.92 * x : 1.055 * pow(abs(x), 1.0 / 2.4) - 0.055;
+#else
+	return x;
+#endif
 }
 
 
