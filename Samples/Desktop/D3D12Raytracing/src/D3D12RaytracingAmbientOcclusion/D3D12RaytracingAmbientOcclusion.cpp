@@ -523,7 +523,7 @@ void D3D12RaytracingAmbientOcclusion::CreateSamplesRNG()
     auto frameCount = m_deviceResources->GetBackBufferCount();
 
 	m_sppAO = SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension;
-    m_randomSampler.Reset(m_sppAO, 1, Samplers::HemisphereDistribution::Cosine);
+    m_randomSampler.Reset(m_sppAO, 83, Samplers::HemisphereDistribution::Cosine);
 
     // Create root signature.
     {
@@ -2031,8 +2031,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 
 	CalculateRayHitCount(ReduceSumCalculations::AORayHits);
 
-    RenderPass_BlurAmbientOcclusion();
-
 	PIXEndEvent(commandList);
 }
 
@@ -2461,7 +2459,10 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     // Render.
 	RenderPass_GenerateGBuffers();
 	RenderPass_CalculateAmbientOcclusion();
-	RenderPass_CalculateVisibility();
+#if BLUR_AO
+    RenderPass_BlurAmbientOcclusion();
+#endif
+    RenderPass_CalculateVisibility();
 	RenderPass_ComposeRenderPassesCS();
 	
 	if (m_raytracingWidth != m_width || m_raytracingHeight != m_height)

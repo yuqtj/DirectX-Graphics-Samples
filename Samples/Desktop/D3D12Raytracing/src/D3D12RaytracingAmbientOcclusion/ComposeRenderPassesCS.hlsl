@@ -58,6 +58,8 @@ void main(uint2 DTid : SV_DispatchThreadID )
 		color = ambientCoef;
 		float4 albedo = float4(0.75f, 0.75f, 0.75f, 1.0f);
 		color *= albedo;
+#elif NORMAL_SHADING
+        color = float4(surfaceNormal, 1.0f);
 #else
 		// Calculate final color.
 		UINT materialID = g_texGBufferMaterialID[DTid];
