@@ -13,9 +13,11 @@
 #include "PerformanceTimers.h"
 #include "GpuKernels.h"
 #include "CompiledShaders\ReduceSumCS.hlsl.h"
+#include "CompiledShaders\ReduceSumFloatCS.hlsl.h"
 #include "CompiledShaders\DownsampleBoxFilter2x2CS.hlsl.h"
 #include "CompiledShaders\DownsampleGaussian9TapFilterCS.hlsl.h"
 #include "CompiledShaders\DownsampleGaussian25TapFilterCS.hlsl.h"
+#include "CompiledShaders\PerPixelMeanSquareErrorCS.hlsl.h"
 
 using namespace std;
 
@@ -33,13 +35,15 @@ namespace GpuKernels
 		}
 	}
 
-	void ReduceSum::Initialize(ID3D12Device* device)
+	void ReduceSum::Initialize(ID3D12Device* device, Type type)
 	{
+        m_resultType = type;
+
 		// Create root signature.
 		{
 			using namespace RootSignature::ReduceSum;
 
-			CD3DX12_DESCRIPTOR_RANGE ranges[2]; // Perfomance TIP: Order from most frequent to least frequent.
+			CD3DX12_DESCRIPTOR_RANGE ranges[2];
 			ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
 			ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
 
@@ -51,15 +55,24 @@ namespace GpuKernels
 			SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: ReduceSum");
 		}
 
-		// Create compute pipeline state.
-		{
-			D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
-			descComputePSO.pRootSignature = m_rootSignature.Get();
-			descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pReduceSumCS, ARRAYSIZE(g_pReduceSumCS));
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+            
+            switch (m_resultType)
+            {
+            case Uint:
+                descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pReduceSumCS, ARRAYSIZE(g_pReduceSumCS));
+                break;
+            case Float:
+                descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pReduceSumFloatCS, ARRAYSIZE(g_pReduceSumFloatCS));
+                break;
+            }
 
-			ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-			m_pipelineStateObject->SetName(L"Pipeline state object: ReduceSum");
-		}
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: ReduceSum");
+        }
 	}
 
 	void ReduceSum::CreateInputResourceSizeDependentResources(
@@ -79,6 +92,13 @@ namespace GpuKernels
 				CeilLogWithBase(width, ReduceSumCS::ThreadGroup::Width),
 				CeilLogWithBase(height, ReduceSumCS::ThreadGroup::Height));
 
+            DXGI_FORMAT format;
+            switch (m_resultType)
+            {
+            case Uint: format = DXGI_FORMAT_R32_UINT; break;
+            case Float: format = DXGI_FORMAT_R32_FLOAT; break;
+            }
+
 			m_csReduceSumOutputs.resize(numIterations);
 			for (UINT i = 0; i < numIterations; i++)
 			{
@@ -86,31 +106,35 @@ namespace GpuKernels
 				height = max(1, CeilDivide(height, ReduceSumCS::ThreadGroup::Height));
 
 				m_csReduceSumOutputs[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-				CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, width, height, descriptorHeap,
+				CreateRenderTargetResource(device, format, width, height, descriptorHeap,
 					&m_csReduceSumOutputs[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: ReduceSum intermediate output");
 			}
 
 			// ToDo should we allocate FrameCount + 1 in GPUTImeras we're depending on Present to stall?
-			UINT bufferSize = sizeof(ResultType);
+            switch (m_resultType)
+            {
+            case Uint: m_resultSize = sizeof(UINT); break;
+            case Float: m_resultSize = sizeof(float); break;
+                break;
+            }
 			m_readbackResources.resize(numInvocationsPerFrame);
 			for (UINT i = 0; i < m_readbackResources.size(); i++)
 				for (auto& readbackResource : m_readbackResources)
 				{
 					wstringstream wResourceName;
 					wResourceName << L"Readback buffer - ReduceSum output [" << i << L"]";
-					AllocateReadBackBuffer(device, frameCount * bufferSize, &m_readbackResources[i], D3D12_RESOURCE_STATE_COPY_DEST, wResourceName.str().c_str());
+					AllocateReadBackBuffer(device, frameCount * m_resultSize, &m_readbackResources[i], D3D12_RESOURCE_STATE_COPY_DEST, wResourceName.str().c_str());
 				}
 		}
 	}
 
 	void ReduceSum::Execute(
-		ID3D12Device* device,
 		ID3D12GraphicsCommandList* commandList,
 		ID3D12DescriptorHeap* descriptorHeap, 
 		UINT frameIndex,
-		const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
-		UINT invocationIndex,
-		ResultType* resultSum)
+		UINT invocationIndex,   // per frame invocation index
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+		void* resultSum)
 	{
 		using namespace RootSignature::ReduceSum;
 		
@@ -128,7 +152,7 @@ namespace GpuKernels
 		//
 		// Iterative sum reduce [width, height] to [1,1]
 		//
-		SIZE_T readBackBaseOffset = frameIndex * sizeof(ResultType);
+		SIZE_T readBackBaseOffset = frameIndex * m_resultSize;
 		{
 			// First iteration reads from input resource.		
 			commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
@@ -158,14 +182,15 @@ namespace GpuKernels
 			}
 
 			// Copy the sum result to the readback buffer.
+            // ToDo should the readback take frameIndex into consideration in addition to invocationIndex if we dont wait on GPU below?
 			auto& destDesc = m_readbackResources[invocationIndex]->GetDesc();
 			auto& srcDesc = m_csReduceSumOutputs.back().resource.Get()->GetDesc();
 			D3D12_PLACED_SUBRESOURCE_FOOTPRINT bufferFootprint = {};
 			bufferFootprint.Offset = 0;
-			bufferFootprint.Footprint.Width = static_cast<UINT>(destDesc.Width / sizeof(ResultType));
+			bufferFootprint.Footprint.Width = static_cast<UINT>(destDesc.Width / m_resultSize);
 			bufferFootprint.Footprint.Height = 1;
 			bufferFootprint.Footprint.Depth = 1;
-			bufferFootprint.Footprint.RowPitch = Align(static_cast<UINT>(destDesc.Width) * sizeof(ResultType), D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
+			bufferFootprint.Footprint.RowPitch = Align(static_cast<UINT>(destDesc.Width) * m_resultSize, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
 			bufferFootprint.Footprint.Format = srcDesc.Format;
 			CD3DX12_TEXTURE_COPY_LOCATION copyDest(m_readbackResources[invocationIndex].Get(), bufferFootprint);
 			CD3DX12_TEXTURE_COPY_LOCATION copySrc(m_csReduceSumOutputs.back().resource.Get(), 0);
@@ -189,9 +214,9 @@ namespace GpuKernels
 		// To avoid stalling CPU until GPU is done, grab the data from a finished frame FrameCount ago.
 		// This is fine for the informational purposes of using the value for UI display only.
 		UINT* mappedData = nullptr;
-		CD3DX12_RANGE readRange(readBackBaseOffset, readBackBaseOffset + sizeof(ResultType));
+		CD3DX12_RANGE readRange(readBackBaseOffset, readBackBaseOffset + m_resultSize);
 		ThrowIfFailed(m_readbackResources[invocationIndex]->Map(0, &readRange, reinterpret_cast<void**>(&mappedData)));
-		*resultSum = *mappedData;
+		memcpy(resultSum, mappedData, m_resultSize);
 		m_readbackResources[invocationIndex]->Unmap(0, &CD3DX12_RANGE(0, 0));
 
 		PIXEndEvent(commandList);
@@ -390,4 +415,115 @@ namespace GpuKernels
 
 		PIXEndEvent(commandList);
 	}
+
+    namespace RootSignature {
+        namespace RootMeanSquareError {
+            namespace Slot {
+                enum Enum {
+                    Output = 0,
+                    Input,
+                    InputReference,
+                    Count
+                };
+            }
+        }
+    }
+
+    void RootMeanSquareError::Initialize(ID3D12Device* device)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::RootMeanSquareError;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[2];
+            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0);  // 2 input textures
+            ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
+            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[1]);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: PerPixelMeanSquareError");
+        }
+
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+            descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void *)g_pPerPixelMeanSquareErrorCS, ARRAYSIZE(g_pPerPixelMeanSquareErrorCS));
+
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: PerPixelMeanSquareError");
+        }
+
+        m_reduceSumKernel.Initialize(device, ReduceSum::Float);
+    }
+
+    void RootMeanSquareError::CreateInputResourceSizeDependentResources(
+        ID3D12Device* device,
+        DescriptorHeap* descriptorHeap,
+        UINT frameCount,
+        UINT width,
+        UINT height,
+        UINT numInvocationsPerFrame)
+    {
+        // Create shader resources
+        {
+            m_perPixelMeanSquareError.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, width, height, descriptorHeap,
+                &m_perPixelMeanSquareError, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: PerPixelMeanSquareError output");
+        }
+
+        m_reduceSumKernel.CreateInputResourceSizeDependentResources(device, descriptorHeap, frameCount, width, height, numInvocationsPerFrame);
+    }
+
+    // Calculates root mean square error
+    //  1) Executes a CS calculating per-pixel mean square error
+    //  2) Executes a Reduce Sum CS aggregating mean square error
+    //  3) Takes a root square on the CPU of the readback result
+    // width, height - dimensions of the input resource.
+    void RootMeanSquareError::Execute(
+        ID3D12GraphicsCommandList* commandList,
+        ID3D12DescriptorHeap* descriptorHeap,
+        UINT frameIndex,
+        UINT invocationIndex,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+        float* rootMeanSquareError)
+    {
+        using namespace RootSignature::DownsampleBoxFilter2x2;
+        using namespace DownsampleBoxFilter2x2;
+
+        PIXBeginEvent(commandList, 0, L"RootMeanSquareError");
+
+        // Calcualte per-pixel mean square error.
+        D3D12_RESOURCE_DESC desc = m_perPixelMeanSquareError.resource->GetDesc();
+        {
+            // Set pipeline state.
+            {
+                commandList->SetDescriptorHeaps(1, &descriptorHeap);
+                commandList->SetComputeRootSignature(m_rootSignature.Get());
+                commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
+                commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
+                commandList->SetPipelineState(m_pipelineStateObject.Get());
+            }
+            XMUINT2 groupSize(CeilDivide(static_cast<UINT>(desc.Width), ThreadGroup::Width), CeilDivide(static_cast<UINT>(desc.Height), ThreadGroup::Height));
+
+            // Dispatch.
+            commandList->Dispatch(groupSize.x, groupSize.y, 1);
+        }
+
+        // Sum the mean square error across all pixels.
+        float sumPerPixelMeanSquareError;
+        {
+            // ToDo index the result to a frame its from or wait on the GPU to finish
+            m_reduceSumKernel.Execute(commandList, descriptorHeap, frameIndex, invocationIndex, m_perPixelMeanSquareError.gpuDescriptorReadAccess, &sumPerPixelMeanSquareError);
+        }
+
+        // Calculate root mean square error.
+        *rootMeanSquareError = sqrtf(sumPerPixelMeanSquareError / (desc.Width * desc.Height));
+
+        PIXEndEvent(commandList);
+    }
 }

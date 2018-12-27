@@ -20,6 +20,7 @@ RWTexture2D<float> g_texOutput : register(u0);
 groupshared uint gShared[ReduceSumCS::ThreadGroup::Size];
 
 // Reduce sum kernel
+// ToDo profile parametrization for float version
 // - Sums values from a 2D input across a group and writes out the result once per group.
 [numthreads(ReduceSumCS::ThreadGroup::Width, ReduceSumCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID, uint GIndex: SV_GroupIndex, uint2 Gid : SV_GroupID)

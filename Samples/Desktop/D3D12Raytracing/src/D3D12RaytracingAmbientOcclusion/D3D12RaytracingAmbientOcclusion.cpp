@@ -958,7 +958,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
     }
 
 	// ToDo move?
-	m_reduceSumKernel.Initialize(device);
+	m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
 	m_downsampleBoxFilter2x2Kernel.Initialize(device);
 	m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9);
 	m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25);
@@ -1809,12 +1809,11 @@ void D3D12RaytracingAmbientOcclusion::CalculateRayHitCount(ReduceSumCalculations
 
 	m_gpuTimers[GpuTimers::ReduceSum].Start(commandList, type);
 	m_reduceSumKernel.Execute(
-		device,
 		commandList,
 		m_cbvSrvUavHeap->GetHeap(),
 		frameIndex,
-		inputResource->gpuDescriptorReadAccess,
 		type,
+        inputResource->gpuDescriptorReadAccess,
 		&m_numRayGeometryHits[type]);
 	m_gpuTimers[GpuTimers::ReduceSum].Stop(commandList, type);
 };

@@ -20,12 +20,17 @@ namespace GpuKernels
 	class ReduceSum
 	{
 	public:
+        enum Type {
+            Uint,
+            Float
+        };
+
 		void Release()
 		{
 			assert(0 && L"ToDo");
 		}
 
-		void Initialize(ID3D12Device* device);
+		void Initialize(ID3D12Device* device, Type type);
 		void CreateInputResourceSizeDependentResources(
 			ID3D12Device* device,
 			DescriptorHeap* descriptorHeap,
@@ -34,16 +39,16 @@ namespace GpuKernels
 			UINT height,
 			UINT numInvocationsPerFrame);
 		void Execute(
-			ID3D12Device* device,
 			ID3D12GraphicsCommandList* commandList,
 			ID3D12DescriptorHeap* descriptorHeap,
 			UINT frameIndex,
-			const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
 			UINT invocationIndex,
-			UINT* resultSum);
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+			void* resultSum);
 
 	private:
-		typedef UINT ResultType;
+        Type                                m_resultType;
+        UINT                                m_resultSize;
 		ComPtr<ID3D12RootSignature>         m_rootSignature;
 		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
 		std::vector<RWGpuResource>			m_csReduceSumOutputs;
@@ -111,8 +116,41 @@ namespace GpuKernels
 		typedef UINT ResultType;
 		ComPtr<ID3D12RootSignature>         m_rootSignature;
 		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-		std::vector<RWGpuResource>			m_csReduceSumOutputs;
 		std::vector<ComPtr<ID3D12Resource>>	m_readbackResources;
 		ConstantBuffer<DownsampleFilterConstantBuffer> m_CB;
 	};
+
+
+    class RootMeanSquareError
+    {
+    public:
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device);
+        void CreateInputResourceSizeDependentResources(
+            ID3D12Device* device,
+            DescriptorHeap* descriptorHeap,
+            UINT frameCount,
+            UINT width,
+            UINT height,
+            UINT numInvocationsPerFrame);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            ID3D12DescriptorHeap* descriptorHeap,
+            UINT frameIndex,
+            UINT invocationIndex,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+            float* rootMeanSquareError);
+
+    private:
+        typedef UINT ResultType;
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        RWGpuResource			            m_perPixelMeanSquareError;
+        ReduceSum                           m_reduceSumKernel;
+    };
 }
