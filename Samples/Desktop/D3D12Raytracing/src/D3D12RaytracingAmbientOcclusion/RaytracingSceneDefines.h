@@ -82,7 +82,7 @@ namespace CSRootSignature = ComputeShader::RootSignature;
 
 namespace DownsampleFilter {
 	enum Enum {
-		None,
+		None = 0,
 		BoxFilter2x2,
 		GaussianFilter9Tap,
 		GaussianFilter25Tap,

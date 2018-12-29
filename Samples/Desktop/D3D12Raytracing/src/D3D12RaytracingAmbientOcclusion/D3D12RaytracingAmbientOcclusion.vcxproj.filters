@@ -185,9 +185,6 @@
     <FxCompile Include="RNGVisualizerCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="util\ReduceSumCS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="ComposeRenderPassesCS.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
@@ -211,6 +208,15 @@
     </FxCompile>
     <FxCompile Include="util\ReduceSumFloatCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="AtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="util\ReduceSumUintCS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl">
+      <Filter>Assets\Shaders</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

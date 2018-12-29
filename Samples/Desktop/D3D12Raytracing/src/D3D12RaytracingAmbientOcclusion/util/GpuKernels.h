@@ -21,7 +21,7 @@ namespace GpuKernels
 	{
 	public:
         enum Type {
-            Uint,
+            Uint = 0,
             Float
         };
 
@@ -90,7 +90,7 @@ namespace GpuKernels
 	{
 	public:
 		enum Type {
-			Tap9,
+			Tap9 = 0,
 			Tap25
 		};
 
@@ -152,5 +152,42 @@ namespace GpuKernels
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
         RWGpuResource			            m_perPixelMeanSquareError;
         ReduceSum                           m_reduceSumKernel;
+    };
+
+    class AtrousWaveletTransformCrossBilateralFilter
+    {
+    public:
+        enum FilterType {
+            Gaussian5x5 = 0,
+            EdgeStoppingGaussian5x5,
+            Count
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device, UINT maxFilterPasses);
+        void CreateInputResourceSizeDependentResources(
+            ID3D12Device* device,
+            DescriptorHeap* descriptorHeap,
+            UINT width,
+            UINT height);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            ID3D12DescriptorHeap* descriptorHeap, 
+            FilterType type,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
+            RWGpuResource* outputResourceHandle,
+            UINT numFilterPasses = 5);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
+        RWGpuResource			            m_intermediateOutput;
+        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
     };
 }

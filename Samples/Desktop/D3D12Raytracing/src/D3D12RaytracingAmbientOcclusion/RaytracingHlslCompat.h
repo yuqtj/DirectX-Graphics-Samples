@@ -46,7 +46,9 @@
 #define AO_RANDOM_SEED_EVERY_FRAME 0
 #define AO_HITPOSITION_BASED_SEED 1
 
-#define BLUR_AO 0
+#define BLUR_AO 1
+#define ATROUS_DENOISER 1
+#define ATROUS_DENOISER_MAX_PASSES 10
 #define RENDER_RNG_SAMPLE_VISUALIZATION 1   // ToDo doesn't render for all AA settings
 
 #define CAMERA_JITTER 0
@@ -57,7 +59,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 1
+#define PBRT_SCENE 0
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
@@ -100,6 +102,11 @@ namespace ReduceSumCS {
 	}
 }
 
+namespace AtrousWaveletTransformFilter_Gaussian5x5CS {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 16, Size = Width * Height };
+    }
+}
 
 namespace PerPixelMeanSquareError {
     namespace ThreadGroup {
@@ -202,6 +209,15 @@ struct RNGConstantBuffer
     XMUINT2 stratums;      // Stratum resolution
     XMUINT2 grid;      // Grid resolution
 };
+
+
+struct AtrousWaveletTransformFilterConstantBuffer
+{
+    UINT kernelStepShift;
+    XMINT2 textureDim;
+    UINT padding;
+};
+
 
 struct SceneConstantBuffer
 {

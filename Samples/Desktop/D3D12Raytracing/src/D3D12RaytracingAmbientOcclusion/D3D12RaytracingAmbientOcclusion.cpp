@@ -95,6 +95,10 @@ namespace SceneArgs
 	const WCHAR* AntialiasingModes[DownsampleFilter::Count] = { L"OFF", L"SSAA 4x (BoxFilter2x2)", L"SSAA 4x (GaussianFilter9Tap)", L"SSAA 4x (GaussianFilter25Tap)" };
 	EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 
+    const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"Gaussian5x5", L"EdgeStoppingGaussian5x5" };
+    EnumVar DenoisingMode(L"Denoising", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Gaussian5x5, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
+    IntVar AtrousFilterPasses(L"AO denoise passes", 3, 1, 8, 1);
+    
 	IntVar AOSampleCountPerDimension(L"AO samples NxN", 3, 1, 32, 1, OnRecreateSamples, nullptr);
 	BoolVar QuarterResAO(L"QuarterRes AO", false);
 
@@ -921,8 +925,12 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 	}
 	// ToDo use less than 32bits?
 	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState);
+#if ATROUS_DENOISER
+    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState);
+#else
     CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState);
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState);
+#endif
+    CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState);
 
 
 	m_VisibilityResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -959,6 +967,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 
 	// ToDo move?
 	m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
+    m_atrousWaveletTransformFilter.Initialize(device, ATROUS_DENOISER_MAX_PASSES);
 	m_downsampleBoxFilter2x2Kernel.Initialize(device);
 	m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9);
 	m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25);
@@ -1818,6 +1827,22 @@ void D3D12RaytracingAmbientOcclusion::CalculateRayHitCount(ReduceSumCalculations
 	m_gpuTimers[GpuTimers::ReduceSum].Stop(commandList, type);
 };
 
+void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
+{
+    auto commandList = m_deviceResources->GetCommandList();
+
+    m_gpuTimers[GpuTimers::Raytracing_BlurAO].Start(commandList);
+    m_atrousWaveletTransformFilter.Execute(
+        commandList,
+        m_cbvSrvUavHeap->GetHeap(),
+        static_cast<GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType>(static_cast<UINT>(SceneArgs::DenoisingMode)),
+        m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
+        m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
+        m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
+        &m_AOResources[AOResource::Smoothed],
+        SceneArgs::AtrousFilterPasses);
+    m_gpuTimers[GpuTimers::Raytracing_BlurAO].Stop(commandList);
+};
 
 void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
 {
@@ -2134,7 +2159,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS()
 		
 		// Bind inputs.
 		commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorReadAccess);
-#if TWO_STAGE_AO_BLUR
+#if TWO_STAGE_AO_BLUR && !ATROUS_DENOISER
 		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
 #else
 		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess);
@@ -2307,6 +2332,7 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
 		m_raytracingWidth,
 		m_raytracingHeight,
 		ReduceSumCalculations::Count);
+    m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_raytracingWidth, m_raytracingHeight);
 	m_downsampleBoxFilter2x2Kernel.CreateInputResourceSizeDependentResources(device, m_raytracingWidth, m_raytracingHeight);
 	m_downsampleGaussian9TapFilterKernel.CreateInputResourceSizeDependentResources(device, m_raytracingWidth, m_raytracingHeight);
 	m_downsampleGaussian25TapFilterKernel.CreateInputResourceSizeDependentResources(device, m_raytracingWidth, m_raytracingHeight);
@@ -2460,7 +2486,11 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 	RenderPass_GenerateGBuffers();
 	RenderPass_CalculateAmbientOcclusion();
 #if BLUR_AO
+#if ATROUS_DENOISER
+    ApplyAtrousWaveletTransformFilter();
+#else
     RenderPass_BlurAmbientOcclusion();
+#endif
 #endif
     RenderPass_CalculateVisibility();
 	RenderPass_ComposeRenderPassesCS();

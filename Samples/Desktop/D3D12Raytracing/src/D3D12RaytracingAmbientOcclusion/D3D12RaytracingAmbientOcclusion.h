@@ -102,6 +102,7 @@ private:
 	ComPtr<ID3D12RootSignature>         m_computeRootSigs[ComputeShader::Type::Count];
 
 	GpuKernels::ReduceSum				m_reduceSumKernel;
+    GpuKernels::AtrousWaveletTransformCrossBilateralFilter m_atrousWaveletTransformFilter;
 	// ToDo combine kernels to an array
 	GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
@@ -229,6 +230,7 @@ private:
 	void UpdateAccelerationStructures(bool forceBuild = false);
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
+    void ApplyAtrousWaveletTransformFilter();
 	void DownsampleRaytracingOutput();
 
     void CreateConstantBuffers();
