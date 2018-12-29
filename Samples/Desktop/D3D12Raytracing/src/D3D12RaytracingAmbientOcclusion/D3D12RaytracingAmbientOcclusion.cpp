@@ -95,9 +95,12 @@ namespace SceneArgs
 	const WCHAR* AntialiasingModes[DownsampleFilter::Count] = { L"OFF", L"SSAA 4x (BoxFilter2x2)", L"SSAA 4x (GaussianFilter9Tap)", L"SSAA 4x (GaussianFilter25Tap)" };
 	EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 
-    const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"Gaussian5x5", L"EdgeStoppingGaussian5x5", L"EdgeStoppingGaussian3x3" };
+    const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"Gaussian5x5", L"EdgeStoppingGaussian5x5", L"EdgeStoppingGaussian3x3", L"EdgeStoppingBox3x3" };
     EnumVar DenoisingMode(L"Denoising", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
     IntVar AtrousFilterPasses(L"AO denoise passes", 5, 1, 8, 1);
+    NumVar g_AODenoiseValueSigma(L"AO Denoise: Value Sigma", 10, 0.0f, 30.0f, 0.1f);
+    NumVar g_AODenoiseDepthSigma(L"AO Denoise: Depth Sigma", 1, 0.0f, 10.0f, 0.02f);
+    NumVar g_AODenoiseNormalSigma(L"AO Denoise: Normal Sigma", 128, 0, 256, 4);
     
 	IntVar AOSampleCountPerDimension(L"AO samples NxN", 1, 1, 32, 1, OnRecreateSamples, nullptr);
 	BoolVar QuarterResAO(L"QuarterRes AO", false);
@@ -108,6 +111,11 @@ namespace SceneArgs
     IntVar NumGeometriesPerBLAS(L"Geometry/# geometries per BLAS", // ToDo
 		NUM_GEOMETRIES,	1, 1000000, 1, OnGeometryChange, nullptr);
     IntVar NumSphereBLAS(L"Geometry/# Sphere BLAS", 1, 1, D3D12RaytracingAmbientOcclusion::MaxBLAS, 1, OnASChange, nullptr);
+
+
+    BoolVar g_QuarterResAO(L"QuarterRes AO", false);
+    NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", -2.5f, -32.0f, 32.0f, 0.25f);
+
 };
 
 
@@ -1840,6 +1848,9 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
         m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
         &m_AOResources[AOResource::Smoothed],
+        SceneArgs::g_AODenoiseValueSigma,
+        SceneArgs::g_AODenoiseDepthSigma,
+        SceneArgs::g_AODenoiseNormalSigma,
         SceneArgs::AtrousFilterPasses);
     m_gpuTimers[GpuTimers::Raytracing_BlurAO].Stop(commandList);
 };
@@ -2012,8 +2023,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	PIXEndEvent(commandList);
 }
 
-BoolVar g_QuarterResAO(L"QuarterRes AO", false);
-NumVar g_DistanceTolerance(L"AO Distance Tolerance (log10)", -2.5f, -32.0f, 32.0f, 0.25f);
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 {
@@ -2068,7 +2077,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 
     m_csAoBlurCB->kRcpBufferDim.x = 1.0f / m_raytracingWidth;
     m_csAoBlurCB->kRcpBufferDim.y = 1.0f / m_raytracingHeight;
-    m_csAoBlurCB->kDistanceTolerance = powf(10.0f, g_DistanceTolerance);
+    m_csAoBlurCB->kDistanceTolerance = powf(10.0f, SceneArgs::g_DistanceTolerance);
 	m_csAoBlurCB.CopyStagingToGpu(frameIndex);
 
 	// Set common pipeline state

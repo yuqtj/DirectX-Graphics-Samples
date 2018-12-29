@@ -37,12 +37,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
     };
     float3 normal = g_inNormal[DTid].xyz;
     float  depth = g_inDepth[DTid];
+    float  value = g_inValues[DTid];
 
     // Ref: SVGF
-    const UINT sigmaValue = 4;
-    const UINT sigmaNormal = 128;
-    const UINT sigmaDepth = 5;
-    
+    const float valueSigma = cb.valueSigma;
+    const float normalSigma = cb.normalSigma;
+    const float depthSigma = cb.depthSigma;
+
     float sum = 0.f;
     float sumWeight = 0.f;
     for (int row = 0; row < N; row++)
@@ -57,11 +58,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
                 float  iDepth = g_inDepth[id];
 
                 float w_h = kernel[row][col];
-                float w_d = exp(-abs(depth - iDepth) / (sigmaDepth * sigmaDepth));
+                float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) / (depthSigma * depthSigma)) : 1.f;
+                float w_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - val) / (valueSigma * valueSigma)) : 1.f : 1.f;
 
                 // Ref: SVGF
-                float w_n = pow(max(0, dot(normal, iNormal)), sigmaNormal);
-                w = w_h * w_n * w_d;
+                float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1.f;
+                w = w_h * w_x * w_n * w_d;
             }
             sum += w * val;
             sumWeight += w;

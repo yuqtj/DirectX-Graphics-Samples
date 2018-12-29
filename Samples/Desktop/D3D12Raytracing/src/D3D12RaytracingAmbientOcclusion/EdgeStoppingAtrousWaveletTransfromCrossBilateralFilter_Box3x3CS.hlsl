@@ -26,13 +26,6 @@ groupshared uint gShared[ReduceSumCS::ThreadGroup::Size];
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     const uint N = 3;
-    const float kernel1D[N] = { 0.27901, 0.44198, 0.27901 };
-    const float kernel[N][N] =
-    {
-        { kernel1D[0] * kernel1D[0], kernel1D[0] * kernel1D[1], kernel1D[0] * kernel1D[2] },
-        { kernel1D[1] * kernel1D[0], kernel1D[1] * kernel1D[1], kernel1D[1] * kernel1D[2] },
-        { kernel1D[2] * kernel1D[0], kernel1D[2] * kernel1D[1], kernel1D[2] * kernel1D[2] },
-    };
     float3 normal = g_inNormal[DTid].xyz;
     float  depth = g_inDepth[DTid];
     float  value = g_inValues[DTid];
@@ -41,13 +34,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
     const float valueSigma = cb.valueSigma;
     const float normalSigma = cb.normalSigma;
     const float depthSigma = cb.depthSigma;
-    
+
     float sum = 0.f;
     float sumWeight = 0.f;
     for (int row = 0; row < N; row++)
         for (int col = 0; col < N; col++)
         {
-            int2 id = int2(DTid) + (int2(row - 1, col - 1) << cb.kernelStepShift);
+            int2 id = int2(DTid)+(int2(row - 1, col - 1) << cb.kernelStepShift);
             float val = g_inValues[id];
             float w = 0.f;
             if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
@@ -55,13 +48,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
                 float3 iNormal = g_inNormal[id].xyz;
                 float  iDepth = g_inDepth[id];
 
-                float w_h = kernel[row][col];
                 float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) / (depthSigma * depthSigma)) : 1.f;
                 float w_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - val) / (valueSigma * valueSigma)) : 1.f : 1.f;
 
                 // Ref: SVGF
                 float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1.f;
-                w = w_h * w_x * w_n * w_d;
+                w = w_x * w_n * w_d;
             }
             sum += w * val;
             sumWeight += w;

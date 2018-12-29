@@ -161,6 +161,7 @@ namespace GpuKernels
             Gaussian5x5 = 0,
             EdgeStoppingGaussian5x5,
             EdgeStoppingGaussian3x3,
+            EdgeStoppingBox3x3,
             Count
         };
 
@@ -183,6 +184,9 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
             RWGpuResource* outputResourceHandle,
+            float valueSigma,
+            float depthSigma,
+            float normalSigma,
             UINT numFilterPasses = 5);
 
     private:

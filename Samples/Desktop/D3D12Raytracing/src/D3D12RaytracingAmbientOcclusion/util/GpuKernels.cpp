@@ -19,6 +19,7 @@
 #include "CompiledShaders\DownsampleGaussian25TapFilterCS.hlsl.h"
 #include "CompiledShaders\PerPixelMeanSquareErrorCS.hlsl.h"
 #include "CompiledShaders\AtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
+#include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
 
@@ -586,6 +587,9 @@ namespace GpuKernels
                 case EdgeStoppingGaussian3x3:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS), ARRAYSIZE(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS));
                     break;
+                case EdgeStoppingBox3x3:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS), ARRAYSIZE(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS));
+                    break;
                 }
 
                 ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
@@ -626,11 +630,14 @@ namespace GpuKernels
     void AtrousWaveletTransformCrossBilateralFilter::Execute(
         ID3D12GraphicsCommandList* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
-        FilterType type,
+        FilterType filterType,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
         RWGpuResource* outputResource,
+        float valueSigma,
+        float depthSigma,
+        float normalSigma,
         UINT numFilterPasses)
     {
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
@@ -642,9 +649,21 @@ namespace GpuKernels
         {
             commandList->SetDescriptorHeaps(1, &descriptorHeap);
             commandList->SetComputeRootSignature(m_rootSignature.Get());
-            commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
+            commandList->SetPipelineState(m_pipelineStateObjects[filterType].Get());
             commandList->SetComputeRootDescriptorTable(Slot::Normals, inputNormalsResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Depths, inputDepthsResourceHandle);
+        }
+
+        // Update the Constant Buffers.
+        for (UINT i = 0; i < m_CB.NumInstances(); i++)
+        {
+            // Ref: Dammertz2010
+            // Tighten value range smoothing for higher passes.
+            m_CB->valueSigma = i > 0 ? valueSigma * powf(2, -float(i)) : 1;
+            m_CB->depthSigma = depthSigma;
+            m_CB->normalSigma = normalSigma;
+            m_CB->kernelStepShift = i;
+            m_CB.CopyStagingToGpu(i);
         }
 
         //
