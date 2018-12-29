@@ -160,6 +160,7 @@ namespace GpuKernels
         enum FilterType {
             Gaussian5x5 = 0,
             EdgeStoppingGaussian5x5,
+            EdgeStoppingGaussian3x3,
             Count
         };
 

@@ -35,7 +35,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
         { kernel1D[3] * kernel1D[0], kernel1D[3] * kernel1D[1], kernel1D[3] * kernel1D[2], kernel1D[3] * kernel1D[3], kernel1D[3] * kernel1D[4] },
         { kernel1D[4] * kernel1D[0], kernel1D[4] * kernel1D[1], kernel1D[4] * kernel1D[2], kernel1D[4] * kernel1D[3], kernel1D[4] * kernel1D[4] },
     };
+    float3 normal = g_inNormal[DTid].xyz;
+    float  depth = g_inDepth[DTid];
 
+    // Ref: SVGF
+    const UINT sigmaValue = 4;
+    const UINT sigmaNormal = 128;
+    const UINT sigmaDepth = 5;
+    
     float sum = 0.f;
     float sumWeight = 0.f;
     for (int row = 0; row < N; row++)
@@ -43,14 +50,22 @@ void main(uint2 DTid : SV_DispatchThreadID)
         {
             int2 id = int2(DTid) + (int2(row - 2, col - 2) << cb.kernelStepShift);
             float val = g_inValues[id];
-            float w_h = (id.x >= 0 && id.y >=0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y) ?
-                        kernel[row][col] :
-                        0.f;
-            // ToDo remove
-            w_h *= w_h;
-            sum += w_h * val;
-            sumWeight += w_h;
+            float w = 0.f;
+            if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
+            {
+                float3 iNormal = g_inNormal[id].xyz;
+                float  iDepth = g_inDepth[id];
+
+                float w_h = kernel[row][col];
+                float w_d = exp(-abs(depth - iDepth) / (sigmaDepth * sigmaDepth));
+
+                // Ref: SVGF
+                float w_n = pow(max(0, dot(normal, iNormal)), sigmaNormal);
+                w = w_h * w_n * w_d;
+            }
+            sum += w * val;
+            sumWeight += w;
         }
 
-    g_outFilteredValues[DTid] = sum / sumWeight;
+    g_outFilteredValues[DTid] = sumWeight > 0.0001f ? sum / sumWeight : 0.f;
 }

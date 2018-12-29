@@ -19,6 +19,7 @@
 #include "CompiledShaders\DownsampleGaussian25TapFilterCS.hlsl.h"
 #include "CompiledShaders\PerPixelMeanSquareErrorCS.hlsl.h"
 #include "CompiledShaders\AtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
+#include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
 
 using namespace std;
@@ -581,6 +582,9 @@ namespace GpuKernels
                     break;
                 case EdgeStoppingGaussian5x5:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS), ARRAYSIZE(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS));
+                    break;
+                case EdgeStoppingGaussian3x3:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS), ARRAYSIZE(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS));
                     break;
                 }
 

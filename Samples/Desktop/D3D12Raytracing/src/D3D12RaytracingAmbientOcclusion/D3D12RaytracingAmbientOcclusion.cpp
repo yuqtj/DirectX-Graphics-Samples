@@ -93,13 +93,13 @@ namespace SceneArgs
     BoolVar ASAllowUpdate(L"Acceleration structure/Allow update", true, OnASChange, nullptr);
 
 	const WCHAR* AntialiasingModes[DownsampleFilter::Count] = { L"OFF", L"SSAA 4x (BoxFilter2x2)", L"SSAA 4x (GaussianFilter9Tap)", L"SSAA 4x (GaussianFilter25Tap)" };
-	EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+	EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 
-    const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"Gaussian5x5", L"EdgeStoppingGaussian5x5" };
-    EnumVar DenoisingMode(L"Denoising", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Gaussian5x5, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
-    IntVar AtrousFilterPasses(L"AO denoise passes", 3, 1, 8, 1);
+    const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"Gaussian5x5", L"EdgeStoppingGaussian5x5", L"EdgeStoppingGaussian3x3" };
+    EnumVar DenoisingMode(L"Denoising", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
+    IntVar AtrousFilterPasses(L"AO denoise passes", 5, 1, 8, 1);
     
-	IntVar AOSampleCountPerDimension(L"AO samples NxN", 3, 1, 32, 1, OnRecreateSamples, nullptr);
+	IntVar AOSampleCountPerDimension(L"AO samples NxN", 1, 1, 32, 1, OnRecreateSamples, nullptr);
 	BoolVar QuarterResAO(L"QuarterRes AO", false);
 
     // ToDo test tessFactor 16
