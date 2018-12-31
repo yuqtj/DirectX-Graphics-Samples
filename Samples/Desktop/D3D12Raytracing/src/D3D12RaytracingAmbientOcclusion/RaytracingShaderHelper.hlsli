@@ -227,4 +227,42 @@ float3 ApplySRGB(float3 x)
 }
 
 
+
+/***************************************************************/
+// Normal compression
+// The MIT License
+// Copyright © 2017 Inigo Quilez
+// Ref: https://www.shadertoy.com/view/Mtfyzl
+uint octahedral_32(in float3 nor, uint sh)
+{
+    nor /= (abs(nor.x) + abs(nor.y) + abs(nor.z));
+    nor.xy = (nor.z >= 0.0) ? nor.xy : (1.0 - abs(nor.yx))*sign(nor.xy);
+    float2 v = 0.5 + 0.5*nor.xy;
+
+    uint mu = (1u << sh) - 1u;
+    uint2 d = uint2(floor(v*float(mu) + 0.5));
+    return (d.y << sh) | d.x;
+}
+
+float3 i_octahedral_32(uint data, uint sh)
+{
+    uint mu = (1u << sh) - 1u;
+
+    uint2 d = uint2(data, data >> sh) & mu;
+    float2 v = float2(d) / float(mu);
+
+    v = -1.0 + 2.0*v;
+
+    // Rune Stubbe's version, much faster than original
+    float3 nor = float3(v, 1.0 - abs(v.x) - abs(v.y));
+    float t = max(-nor.z, 0.0);
+    nor.x += (nor.x > 0.0) ? -t : t;
+    nor.y += (nor.y > 0.0) ? -t : t;
+
+    return normalize(nor);
+}
+/***************************************************************/
+
+
+
 #endif // RAYTRACINGSHADERHELPER_H

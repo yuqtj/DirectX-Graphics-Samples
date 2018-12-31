@@ -224,6 +224,9 @@
     <FxCompile Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS_simple.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">

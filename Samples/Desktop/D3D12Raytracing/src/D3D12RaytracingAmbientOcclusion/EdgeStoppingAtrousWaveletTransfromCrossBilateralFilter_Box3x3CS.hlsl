@@ -15,49 +15,54 @@
 Texture2D<float> g_inValues : register(t0);
 Texture2D<float4> g_inNormal : register(t1);
 Texture2D<float> g_inDepth : register(t2);
+Texture2D<uint> g_inNormalOct : register(t3);
 RWTexture2D<float> g_outFilteredValues : register(u0);
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
-groupshared uint gShared[ReduceSumCS::ThreadGroup::Size];
+void AddFilterContribution(inout float weightedValueSum, inout float weightSum, in float value, in float depth, in float3 normal, in uint row, in uint col, in uint2 DTid)
+{
+    const float valueSigma = cb.valueSigma;
+    const float normalSigma = cb.normalSigma;
+    const float depthSigma = cb.depthSigma;
 
+    int2 id = int2(DTid)+(int2(row - 1, col - 1) << cb.kernelStepShift);
+    if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
+    {
+        float iValue = g_inValues[id];
+        float3 iNormal = g_inNormal[id].xyz;
+        float  iDepth = g_inDepth[id];
+
+        float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) / (depthSigma * depthSigma)) : 1.f;
+        float w_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - iValue) / (valueSigma * valueSigma)) : 1.f : 1.f;
+
+        // Ref: SVGF
+        float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1.f;
+        float w = w_x * w_n * w_d;
+
+        weightedValueSum += w * iValue;
+        weightSum += w;
+    }
+}
 // Atrous Wavelet Transform Cross Bilateral Filter
 // Ref: Dammertz 2010, Edge-Avoiding A-Trous Wavelet Transform for Fast Global Illumination Filtering
 [numthreads(AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Width, AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
-    const uint N = 3;
     float3 normal = g_inNormal[DTid].xyz;
     float  depth = g_inDepth[DTid];
     float  value = g_inValues[DTid];
 
-    // Ref: SVGF
-    const float valueSigma = cb.valueSigma;
-    const float normalSigma = cb.normalSigma;
-    const float depthSigma = cb.depthSigma;
+    float weightedValueSum = value;
+    float weightSum = 1.f;
 
-    float sum = 0.f;
-    float sumWeight = 0.f;
-    for (int row = 0; row < N; row++)
-        for (int col = 0; col < N; col++)
-        {
-            int2 id = int2(DTid)+(int2(row - 1, col - 1) << cb.kernelStepShift);
-            float val = g_inValues[id];
-            float w = 0.f;
-            if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
-            {
-                float3 iNormal = g_inNormal[id].xyz;
-                float  iDepth = g_inDepth[id];
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 0, 0, DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 0, 1, DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 0, 2, DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 1, 0, DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 1, 2, DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 2, 0, DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 2, 1, DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 2, 2, DTid);
 
-                float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) / (depthSigma * depthSigma)) : 1.f;
-                float w_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - val) / (valueSigma * valueSigma)) : 1.f : 1.f;
-
-                // Ref: SVGF
-                float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1.f;
-                w = w_x * w_n * w_d;
-            }
-            sum += w * val;
-            sumWeight += w;
-        }
-
-    g_outFilteredValues[DTid] = sumWeight > 0.0001f ? sum / sumWeight : 0.f;
+    g_outFilteredValues[DTid] = weightSum > 0.0001f ? weightedValueSum / weightSum : 0.f;
 }

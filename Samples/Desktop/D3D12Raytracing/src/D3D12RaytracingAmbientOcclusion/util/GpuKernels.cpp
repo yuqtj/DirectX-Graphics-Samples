@@ -21,6 +21,7 @@
 #include "CompiledShaders\AtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl.h"
+#include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS_simple.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
 
 using namespace std;
@@ -537,6 +538,7 @@ namespace GpuKernels
                     Output = 0,
                     Input,
                     Normals,
+                    NormalsOct,
                     Depths,
                     ConstantBuffer,
                     Count
@@ -552,17 +554,19 @@ namespace GpuKernels
         {
             using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
 
-            CD3DX12_DESCRIPTOR_RANGE ranges[4];
+            CD3DX12_DESCRIPTOR_RANGE ranges[5];
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // input normals
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // input depths
-            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output filtered values
+            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // input octahedron compressed normals
+            ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output filtered values
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
             rootParameters[Slot::Normals].InitAsDescriptorTable(1, &ranges[1]);
             rootParameters[Slot::Depths].InitAsDescriptorTable(1, &ranges[2]);
-            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[3]);
+            rootParameters[Slot::NormalsOct].InitAsDescriptorTable(1, &ranges[3]);
+            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[4]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -586,6 +590,9 @@ namespace GpuKernels
                     break;
                 case EdgeStoppingGaussian3x3:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS), ARRAYSIZE(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS));
+                    break;
+                case EdgeStoppingGaussian3x3_simple:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS_simple), ARRAYSIZE(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS_simple));
                     break;
                 case EdgeStoppingBox3x3:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS), ARRAYSIZE(g_pEdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS));
@@ -634,6 +641,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
         RWGpuResource* outputResource,
         float valueSigma,
         float depthSigma,
@@ -652,6 +660,7 @@ namespace GpuKernels
             commandList->SetPipelineState(m_pipelineStateObjects[filterType].Get());
             commandList->SetComputeRootDescriptorTable(Slot::Normals, inputNormalsResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Depths, inputDepthsResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::NormalsOct, inputNormalsOctResourceHandle);
         }
 
         // Update the Constant Buffers.
@@ -659,7 +668,7 @@ namespace GpuKernels
         {
             // Ref: Dammertz2010
             // Tighten value range smoothing for higher passes.
-            m_CB->valueSigma = i > 0 ? valueSigma * powf(2, -float(i)) : 1;
+            m_CB->valueSigma = i > 0 ? valueSigma * powf(2.f, -float(i)) : 1;
             m_CB->depthSigma = depthSigma;
             m_CB->normalSigma = normalSigma;
             m_CB->kernelStepShift = i;
@@ -676,6 +685,16 @@ namespace GpuKernels
                 CeilDivide(resourceDim.x, AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Width),
                 CeilDivide(resourceDim.y, AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Height));
 
+
+#if ATROUS_ONELEVEL_ONLY
+            UINT i = numFilterPasses - 1;
+            numFilterPasses = 1;
+
+            RWGpuResource* outResources[2] = { outputResource, &m_intermediateOutput };
+
+            commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Output, outResources[0]->gpuDescriptorWriteAccess);
+#else
             // Order the resources such that the final pass writes to outputResource.
             RWGpuResource* outResources[2] =
             {
@@ -688,6 +707,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Output, outResources[0]->gpuDescriptorWriteAccess);
 
             for (UINT i = 0; i < numFilterPasses; i++)
+#endif
             {
                 commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(i));
                                 

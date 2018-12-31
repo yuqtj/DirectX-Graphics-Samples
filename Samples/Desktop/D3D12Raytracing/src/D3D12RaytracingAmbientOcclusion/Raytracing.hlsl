@@ -208,6 +208,7 @@ float noise(in float3 x)
 
 /***************************************************************/
 
+
 // ToDo comment
 float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numShadowRayHits)
 {
@@ -341,15 +342,30 @@ void MyRayGenShader_GBuffer()
 	g_rtGBufferMaterialID[DispatchRaysIndex().xy] = rayPayload.materialID;
 	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
 
+#if 1
+    float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
+    float rayLength = length(raySegment);
+    float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
+    float obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
+    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
+#else   // ToDo why this causes blocky obliqueness? driver bug?
+    float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
     float rayLength = 0.0, obliqueness = 0.0;
     if (rayPayload.hit)
     {
-        float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
         rayLength = length(raySegment);
         float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
-        obliqueness = min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
+        // ToDo
+        obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
     }
     g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
+#endif
+
+    // compress normal
+    uint precis = 16u;
+    uint id = octahedral_32(rayPayload.surfaceNormal, precis);
+    g_rtGBufferMaterialID[DispatchRaysIndex().xy] = id;
+
     g_rtGBufferDistance[DispatchRaysIndex().xy] = rayLength;
 }
 

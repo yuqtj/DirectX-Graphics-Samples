@@ -93,16 +93,19 @@ namespace SceneArgs
     BoolVar ASAllowUpdate(L"Acceleration structure/Allow update", true, OnASChange, nullptr);
 
 	const WCHAR* AntialiasingModes[DownsampleFilter::Count] = { L"OFF", L"SSAA 4x (BoxFilter2x2)", L"SSAA 4x (GaussianFilter9Tap)", L"SSAA 4x (GaussianFilter25Tap)" };
-	EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+	EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 
-    const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"Gaussian5x5", L"EdgeStoppingGaussian5x5", L"EdgeStoppingGaussian3x3", L"EdgeStoppingBox3x3" };
-    EnumVar DenoisingMode(L"Denoising", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
+    const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"Gaussian5x5", L"EdgeStoppingGaussian5x5", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian3x3_simple", L"EdgeStoppingBox3x3" };
+    EnumVar DenoisingMode(L"Denoising", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3_simple, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
     IntVar AtrousFilterPasses(L"AO denoise passes", 5, 1, 8, 1);
     NumVar g_AODenoiseValueSigma(L"AO Denoise: Value Sigma", 10, 0.0f, 30.0f, 0.1f);
-    NumVar g_AODenoiseDepthSigma(L"AO Denoise: Depth Sigma", 1, 0.0f, 10.0f, 0.02f);
+#if PBRT_SCENE
+    NumVar g_AODenoiseDepthSigma(L"AO Denoise: Depth Sigma", 0.12f, 0.0f, 10.0f, 0.02f);
+#else
+    NumVar g_AODenoiseDepthSigma(L"AO Denoise: Depth Sigma", 0.7f, 0.0f, 10.0f, 0.02f);
+#endif
     NumVar g_AODenoiseNormalSigma(L"AO Denoise: Normal Sigma", 128, 0, 256, 4);
-    
-	IntVar AOSampleCountPerDimension(L"AO samples NxN", 1, 1, 32, 1, OnRecreateSamples, nullptr);
+	IntVar AOSampleCountPerDimension(L"AO samples NxN", 3, 1, 32, 1, OnRecreateSamples, nullptr);
 	BoolVar QuarterResAO(L"QuarterRes AO", false);
 
     // ToDo test tessFactor 16
@@ -1847,6 +1850,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
         m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
+        m_GBufferResources[GBufferResource::MaterialID].gpuDescriptorReadAccess,
         &m_AOResources[AOResource::Smoothed],
         SceneArgs::g_AODenoiseValueSigma,
         SceneArgs::g_AODenoiseDepthSigma,
@@ -1942,7 +1946,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 		m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
 	}
 
-	// Transition all output resources to render target state.
+	// Transition all output resources to UAV state.
 	{
 		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;

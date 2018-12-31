@@ -40,16 +40,19 @@
 #define CORRECT_NORMALS 0
 
 #define GBUFFER_AO_NORMAL_VISUALIZATION 0
-#define GBUFFER_AO_COUNT_AO_HITS 1
+#define GBUFFER_AO_COUNT_AO_HITS 0
 #define AO_ANY_HIT_FULL_OCCLUSION 0
 #define TWO_STAGE_AO_BLUR 1
 #define AO_RANDOM_SEED_EVERY_FRAME 0
 #define AO_HITPOSITION_BASED_SEED 1
 
+#define COMPRES_NORMALS 0
+
 #define BLUR_AO 1
 #define ATROUS_DENOISER 1
 #define ATROUS_DENOISER_MAX_PASSES 10
 #define RENDER_RNG_SAMPLE_VISUALIZATION 1   // ToDo doesn't render for all AA settings
+#define ATROUS_ONELEVEL_ONLY 1
 
 #define CAMERA_JITTER 0
 #define APPLY_SRGB_CORRECTION 0
@@ -59,7 +62,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 1
+#define PBRT_SCENE 0
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
@@ -104,7 +107,7 @@ namespace ReduceSumCS {
 
 namespace AtrousWaveletTransformFilter_Gaussian5x5CS {
     namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 16, Size = Width * Height };
+        enum Enum { Width = 16, Height = 8, Size = Width * Height };
     }
 }
 

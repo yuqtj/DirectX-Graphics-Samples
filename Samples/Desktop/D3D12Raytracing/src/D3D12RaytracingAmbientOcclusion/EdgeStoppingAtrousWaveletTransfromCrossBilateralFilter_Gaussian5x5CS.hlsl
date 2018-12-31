@@ -15,6 +15,7 @@
 Texture2D<float> g_inValues : register(t0);
 Texture2D<float4> g_inNormal : register(t1);
 Texture2D<float> g_inDepth : register(t2);
+Texture2D<uint> g_inNormalOct : register(t3);
 RWTexture2D<float> g_outFilteredValues : register(u0);
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
