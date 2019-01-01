@@ -98,6 +98,7 @@ namespace SceneArgs
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5", L"Gaussian5x5" };
     EnumVar DenoisingMode(L"Denoising", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
     IntVar AtrousFilterPasses(L"AO denoise passes", 5, 1, 8, 1);
+    BoolVar ReverseFilterOrder(L"AO denoise reverse filter order", true);
     NumVar g_AODenoiseValueSigma(L"AO Denoise: Value Sigma", 10, 0.0f, 30.0f, 0.1f);
 #if PBRT_SCENE
     NumVar g_AODenoiseDepthSigma(L"AO Denoise: Depth Sigma", 0.12f, 0.0f, 10.0f, 0.02f);
@@ -1855,7 +1856,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
         SceneArgs::g_AODenoiseValueSigma,
         SceneArgs::g_AODenoiseDepthSigma,
         SceneArgs::g_AODenoiseNormalSigma,
-        SceneArgs::AtrousFilterPasses);
+        SceneArgs::AtrousFilterPasses,
+        SceneArgs::ReverseFilterOrder);
     m_gpuTimers[GpuTimers::Raytracing_BlurAO].Stop(commandList);
 };
 

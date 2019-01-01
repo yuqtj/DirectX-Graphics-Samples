@@ -188,7 +188,8 @@ namespace GpuKernels
             float valueSigma,
             float depthSigma,
             float normalSigma,
-            UINT numFilterPasses = 5);
+            UINT numFilterPasses = 5,
+            bool reverseFilterPassOrder = false);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;

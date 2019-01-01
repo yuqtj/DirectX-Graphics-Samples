@@ -642,7 +642,8 @@ namespace GpuKernels
         float valueSigma,
         float depthSigma,
         float normalSigma,
-        UINT numFilterPasses)
+        UINT numFilterPasses,
+        bool reverseFilterPassOrder)
     {
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
         
@@ -664,11 +665,20 @@ namespace GpuKernels
         {
             // Ref: Dammertz2010
             // Tighten value range smoothing for higher passes.
-            m_CB->valueSigma = i > 0 ? valueSigma * powf(2.f, -float(i)) : 1;
+
+            // Ref: Dundr2018
+            // Reverse wavelet order to blur out ringing at larger offsets.
+            int _i;
+            if (reverseFilterPassOrder)
+                _i = i == 0 ? 0 : numFilterPasses - 1 - i;
+            else
+                _i = i;
+
+            m_CB->valueSigma = _i > 0 ? valueSigma * powf(2.f, -float(i)) : 1;
             m_CB->depthSigma = depthSigma;
             m_CB->normalSigma = normalSigma;
-            m_CB->kernelStepShift = i;
-            m_CB->scatterOutput = i == numFilterPasses - 1;
+            m_CB->kernelStepShift = _i;
+            m_CB->scatterOutput = _i == numFilterPasses - 1;
             m_CB.CopyStagingToGpu(i);
         }
 
