@@ -56,7 +56,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
 #if AO_ONLY
 		// ToDo remove albedo
 		color = ambientCoef;
-		float4 albedo = float4(0.75f, 0.75f, 0.75f, 1.0f);
+        float4 albedo = float4(1, 1, 1, 1);// float4(0.75f, 0.75f, 0.75f, 1.0f);
 		color *= albedo;
 #elif NORMAL_SHADING
         color = float4(surfaceNormal, 1.0f);

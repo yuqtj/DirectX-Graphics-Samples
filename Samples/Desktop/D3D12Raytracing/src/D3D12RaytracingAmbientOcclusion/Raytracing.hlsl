@@ -361,11 +361,12 @@ void MyRayGenShader_GBuffer()
     g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
 #endif
 
+#if COMPRES_NORMALS
     // compress normal
     uint precis = 16u;
     uint id = octahedral_32(rayPayload.surfaceNormal, precis);
     g_rtGBufferMaterialID[DispatchRaysIndex().xy] = id;
-
+#endif
     g_rtGBufferDistance[DispatchRaysIndex().xy] = rayLength;
 }
 

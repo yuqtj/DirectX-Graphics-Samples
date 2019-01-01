@@ -52,17 +52,17 @@
 #define ATROUS_DENOISER 1
 #define ATROUS_DENOISER_MAX_PASSES 10
 #define RENDER_RNG_SAMPLE_VISUALIZATION 1   // ToDo doesn't render for all AA settings
-#define ATROUS_ONELEVEL_ONLY 1
+#define ATROUS_ONELEVEL_ONLY 0
 
 #define CAMERA_JITTER 0
 #define APPLY_SRGB_CORRECTION 0
-#define AO_ONLY 1
+#define AO_ONLY 0
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 0
+#define PBRT_SCENE 1
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
@@ -107,7 +107,7 @@ namespace ReduceSumCS {
 
 namespace AtrousWaveletTransformFilter_Gaussian5x5CS {
     namespace ThreadGroup {
-        enum Enum { Width = 16, Height = 8, Size = Width * Height };
+        enum Enum { Width = 16, Height = 16, Size = Width * Height };
     }
 }
 
@@ -217,11 +217,12 @@ struct RNGConstantBuffer
 struct AtrousWaveletTransformFilterConstantBuffer
 {
     UINT kernelStepShift;
+    bool scatterOutput;
     XMINT2 textureDim;
     float valueSigma;
     float depthSigma;
     float normalSigma;
-    XMUINT2 padding;
+    UINT padding;
 };
 
 

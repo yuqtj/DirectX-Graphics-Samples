@@ -158,11 +158,10 @@ namespace GpuKernels
     {
     public:
         enum FilterType {
-            Gaussian5x5 = 0,
-            EdgeStoppingGaussian5x5,
+            EdgeStoppingBox3x3 = 0,
             EdgeStoppingGaussian3x3,
-            EdgeStoppingGaussian3x3_simple,
-            EdgeStoppingBox3x3,
+            EdgeStoppingGaussian5x5,
+            Gaussian5x5,
             Count
         };
 
