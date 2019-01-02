@@ -19,9 +19,10 @@ Texture2D<uint> g_inNormalOct : register(t3);
 RWTexture2D<float> g_outFilteredValues : register(u0);
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
+// ToDo rename to gaussian filter
 // Atrous Wavelet Transform Filter
 // Ref: Dammertz 2010, Edge-Avoiding A-Trous Wavelet Transform for Fast Global Illumination Filtering
-[numthreads(AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Width, AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Height, 1)]
+[numthreads(AtrousWaveletTransformFilterCS::ThreadGroup::Width, AtrousWaveletTransformFilterCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     const uint N = 5;

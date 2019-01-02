@@ -14,41 +14,61 @@
 
 Texture2D<float4> g_texInput : register(t0);
 RWTexture2D<float4> g_texOutput : register(u0);
-SamplerState LinearSampler : register(s0);
-ConstantBuffer<DownsampleFilterConstantBuffer> g_CB : register(b0);
+ConstantBuffer<DownsampleFilterConstantBuffer> cb : register(b0);
 
-#define SAMPLE(offsetX, offsetY) g_texInput[index + int2(offsetX, offsetY)]
+static float kernel1D[5] = { 1.f / 16, 1.f / 4, 3.f / 8, 1.f / 4, 1.f / 16 };
+static const float weights[5][5] =
+{
+    { kernel1D[0] * kernel1D[0], kernel1D[0] * kernel1D[1], kernel1D[0] * kernel1D[2], kernel1D[0] * kernel1D[3], kernel1D[0] * kernel1D[4] },
+    { kernel1D[1] * kernel1D[0], kernel1D[1] * kernel1D[1], kernel1D[1] * kernel1D[2], kernel1D[1] * kernel1D[3], kernel1D[1] * kernel1D[4] },
+    { kernel1D[2] * kernel1D[0], kernel1D[2] * kernel1D[1], kernel1D[2] * kernel1D[2], kernel1D[2] * kernel1D[3], kernel1D[2] * kernel1D[4] },
+    { kernel1D[3] * kernel1D[0], kernel1D[3] * kernel1D[1], kernel1D[3] * kernel1D[2], kernel1D[3] * kernel1D[3], kernel1D[3] * kernel1D[4] },
+    { kernel1D[4] * kernel1D[0], kernel1D[4] * kernel1D[1], kernel1D[4] * kernel1D[2], kernel1D[4] * kernel1D[3], kernel1D[4] * kernel1D[4] },
+};
+
+void AddFilterContribution(inout float4 weightedValueSum, inout float weightSum, in int row, in int col, in int2 DTid)
+{
+    int2 id = DTid + int2(row - 1, col - 1);
+    if (id.x >= 0 && id.y >= 0 && id.x < cb.inputTextureDimensions.x && id.y < cb.inputTextureDimensions.y)
+    {
+        weightedValueSum += weights[col][row] * g_texInput[id];
+        weightSum += weights[col][row];
+    }
+}
 
 [numthreads(DownsampleGaussianFilter::ThreadGroup::Width, DownsampleGaussianFilter::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
-	int2 index = DTid * 2 + int2(1,1);
-	float weights[5] = { 0.06136f, 0.24477f, 0.38774f, 0.24477f, 0.06136f };
+    int2 index = DTid * 2 + int2(1, 1);
 
-	float4 samples[5][5] = {
-		{ SAMPLE(-2, -2),	SAMPLE(-2, -1),	SAMPLE(-2, 0),	SAMPLE(-2, 1),	SAMPLE(-2, 2) },
-		{ SAMPLE(-1, -2),	SAMPLE(-1, -1),	SAMPLE(-1, 0),	SAMPLE(-1, 1),	SAMPLE(-1, 2) },
-		{ SAMPLE(0, -2),	SAMPLE(0, -1),  SAMPLE(0, 0),	SAMPLE(0, 1),	SAMPLE(0, 2) },
-		{ SAMPLE(1, -2),	SAMPLE(1, -1),	SAMPLE(1, 0),	SAMPLE(1, 1),	SAMPLE(1, 2) },
-		{ SAMPLE(2, -2),	SAMPLE(2, -1),	SAMPLE(2, 0),	SAMPLE(2, 1),	SAMPLE(2, 2) }
-	};
-	// Horizontal blur
-	float4 resultHorizontalBlur[5];
-	for (uint i = 0; i < 5; i++)
-	{
-		resultHorizontalBlur[i] = (float4)0;
-		for (uint j = 0; j < 5; j++)
-		{
-			resultHorizontalBlur[i] += weights[j] * samples[i][j];
-		}
-	}
+    float weightSum = 0;
+    float4 weightedValueSum = float4(0, 0, 0, 0);
 
-	// Vertical Blur
-	float4 result = (float4)0;
-	for (uint j = 0; j < 5; j++)
-	{
-		result += weights[j] * resultHorizontalBlur[j];
-	}
+    AddFilterContribution(weightedValueSum, weightSum, 0, 0, index);
+    AddFilterContribution(weightedValueSum, weightSum, 1, 0, index);
+    AddFilterContribution(weightedValueSum, weightSum, 2, 0, index);
+    AddFilterContribution(weightedValueSum, weightSum, 3, 0, index);
+    AddFilterContribution(weightedValueSum, weightSum, 4, 0, index);
+    AddFilterContribution(weightedValueSum, weightSum, 0, 1, index);
+    AddFilterContribution(weightedValueSum, weightSum, 1, 1, index);
+    AddFilterContribution(weightedValueSum, weightSum, 2, 1, index);
+    AddFilterContribution(weightedValueSum, weightSum, 3, 1, index);
+    AddFilterContribution(weightedValueSum, weightSum, 4, 1, index);
+    AddFilterContribution(weightedValueSum, weightSum, 0, 2, index);
+    AddFilterContribution(weightedValueSum, weightSum, 1, 2, index);
+    AddFilterContribution(weightedValueSum, weightSum, 2, 2, index);
+    AddFilterContribution(weightedValueSum, weightSum, 3, 2, index);
+    AddFilterContribution(weightedValueSum, weightSum, 4, 2, index);
+    AddFilterContribution(weightedValueSum, weightSum, 0, 3, index);
+    AddFilterContribution(weightedValueSum, weightSum, 1, 3, index);
+    AddFilterContribution(weightedValueSum, weightSum, 2, 3, index);
+    AddFilterContribution(weightedValueSum, weightSum, 3, 3, index);
+    AddFilterContribution(weightedValueSum, weightSum, 4, 3, index);
+    AddFilterContribution(weightedValueSum, weightSum, 0, 4, index);
+    AddFilterContribution(weightedValueSum, weightSum, 1, 4, index);
+    AddFilterContribution(weightedValueSum, weightSum, 2, 4, index);
+    AddFilterContribution(weightedValueSum, weightSum, 3, 4, index);
+    AddFilterContribution(weightedValueSum, weightSum, 4, 4, index);
 
-	g_texOutput[DTid] = result;
+    g_texOutput[DTid] = weightedValueSum / weightSum;
 }

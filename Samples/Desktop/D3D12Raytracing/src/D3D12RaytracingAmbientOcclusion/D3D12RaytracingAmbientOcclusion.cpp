@@ -95,6 +95,9 @@ namespace SceneArgs
 	const WCHAR* AntialiasingModes[DownsampleFilter::Count] = { L"OFF", L"SSAA 4x (BoxFilter2x2)", L"SSAA 4x (GaussianFilter9Tap)", L"SSAA 4x (GaussianFilter25Tap)" };
 	EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 
+    const WCHAR* VarianceFilterModes[GpuKernels::CalculateVariance::FilterType::Count] = { L"Bilateral5x5" };
+    EnumVar VarianceFilterMode(L"Variance filter", GpuKernels::CalculateVariance::FilterType::Bilateral5x5, GpuKernels::CalculateVariance::FilterType::Count, VarianceFilterModes);
+
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5", L"Gaussian5x5" };
     EnumVar DenoisingMode(L"Denoising", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
     IntVar AtrousFilterPasses(L"AO denoise passes", 5, 1, 8, 1);
@@ -920,11 +923,11 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 		m_GBufferResources[i].uavDescriptorHeapIndex = m_GBufferResources[0].uavDescriptorHeapIndex + i;
 		m_GBufferResources[i].srvDescriptorHeapIndex = m_GBufferResources[0].srvDescriptorHeapIndex + i;
 	}
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Hit], initialResourceState);
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::MaterialID], initialResourceState);
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState);
-	CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormal], initialResourceState);
-    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Distance], initialResourceState);
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Hit], initialResourceState, L"GBuffer Hit");
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::MaterialID], initialResourceState, L"GBuffer MaterialID");
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer HitPosition");
+	CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormal], initialResourceState, L"GBuffer Normal");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Distance], initialResourceState, L"GBuffer Distance");
 
 	// Preallocate subsequent descriptor indices for both SRV and UAV groups.
 	m_AOResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOResources[0].uavDescriptorHeapIndex);
@@ -936,19 +939,25 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 		m_AOResources[i].srvDescriptorHeapIndex = m_AOResources[0].srvDescriptorHeapIndex + i;
 	}
 	// ToDo use less than 32bits?
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState);
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"AO Coefficient");
 #if ATROUS_DENOISER
-    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState);
+    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
 #else
-    CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState);
+    CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
 #endif
-    CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState);
+    CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"AO HitCount");
 
-
+    // ToDo move
 	m_VisibilityResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_VisibilityResource, initialResourceState);
+	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_VisibilityResource, initialResourceState, L"Visibility");
 
-	
+    m_varianceResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_varianceResource, initialResourceState, L"Variance");
+    m_smoothedVarianceResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_smoothedVarianceResource, initialResourceState, L"SmoothedVariance");
+
+    
+
 	// ToDo
 	// Describe and create the point clamping sampler used for reading from the GBuffer resources.
 	//CD3DX12_CPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetHeap()->GetCPUDescriptorHandleForHeapStart());
@@ -980,6 +989,8 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 	// ToDo move?
 	m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
     m_atrousWaveletTransformFilter.Initialize(device, ATROUS_DENOISER_MAX_PASSES);
+    m_calculateVarianceKernel.Initialize(device);
+    m_gaussianSmoothingKernel.Initialize(device);
 	m_downsampleBoxFilter2x2Kernel.Initialize(device);
 	m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9);
 	m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25);
@@ -1843,22 +1854,69 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
 {
     auto commandList = m_deviceResources->GetCommandList();
 
-    m_gpuTimers[GpuTimers::Raytracing_BlurAO].Start(commandList);
-    m_atrousWaveletTransformFilter.Execute(
-        commandList,
-        m_cbvSrvUavHeap->GetHeap(),
-        static_cast<GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType>(static_cast<UINT>(SceneArgs::DenoisingMode)),
-        m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::MaterialID].gpuDescriptorReadAccess,
-        &m_AOResources[AOResource::Smoothed],
-        SceneArgs::g_AODenoiseValueSigma,
-        SceneArgs::g_AODenoiseDepthSigma,
-        SceneArgs::g_AODenoiseNormalSigma,
-        SceneArgs::AtrousFilterPasses,
-        SceneArgs::ReverseFilterOrder);
-    m_gpuTimers[GpuTimers::Raytracing_BlurAO].Stop(commandList);
+    // Calculate local variance.
+    {
+        m_gpuTimers[GpuTimers::Raytracing_Variance].Start(commandList);
+        m_calculateVarianceKernel.Execute(
+            commandList,
+            m_cbvSrvUavHeap->GetHeap(),
+            static_cast<GpuKernels::CalculateVariance::FilterType>(static_cast<UINT>(SceneArgs::VarianceFilterMode)),
+            m_raytracingWidth,
+            m_raytracingHeight,
+            m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
+            m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
+            m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
+            m_GBufferResources[GBufferResource::MaterialID].gpuDescriptorReadAccess,
+            m_varianceResource.gpuDescriptorWriteAccess,
+            SceneArgs::g_AODenoiseDepthSigma,
+            SceneArgs::g_AODenoiseNormalSigma);
+        m_gpuTimers[GpuTimers::Raytracing_Variance].Stop(commandList);
+
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after));
+    }
+
+    // ToDo, should the smoothing be applied after each pass?
+    // Calculate local variance.
+    {
+        m_gpuTimers[GpuTimers::Raytracing_VarianceSmoothing].Start(commandList);
+        m_gaussianSmoothingKernel.Execute(
+            commandList,
+            m_raytracingWidth,
+            m_raytracingHeight,
+            GpuKernels::GaussianFilter::Filter3X3,
+            m_cbvSrvUavHeap->GetHeap(),
+            m_varianceResource.gpuDescriptorReadAccess,
+            m_smoothedVarianceResource.gpuDescriptorWriteAccess);
+        m_gpuTimers[GpuTimers::Raytracing_VarianceSmoothing].Stop(commandList);
+
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after));
+    }
+
+    // A-trous edge-preserving wavelet tranform filter
+    {
+        m_gpuTimers[GpuTimers::Raytracing_BlurAO].Start(commandList);
+        m_atrousWaveletTransformFilter.Execute(
+            commandList,
+            m_cbvSrvUavHeap->GetHeap(),
+            static_cast<GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType>(static_cast<UINT>(SceneArgs::DenoisingMode)),
+            m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
+            m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
+            m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
+            m_GBufferResources[GBufferResource::MaterialID].gpuDescriptorReadAccess,
+            m_varianceResource.gpuDescriptorReadAccess,
+            m_smoothedVarianceResource.gpuDescriptorReadAccess,
+            &m_AOResources[AOResource::Smoothed],
+            SceneArgs::g_AODenoiseValueSigma,
+            SceneArgs::g_AODenoiseDepthSigma,
+            SceneArgs::g_AODenoiseNormalSigma,
+            SceneArgs::AtrousFilterPasses,
+            SceneArgs::ReverseFilterOrder);
+        m_gpuTimers[GpuTimers::Raytracing_BlurAO].Stop(commandList);
+    }
 };
 
 void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
@@ -1948,6 +2006,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 		m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
 	}
 
+    // ToDo move this/part(AO,..) of transitions out?
 	// Transition all output resources to UAV state.
 	{
 		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -1960,7 +2019,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Distance].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after)
+			CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after) ,
+            CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after)
 		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
@@ -2028,7 +2089,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 
 	PIXEndEvent(commandList);
 }
-
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 {
@@ -2245,10 +2305,14 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
 		float numAOGigaRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO / m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS();
 		wLabel << fixed << L" AORay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS() << L"ms  ~" <<	numAOGigaRays << " GigaRay/s\n";
 		wLabel << fixed << L" AO Blurring: " << m_gpuTimers[GpuTimers::Raytracing_BlurAO].GetAverageMS() << L"ms\n";
+        wLabel << fixed << L" Variance: " << m_gpuTimers[GpuTimers::Raytracing_Variance].GetAverageMS() << L"ms\n";
+        wLabel << fixed << L" Var Smoothing: " << m_gpuTimers[GpuTimers::Raytracing_VarianceSmoothing].GetAverageMS() << L"ms\n";
 
 		float numVisibilityRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] / m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS();
 		wLabel << fixed << L" VisibilityRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() << L"ms  ~" << numVisibilityRays << " GigaRay/s\n";
 		wLabel << fixed << L" Shading: " << m_gpuTimers[GpuTimers::ComposeRenderPassesCS].GetAverageMS() << L"ms\n";
+
+        
 		wLabel << fixed << L" Downsample SSAA: " << m_gpuTimers[GpuTimers::DownsampleToBackbuffer].GetAverageMS() << L"ms\n";
 		wLabel.precision(1);
         wLabel << fixed << L" AS update (BLAS / TLAS / Total): "

@@ -103,6 +103,9 @@ private:
 
 	GpuKernels::ReduceSum				m_reduceSumKernel;
     GpuKernels::AtrousWaveletTransformCrossBilateralFilter m_atrousWaveletTransformFilter;
+    GpuKernels::CalculateVariance       m_calculateVarianceKernel;
+    GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
+
 	// ToDo combine kernels to an array
 	GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
@@ -164,6 +167,8 @@ private:
 	RWGpuResource m_GBufferResources[GBufferResource::Count];
 	RWGpuResource m_AOResources[AOResource::Count];
 	RWGpuResource m_VisibilityResource;
+    RWGpuResource m_varianceResource;
+    RWGpuResource m_smoothedVarianceResource;
 
 	UINT m_raytracingWidth;
 	UINT m_raytracingHeight;

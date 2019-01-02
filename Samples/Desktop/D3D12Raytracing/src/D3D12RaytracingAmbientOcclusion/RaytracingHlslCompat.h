@@ -53,10 +53,11 @@
 #define ATROUS_DENOISER_MAX_PASSES 10
 #define RENDER_RNG_SAMPLE_VISUALIZATION 1   // ToDo doesn't render for all AA settings
 #define ATROUS_ONELEVEL_ONLY 0
+#define ATROUS_USE_VARIANCE 1
 
 #define CAMERA_JITTER 0
 #define APPLY_SRGB_CORRECTION 0
-#define AO_ONLY 0
+#define AO_ONLY 1
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
 
@@ -105,7 +106,13 @@ namespace ReduceSumCS {
 	}
 }
 
-namespace AtrousWaveletTransformFilter_Gaussian5x5CS {
+namespace AtrousWaveletTransformFilterCS {
+    namespace ThreadGroup {
+        enum Enum { Width = 16, Height = 16, Size = Width * Height };
+    }
+}
+
+namespace CalculateVariance_Bilateral {
     namespace ThreadGroup {
         enum Enum { Width = 16, Height = 16, Size = Width * Height };
     }
@@ -128,6 +135,19 @@ namespace DownsampleGaussianFilter {
 		enum Enum { Width = 8, Height = 8 };
 	}
 }
+
+namespace GaussianFilter {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 8 };
+    }
+}
+
+namespace RootMeanSquareError {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 8 };
+    }
+}
+
 namespace ComposeRenderPassesCS {
 	namespace ThreadGroup {
 		enum Enum { Width = 8, Height = 8, Size = Width * Height };
@@ -268,6 +288,12 @@ struct DownsampleFilterConstantBuffer
 {
 	XMUINT2 inputTextureDimensions;
 	XMFLOAT2 invertedInputTextureDimensions;
+};
+
+struct GaussianFilterConstantBuffer
+{
+    XMUINT2 textureDim;
+    XMUINT2 padding;
 };
 
 // Attributes per primitive type.

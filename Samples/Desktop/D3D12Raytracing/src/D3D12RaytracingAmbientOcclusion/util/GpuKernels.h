@@ -77,7 +77,6 @@ namespace GpuKernels
 			const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
 
 	private:
-		typedef UINT ResultType;
 		ComPtr<ID3D12RootSignature>         m_rootSignature;
 		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
 		std::vector<RWGpuResource>			m_csReduceSumOutputs;
@@ -113,12 +112,39 @@ namespace GpuKernels
 			const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
 
 	private:
-		typedef UINT ResultType;
 		ComPtr<ID3D12RootSignature>         m_rootSignature;
 		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-		std::vector<ComPtr<ID3D12Resource>>	m_readbackResources;
 		ConstantBuffer<DownsampleFilterConstantBuffer> m_CB;
 	};
+
+    class GaussianFilter
+    {
+    public:
+        enum FilterType {
+            Filter3X3 = 0,
+            Count
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            UINT width,
+            UINT height,
+            FilterType type,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
+        ConstantBuffer<GaussianFilterConstantBuffer> m_CB;
+    };
 
 
     class RootMeanSquareError
@@ -184,6 +210,8 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputSmoothedVarianceResourceHandle,
             RWGpuResource* outputResourceHandle,
             float valueSigma,
             float depthSigma,
@@ -194,7 +222,43 @@ namespace GpuKernels
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
-        RWGpuResource			            m_intermediateOutput;
+        RWGpuResource			            m_intermediateValueOutput;
+        RWGpuResource			            m_intermediateVarianceOutputs[2];
+        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
+    };
+
+
+    class CalculateVariance
+    {
+    public:
+        enum FilterType {
+            Bilateral5x5 = 0,
+            Count
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            ID3D12DescriptorHeap* descriptorHeap,
+            FilterType type,
+            UINT width,
+            UINT height,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+            float depthSigma,
+            float normalSigma);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
     };
 }

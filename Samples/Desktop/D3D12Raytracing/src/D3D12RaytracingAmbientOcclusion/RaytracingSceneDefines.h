@@ -166,6 +166,8 @@ namespace GpuTimers {
 		Raytracing_GBuffer = 0,
 		Raytracing_AO,
 		Raytracing_BlurAO,
+        Raytracing_Variance,
+        Raytracing_VarianceSmoothing,
 		Raytracing_Visibility,
 		ComposeRenderPassesCS,
 		UpdateBLAS,

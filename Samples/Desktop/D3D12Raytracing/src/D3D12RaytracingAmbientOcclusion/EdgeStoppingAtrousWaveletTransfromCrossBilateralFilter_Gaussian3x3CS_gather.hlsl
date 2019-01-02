@@ -105,6 +105,8 @@ int2 PrefetchData(uint2 Gid, uint2 GTid)
 }
 
 
+
+
 void AddFilterContribution(inout float weightedValueSum, inout float weightSum, in float value, in float depth, in float3 normal, float obliqueness, in float w_h, in int2 pixel, in int2 CTid, in int2 offset)
 {
     const float valueSigma = cb.valueSigma;

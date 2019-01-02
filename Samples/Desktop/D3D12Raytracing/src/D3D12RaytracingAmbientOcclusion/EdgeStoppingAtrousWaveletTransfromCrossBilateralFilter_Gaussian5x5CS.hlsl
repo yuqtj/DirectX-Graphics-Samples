@@ -17,6 +17,7 @@ Texture2D<float> g_inValues : register(t0);
 Texture2D<float4> g_inNormal : register(t1);
 Texture2D<float> g_inDepth : register(t2);
 Texture2D<uint> g_inNormalOct : register(t3);
+Texture2D<float> g_inVariance : register(t4);
 RWTexture2D<float> g_outFilteredValues : register(u0);
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
@@ -59,7 +60,7 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightSum, 
 
 // Atrous Wavelet Transform Cross Bilateral Filter
 // Ref: Dammertz 2010, Edge-Avoiding A-Trous Wavelet Transform for Fast Global Illumination Filtering
-[numthreads(AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Width, AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Height, 1)]
+[numthreads(AtrousWaveletTransformFilterCS::ThreadGroup::Width, AtrousWaveletTransformFilterCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     const uint N = 5;
@@ -76,13 +77,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint normalOct = g_inNormalOct[DTid];
     float3 normal = i_octahedral_32(normalOct, 16u);
     float obliqueness = 1.f;
-#elif 1
+#else
     float4 normal4 = g_inNormal[DTid];
     float3 normal = normal4.xyz;
     float obliqueness = max(0.0001f, pow(normal4.w, 10));
-#else
-    float3 iNormal = float3(1, 1, 1);
-    float obliqueness = 1.f;
 #endif 
 
     float  depth = g_inDepth[DTid];
@@ -91,32 +89,31 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightedValueSum = value * kernel[2][2];
     float weightSum = kernel[2][2];
 
-#if 1
     AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 0, 0, kernel[0][0], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 1, 0, kernel[0][1], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 2, 0, kernel[0][2], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 3, 0, kernel[0][3], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 4, 0, kernel[0][4], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 0, 1, kernel[1][0], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 0, 1, kernel[0][1], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 0, 2, kernel[0][2], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 0, 3, kernel[0][3], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 0, 4, kernel[0][4], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 1, 0, kernel[1][0], DTid);
     AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 1, 1, kernel[1][1], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 2, 1, kernel[1][2], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 3, 1, kernel[1][3], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 4, 1, kernel[1][4], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 0, 2, kernel[2][0], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 1, 2, kernel[2][1], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 3, 2, kernel[2][3], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 4, 2, kernel[2][4], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 0, 3, kernel[3][0], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 1, 3, kernel[3][1], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 2, 3, kernel[3][2], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 1, 2, kernel[1][2], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 1, 3, kernel[1][3], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 1, 4, kernel[1][4], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 2, 0, kernel[2][0], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 2, 1, kernel[2][1], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 2, 3, kernel[2][3], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 2, 4, kernel[2][4], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 3, 0, kernel[3][0], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 3, 1, kernel[3][1], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 3, 2, kernel[3][2], DTid);
     AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 3, 3, kernel[3][3], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 4, 3, kernel[3][4], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 0, 4, kernel[4][0], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 1, 4, kernel[4][1], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 2, 4, kernel[4][2], DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 3, 4, kernel[4][3], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 3, 4, kernel[3][4], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 4, 0, kernel[4][0], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 4, 1, kernel[4][1], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 4, 2, kernel[4][2], DTid);
+    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 4, 3, kernel[4][3], DTid);
     AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, obliqueness, 4, 4, kernel[4][4], DTid);
-#endif
+
 
 #if 0
     g_outFilteredValues[DTid] = weightSum > 0.0001f ? weightedValueSum / weightSum : 0.f;

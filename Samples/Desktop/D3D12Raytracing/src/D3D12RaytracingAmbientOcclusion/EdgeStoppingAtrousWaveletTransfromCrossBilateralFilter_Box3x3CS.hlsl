@@ -16,16 +16,17 @@ Texture2D<float> g_inValues : register(t0);
 Texture2D<float4> g_inNormal : register(t1);
 Texture2D<float> g_inDepth : register(t2);
 Texture2D<uint> g_inNormalOct : register(t3);
+Texture2D<float> g_inVariance : register(t4);
 RWTexture2D<float> g_outFilteredValues : register(u0);
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
-void AddFilterContribution(inout float weightedValueSum, inout float weightSum, in float value, in float depth, in float3 normal, in uint row, in uint col, in uint2 DTid)
+void AddFilterContribution(inout float weightedValueSum, inout float weightSum, in float value, in float depth, in float3 normal, in int row, in int col, in uint2 DTid)
 {
     const float valueSigma = cb.valueSigma;
     const float normalSigma = cb.normalSigma;
     const float depthSigma = cb.depthSigma;
 
-    int2 id = int2(DTid)+(int2(row - 1, col - 1) << cb.kernelStepShift);
+    int2 id = int2(DTid) + (int2(row - 1, col - 1) << cb.kernelStepShift);
     if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
     {
         float iValue = g_inValues[id];
@@ -45,7 +46,7 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightSum, 
 }
 // Atrous Wavelet Transform Cross Bilateral Filter
 // Ref: Dammertz 2010, Edge-Avoiding A-Trous Wavelet Transform for Fast Global Illumination Filtering
-[numthreads(AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Width, AtrousWaveletTransformFilter_Gaussian5x5CS::ThreadGroup::Height, 1)]
+[numthreads(AtrousWaveletTransformFilterCS::ThreadGroup::Width, AtrousWaveletTransformFilterCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     float3 normal = g_inNormal[DTid].xyz;

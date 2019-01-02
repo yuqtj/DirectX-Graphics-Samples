@@ -15,7 +15,6 @@
 Texture2D<float4> g_texInput : register(t0);
 RWTexture2D<float4> g_texOutput : register(u0);
 
-
 // Downsample linear 2x2 -> 1x1
 [numthreads(DownsampleBoxFilter2x2::ThreadGroup::Width, DownsampleBoxFilter2x2::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
