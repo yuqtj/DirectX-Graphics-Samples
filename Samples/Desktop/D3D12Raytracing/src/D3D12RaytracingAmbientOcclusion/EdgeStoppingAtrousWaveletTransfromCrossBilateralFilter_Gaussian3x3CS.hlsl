@@ -33,39 +33,47 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedVar
     if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
     {
         float iValue = g_inValues[id];
-#if ATROUS_USE_VARIANCE
-        float iVariance = g_inSmoothedVariance[id];
-        const float errorOffset = 0.01f;
-        float w_x = valueSigma > 0.01f ? exp(-abs(value - iValue) / (valueSigma * sqrt(max(iVariance,0)) + errorOffset)) : 1;
-#else
-        float w_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - iValue) / (valueSigma * valueSigma)) : 1 : 1;
-#endif
 
-#if 1
-        float  iDepth = g_inDepth[id];
-        float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma)) : 1;
+        float iVariance;
+        float w_x;
+        if (cb.useCalculatedVariance)
+        {
+            iVariance = g_inSmoothedVariance[id];
+            const float errorOffset = 0.005f;
+            w_x = valueSigma > 0.01f ? exp(-abs(value - iValue) / (valueSigma * sqrt(max(iVariance, 0)) + errorOffset)) : 1;
+        }
+        else
+        {
+            w_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - iValue) / (valueSigma * valueSigma)) : 1 : 1;
+        }
+
 
 #if COMPRES_NORMALS
-        uint normalOct = g_inNormalOct[id];
-        float3 iNormal = i_octahedral_32(normalOct, 16u);
+        float4 normalBufValue = g_inNormal[id];
+        float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
 #else
-        float3 iNormal = g_inNormal[id].xyz;
+        float4 normal4 = g_inNormal[id];
 #endif 
+        float3 iNormal = normal4.xyz;
+
+#if PACK_NORMAL_AND_DEPTH
+        float iDepth = normal4.w;
+#else
+        float  iDepth = g_inDepth[id];
+#endif
+        float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma)) : 1;
         // Ref: SVGF
         float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1;
 
         float w = w_h * w_x * w_n * w_d;
-#else
-        float w = w_h * w_x;
-#endif
 
         weightedValueSum += w * iValue;
         weightSum += w;
 
-#if ATROUS_USE_VARIANCE
-        weightedVarianceSum += w * w * iVariance;
-#endif
-
+        if (cb.useCalculatedVariance)
+        {
+            weightedVarianceSum += w * w * iVariance;
+        }
     }
 }
 
@@ -73,7 +81,7 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedVar
 // Atrous Wavelet Transform Cross Bilateral Filter
 // Ref: Dammertz 2010, Edge-Avoiding A-Trous Wavelet Transform for Fast Global Illumination Filtering
 [numthreads(AtrousWaveletTransformFilterCS::ThreadGroup::Width, AtrousWaveletTransformFilterCS::ThreadGroup::Height, 1)]
-void main(uint2 DTid : SV_DispatchThreadID)
+void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 {
     const uint N = 3;
     const float kernel1D[N] = { 0.27901, 0.44198, 0.27901 };
@@ -83,25 +91,25 @@ void main(uint2 DTid : SV_DispatchThreadID)
         { kernel1D[1] * kernel1D[0], kernel1D[1] * kernel1D[1], kernel1D[1] * kernel1D[2] },
         { kernel1D[2] * kernel1D[0], kernel1D[2] * kernel1D[1], kernel1D[2] * kernel1D[2] },
     };
-#if 1
+
 #if COMPRES_NORMALS
-    uint normalOct = g_inNormalOct[DTid];
-    float3 normal = i_octahedral_32(normalOct, 16u);
-    float obliqueness = 1;
+    float4 normalBufValue = g_inNormal[DTid];
+    float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
+    float obliqueness = max(0.0001f, pow(normalBufValue.w, 10));
 #else
     float4 normal4 = g_inNormal[DTid];
-    float3 normal = normal4.xyz;
-    float obliqueness = max(0.0001f, pow(normal4.w, 10));
+    #if PACK_NORMAL_AND_DEPTH
+        float obliqueness = 1;
+    #else
+        float obliqueness = max(0.0001f, pow(normal4.w, 10));
+    #endif
 #endif
-#else
-    float3 normal = float3(1, 1, 1);
-    float obliqueness = 1;
-#endif 
+    float3 normal = normal4.xyz;
 
-#if 1
-    float  depth = g_inDepth[DTid];
+#if PACK_NORMAL_AND_DEPTH
+    float depth = normal4.w;
 #else
-    float depth = 1;
+    float  depth = g_inDepth[DTid];
 #endif
 
     float  value = g_inValues[DTid];
@@ -110,9 +118,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightSum = kernel[1][1];
     float weightedVarianceSum = 0;
   
-#if ATROUS_USE_VARIANCE
-    weightedVarianceSum = kernel[1][1] * kernel[1][1] * g_inSmoothedVariance[DTid];
-#endif
+    if (cb.useCalculatedVariance)
+    {
+        weightedVarianceSum = kernel[1][1] * kernel[1][1] * g_inSmoothedVariance[DTid];
+    }
 
 #if 1
     AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, 0, 0, kernel[0][0], DTid);
@@ -127,7 +136,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     g_outFilteredValues[DTid] = weightSum > 0.0001f ? weightedValueSum / weightSum : 0.f;
 
-#if ATROUS_USE_VARIANCE
-    g_outFilteredVariance[DTid] = weightSum > 0.0001f ? weightedVarianceSum / (weightSum * weightSum) : 0.f;
-#endif
+    if (cb.useCalculatedVariance)
+    {
+        g_outFilteredVariance[DTid] = weightSum > 0.0001f ? weightedVarianceSum / (weightSum * weightSum) : 0.f;
+    }
 }

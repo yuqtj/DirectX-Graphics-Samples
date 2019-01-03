@@ -307,8 +307,12 @@ void MyRayGenShader_Visibility()
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DispatchRaysIndex().xy].xyz;
+#if COMPRES_NORMALS
+        float3 surfaceNormal = Decode(g_texGBufferNormal[DispatchRaysIndex().xy].xy);
+#else
 		float3 surfaceNormal = g_texGBufferNormal[DispatchRaysIndex().xy].xyz;
-		Ray visibilityRay = { hitPosition + 0.001f * surfaceNormal, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
+#endif
+        Ray visibilityRay = { hitPosition + 0.001f * surfaceNormal, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
 		inShadow = TraceShadowRayAndReportIfHit(visibilityRay, 0);
 	}
 
@@ -347,7 +351,6 @@ void MyRayGenShader_GBuffer()
     float rayLength = length(raySegment);
     float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
     float obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
-    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
 #else   // ToDo why this causes blocky obliqueness? driver bug?
     float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
     float rayLength = 0.0, obliqueness = 0.0;
@@ -358,14 +361,16 @@ void MyRayGenShader_GBuffer()
         // ToDo
         obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
     }
-    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
 #endif
 
 #if COMPRES_NORMALS
     // compress normal
-    uint precis = 16u;
-    uint id = octahedral_32(rayPayload.surfaceNormal, precis);
-    g_rtGBufferMaterialID[DispatchRaysIndex().xy] = id;
+    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(Encode(rayPayload.surfaceNormal), rayLength, obliqueness);
+#else
+    #if PACK_NORMAL_AND_DEPTH
+        obliqueness = rayLength;
+    #endif
+    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
 #endif
     g_rtGBufferDistance[DispatchRaysIndex().xy] = rayLength;
 }
@@ -381,7 +386,11 @@ void MyRayGenShader_AO()
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
+#if COMPRES_NORMALS
+        float3 surfaceNormal = Decode(g_texGBufferNormal[DispatchRaysIndex().xy].xy);
+#else
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
+#endif
 		ambientCoef = CalculateAO(hitPosition, surfaceNormal, shadowRayHits);
 	}
 
@@ -403,7 +412,11 @@ void MyRayGenShaderQuarterRes_AO()
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
+#if COMPRES_NORMALS
+        float3 surfaceNormal = Decode(g_texGBufferNormal[DispatchRaysIndex().xy].xy);
+#else
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
+#endif
 		ambientCoef = CalculateAO(hitPosition, surfaceNormal, shadowRayHits);
 	}
 

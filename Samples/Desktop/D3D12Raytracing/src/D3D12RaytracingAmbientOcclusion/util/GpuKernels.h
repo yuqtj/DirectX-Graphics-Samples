@@ -217,7 +217,8 @@ namespace GpuKernels
             float depthSigma,
             float normalSigma,
             UINT numFilterPasses = 5,
-            bool reverseFilterPassOrder = false);
+            bool reverseFilterPassOrder = false,
+            bool useCalculatedVariance = true);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -233,6 +234,7 @@ namespace GpuKernels
     public:
         enum FilterType {
             Bilateral5x5 = 0,
+            Bilateral7x7,
             Count
         };
 

@@ -113,7 +113,7 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightSum, 
     const float normalSigma = cb.normalSigma;
     const float depthSigma = cb.depthSigma;
 
-    CTid += offset;
+    Cid += offset;
     pixel += offset << cb.kernelStepShift;
     if (pixel.x >= 0 && pixel.y >= 0 && pixel.x < cb.textureDim.x && pixel.y < cb.textureDim.y)
     {

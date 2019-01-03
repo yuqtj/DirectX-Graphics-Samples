@@ -23,6 +23,7 @@
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_Bilateral5x5CS.hlsl.h"
+#include "CompiledShaders\CalculateVariance_Bilateral7x7CS.hlsl.h"
 
 using namespace std;
 
@@ -758,7 +759,8 @@ namespace GpuKernels
         float depthSigma,
         float normalSigma,
         UINT numFilterPasses,
-        bool reverseFilterPassOrder)
+        bool reverseFilterPassOrder,
+        bool useCalculatedVariance)
     {
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
         using namespace AtrousWaveletTransformFilterCS;
@@ -790,15 +792,19 @@ namespace GpuKernels
                 _i = i == 0 ? 0 : numFilterPasses - 1 - i;
             else
                 _i = i;
-#if ATROUS_USE_VARIANCE
-            m_CB->valueSigma = valueSigma;
-#else
-            m_CB->valueSigma = _i > 0 ? valueSigma * powf(2.f, -float(i)) : 1;
-#endif
+            if (useCalculatedVariance)
+            {
+                m_CB->valueSigma = valueSigma;
+            }
+            else
+            {
+                m_CB->valueSigma = _i > 0 ? valueSigma * powf(2.f, -float(i)) : 1;
+            }
             m_CB->depthSigma = depthSigma;
             m_CB->normalSigma = normalSigma;
             m_CB->kernelStepShift = _i;
             m_CB->scatterOutput = _i == numFilterPasses - 1;
+            m_CB->useCalculatedVariance = useCalculatedVariance;
             m_CB.CopyStagingToGpu(i);
         }
 
@@ -936,6 +942,9 @@ namespace GpuKernels
                 {
                 case Bilateral5x5:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_Bilateral5x5CS), ARRAYSIZE(g_pCalculateVariance_Bilateral5x5CS));
+                    break;
+                case Bilateral7x7:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_Bilateral7x7CS), ARRAYSIZE(g_pCalculateVariance_Bilateral7x7CS));
                     break;
                 }
 

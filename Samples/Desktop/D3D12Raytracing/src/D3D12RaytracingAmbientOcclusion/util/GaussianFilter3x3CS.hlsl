@@ -41,6 +41,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightSum = 0;
     float weightedValueSum = 0;
 
+#if 1
+    [unroll]
+    for (UINT r = 0; r < 3; r++)
+        [unroll]
+        for (UINT c = 0; c < 3; c++)
+            AddFilterContribution(weightedValueSum, weightSum, r, c, DTid);
+#else
     AddFilterContribution(weightedValueSum, weightSum, 0, 0, DTid);
     AddFilterContribution(weightedValueSum, weightSum, 1, 0, DTid);
     AddFilterContribution(weightedValueSum, weightSum, 2, 0, DTid);
@@ -50,6 +57,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     AddFilterContribution(weightedValueSum, weightSum, 0, 2, DTid);
     AddFilterContribution(weightedValueSum, weightSum, 1, 2, DTid);
     AddFilterContribution(weightedValueSum, weightSum, 2, 2, DTid);
+#endif
 
 	g_texOutput[DTid] = weightedValueSum / weightSum;
 }

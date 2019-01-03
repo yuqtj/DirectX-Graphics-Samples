@@ -11,6 +11,7 @@
 
 #define HLSL
 #include "RaytracingHlslCompat.h"
+#include "RaytracingShaderHelper.hlsli"
 
 Texture2D<float> g_inValues : register(t0);
 Texture2D<float4> g_inNormal : register(t1);
@@ -30,8 +31,19 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightSum, 
     if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
     {
         float iValue = g_inValues[id];
-        float3 iNormal = g_inNormal[id].xyz;
+#if COMPRES_NORMALS
+        float4 normalBufValue = g_inNormal[id];
+        float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
+#else
+        float4 normal4 = g_inNormal[id];
+#endif 
+        float3 iNormal = normal4.xyz;
+
+#if PACK_NORMAL_AND_DEPTH
+        float iDepth = normal4.w;
+#else
         float  iDepth = g_inDepth[id];
+#endif
 
         float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) / (depthSigma * depthSigma)) : 1.f;
         float w_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - iValue) / (valueSigma * valueSigma)) : 1.f : 1.f;
@@ -49,8 +61,21 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightSum, 
 [numthreads(AtrousWaveletTransformFilterCS::ThreadGroup::Width, AtrousWaveletTransformFilterCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
-    float3 normal = g_inNormal[DTid].xyz;
+#if COMPRES_NORMALS
+    float4 normalBufValue = g_inNormal[DTid];
+    float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
+    float obliqueness = max(0.0001f, pow(normalBufValue.w, 10));
+#else
+    float4 normal4 = g_inNormal[DTid];
+    float obliqueness = max(0.0001f, pow(normal4.w, 10));
+#endif 
+    float3 normal = normal4.xyz;
+
+#if PACK_NORMAL_AND_DEPTH
+    float depth = normal4.w;
+#else
     float  depth = g_inDepth[DTid];
+#endif 
     float  value = g_inValues[DTid];
 
     float weightedValueSum = value;

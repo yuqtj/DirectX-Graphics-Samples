@@ -20,8 +20,8 @@ RWTexture2D<float4> g_renderTarget : register(u0);
 ConstantBuffer<ComposeRenderPassesConstantBuffer> g_CB : register(b0);
 Texture2D<uint> g_texGBufferPositionHits : register(t0);
 Texture2D<uint> g_texGBufferMaterialID : register(t1);
-Texture2D<float3> g_texGBufferPositionRT : register(t2);
-Texture2D<float3> g_texGBufferNormal : register(t3);	// ToDo merge some GBuffers resources ?
+Texture2D<float4> g_texGBufferPositionRT : register(t2);
+Texture2D<float4> g_texGBufferNormal : register(t3);	// ToDo merge some GBuffers resources ?
 Texture2D<float> g_texAO : register(t5);
 Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
@@ -45,8 +45,13 @@ void main(uint2 DTid : SV_DispatchThreadID )
 
 	if (hit)
 	{
-		float3 hitPosition = g_texGBufferPositionRT[DTid];
-		float3 surfaceNormal = g_texGBufferNormal[DTid];
+		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
+
+#if COMPRES_NORMALS
+        float3 surfaceNormal = Decode(g_texGBufferNormal[DTid].xy);
+#else
+        float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
+#endif
 		float visibilityCoefficient = g_texVisibility[DTid];
 		float ambientCoef = g_texAO[DTid];
 
@@ -55,7 +60,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
 
 #if AO_ONLY
 		// ToDo remove albedo
-		color = ambientCoef;
+        color = ambientCoef;// 10 * sqrt(ambientCoef);
         float4 albedo = float4(1, 1, 1, 1);// float4(0.75f, 0.75f, 0.75f, 1.0f);
 		color *= albedo;
 #elif NORMAL_SHADING
