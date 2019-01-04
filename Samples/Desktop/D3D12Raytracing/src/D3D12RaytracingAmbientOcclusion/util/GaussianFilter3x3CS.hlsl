@@ -16,14 +16,92 @@ Texture2D<float> g_texInput : register(t0);
 RWTexture2D<float> g_texOutput : register(u0);
 ConstantBuffer<GaussianFilterConstantBuffer> cb : register(b0);
 
-static float kernel1D[3] = { 0.27901, 0.44198, 0.27901 };
+SamplerState MirroredLinearSampler : register(s0);
+
 static const float weights[3][3] =
 {
-    { kernel1D[0] * kernel1D[0], kernel1D[0] * kernel1D[1], kernel1D[0] * kernel1D[2] },
-    { kernel1D[1] * kernel1D[0], kernel1D[1] * kernel1D[1], kernel1D[1] * kernel1D[2] },
-    { kernel1D[2] * kernel1D[0], kernel1D[2] * kernel1D[1], kernel1D[2] * kernel1D[2] },
+    { 0.077847, 0.123317, 0.077847 },
+    { 0.123317, 0.195346, 0.123317 },
+    { 0.077847, 0.123317, 0.077847 },
 };
 
+#define APPROXIMATE_GAUSSIAN_3X3_VIA_HW_FILTERING 1
+
+#if APPROXIMATE_GAUSSIAN_3X3_VIA_HW_FILTERING
+// Approximate 3x3 gaussian filter using HW bilinear filtering.
+// Ref: Moller2018, Real-Time Rendering (Fourth Edition), p517
+// Performance improvement over 3x3 2D version (4K on 2080 Ti): 0.21ms -> 0.14ms
+// Todo Test against w separable version
+[numthreads(GaussianFilter::ThreadGroup::Width, GaussianFilter::ThreadGroup::Height, 1)]
+void main(uint2 DTid : SV_DispatchThreadID)
+{
+    // Set weights based on availability of neighbor samples.
+    float4 weights;
+
+    // Non-border pixels
+    if (DTid.x > 0 && DTid.y > 0 && DTid.x < cb.textureDim.x - 1 && DTid.y < cb.textureDim.y - 1) 
+    {
+        weights = float4(0.077847 + 0.123317 + 0.123317 + 0.195346, 
+                         0.077847 + 0.123317,
+                         0.077847 + 0.123317,
+                         0.077847);
+    }
+    // Top-left corner
+    else if (DTid.x == 0 && DTid.y == 0)     
+    {
+        weights = float4(0.195346, 0.123317, 0.123317, 0.077847) / 0.519827;
+    }
+    // Top-right corner
+    else if (DTid.x == cb.textureDim.x - 1 && DTid.y == 0) 
+    {
+        weights = float4(0.123317 + 0.195346, 0, 0.201164, 0) / 0.519827;
+    }
+    // Bottom-left corner
+    else if (DTid.x == 0 && DTid.y == cb.textureDim.y - 1) 
+    {
+        weights = float4(0.123317 + 0.195346, 0.077847 + 0.123317, 0, 0) / 0.519827;
+    }
+    // Bottom-right corner
+    else if (DTid.x == cb.textureDim.x - 1 && DTid.y == cb.textureDim.y - 1) 
+    {
+        weights = float4(0.077847 + 0.123317 + 0.123317 + 0.195346, 0, 0, 0) / 0.519827;
+    }
+    // Left border
+    else if (DTid.x == 0) 
+    {
+        weights = float4(0.123317 + 0.195346, 0.077847 + 0.123317, 0.123317, 0.077847) / 0.720991;
+    }
+    // Right border
+    else if (DTid.x == cb.textureDim.x - 1)
+    {
+        weights = float4(0.077847 + 0.123317 + 0.123317 + 0.195346, 0, 0.077847 + 0.123317, 0) / 0.720991;
+    }
+    // Top border
+    else if (DTid.y == 0) 
+    {
+        weights = float4(0.123317 + 0.195346, 0.123317, 0.077847 + 0.123317, 0.077847) / 0.720991;
+    }
+    // Bottom border
+    else
+    {
+        weights = float4(0.077847 + 0.123317 + 0.123317 + 0.195346, 0.077847 + 0.123317, 0, 0) / 0.720991;
+    }
+
+    const float2 offsets[3] = {
+        float2(0.5, 0.5) + float2(-0.123317 / (0.123317 + 0.195346), -0.123317 / (0.123317 + 0.195346)),
+        float2(0.5, 0.5) + float2(1, -0.077847 / (0.077847 + 0.123317)),
+        float2(0.5, 0.5) + float2(-0.077847 / (0.077847 + 0.123317), 1) };
+
+    float4 samples = float4(
+        g_texInput.SampleLevel(MirroredLinearSampler, (DTid + offsets[0]) * cb.invTextureDim, 0),
+        g_texInput.SampleLevel(MirroredLinearSampler, (DTid + offsets[1]) * cb.invTextureDim, 0),
+        g_texInput.SampleLevel(MirroredLinearSampler, (DTid + offsets[2]) * cb.invTextureDim, 0),
+        g_texInput[DTid + 1]);
+
+    g_texOutput[DTid] = dot(samples, weights);
+}
+
+#else
 
 void AddFilterContribution(inout float weightedValueSum, inout float weightSum, in int row, in int col, in int2 DTid)
 {
@@ -41,23 +119,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightSum = 0;
     float weightedValueSum = 0;
 
-#if 1
     [unroll]
     for (UINT r = 0; r < 3; r++)
         [unroll]
         for (UINT c = 0; c < 3; c++)
             AddFilterContribution(weightedValueSum, weightSum, r, c, DTid);
-#else
-    AddFilterContribution(weightedValueSum, weightSum, 0, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, 1, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, 2, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, 0, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, 1, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, 2, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, 0, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, 1, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, 2, 2, DTid);
-#endif
 
-	g_texOutput[DTid] = weightedValueSum / weightSum;
+        g_texOutput[DTid] = weightedValueSum / weightSum;
 }
+#endif

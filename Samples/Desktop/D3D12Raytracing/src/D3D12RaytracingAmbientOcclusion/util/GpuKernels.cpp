@@ -449,7 +449,7 @@ namespace GpuKernels
             rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[1]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
-            CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+            CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_MIRROR, D3D12_TEXTURE_ADDRESS_MODE_MIRROR);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: GaussianFilter");
@@ -499,6 +499,7 @@ namespace GpuKernels
         PIXBeginEvent(commandList, 0, L"GaussianFilter");
 
         m_CB->textureDim = XMUINT2(width, height);
+        m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
         m_CB.CopyStagingToGpu();
 
         // Set pipeline state.

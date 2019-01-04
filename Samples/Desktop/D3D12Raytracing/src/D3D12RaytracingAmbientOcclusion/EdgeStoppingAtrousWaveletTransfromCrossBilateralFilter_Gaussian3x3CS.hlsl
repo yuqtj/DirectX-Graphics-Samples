@@ -14,6 +14,7 @@
 #include "RaytracingShaderHelper.hlsli"
 
 Texture2D<float> g_inValues : register(t0);
+
 Texture2D<float4> g_inNormal : register(t1);
 Texture2D<float> g_inDepth : register(t2);
 Texture2D<uint> g_inNormalOct : register(t3);
@@ -35,16 +36,16 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedVar
         float iValue = g_inValues[id];
 
         float iVariance;
-        float w_x;
+        float e_x;
         if (cb.useCalculatedVariance)
         {
             iVariance = g_inSmoothedVariance[id];
             const float errorOffset = 0.005f;
-            w_x = valueSigma > 0.01f ? exp(-abs(value - iValue) / (valueSigma * sqrt(max(iVariance, 0)) + errorOffset)) : 1;
+            e_x = valueSigma > 0.01f ? -abs(value - iValue) / (valueSigma * sqrt(max(iVariance, 0)) + errorOffset) : 0;
         }
         else
         {
-            w_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - iValue) / (valueSigma * valueSigma)) : 1 : 1;
+            e_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - iValue) / (valueSigma * valueSigma)) : 0 : 0;
         }
 
 
@@ -61,11 +62,13 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedVar
 #else
         float  iDepth = g_inDepth[id];
 #endif
-        float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma)) : 1;
+        float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;
         // Ref: SVGF
         float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1;
 
-        float w = w_h * w_x * w_n * w_d;
+        // ToDo apply exp combination where applicable 
+        float w_xd = exp(e_x + e_d);
+        float w = w_h * w_n * w_xd;
 
         weightedValueSum += w * iValue;
         weightSum += w;
@@ -77,20 +80,19 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedVar
     }
 }
 
+static const float kernel1D[3] = { 0.27901, 0.44198, 0.27901 };
+static const float kernel[3][3] =
+{
+    { kernel1D[0] * kernel1D[0], kernel1D[0] * kernel1D[1], kernel1D[0] * kernel1D[2] },
+    { kernel1D[1] * kernel1D[0], kernel1D[1] * kernel1D[1], kernel1D[1] * kernel1D[2] },
+    { kernel1D[2] * kernel1D[0], kernel1D[2] * kernel1D[1], kernel1D[2] * kernel1D[2] },
+};
 
 // Atrous Wavelet Transform Cross Bilateral Filter
 // Ref: Dammertz 2010, Edge-Avoiding A-Trous Wavelet Transform for Fast Global Illumination Filtering
 [numthreads(AtrousWaveletTransformFilterCS::ThreadGroup::Width, AtrousWaveletTransformFilterCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 {
-    const uint N = 3;
-    const float kernel1D[N] = { 0.27901, 0.44198, 0.27901 };
-    const float kernel[N][N] =
-    {
-        { kernel1D[0] * kernel1D[0], kernel1D[0] * kernel1D[1], kernel1D[0] * kernel1D[2] },
-        { kernel1D[1] * kernel1D[0], kernel1D[1] * kernel1D[1], kernel1D[1] * kernel1D[2] },
-        { kernel1D[2] * kernel1D[0], kernel1D[2] * kernel1D[1], kernel1D[2] * kernel1D[2] },
-    };
 
 #if COMPRES_NORMALS
     float4 normalBufValue = g_inNormal[DTid];
@@ -123,16 +125,13 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         weightedVarianceSum = kernel[1][1] * kernel[1][1] * g_inSmoothedVariance[DTid];
     }
 
-#if 1
-    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, 0, 0, kernel[0][0], DTid);
-    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, 0, 1, kernel[0][1], DTid);
-    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, 0, 2, kernel[0][2], DTid);
-    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, 1, 0, kernel[1][0], DTid);
-    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, 1, 2, kernel[1][2], DTid);
-    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, 2, 0, kernel[2][0], DTid);
-    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, 2, 1, kernel[2][1], DTid);
-    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, 2, 2, kernel[2][2], DTid);
-#endif
+    [unroll]
+    for (UINT r = 0; r < 3; r++)
+    [unroll]
+    for (UINT c = 0; c < 3; c++)
+        if (r != 1 || c != 1)
+             AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, r, c, kernel[r][c], DTid);
+
 
     g_outFilteredValues[DTid] = weightSum > 0.0001f ? weightedValueSum / weightSum : 0.f;
 

@@ -83,33 +83,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightedSquaredValueSum = value * value;
     float weightSum = 1.f;  // ToDo check for missing value
 
-#if 0
     [unroll]
     for (UINT r = 0; r < 5; r++)
         [unroll]
         for (UINT c = 0; c < 5; c++)
-            if (r != 3 || c != 3)
+            if (r != 2 || c != 2)
                 AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, r, c, DTid);
-#else
-    [unroll]
-    for (UINT c = 0; c < 5; c++)
-        AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 0, c, DTid);
-    [unroll]
-    for (UINT c = 0; c < 5; c++)
-        AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 1, c, DTid);
-    [unroll]
-    for (UINT c = 0; c < 2; c++)
-        AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 2, c, DTid);
-    [unroll]
-    for (UINT c = 3; c < 5; c++)
-        AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 2, c, DTid);
-    [unroll]
-    for (UINT c = 0; c < 5; c++)
-        AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 3, c, DTid);
-    [unroll]
-    for (UINT c = 0; c < 5; c++)
-        AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 4, c, DTid);
-#endif
 
     float variance;
     if (numWeights > 1)

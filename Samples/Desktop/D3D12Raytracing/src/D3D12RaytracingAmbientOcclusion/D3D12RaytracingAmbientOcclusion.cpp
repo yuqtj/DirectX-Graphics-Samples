@@ -940,9 +940,15 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 		m_AOResources[i].srvDescriptorHeapIndex = m_AOResources[0].srvDescriptorHeapIndex + i;
 	}
 	// ToDo use less than 32bits?
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"AO Coefficient");
+#if FLOAT_TEXTURE_AS_R8_UNORME_FORMAT
+    DXGI_FORMAT texFormat = DXGI_FORMAT_R8_UNORM;
+#else
+    DXGI_FORMAT texFormat = DXGI_FORMAT_R32_FLOAT;
+#endif
+
+	CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"AO Coefficient");
 #if ATROUS_DENOISER
-    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
+    CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
 #else
     CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
 #endif
@@ -950,12 +956,12 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
     // ToDo move
 	m_VisibilityResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-	CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_VisibilityResource, initialResourceState, L"Visibility");
+	CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_VisibilityResource, initialResourceState, L"Visibility");
 
     m_varianceResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_varianceResource, initialResourceState, L"Variance");
+    CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_varianceResource, initialResourceState, L"Variance");
     m_smoothedVarianceResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_smoothedVarianceResource, initialResourceState, L"SmoothedVariance");
+    CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_smoothedVarianceResource, initialResourceState, L"SmoothedVariance");
 
     
 
@@ -2240,7 +2246,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS()
 		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
 #else
         commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess);
-//        commandList->SetComputeRootDescriptorTable(Slot::AO, m_varianceResource.gpuDescriptorReadAccess);
+        //commandList->SetComputeRootDescriptorTable(Slot::AO, m_smoothedVarianceResource.gpuDescriptorReadAccess);
 #endif
 		commandList->SetComputeRootDescriptorTable(Slot::Visibility, m_VisibilityResource.gpuDescriptorReadAccess);
 		commandList->SetComputeRootShaderResourceView(Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());

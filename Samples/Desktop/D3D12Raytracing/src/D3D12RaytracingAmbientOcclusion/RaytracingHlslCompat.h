@@ -39,6 +39,9 @@
 #define ADD_INVERTED_FACE 0
 #define CORRECT_NORMALS 0
 
+
+#define FLOAT_TEXTURE_AS_R8_UNORME_FORMAT 1
+
 #define GBUFFER_AO_NORMAL_VISUALIZATION 0
 #define GBUFFER_AO_COUNT_AO_HITS 0
 #define AO_ANY_HIT_FULL_OCCLUSION 0
@@ -293,7 +296,7 @@ struct DownsampleFilterConstantBuffer
 struct GaussianFilterConstantBuffer
 {
     XMUINT2 textureDim;
-    XMUINT2 padding;
+    XMFLOAT2 invTextureDim;
 };
 
 // Attributes per primitive type.

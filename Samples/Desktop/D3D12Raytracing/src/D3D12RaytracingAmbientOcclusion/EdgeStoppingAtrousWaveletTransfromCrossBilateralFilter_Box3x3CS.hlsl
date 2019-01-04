@@ -81,14 +81,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightedValueSum = value;
     float weightSum = 1.f;
 
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 0, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 0, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 0, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 1, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 1, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 2, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 2, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, 2, 2, DTid);
+    [unroll]
+    for (UINT r = 0; r < 5; r++)
+        [unroll]
+    for (UINT c = 0; c < 5; c++)
+        if (r != 2 || c != 2)
+            AddFilterContribution(weightedValueSum, weightSum, value, depth, normal, r, c, DTid);
 
     g_outFilteredValues[DTid] = weightSum > 0.0001f ? weightedValueSum / weightSum : 0.f;
 }
