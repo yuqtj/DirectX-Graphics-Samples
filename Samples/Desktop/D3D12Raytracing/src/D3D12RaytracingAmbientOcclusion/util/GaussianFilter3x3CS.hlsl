@@ -30,7 +30,7 @@ static const float weights[3][3] =
 #if APPROXIMATE_GAUSSIAN_3X3_VIA_HW_FILTERING
 // Approximate 3x3 gaussian filter using HW bilinear filtering.
 // Ref: Moller2018, Real-Time Rendering (Fourth Edition), p517
-// Performance improvement over 3x3 2D version (4K on 2080 Ti): 0.21ms -> 0.14ms
+// Performance improvement over 3x3 2D version (4K on 2080 Ti): 0.18ms -> 0.11ms
 // Todo Test against w separable version
 [numthreads(GaussianFilter::ThreadGroup::Width, GaussianFilter::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)

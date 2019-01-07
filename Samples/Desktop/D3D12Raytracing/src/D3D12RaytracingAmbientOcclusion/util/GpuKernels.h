@@ -88,6 +88,7 @@ namespace GpuKernels
 	class DownsampleGaussianFilter
 	{
 	public:
+        // ToDo images moves switching between.
 		enum Type {
 			Tap9 = 0,
 			Tap25
@@ -116,6 +117,65 @@ namespace GpuKernels
 		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
 		ConstantBuffer<DownsampleFilterConstantBuffer> m_CB;
 	};
+
+    // ToDo rename to GBuffer downsample
+    class DownsampleBilateralFilter
+    {
+    public:
+        enum Type {
+            Filter2X2 = 0,
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device, Type type);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            UINT width,
+            UINT height,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputPositionResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputGeometryHitResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+    };
+
+    class UpsampleBilateralFilter
+    {
+    public:
+        enum Type {
+            Filter2X2 = 0,
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device, Type type);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            UINT width,
+            UINT height,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+    };
 
     class GaussianFilter
     {

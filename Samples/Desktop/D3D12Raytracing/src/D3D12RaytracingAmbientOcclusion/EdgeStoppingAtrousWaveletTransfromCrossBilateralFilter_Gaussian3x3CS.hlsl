@@ -24,6 +24,7 @@ RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
+
 void AddFilterContribution(inout float weightedValueSum, inout float weightedVarianceSum, inout float weightSum, in float value, in float depth, in float3 normal, float obliqueness, in uint row, in uint col, in float w_h, in uint2 DTid)
 {
     const float valueSigma = cb.valueSigma;
@@ -49,6 +50,7 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedVar
         }
 
 
+        // ToDo standardize index vs id
 #if COMPRES_NORMALS
         float4 normalBufValue = g_inNormal[id];
         float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
@@ -93,7 +95,6 @@ static const float kernel[3][3] =
 [numthreads(AtrousWaveletTransformFilterCS::ThreadGroup::Width, AtrousWaveletTransformFilterCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 {
-
 #if COMPRES_NORMALS
     float4 normalBufValue = g_inNormal[DTid];
     float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);

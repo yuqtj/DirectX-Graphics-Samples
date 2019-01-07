@@ -16,6 +16,10 @@
 
 #define INFINITY (1.0/0.0)
 
+#define FLT_EPSILON     1.192092896e-07 // Smallest number such that 1.0 + FLT_EPSILON != 1.0
+#define FLT_MIN         1.175494351e-38 
+#define FLT_MAX         3.402823466e+38 
+
 struct Ray
 {
     float3 origin;

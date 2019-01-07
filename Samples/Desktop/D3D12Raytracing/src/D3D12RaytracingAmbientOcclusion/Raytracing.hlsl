@@ -36,7 +36,7 @@ RWTexture2D<uint> g_rtGBufferMaterialID : register(u6);
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
 RWTexture2D<float4> g_rtGBufferNormal : register(u8);
 RWTexture2D<float> g_rtGBufferDistance : register(u9);
-Texture2D<uint> g_texGBufferPositionHits : register(t5);
+Texture2D<uint> g_texGBufferPositionHits : register(t5);    // ToDo compact?
 Texture2D<uint> g_texGBufferMaterialID : register(t6);
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<float4> g_texGBufferNormal : register(t8);
@@ -179,6 +179,7 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth)
 }
 
 /***************************************************************/
+// ToDo
 // 3D value noise
 // Ref: https://www.shadertoy.com/view/XsXfRH
 #if 1
@@ -344,13 +345,20 @@ void MyRayGenShader_GBuffer()
 	// ToDo Test conditional write
 	g_rtGBufferCameraRayHits[DispatchRaysIndex().xy] = (rayPayload.hit ? 1 : 0);
 	g_rtGBufferMaterialID[DispatchRaysIndex().xy] = rayPayload.materialID;
+
+    // ToDo Use calculated hitposition based on distance from GBuffer instead?
 	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
 
 #if 1
-    float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
-    float rayLength = length(raySegment);
-    float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
-    float obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
+    float rayLength = FLT_MAX;
+    float obliqueness = 0;
+    if (rayPayload.hit)
+    {
+        float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
+        rayLength = length(raySegment);
+        float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
+        obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
+    }
 #else   // ToDo why this causes blocky obliqueness? driver bug?
     float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
     float rayLength = 0.0, obliqueness = 0.0;

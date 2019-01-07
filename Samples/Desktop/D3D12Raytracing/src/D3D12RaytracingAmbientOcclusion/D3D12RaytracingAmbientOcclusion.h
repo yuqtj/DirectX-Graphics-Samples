@@ -110,6 +110,8 @@ private:
 	GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
+    GpuKernels::DownsampleBilateralFilter	m_downsampleGBufferBilateralFilterKernel;
+    GpuKernels::UpsampleBilateralFilter	    m_upsampleBilateralFilterKernel;
 	const UINT c_SupersamplingScale = 2;
 	UINT								m_numRayGeometryHits[ReduceSumCalculations::Count];
 
@@ -162,16 +164,22 @@ private:
 
 	// Raytracing output
 	// ToDo use the struct
-	RWGpuResource m_raytracingOutputIntermediate;
 	RWGpuResource m_raytracingOutput;
+    RWGpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
 	RWGpuResource m_GBufferResources[GBufferResource::Count];
+    RWGpuResource m_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
+    
 	RWGpuResource m_AOResources[AOResource::Count];
+    RWGpuResource m_AOLowResResources[AOResource::Count];   // ToDo remove unused
 	RWGpuResource m_VisibilityResource;
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;
 
-	UINT m_raytracingWidth;
-	UINT m_raytracingHeight;
+	UINT m_GBufferWidth;
+	UINT m_GBufferHeight;
+
+    UINT m_raytracingWidth;
+    UINT m_raytracingHeight;
 
 	// Shader tables
 	static const wchar_t* c_hitGroupNames_TriangleGeometry[RayType::Count];
@@ -236,7 +244,10 @@ private:
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
     void ApplyAtrousWaveletTransformFilter();
+
 	void DownsampleRaytracingOutput();
+    void DownsampleGBufferBilateral();
+    void UpsampleAOBilateral();
 
     void CreateConstantBuffers();
     void CreateSamplesRNG();

@@ -53,9 +53,10 @@ void main(uint2 DTid : SV_DispatchThreadID )
         float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
 		float visibilityCoefficient = g_texVisibility[DTid];
-		float ambientCoef = g_texAO[DTid];
+        float ambientCoef = g_CB.enableAO ? g_texAO[DTid] : 1;
+        
 
-		// ToDo incorrect when subtracting camera
+        // ToDo incorrect when subtracting camera
 		distance = length(hitPosition);// -g_CB.cameraPosition.xyz);
 
 #if AO_ONLY
@@ -79,6 +80,14 @@ void main(uint2 DTid : SV_DispatchThreadID )
 		// Apply visibility falloff.
 		float t = distance;
 		color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF*t*t*t));
+
+        // ToDo cleanup
+        if (g_CB.renderAOonly)
+        {
+            color = ambientCoef;// 10 * sqrt(ambientCoef);
+            float4 albedo = float4(1, 1, 1, 1);// float4(0.75f, 0.75f, 0.75f, 1.0f);
+            color *= albedo;
+        }
 	}
 	else
 	{

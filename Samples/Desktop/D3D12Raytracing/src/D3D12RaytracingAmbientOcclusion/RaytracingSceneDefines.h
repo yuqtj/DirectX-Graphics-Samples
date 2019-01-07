@@ -173,7 +173,9 @@ namespace GpuTimers {
 		UpdateBLAS,
 		ReduceSum,
 		UpdateTLAS,
-		DownsampleToBackbuffer,
+        DownsampleToBackbuffer,
+        DownsampleGBufferBilateral,
+        UpsampleAOBilateral,
 		Count
 	};
 }

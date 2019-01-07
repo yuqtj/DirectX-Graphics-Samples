@@ -27,7 +27,10 @@
 
 #define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
 
-#define ALLOW_MIRRORS 0
+#define ALLOW_MIRRORS 1
+
+// ToDo set max recursion
+// Give opacity to mirrors and shade. Some mirrors are tesselated in the kitchen and its not clear from pure reflections.
 #if ALLOW_MIRRORS
 // Use anyhit instead??
 #define TURN_MIRRORS_SEETHROUGH 0
@@ -40,7 +43,8 @@
 #define CORRECT_NORMALS 0
 
 
-#define FLOAT_TEXTURE_AS_R8_UNORME_FORMAT 1
+// ToDo 16bit per component normals?
+#define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 1
 
 #define GBUFFER_AO_NORMAL_VISUALIZATION 0
 #define GBUFFER_AO_COUNT_AO_HITS 0
@@ -60,13 +64,13 @@
 
 #define CAMERA_JITTER 0
 #define APPLY_SRGB_CORRECTION 0
-#define AO_ONLY 1
+#define AO_ONLY 0
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 0
+#define PBRT_SCENE 1
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
@@ -137,6 +141,18 @@ namespace DownsampleGaussianFilter {
 	namespace ThreadGroup {
 		enum Enum { Width = 8, Height = 8 };
 	}
+}
+
+namespace DownsampleBilateralFilter {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 8 };
+    }
+}
+
+namespace UpsampleBilateralFilter {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 8 };
+    }
 }
 
 namespace GaussianFilter {
@@ -272,9 +288,9 @@ struct ComposeRenderPassesConstantBuffer
 	XMUINT2 rtDimensions;
 	XMFLOAT2 padding1;
 	XMFLOAT3 cameraPosition;
-	float padding2;
-	XMFLOAT3 lightPosition;
-	float padding3;
+    bool renderAOonly;
+	XMFLOAT3 lightPosition;     // ToDo cb doesn't match if XMFLOAT starts at offset 1. Can this be caught?
+    bool enableAO;
 	XMFLOAT3 lightAmbientColor;
 	float padding4;
 	XMFLOAT3 lightDiffuseColor;		
