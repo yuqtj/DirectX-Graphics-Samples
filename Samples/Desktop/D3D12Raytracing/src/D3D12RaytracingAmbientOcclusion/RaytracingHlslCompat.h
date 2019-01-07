@@ -52,6 +52,7 @@
 #define TWO_STAGE_AO_BLUR 1
 #define AO_RANDOM_SEED_EVERY_FRAME 0
 #define AO_HITPOSITION_BASED_SEED 1
+#define VARIANCE_APPROXIMATION 1
 
 #define COMPRES_NORMALS 1
 #define PACK_NORMAL_AND_DEPTH 1
@@ -70,7 +71,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 1
+#define PBRT_SCENE 0
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
@@ -255,13 +256,16 @@ struct RNGConstantBuffer
 
 struct AtrousWaveletTransformFilterConstantBuffer
 {
+    // ToDo pad?
+    XMINT2 textureDim;
     UINT kernelStepShift;
     bool scatterOutput;
-    XMINT2 textureDim;
     float valueSigma;
     float depthSigma;
     float normalSigma;
     bool useCalculatedVariance;
+    XMFLOAT3 padding;
+    bool useApproximateVariance;
 };
 
 

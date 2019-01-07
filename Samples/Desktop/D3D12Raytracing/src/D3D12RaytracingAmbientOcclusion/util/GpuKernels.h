@@ -316,7 +316,8 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
             float depthSigma,
-            float normalSigma);
+            float normalSigma,
+            bool useApproximateVariance = true);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;

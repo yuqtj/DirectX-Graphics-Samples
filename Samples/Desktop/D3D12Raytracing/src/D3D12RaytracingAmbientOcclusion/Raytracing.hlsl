@@ -373,6 +373,7 @@ void MyRayGenShader_GBuffer()
 
 #if COMPRES_NORMALS
     // compress normal
+    // ToDo review precision of 16bit format - particularly rayLength (renormalize ray length?)
     g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(Encode(rayPayload.surfaceNormal), rayLength, obliqueness);
 #else
     #if PACK_NORMAL_AND_DEPTH

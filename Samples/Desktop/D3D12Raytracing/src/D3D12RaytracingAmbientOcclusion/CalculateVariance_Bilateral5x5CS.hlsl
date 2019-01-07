@@ -18,6 +18,8 @@ Texture2D<float4> g_inNormal : register(t1);
 Texture2D<float> g_inDepth : register(t2);
 Texture2D<uint> g_inNormalOct : register(t3);
 RWTexture2D<float> g_outVariance : register(u0);
+
+// ToDo use custom CB
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
 
@@ -56,6 +58,38 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
     }
 }
 
+void AddFilterContribution2(inout float minVal, inout float maxVal, in float value, in float depth, in float3 normal, float obliqueness, in uint row, in uint col, in uint2 DTid)
+{
+    const float normalSigma = cb.normalSigma;
+    const float depthSigma = cb.depthSigma;
+
+    int2 id = int2(DTid)+(int2(row - 2, col - 2));
+    if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
+    {
+        float iValue = g_inValues[id];
+#if COMPRES_NORMALS
+        float4 normalBufValue = g_inNormal[id];
+        float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
+#else
+        float4 normal4 = g_inNormal[id];
+#endif 
+        float3 iNormal = normal4.xyz;
+
+#if PACK_NORMAL_AND_DEPTH
+        float iDepth = normal4.w;
+#else
+        float  iDepth = g_inDepth[id];
+#endif
+
+        float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma)) : 1.f;
+        float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1.f;
+        float w = w_n * w_d;
+
+        minVal = (w > 0.01) ? min(iValue, minVal) : minVal;
+        maxVal = (w > 0.01) ? max(iValue, maxVal) : maxVal;
+    }
+}
+
 // Calculates local per-pixel variance ~ Sum(X^2)/N - mean^2;
 [numthreads(CalculateVariance_Bilateral::ThreadGroup::Width, CalculateVariance_Bilateral::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
@@ -78,28 +112,51 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     float  value = g_inValues[DTid];
 
-    UINT numWeights = 1;
-    float weightedValueSum = value;
-    float weightedSquaredValueSum = value * value;
-    float weightSum = 1.f;  // ToDo check for missing value
-
-    [unroll]
-    for (UINT r = 0; r < 5; r++)
-        [unroll]
-        for (UINT c = 0; c < 5; c++)
-            if (r != 2 || c != 2)
-                AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, r, c, DTid);
-
     float variance;
-    if (numWeights > 1)
+    if (cb.useApproximateVariance)
     {
-        float invWeightSum = weightSum > 0.0001f ? 1 / weightSum : 0.f;
-        float mean = invWeightSum * weightedValueSum;
-        variance = (numWeights / float(numWeights - 1)) * (invWeightSum * weightedSquaredValueSum - mean * mean);
+
+        float minVal = value;
+        float maxVal = value;
+
+        [unroll]
+        for (UINT r = 0; r < 5; r++)
+            [unroll]
+            for (UINT c = 0; c < 5; c++)
+                if (r != 2 || c != 2)
+                    AddFilterContribution2(minVal, maxVal, value, depth, normal, obliqueness, r, c, DTid);
+
+        // Approximate variance as max(Value) - min(Value)
+        // Ref: Bavoil2009, Multi-Layer Dual-Resolution Screen-Space Ambient Occlusion
+        variance = maxVal - minVal;
     }
     else
     {
-        variance = 0;
+        UINT numWeights = 1;
+        float weightedValueSum = value;
+        float weightedSquaredValueSum = value * value;
+        float weightSum = 1.f;  // ToDo handle missing value. or skip if miss hit.
+
+        [unroll]
+        for (UINT r = 0; r < 5; r++)
+            [unroll]
+            for (UINT c = 0; c < 5; c++)
+                if (r != 2 || c != 2)
+                    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, r, c, DTid);
+
+        if (numWeights > 1)
+        {
+            float invWeightSum = weightSum > 0.0001f ? 1 / weightSum : 0.f;
+            float mean = invWeightSum * weightedValueSum;
+
+            // ToDo 0 variance causes acne.
+            const float minVar = 0.01f;
+            variance = max(minVar, (numWeights / float(numWeights - 1)) * (invWeightSum * weightedSquaredValueSum - mean * mean));
+        }
+        else
+        {
+            variance = 0;
+        }
     }
     g_outVariance[DTid] = variance;
 }

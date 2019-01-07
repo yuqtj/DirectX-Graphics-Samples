@@ -1175,7 +1175,8 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
         float depthSigma,
-        float normalSigma)
+        float normalSigma,
+        bool useApproximateVariance)
     {
         using namespace RootSignature::CalculateVariance;
         using namespace CalculateVariance_Bilateral;
@@ -1199,6 +1200,7 @@ namespace GpuKernels
         m_CB->depthSigma = depthSigma;
         m_CB->normalSigma = normalSigma;
         m_CB->textureDim = XMINT2(width, height);
+        m_CB->useApproximateVariance = useApproximateVariance;
         m_CB.CopyStagingToGpu();
         commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress());
 

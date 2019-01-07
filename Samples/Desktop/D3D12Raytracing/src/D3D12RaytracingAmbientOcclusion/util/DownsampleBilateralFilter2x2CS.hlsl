@@ -44,15 +44,32 @@ void main(uint2 DTid : SV_DispatchThreadID)
     LoadDepthAndNormal(topLeftSrcIndex + srcIndexOffsets[2], normals[2], depths[2]);
     LoadDepthAndNormal(topLeftSrcIndex + srcIndexOffsets[3], normals[3], depths[3]);
 
+#if 1
+    // ToDo optimize min/max and remove this path
+    // ToDo min/max 1.2ms, just index 0 0.36ms for 4K
+    int lowResSubIndex = 0;
+
+
+    //uint2 lowResSrcIndex = topLeftSrcIndex + uint2(lowResSubIndex & 1, lowResSubIndex > 1 ? 1 : 0);
+
+    g_outNormal[DTid] = normals[lowResSubIndex];
+    g_outHitPosition[DTid] = g_inHitPosition[topLeftSrcIndex + srcIndexOffsets[lowResSubIndex]];
+    g_outGeometryHit[DTid] = g_inGeometryHit[topLeftSrcIndex + srcIndexOffsets[lowResSubIndex]];
+
+#else
+
     // Choose a sample to maximize depth correlation for bilateral upsampling, do checkerboard min/max selection.
     // Ref: http://c0de517e.blogspot.com/2016/02/downsampled-effects-with-depth-aware.html
     bool checkerboardMin = ((DTid.x + DTid.y) & 1) == 0;
 
     // ToDo consider normals but decode first.
     // ToDo consider reflections.
-    float lowResDepth = checkerboardMin ? min(min(depths[0], depths[1]), min(depths[2], depths[3])) 
+#if 1
+    float lowResDepth = max(max(depths[0], depths[1]), max(depths[2], depths[3]));
+#else
+    float lowResDepth = checkerboardMin ? min(min(depths[0], depths[1]), min(depths[2], depths[3]))
                                         : max(max(depths[0], depths[1]), max(depths[2], depths[3]));
-    
+#endif
     // ToDo prefer those with geometry hit for AO?
 
     // ToDo optimize
@@ -63,7 +80,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
         abs(lowResDepth - depths[3]) 
     };
 
-    uint lowResSubIndex;
+#if 0
+    int lowResSubIndex = 0;// lowResDepth == depths[0] ? 1 : 0;
+#else
+    int lowResSubIndex;
     if (sampleDistances[0] > sampleDistances[1])
     {
         if (sampleDistances[1] > sampleDistances[2])
@@ -114,10 +134,11 @@ void main(uint2 DTid : SV_DispatchThreadID)
             }
         }
     }
-
-    uint2 lowResSrcIndex = topLeftSrcIndex + uint2(lowResSubIndex & 1, lowResSubIndex > 1 ? 1 : 0);
+#endif
+    //uint2 lowResSrcIndex = topLeftSrcIndex + uint2(lowResSubIndex & 1, lowResSubIndex > 1 ? 1 : 0);
 
     g_outNormal[DTid] = normals[lowResSubIndex];
     g_outHitPosition[DTid] = g_inHitPosition[topLeftSrcIndex + srcIndexOffsets[lowResSubIndex]];
     g_outGeometryHit[DTid] = g_inGeometryHit[topLeftSrcIndex + srcIndexOffsets[lowResSubIndex]];
+#endif
 }
