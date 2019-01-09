@@ -222,7 +222,8 @@ void SquidRoomAssets::LoadGeometry(
     }
 
     // Create a shared material.
-    PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), true, XMFLOAT3(1, 1, 1), true, 50, false };
+    PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1), 50, true, true, false };
+    UINT size = sizeof(PrimitiveMaterialBuffer);
     UINT materialID = static_cast<UINT>(materials->size());
     materials->push_back(materialCB);
 
@@ -254,7 +255,6 @@ void SquidRoomAssets::LoadGeometry(
 		CreateBufferSRV(geometry->vb.buffer.resource.Get(), device, vb.count, SquidRoomAssets::StandardVertexStride, descriptorHeap, &dummyCpuHandle, &vb.gpuDescriptorHandle, &vbHeapIndex, vb.startIndex);
 		ThrowIfFalse(vbHeapIndex == ibHeapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 	}
-
 
 	free(pAssetData);
 }

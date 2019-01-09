@@ -235,7 +235,10 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 		PrimitiveMaterialBuffer cb;
 		cb.diffuse = mesh.m_pMaterial->m_Diffuse.xmFloat3;
 		cb.specular = mesh.m_pMaterial->m_Specular.xmFloat3;
+        cb.specularPower = 50;
 		cb.isMirror = mesh.m_pMaterial->m_Opacity.r < 0.5f ? 1 : 0;
+        cb.hasDiffuseTexture = false;
+        cb.hasNormalTexture = false;
 		UINT materialID = static_cast<UINT>(m_materials.size());
 		m_materials.push_back(cb);
 		geometryInstances.push_back(GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
@@ -918,7 +921,6 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingOutputResource()
 	CreateRenderTargetResource(device, backbufferFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
-
 void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 {
 	auto device = m_deviceResources->GetD3DDevice();
@@ -1006,13 +1008,13 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             m_AOLowResResources[i].srvDescriptorHeapIndex = m_AOLowResResources[0].srvDescriptorHeapIndex + i;
         }
 
-        CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Coefficient], initialResourceState, L"AO Coefficient");
+        CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Coefficient], initialResourceState, L"AO LowRes Coefficient");
 #if ATROUS_DENOISER
-        CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
+        CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Smoothed], initialResourceState, L"AO LowRes Smoothed");
 #else
-        CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Smoothed], initialResourceState, L"AO LowRes Smoothed");
 #endif
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::HitCount], initialResourceState, L"AO HitCount");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::HitCount], initialResourceState, L"AO LowRes HitCount");
     }
 
     // ToDo move
@@ -1133,7 +1135,7 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
     CreateBufferSRV(device, ARRAYSIZE(vertices), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
-	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), false, XMFLOAT3(1, 1, 1), false, 50, false };
+	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), 50, false, false, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(planeMaterialCB);
 	m_geometryInstances[GeometryType::Plane].push_back(GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
@@ -1296,7 +1298,7 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
 
-	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), false, XMFLOAT3(1, 1, 1), false, 50, false };
+	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1),  50, false, false, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(materialCB);
 	m_geometryInstances[GeometryType::Sphere].resize(SceneArgs::NumGeometriesPerBLAS, GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
@@ -1313,7 +1315,6 @@ void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
 	m_geometries[GeometryType::SquidRoom].resize(1);
 	auto& geometry = m_geometries[GeometryType::SquidRoom][0];
     auto& textures = m_geometryTextures[GeometryType::SquidRoom];
-
 
 	SquidRoomAssets::LoadGeometry(
 		device,
@@ -1998,10 +1999,18 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             m_varianceResource.gpuDescriptorReadAccess,
             m_smoothedVarianceResource.gpuDescriptorWriteAccess);
         m_gpuTimers[GpuTimers::Raytracing_VarianceSmoothing].Stop(commandList);
+    }
 
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after));
+    // Transition Variance resource to shader resource state.
+    // Also prepare smoothed AO resource for the next pass and transition it to UAV.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
     // A-trous edge-preserving wavelet tranform filter
@@ -2126,8 +2135,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Distance].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after) ,
             CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after)
@@ -2220,11 +2227,14 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBufferBilateral()
 void D3D12RaytracingAmbientOcclusion::UpsampleAOBilateral()
 {
     auto commandList = m_deviceResources->GetCommandList();
-    
-    // ToDo move this/part(AO,..) of transitions out?
-    // Transition all output resources to UAV state.
+
+    // Transition LowRes AO Smoothed resource to SRV and AO Smoothed to UAV.
     {
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_AOLowResResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
     m_gpuTimers[GpuTimers::UpsampleAOBilateral].Start(commandList);
@@ -2239,7 +2249,7 @@ void D3D12RaytracingAmbientOcclusion::UpsampleAOBilateral()
         m_AOResources[AOResource::Smoothed].gpuDescriptorWriteAccess);
     m_gpuTimers[GpuTimers::UpsampleAOBilateral].Stop(commandList);
 
-    // Transition GBuffer resources to shader resource state.
+    // Transition AO Smoothed resource to SRV
     {
         commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
     }
@@ -2289,6 +2299,18 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 
     RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
+
+    // Transition AO resources to shader resource state.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::HitCount].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Coefficient].resource.Get(), before, after)
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+    }
+
 
 	// Bind inputs.
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResourcesIn, GBufferResources[0].gpuDescriptorReadAccess);

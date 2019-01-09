@@ -17,6 +17,8 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RandomNumberGenerator.hlsli"
 
+// ToDo split to Raytracing for GBUffer and AO?
+
 // ToDo dedupe code triangle normal calc,..
 // ToDo pix doesn't show output for AO pass
 
@@ -33,7 +35,6 @@ RWTexture2D<float4> g_renderTarget : register(u0);			// ToDo remove
 // ToDo prune redundant
 // ToDo move this to local ray gen root sig
 RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
-
 
 // {MaterialId, 16b 2D texCoords}
 RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}. // ToDo compact to 8b?
@@ -185,37 +186,6 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth)
 
 	return rayPayload;
 }
-
-/***************************************************************/
-// ToDo
-// 3D value noise
-// Ref: https://www.shadertoy.com/view/XsXfRH
-#if 1
-float hash(float3 p)  // replace this by something better
-{
-	p = frac(p*0.3183099 + .1);
-	p *= 17.0;
-	return frac(p.x*p.y*p.z*(p.x + p.y + p.z));
-}
-
-float noise(in float3 x)
-{
-	float3 p = floor(x);
-	float3 f = frac(x);
-	f = f * f*(3.0 - 2.0*f);
-
-	return lerp(lerp(lerp(hash(p + float3(0, 0, 0)),
-		hash(p + float3(1, 0, 0)), f.x),
-		lerp(hash(p + float3(0, 1, 0)),
-			hash(p + float3(1, 1, 0)), f.x), f.y),
-		lerp(lerp(hash(p + float3(0, 0, 1)),
-			hash(p + float3(1, 0, 1)), f.x),
-			lerp(hash(p + float3(0, 1, 1)),
-				hash(p + float3(1, 1, 1)), f.x), f.y), f.z);
-}
-#endif
-
-/***************************************************************/
 
 
 // ToDo comment
@@ -562,11 +532,11 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 	{
         // ToDo offset hitposition, add comment.
 #if TURN_MIRRORS_SEETHROUGH
-		Ray passThroughRay = { rayPayload.hitPosition + 0.05f * WorldRayDirection(), WorldRayDirection() };
+		Ray passThroughRay = { HitWorldPosition() + 0.05f * WorldRayDirection(), WorldRayDirection() };
 		rayPayload = TraceGBufferRay(passThroughRay, rayPayload.rayRecursionDepth);
 
 #else
-		Ray reflectionRay = { rayPayload.hitPosition, reflect(WorldRayDirection(), rayPayload.surfaceNormal) };
+		Ray reflectionRay = { HitWorldPosition(), reflect(WorldRayDirection(), normal) };
 		rayPayload = TraceGBufferRay(reflectionRay, rayPayload.rayRecursionDepth);
 #endif
 	}

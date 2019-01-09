@@ -71,7 +71,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 0
+#define PBRT_SCENE 1
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
@@ -226,7 +226,7 @@ struct RayPayload
 
 struct GBufferRayPayload
 {
-	bool hit;
+	UINT hit;
 	XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
 	XMFLOAT3 hitPosition;
 	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
@@ -237,7 +237,7 @@ struct GBufferRayPayload
 
 struct ShadowRayPayload
 {
-    bool hit;
+    UINT hit;
 };
 
 struct RNGConstantBuffer
@@ -259,13 +259,13 @@ struct AtrousWaveletTransformFilterConstantBuffer
     // ToDo pad?
     XMINT2 textureDim;
     UINT kernelStepShift;
-    bool scatterOutput;
+    UINT scatterOutput;
     float valueSigma;
     float depthSigma;
     float normalSigma;
-    bool useCalculatedVariance;
+    UINT useCalculatedVariance;
     XMFLOAT3 padding;
-    bool useApproximateVariance;
+    UINT useApproximateVariance;
 };
 
 
@@ -292,9 +292,9 @@ struct ComposeRenderPassesConstantBuffer
 	XMUINT2 rtDimensions;
 	XMFLOAT2 padding1;
 	XMFLOAT3 cameraPosition;
-    bool renderAOonly;
+    UINT renderAOonly;
 	XMFLOAT3 lightPosition;     // ToDo cb doesn't match if XMFLOAT starts at offset 1. Can this be caught?
-    bool enableAO;
+    UINT enableAO;
 	XMFLOAT3 lightAmbientColor;
 	float padding4;
 	XMFLOAT3 lightDiffuseColor;		
@@ -329,12 +329,13 @@ struct PrimitiveConstantBuffer
 struct PrimitiveMaterialBuffer
 {
 	XMFLOAT3 diffuse;
-    bool hasDiffuseTexture;
 	XMFLOAT3 specular;
-    bool hasNormalTexture;
-	float specularPower;
-	bool isMirror;
-    XMUINT2 padding;        // ToDo is padding needed for structured buffers?
+    float specularPower;
+    // ToDo use a bitmask?
+    UINT hasNormalTexture;
+    UINT hasDiffuseTexture;
+    UINT isMirror;
+    XMUINT2 padding;
 };
 
 // Attributes per primitive instance.

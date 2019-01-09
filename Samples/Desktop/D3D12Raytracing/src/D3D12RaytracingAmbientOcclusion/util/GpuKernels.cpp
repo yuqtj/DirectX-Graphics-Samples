@@ -1080,11 +1080,10 @@ namespace GpuKernels
                 bool isVar0ResourceInUAVState = ((numFilterPasses - 1) % 2) == 0;   
                 D3D12_RESOURCE_BARRIER barriers[] = {
                     CD3DX12_RESOURCE_BARRIER::Transition(m_intermediateValueOutput.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-                    CD3DX12_RESOURCE_BARRIER::Transition(m_intermediateVarianceOutputs[0].resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-                    CD3DX12_RESOURCE_BARRIER::Transition(m_intermediateVarianceOutputs[1].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+                    CD3DX12_RESOURCE_BARRIER::Transition(m_intermediateVarianceOutputs[isVar0ResourceInUAVState ? 1 : 0].resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
                 };
                 // Transition variance resources back only if they're not in their default state.
-                commandList->ResourceBarrier(!isVar0ResourceInUAVState ? ARRAYSIZE(barriers) : 1, barriers);
+                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
             }
         }
 
