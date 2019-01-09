@@ -675,6 +675,15 @@ struct D3DGeometry
 	Buffer ib;
 };
 
+struct D3DTexture
+{
+    ComPtr<ID3D12Resource> resource;
+    ComPtr<ID3D12Resource> upload; // ToDo delete these after initialization? Should there be a common upload?
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
+    UINT heapIndex = UINT_MAX;
+};
+
 
 
 struct GeometryDescriptor
@@ -698,7 +707,8 @@ public:
 
 	GeometryInstance() : transform(0) {}
 
-	GeometryInstance(const D3DGeometry& geometry, UINT _materialID) : materialID(_materialID), transform(0)
+	GeometryInstance(const D3DGeometry& geometry, UINT _materialID, D3D12_GPU_DESCRIPTOR_HANDLE _diffuseTexture, D3D12_GPU_DESCRIPTOR_HANDLE _normalTexture) : 
+        materialID(_materialID), diffuseTexture(_diffuseTexture), normalTexture(_normalTexture), transform(0)
 	{
 		ib.startIndex = 0;
 		ib.count = static_cast<UINT>(geometry.ib.buffer.resource->GetDesc().Width / sizeof(Index));
@@ -715,7 +725,7 @@ public:
 		vb.vertexBuffer.StartAddress = geometry.vb.buffer.resource->GetGPUVirtualAddress();
 		vb.gpuDescriptorHandle = geometry.vb.buffer.gpuDescriptorHandle;
 	}
-
+    
 	struct Buffer {
 		UINT startIndex;
 		UINT count;
@@ -728,11 +738,12 @@ public:
 
 	Buffer vb;
 	Buffer ib;
+
 	D3D12_GPU_VIRTUAL_ADDRESS transform;
 	UINT materialID;
+    D3D12_GPU_DESCRIPTOR_HANDLE diffuseTexture;
+    D3D12_GPU_DESCRIPTOR_HANDLE normalTexture;
 };
-
-
 
 // Create a SRV for a buffer.
 inline void CreateBufferSRV(

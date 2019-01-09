@@ -25,8 +25,9 @@ void SquidRoomAssets::LoadGeometry(
 	DescriptorHeap* descriptorHeap,
 	LPCWSTR assetPath,
 	D3DGeometry* geometry,
-	vector<GeometryInstance>* geometryInstances
-)
+    std::vector<D3DTexture>* textures,
+    std::vector<PrimitiveMaterialBuffer>* materials,
+	vector<GeometryInstance>* geometryInstances)
 {
 	UINT fileSize = 0;
 	UINT8* pAssetData = nullptr;
@@ -160,13 +161,81 @@ void SquidRoomAssets::LoadGeometry(
 	}
 	ThrowIfFalse(geometry->vb.buffer.heapIndex == geometry->ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
+    // Create shader resources.
+    {
+        // Create each texture and SRV descriptor.
+        const UINT srvCount = _countof(SquidRoomAssets::Textures);
+        textures->resize(srvCount);
+
+        PIXBeginEvent(commandList, 0, L"Copy diffuse and normal texture data to default resources...");
+        for (UINT i = 0; i < srvCount; i++)
+        {
+            // Describe and create a Texture2D.
+            const SquidRoomAssets::TextureResource &tex = SquidRoomAssets::Textures[i];
+            CD3DX12_RESOURCE_DESC texDesc(
+                D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+                0,
+                tex.Width,
+                tex.Height,
+                1,
+                static_cast<UINT16>(tex.MipLevels),
+                tex.Format,
+                1,
+                0,
+                D3D12_TEXTURE_LAYOUT_UNKNOWN,
+                D3D12_RESOURCE_FLAG_NONE);
+
+            ThrowIfFailed(device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                &texDesc,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                nullptr,
+                IID_PPV_ARGS(&(*textures)[i].resource)));
+            SetNameIndexed((*textures)[i].resource.Get(), L"Squid room scene texture ", i);
+
+            {
+                const UINT subresourceCount = texDesc.DepthOrArraySize * texDesc.MipLevels;
+                UINT64 uploadBufferSize = GetRequiredIntermediateSize((*textures)[i].resource.Get(), 0, subresourceCount);
+                ThrowIfFailed(device->CreateCommittedResource(
+                    &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+                    D3D12_HEAP_FLAG_NONE,
+                    &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+                    D3D12_RESOURCE_STATE_GENERIC_READ,
+                    nullptr,
+                    IID_PPV_ARGS(&(*textures)[i].upload)));
+
+                // Copy data to the intermediate upload heap and then schedule a copy
+                // from the upload heap to the Texture2D.
+                D3D12_SUBRESOURCE_DATA textureData = {};
+                textureData.pData = pAssetData + tex.Data->Offset;
+                textureData.RowPitch = tex.Data->Pitch;
+                textureData.SlicePitch = tex.Data->Size;
+
+                UpdateSubresources(commandList, (*textures)[i].resource.Get(), (*textures)[i].upload.Get(), 0, 0, subresourceCount, &textureData);
+                commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition((*textures)[i].resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+            }
+
+            CreateTextureSRV(device, (*textures)[i].resource.Get(), descriptorHeap, &(*textures)[i].heapIndex, &(*textures)[i].cpuDescriptorHandle, &(*textures)[i].gpuDescriptorHandle);
+        }
+        PIXEndEvent(commandList);
+    }
+
+    // Create a shared material.
+    PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), true, XMFLOAT3(1, 1, 1), true, 50, false };
+    UINT materialID = static_cast<UINT>(materials->size());
+    materials->push_back(materialCB);
+
 	// Generate geometry instances.
 	geometryInstances->resize(ARRAYSIZE(SquidRoomAssets::Draws));
 	for (UINT i = 0; i < ARRAYSIZE(SquidRoomAssets::Draws); i++)
 	{
-		auto& ib = (*geometryInstances)[i].ib;
-		auto& vb = (*geometryInstances)[i].vb;
-		(*geometryInstances)[i].materialID = 0; // ToDo
+        auto& instance = (*geometryInstances)[i];
+		auto& ib = instance.ib;
+		auto& vb = instance.vb;
+		instance.materialID = materialID;
+        instance.diffuseTexture = (*textures)[SquidRoomAssets::Draws[i].DiffuseTextureIndex].gpuDescriptorHandle;
+        instance.normalTexture = (*textures)[SquidRoomAssets::Draws[i].NormalTextureIndex].gpuDescriptorHandle;
 
 		ib.startIndex = SquidRoomAssets::Draws[i].IndexStart;
 		ib.count = SquidRoomAssets::Draws[i].IndexCount;
@@ -180,10 +249,12 @@ void SquidRoomAssets::LoadGeometry(
 		D3D12_CPU_DESCRIPTOR_HANDLE dummyCpuHandle;
 		UINT ibHeapIndex = UINT_MAX;
 		UINT vbHeapIndex = UINT_MAX;
+        // ToDo why create SRVs here again?
 		CreateBufferSRV(geometry->ib.buffer.resource.Get(), device, ib.count, SquidRoomAssets::StandardIndexStride, descriptorHeap, &dummyCpuHandle, &ib.gpuDescriptorHandle, &ibHeapIndex, ib.startIndex);
 		CreateBufferSRV(geometry->vb.buffer.resource.Get(), device, vb.count, SquidRoomAssets::StandardVertexStride, descriptorHeap, &dummyCpuHandle, &vb.gpuDescriptorHandle, &vbHeapIndex, vb.startIndex);
 		ThrowIfFalse(vbHeapIndex == ibHeapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 	}
+
 
 	free(pAssetData);
 }

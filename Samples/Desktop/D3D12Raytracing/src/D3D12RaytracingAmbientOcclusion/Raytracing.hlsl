@@ -30,14 +30,18 @@
 RaytracingAccelerationStructure g_scene : register(t0, space0);
 RWTexture2D<float4> g_renderTarget : register(u0);			// ToDo remove
 
+// ToDo prune redundant
 // ToDo move this to local ray gen root sig
 RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
-RWTexture2D<uint> g_rtGBufferMaterialID : register(u6);
+
+
+// {MaterialId, 16b 2D texCoords}
+RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}. // ToDo compact to 8b?
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
 RWTexture2D<float4> g_rtGBufferNormal : register(u8);
 RWTexture2D<float> g_rtGBufferDistance : register(u9);
-Texture2D<uint> g_texGBufferPositionHits : register(t5);    // ToDo compact?
-Texture2D<uint> g_texGBufferMaterialID : register(t6);
+Texture2D<uint> g_texGBufferPositionHits : register(t5); 
+Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Material Id, 3x Diffuse.RGB}
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<float4> g_texGBufferNormal : register(t8);
 Texture2D<float4> g_texGBufferDistance : register(t9);
@@ -51,12 +55,13 @@ ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
 
-
+SamplerState LinearWrapSampler : register(s0);
 
 // Per-object resources
 ConstantBuffer<PrimitiveConstantBuffer> l_materialCB : register(b1);
 
 
+// ToDo remove space0
 #if ONLY_SQUID_SCENE_BLAS
 StructuredBuffer<Index> l_indices : register(t1, space0);
 StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices : register(t2, space0);
@@ -64,6 +69,9 @@ StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices : register(t2, s
 ByteAddressBuffer l_indices : register(t1, space0);
 StructuredBuffer<VertexPositionNormalTexture> l_vertices : register(t2, space0);
 #endif
+Texture2D<float3> l_texDiffuse : register(t10);
+Texture2D<float3> l_texNormalMap : register(t11);
+
 
 
 
@@ -158,9 +166,9 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth)
 	rayDesc.TMin = 0.001;
 	rayDesc.TMax = 10000;
 #if ALLOW_MIRRORS
-	GBufferRayPayload rayPayload = {false, 0, (float3)0, (float3)0, currentRayRecursionDepth + 1 };
+	GBufferRayPayload rayPayload = {false, (uint2)0, (float3)0, (float3)0, currentRayRecursionDepth + 1 };
 #else
-	GBufferRayPayload rayPayload = { false, 0, (float3)0, (float3)0 };
+	GBufferRayPayload rayPayload = { false, (uint2)0, (float3)0, (float3)0 };
 #endif
 	TraceRay(g_scene,
 #if FACE_CULLING
@@ -342,9 +350,9 @@ void MyRayGenShader_GBuffer()
 	GBufferRayPayload rayPayload = TraceGBufferRay(ray, currentRayRecursionDepth);
 
 	// Write out GBuffer information to rendertargets.
-	// ToDo Test conditional write
+	// ToDo Test conditional write on all output 
 	g_rtGBufferCameraRayHits[DispatchRaysIndex().xy] = (rayPayload.hit ? 1 : 0);
-	g_rtGBufferMaterialID[DispatchRaysIndex().xy] = rayPayload.materialID;
+    g_rtGBufferMaterialInfo[DispatchRaysIndex().xy] = rayPayload.materialInfo;
 
     // ToDo Use calculated hitposition based on distance from GBuffer instead?
 	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
@@ -370,6 +378,7 @@ void MyRayGenShader_GBuffer()
         obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
     }
 #endif
+
 
 #if COMPRES_NORMALS
     // compress normal
@@ -460,17 +469,13 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
 #endif
 	// Retrieve corresponding vertex normals for the triangle vertices.
 	float3 vertexNormals[3] = { l_vertices[indices[0]].normal, l_vertices[indices[1]].normal, l_vertices[indices[2]].normal};
+
 #if FLAT_FACE_NORMALS
 	BuiltInTriangleIntersectionAttributes attrCenter;
 	attrCenter.barycentrics.x = attrCenter.barycentrics.y = 1.f / 3;
 	float3 triangleNormal = normalize(HitAttribute(vertexNormals, attrCenter));
 #else
 	float3 triangleNormal = HitAttribute(vertexNormals, attr);
-#endif
-
-#if NORMAL_SHADING
-	rayPayload.color = float4(triangleNormal, 1.0f);
-	return;
 #endif
 
     // PERFORMANCE TIP: it is recommended to avoid values carry over across TraceRay() calls. 
@@ -515,33 +520,49 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 	const uint3 indices = Load3x16BitIndices(baseIndex, l_indices);
 #endif
 
-	// Retrieve corresponding vertex normals for the triangle vertices.
-	float3 vertexNormals[3] = { l_vertices[indices[0]].normal, l_vertices[indices[1]].normal, l_vertices[indices[2]].normal };
-	
+    // Retrieve texture coordinates for the hit.
+    VertexPositionNormalTextureTangent vertices[3] = { l_vertices[indices[0]], l_vertices[indices[1]], l_vertices[indices[2]] };
+    float2 vertexTexCoords[3] = { vertices[0].textureCoordinate, vertices[1].textureCoordinate, vertices[2].textureCoordinate };
+    float2 texCoord = HitAttribute(vertexTexCoords, attr);
+
+
+    UINT materialID = l_materialCB.materialID;
+    PrimitiveMaterialBuffer material = g_materials[materialID];
+
+    // Load normal.
+    float3 normal;
+    {
+        // Retrieve corresponding vertex normals for the triangle vertices.
+        float3 vertexNormals[3] = { vertices[0].normal, vertices[1].normal, vertices[2].normal };
+
 #if FLAT_FACE_NORMALS
-	BuiltInTriangleIntersectionAttributes attrCenter;
-	attrCenter.barycentrics.x = attrCenter.barycentrics.y = 1.f / 3;
-	// ToDo input normals should be normalized already
-	float3 triangleNormal = normalize(HitAttribute(vertexNormals, attrCenter));
+        BuiltInTriangleIntersectionAttributes attrCenter;
+        attrCenter.barycentrics.x = attrCenter.barycentrics.y = 1.f / 3;
+        // ToDo input normals should be normalized already
+        normal = normalize(HitAttribute(vertexNormals, attrCenter));
 #else
-	float3 triangleNormal = normalize(HitAttribute(vertexNormals, attr));
+        normal = normalize(HitAttribute(vertexNormals, attr));
+#endif
+#if !FACE_CULLING
+        float orientation = HitKind() == HIT_KIND_TRIANGLE_FRONT_FACE ? 1 : -1;
+        normal *= orientation;
 #endif
 
-#if !FACE_CULLING
-	float orientation = HitKind() == HIT_KIND_TRIANGLE_FRONT_FACE ? 1 : -1;
-	triangleNormal *= orientation;
-#endif
-	rayPayload.hit = true;
-	rayPayload.materialID = l_materialCB.materialID;
-	rayPayload.hitPosition = HitWorldPosition();
-	rayPayload.surfaceNormal = triangleNormal;
+        if (material.hasNormalTexture)
+        {
+            float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
+            float3 tangent = HitAttribute(vertexTangents, attr);
+            float3 bumpNormal = l_texNormalMap.SampleLevel(LinearWrapSampler, texCoord, 0).xyz * 2.f - 1.f;
+            normal = BumpMapNormalToWorldSpaceNormal(bumpNormal, normal, tangent);
+        }
+    }
 
 #if ALLOW_MIRRORS
-	PrimitiveMaterialBuffer material = g_materials[rayPayload.materialID];
 	if (material.isMirror && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
 	{
+        // ToDo offset hitposition, add comment.
 #if TURN_MIRRORS_SEETHROUGH
-		Ray passThroughRay = { rayPayload.hitPosition + 0.05f*WorldRayDirection(), WorldRayDirection() };
+		Ray passThroughRay = { rayPayload.hitPosition + 0.05f * WorldRayDirection(), WorldRayDirection() };
 		rayPayload = TraceGBufferRay(passThroughRay, rayPayload.rayRecursionDepth);
 
 #else
@@ -549,7 +570,23 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 		rayPayload = TraceGBufferRay(reflectionRay, rayPayload.rayRecursionDepth);
 #endif
 	}
+    else
 #endif
+    {
+        float3 diffuse;
+        if (material.hasDiffuseTexture)
+        {
+            diffuse = l_texDiffuse.SampleLevel(LinearWrapSampler, texCoord, 0).xyz;
+        }
+        else
+        {
+            diffuse = material.diffuse;
+        }
+        rayPayload.hit = true;
+        rayPayload.materialInfo = EncodeMaterial16b(materialID, diffuse);
+        rayPayload.hitPosition = HitWorldPosition();
+        rayPayload.surfaceNormal = normal;
+    }
 }
 
 

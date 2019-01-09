@@ -22,6 +22,8 @@ namespace SquidRoomAssets
 		DescriptorHeap* descriptorHeap,
 		LPCWSTR assetPath,
 		D3DGeometry* geometry,
+        std::vector<D3DTexture>* textures,
+        std::vector<PrimitiveMaterialBuffer>* materials,
 		std::vector<GeometryInstance>* geometryInstances
 	);
 

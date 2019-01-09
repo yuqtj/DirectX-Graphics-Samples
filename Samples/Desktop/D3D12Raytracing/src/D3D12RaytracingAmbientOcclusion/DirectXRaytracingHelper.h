@@ -16,6 +16,7 @@
 #include "RaytracingSceneDefines.h"
 
 #define SizeOfInUint32(obj) ((sizeof(obj) - 1) / sizeof(UINT32) + 1)
+
 template <class T>
 inline T Clamp(T value, T minValue, T maxValue)
 {

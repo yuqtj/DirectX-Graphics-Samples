@@ -121,15 +121,19 @@ namespace LocalRootSignature {
     namespace Triangle {
         namespace Slot {
             enum Enum {
-                MaterialID = 0,
+                ConstantBuffer = 0,
                 VertexBuffers,
+                DiffuseTexture,
+                NormalTexture,
                 Count
             };
         }
         struct RootArguments {
-            UINT materialID;
-			XMUINT3 padding;		// ToDo explain why
+            PrimitiveConstantBuffer cb;
+			//XMUINT3 padding;		// ToDo remove/explain why - CB needs to be aligned to 16B
             D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
+            D3D12_GPU_DESCRIPTOR_HANDLE diffuseTextureGPUHandle;
+            D3D12_GPU_DESCRIPTOR_HANDLE normalTextureGPUHandle;
         };
     }
 }
@@ -191,13 +195,14 @@ namespace UIParameters {
 	};
 }
 
+// ToDo update descriptions, prune redundant.
 namespace GBufferResource {
 	enum Enum {
 		Hit = 0,		// Geometry hit or not.
-		MaterialID,		// Material ID of the object hit.
+		Material,		// Material of the object hit ~ {MaterialID, texCoord}.
 		HitPosition,	// 3D position of hit.
-		SurfaceNormal,	// 3D normal at a hit and dot(normal, rayDir) in W
-        Distance,       // Length along ray of hit
+		SurfaceNormal,	// 3D normal at a hit and dot(normal, rayDir) in W,
+        Distance,       // Length along ray of hit.
 		Count
 	};
 }

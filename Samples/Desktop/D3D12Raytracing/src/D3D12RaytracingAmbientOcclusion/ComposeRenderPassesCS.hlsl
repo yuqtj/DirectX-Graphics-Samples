@@ -19,13 +19,14 @@ RWTexture2D<float4> g_renderTarget : register(u0);
 // Input.
 ConstantBuffer<ComposeRenderPassesConstantBuffer> g_CB : register(b0);
 Texture2D<uint> g_texGBufferPositionHits : register(t0);
-Texture2D<uint> g_texGBufferMaterialID : register(t1);
+Texture2D<uint2> g_texGBufferMaterial : register(t1);    // 16b {1x Material Id, 3x Diffuse.RGB}
 Texture2D<float4> g_texGBufferPositionRT : register(t2);
 Texture2D<float4> g_texGBufferNormal : register(t3);	// ToDo merge some GBuffers resources ?
 Texture2D<float> g_texAO : register(t5);
 Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
 
+SamplerState LinearWrapSampler : register(s0);
 
 float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 toLightRay, in float3 normal);
 float3 CalculateSpecularCoefficient(in float3 hitPosition, in float3 toEyeRay, in float3 toLightRay, in float3 normal, in float specularPower);
@@ -56,28 +57,22 @@ void main(uint2 DTid : SV_DispatchThreadID )
         float ambientCoef = g_CB.enableAO ? g_texAO[DTid] : 1;
         
 
-        // ToDo incorrect when subtracting camera
-		distance = length(hitPosition);// -g_CB.cameraPosition.xyz);
-
-#if AO_ONLY
-		// ToDo remove albedo
-        color = ambientCoef;// 10 * sqrt(ambientCoef);
-        float4 albedo = float4(1, 1, 1, 1);// float4(0.75f, 0.75f, 0.75f, 1.0f);
-		color *= albedo;
-#elif NORMAL_SHADING
-        color = float4(surfaceNormal, 1.0f);
-#else
 		// Calculate final color.
-		UINT materialID = g_texGBufferMaterialID[DTid];
-		PrimitiveMaterialBuffer material = g_materials[materialID];
+        uint2 materialInfo = g_texGBufferMaterial[DTid];
+        UINT materialID;
+        float3 diffuse;
+        DecodeMaterial16b(materialInfo, materialID, diffuse);
+
+        PrimitiveMaterialBuffer material = g_materials[materialID];
 		float3 toEyeRay = normalize(g_CB.cameraPosition.xyz - hitPosition);
-        float3 diffuse = RemoveSRGB(material.diffuse);
+        diffuse = RemoveSRGB(diffuse);
         float3 specular = RemoveSRGB(material.specular);
 		float3 phongColor = CalculatePhongLighting(surfaceNormal, hitPosition, toEyeRay, visibilityCoefficient, ambientCoef, diffuse, specular, material.specularPower);
 		color = float4(phongColor, 1);
-#endif
 
 		// Apply visibility falloff.
+        // ToDo incorrect when subtracting camera
+        distance = length(hitPosition);// -g_CB.cameraPosition.xyz);
 		float t = distance;
 		color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF*t*t*t));
 

@@ -12,7 +12,7 @@
 #pragma once
 
 // SquidRoom
-
+// ToDo what is this file for?
 namespace DXRTextWithPrimitives
 {
 	void LoadDensityMap(ID3D12Device* device, ID3D12CommandQueue* commandQueue, LPCWSTR assetPath, ID3D12Resource* resource);

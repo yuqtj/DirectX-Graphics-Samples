@@ -134,6 +134,7 @@ private:
 	std::vector<PrimitiveMaterialBuffer> m_materials;	// ToDO dedupe mats - hash materials
 	StructuredBuffer<PrimitiveMaterialBuffer> m_materialBuffer;
 
+    D3DTexture m_nullTexture;
 	
 	// Geometry
 
@@ -156,6 +157,9 @@ private:
 
 	SceneParser::Scene m_pbrtScene;
 	std::vector<D3DGeometry> m_geometries[GeometryType::Count];
+    std::vector<D3DTexture> m_geometryTextures[GeometryType::Count];
+
+
 	StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
 
 	StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;
@@ -174,7 +178,7 @@ private:
 	RWGpuResource m_VisibilityResource;
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;
-
+    
 	UINT m_GBufferWidth;
 	UINT m_GBufferHeight;
 

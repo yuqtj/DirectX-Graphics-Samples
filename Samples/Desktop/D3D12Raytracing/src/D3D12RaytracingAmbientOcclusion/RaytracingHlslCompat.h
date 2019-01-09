@@ -227,7 +227,7 @@ struct RayPayload
 struct GBufferRayPayload
 {
 	bool hit;
-	UINT materialID;
+	XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
 	XMFLOAT3 hitPosition;
 	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
 #if ALLOW_MIRRORS
@@ -320,21 +320,21 @@ struct GaussianFilterConstantBuffer
 };
 
 // Attributes per primitive type.
-// ToDo remove redundant data
 struct PrimitiveConstantBuffer
 {
 	UINT     materialID;
-	XMUINT3  padding;
+    XMUINT3   padding;
 };
-
 
 struct PrimitiveMaterialBuffer
 {
 	XMFLOAT3 diffuse;
+    bool hasDiffuseTexture;
 	XMFLOAT3 specular;
+    bool hasNormalTexture;
 	float specularPower;
-	UINT isMirror;
-	//UINT padding;
+	bool isMirror;
+    XMUINT2 padding;        // ToDo is padding needed for structured buffers?
 };
 
 // Attributes per primitive instance.

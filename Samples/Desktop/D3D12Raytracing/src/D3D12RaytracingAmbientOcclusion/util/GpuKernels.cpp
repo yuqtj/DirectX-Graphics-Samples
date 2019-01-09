@@ -832,6 +832,7 @@ namespace GpuKernels
         PIXEndEvent(commandList);
     }
 
+    // ToDo prune
     namespace RootSignature {
         namespace AtrousWaveletTransformCrossBilateralFilter {
             namespace Slot {
@@ -977,7 +978,6 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Normals, inputNormalsResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Depths, inputDepthsResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::NormalsOct, inputNormalsOctResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::Variance, inputVarianceResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::SmoothedVariance, inputSmoothedVarianceResourceHandle);
         }
 
@@ -1077,12 +1077,14 @@ namespace GpuKernels
             // Transition the intermediate output resource back.
             if (numFilterPasses > 1)
             {
-                UINT lastIntermediateVarianceInput = (numFilterPasses - 1) % 2;
+                bool isVar0ResourceInUAVState = ((numFilterPasses - 1) % 2) == 0;   
                 D3D12_RESOURCE_BARRIER barriers[] = {
                     CD3DX12_RESOURCE_BARRIER::Transition(m_intermediateValueOutput.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-                    CD3DX12_RESOURCE_BARRIER::Transition(m_intermediateVarianceOutputs[lastIntermediateVarianceInput].resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+                    CD3DX12_RESOURCE_BARRIER::Transition(m_intermediateVarianceOutputs[0].resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+                    CD3DX12_RESOURCE_BARRIER::Transition(m_intermediateVarianceOutputs[1].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
                 };
-                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+                // Transition variance resources back only if they're not in their default state.
+                commandList->ResourceBarrier(!isVar0ResourceInUAVState ? ARRAYSIZE(barriers) : 1, barriers);
             }
         }
 

@@ -36,6 +36,39 @@ float length_toPow2(float3 p)
     return dot(p, p);
 }
 
+uint Float2ToHalf(in float2 val)
+{
+    uint result = 0;
+    result = f32tof16(val.x);
+    result |= f32tof16(val.y) << 16;
+    return result;
+}
+
+float2 HalfToFloat2(in uint val)
+{
+    float2 result;
+    result.x = f16tof32(val);
+    result.y = f16tof32(val >> 16);
+    return result;
+}
+
+uint2 EncodeMaterial16b(uint materialID, float3 diffuse)
+{
+    uint2 result;
+    result.x = materialID;
+    result.x |= f32tof16(diffuse.r) << 16;
+    result.y = Float2ToHalf(diffuse.gb);
+
+    return result;
+}
+
+void DecodeMaterial16b(in uint2 material, out uint materialID, out float3 diffuse)
+{
+    materialID = material.x & 0xffff;
+    diffuse.r = f16tof32(material.x >> 16);
+    diffuse.gb = HalfToFloat2(material.y);
+}
+
 // Remaps a value to [0,1] for a given range.
 float RemapToRange(in float value, in float rangeMin, in float rangeMax)
 {
@@ -108,6 +141,15 @@ float3 HitAttribute(float3 vertexAttribute[3], BuiltInTriangleIntersectionAttrib
         attr.barycentrics.x * (vertexAttribute[1] - vertexAttribute[0]) +
         attr.barycentrics.y * (vertexAttribute[2] - vertexAttribute[0]);
 }
+
+// Retrieve attribute at a hit position interpolated from vertex attributes using the hit's barycentrics.
+float2 HitAttribute(float2 vertexAttribute[3], BuiltInTriangleIntersectionAttributes attr)
+{
+    return vertexAttribute[0] +
+        attr.barycentrics.x * (vertexAttribute[1] - vertexAttribute[0]) +
+        attr.barycentrics.y * (vertexAttribute[2] - vertexAttribute[0]);
+}
+
 
 // ToDo merge with GenerateCameraRay?
 inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
@@ -296,5 +338,18 @@ float3 Decode(float2 f)
 }
 /***************************************************************/
 
+
+// Sample normal map, convert to signed, apply tangent-to-world space transform.
+float3 BumpMapNormalToWorldSpaceNormal(float3 bumpNormal, float3 surfaceNormal, float3 tangent)
+{
+    // Compute tangent frame.
+    surfaceNormal = normalize(surfaceNormal);
+    tangent = normalize(tangent);
+
+    float3 binormal = normalize(cross(tangent, surfaceNormal));
+    float3x3 tangentSpaceToWorldSpace = float3x3(tangent, binormal, surfaceNormal);
+
+    return mul(bumpNormal, tangentSpaceToWorldSpace);
+}
 
 #endif // RAYTRACINGSHADERHELPER_H
