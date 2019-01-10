@@ -520,9 +520,24 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 
         if (material.hasNormalTexture)
         {
-            float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
-            float3 tangent = HitAttribute(vertexTangents, attr);
-            float3 bumpNormal = l_texNormalMap.SampleLevel(LinearWrapSampler, texCoord, 0).xyz * 2.f - 1.f;
+            float3 tangent;
+            if (material.hasPerVertexTangents)
+            {
+                float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
+                tangent = HitAttribute(vertexTangents, attr);
+            }
+            else
+            {
+                float3 v0 = vertices[0].position;
+                float3 v1 = vertices[1].position;
+                float3 v2 = vertices[2].position;
+                float2 uv0 = vertices[0].textureCoordinate;
+                float2 uv1 = vertices[1].textureCoordinate;
+                float2 uv2 = vertices[2].textureCoordinate;
+                tangent = CalculateTangent(v0, v1, v2, uv0, uv1, uv2);
+            }
+
+            float3 bumpNormal = normalize(l_texNormalMap.SampleLevel(LinearWrapSampler, texCoord, 0).xyz) * 2.f - 1.f;
             normal = BumpMapNormalToWorldSpaceNormal(bumpNormal, normal, tangent);
         }
     }

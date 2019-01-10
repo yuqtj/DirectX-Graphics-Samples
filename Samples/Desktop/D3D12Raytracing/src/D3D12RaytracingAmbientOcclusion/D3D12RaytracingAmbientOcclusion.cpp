@@ -186,6 +186,8 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 	auto& geometryInstances = m_geometryInstances[GeometryType::PBRT];
 	geometryInstances.reserve(numGeometries);
 
+    auto& textures = m_geometryTextures[GeometryType::PBRT];
+
 	XMVECTOR test = XMVector3TransformNormal(XMVectorSet(0, -1, 0, 0), m_pbrtScene.m_transform);
 	// ToDo
 	m_numTriangles[GeometryType::PBRT] = 0;
@@ -237,11 +239,32 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 		cb.specular = mesh.m_pMaterial->m_Specular.xmFloat3;
         cb.specularPower = 50;
 		cb.isMirror = mesh.m_pMaterial->m_Opacity.r < 0.5f ? 1 : 0;
-        cb.hasDiffuseTexture = false;
+        cb.hasDiffuseTexture = !mesh.m_pMaterial->m_DiffuseTextureFilename.empty();
         cb.hasNormalTexture = false;
+
+        D3DTexture* diffuseTexture = &m_nullTexture;
+        D3DTexture* normalTexture = &m_nullTexture;
+
+        if (cb.hasDiffuseTexture)
+        {
+            auto& srcString = mesh.m_pMaterial->m_DiffuseTextureFilename;
+            wstring filename(srcString.begin(), srcString.end());
+            textures.push_back(D3DTexture());
+            auto* texture = &textures.back();
+            LoadTexture(device, commandList, filename.c_str(), m_cbvSrvUavHeap.get(), &texture->resource, &texture->upload, &texture->heapIndex, &texture->cpuDescriptorHandle, &texture->gpuDescriptorHandle);
+            diffuseTexture = texture;
+
+            textures.push_back(D3DTexture());
+            texture = &textures.back();
+            cb.hasPerVertexTangents = false;
+            LoadTexture(device, commandList, L"Assets\\house\\textures\\Tiles.NormalMap.3x3.50b.png", m_cbvSrvUavHeap.get(), &texture->resource, &texture->upload, &texture->heapIndex, &texture->cpuDescriptorHandle, &texture->gpuDescriptorHandle);
+            normalTexture = texture;    
+            cb.hasNormalTexture = true;
+        }
+
 		UINT materialID = static_cast<UINT>(m_materials.size());
 		m_materials.push_back(cb);
-		geometryInstances.push_back(GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
+		geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle));
 #if !PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES
 		XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(m_geometryTransforms[i].transform3x4), mesh.m_transform);
 		geometryInstances.back().transform = m_geometryTransforms.GpuVirtualAddress(0, i);
@@ -1135,7 +1158,7 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
     CreateBufferSRV(device, ARRAYSIZE(vertices), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
-	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), 50, false, false, false };
+	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), 50, false, false, false, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(planeMaterialCB);
 	m_geometryInstances[GeometryType::Plane].push_back(GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
@@ -1298,7 +1321,7 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
 
-	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1),  50, false, false, false };
+	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1),  50, false, false, false, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(materialCB);
 	m_geometryInstances[GeometryType::Sphere].resize(SceneArgs::NumGeometriesPerBLAS, GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));

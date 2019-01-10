@@ -21,7 +21,7 @@ using namespace SceneParser;
 using namespace std;
 
 #define DISABLE_CAMERA_TRANSFORMS / ToDo remove
-#define SKIP_TEXTURE_ASSETS 1
+#define SKIP_TEXTURE_ASSETS 0
 
 namespace PBRTParser
 {
@@ -589,7 +589,29 @@ namespace PBRTParser
                 col1,
                 col2);
 
-            m_TextureNameToFileName[textureName] = fileName;
+            m_TextureNameToFileName[textureName] = m_relativeDirectory + fileName;
+        }
+        else if (!lastParsedWord.compare("\"imagemap\""))
+        {
+            std::string fileName;
+            {
+                std::string expectedWords[] = { "\"string", "filename\"", "[" };
+                ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
+                lineStream >> fileName;
+                fileName = CorrectNameString(fileName);
+                ParseExpectedWord(lineStream, "]");
+            }
+
+            // Trilinear setting is ignored, just read past.
+            {
+                std::string expectedWords[] = { "\"bool", "trilinear\"", "[" };
+                ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
+                string sBool;
+                lineStream >> sBool;
+                ParseExpectedWord(lineStream, "]");
+            }
+
+            m_TextureNameToFileName[textureName] = m_relativeDirectory + fileName;
         }
         else
         {

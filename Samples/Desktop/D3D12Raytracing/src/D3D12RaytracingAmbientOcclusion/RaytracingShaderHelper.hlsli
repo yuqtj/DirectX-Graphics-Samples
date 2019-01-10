@@ -385,4 +385,22 @@ float3 BumpMapNormalToWorldSpaceNormal(float3 bumpNormal, float3 surfaceNormal, 
     return mul(bumpNormal, tangentSpaceToWorldSpace);
 }
 
+
+// Calculate a tangent from triangle's vertices and their uv coordinates.
+// Ref: http://www.opengl-tutorial.org/intermediate-tutorials/tutorial-13-normal-mapping/
+float3 CalculateTangent(in float3 v0, in float3 v1, in float3 v2, in float2 uv0, in float2 uv1, in float2 uv2)
+{
+    // Calculate edges
+    // Position delta
+    float3 deltaPos1 = v1 - v0;
+    float3 deltaPos2 = v2 - v0;
+
+    // UV delta
+    float2 deltaUV1 = uv1 - uv0;
+    float2 deltaUV2 = uv2 - uv0;
+
+    float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x);
+    return (deltaPos1 * deltaUV2.y - deltaPos2 * deltaUV1.y)*r;
+}
+
 #endif // RAYTRACINGSHADERHELPER_H

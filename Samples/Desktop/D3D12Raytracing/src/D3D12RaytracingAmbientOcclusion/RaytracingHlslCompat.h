@@ -332,10 +332,11 @@ struct PrimitiveMaterialBuffer
 	XMFLOAT3 specular;
     float specularPower;
     // ToDo use a bitmask?
-    UINT hasNormalTexture;
     UINT hasDiffuseTexture;
+    UINT hasNormalTexture;
+    UINT hasPerVertexTangents;
     UINT isMirror;
-    XMUINT2 padding;
+    UINT padding;
 };
 
 // Attributes per primitive instance.

@@ -16,6 +16,9 @@
 _Use_decl_annotations_
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
+    // Initialization For WICTextureLoader.
+    ThrowIfFailed(CoInitializeEx(nullptr, COINITBASE_MULTITHREADED), L"Failed to initialize WIC component");
+
 	// ToDo
 	//D3D12RaytracingAmbientOcclusion sample(1280, 720, L"D3D12 Raytracing - Ambient Occlusion");
 	D3D12RaytracingAmbientOcclusion sample(1920, 1080, L"D3D12 Raytracing - Ambient Occlusion");

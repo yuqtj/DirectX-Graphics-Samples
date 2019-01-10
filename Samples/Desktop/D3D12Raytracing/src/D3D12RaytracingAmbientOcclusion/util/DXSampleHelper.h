@@ -486,8 +486,7 @@ struct RWGpuResource
 	UINT uavDescriptorHeapIndex = UINT_MAX;
 };
 
-
-// Combine with CreateRT?
+// ToDo Combine with CreateRT?
 inline void CreateTextureSRV(
 	ID3D12Device* device,
 	ID3D12Resource* resource,
@@ -510,6 +509,41 @@ inline void CreateTextureSRV(
 	*gpuHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(),
 		*descriptorHeapIndex, descriptorHeap->DescriptorSize());
 };
+
+// TLoads a texture and issues upload on the commandlist. 
+// The caller is expected to execute the commandList.
+inline void LoadTexture(
+    ID3D12Device* device,
+    ID3D12GraphicsCommandList4* commandList,
+    const wchar_t* filename,
+    DescriptorHeap* descriptorHeap,
+    ID3D12Resource** ppResource,
+    ID3D12Resource** ppUpload,
+    UINT* descriptorHeapIndex,
+    D3D12_CPU_DESCRIPTOR_HANDLE* cpuHandle,
+    D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle)
+{
+    std::unique_ptr<uint8_t[]> decodedData;
+    D3D12_SUBRESOURCE_DATA subresource;
+    ThrowIfFailed( LoadWICTextureFromFile(device, filename, ppResource, decodedData, subresource));
+
+    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(*ppResource, 0, 1);
+
+    // Create the GPU upload buffer.
+    ThrowIfFailed(
+        device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(ppUpload)));
+
+    UpdateSubresources(commandList, *ppResource, *ppUpload, 0, 0, 1, &subresource);
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(*ppResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+    
+    CreateTextureSRV(device, *ppResource, descriptorHeap, descriptorHeapIndex, cpuHandle, gpuHandle);
+}
 
 inline void CreateRenderTargetResource(
 	ID3D12Device* device,
