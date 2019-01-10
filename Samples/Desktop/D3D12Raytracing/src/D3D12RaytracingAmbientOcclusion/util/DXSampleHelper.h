@@ -510,9 +510,45 @@ inline void CreateTextureSRV(
 		*descriptorHeapIndex, descriptorHeap->DescriptorSize());
 };
 
-// TLoads a texture and issues upload on the commandlist. 
+// Loads a DDS texture and issues upload on the commandlist. 
 // The caller is expected to execute the commandList.
-inline void LoadTexture(
+inline void LoadDDSTexture(
+    ID3D12Device* device,
+    ID3D12GraphicsCommandList4* commandList,
+    const wchar_t* filename,
+    DescriptorHeap* descriptorHeap,
+    ID3D12Resource** ppResource,
+    ID3D12Resource** ppUpload,
+    UINT* descriptorHeapIndex,
+    D3D12_CPU_DESCRIPTOR_HANDLE* cpuHandle,
+    D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle)
+{
+    std::unique_ptr<uint8_t[]> ddsData;
+    std::vector<D3D12_SUBRESOURCE_DATA> subresources;
+    ThrowIfFailed(LoadDDSTextureFromFile(device, filename, ppResource, ddsData, subresources));
+
+    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(*ppResource, 0, static_cast<UINT>(subresources.size()));
+
+    // Create the GPU upload buffer.
+    ThrowIfFailed(
+        device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(ppUpload)));
+
+    UpdateSubresources(commandList, *ppResource, *ppUpload, 0, 0, static_cast<UINT>(subresources.size()), subresources.data());
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(*ppResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+
+    CreateTextureSRV(device, *ppResource, descriptorHeap, descriptorHeapIndex, cpuHandle, gpuHandle);
+
+}
+
+// Loads a WIC texture and issues upload on the commandlist. 
+// The caller is expected to execute the commandList.
+inline void LoadWICTexture(
     ID3D12Device* device,
     ID3D12GraphicsCommandList4* commandList,
     const wchar_t* filename,
@@ -525,7 +561,8 @@ inline void LoadTexture(
 {
     std::unique_ptr<uint8_t[]> decodedData;
     D3D12_SUBRESOURCE_DATA subresource;
-    ThrowIfFailed( LoadWICTextureFromFile(device, filename, ppResource, decodedData, subresource));
+    ThrowIfFailed(LoadWICTextureFromFile(device, filename, ppResource, decodedData, subresource));
+
 
     const UINT64 uploadBufferSize = GetRequiredIntermediateSize(*ppResource, 0, 1);
 
@@ -541,9 +578,35 @@ inline void LoadTexture(
 
     UpdateSubresources(commandList, *ppResource, *ppUpload, 0, 0, 1, &subresource);
     commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(*ppResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
-    
+
     CreateTextureSRV(device, *ppResource, descriptorHeap, descriptorHeapIndex, cpuHandle, gpuHandle);
 }
+
+
+// Loads a texture and issues upload on the commandlist. 
+// The caller is expected to execute the commandList.
+inline void LoadTexture(
+    ID3D12Device* device,
+    ID3D12GraphicsCommandList4* commandList,
+    const wchar_t* filename,
+    DescriptorHeap* descriptorHeap,
+    ID3D12Resource** ppResource,
+    ID3D12Resource** ppUpload,
+    UINT* descriptorHeapIndex,
+    D3D12_CPU_DESCRIPTOR_HANDLE* cpuHandle,
+    D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle)
+{
+    size_t len = wcsnlen_s(filename, 2048);
+    if (len >= 4 && wcscmp(filename + len - 4, L".dds") == 0)
+    {
+        LoadDDSTexture(device, commandList, filename, descriptorHeap, ppResource, ppUpload, descriptorHeapIndex, cpuHandle, gpuHandle);
+    }
+    else
+    {
+        LoadWICTexture(device, commandList, filename, descriptorHeap, ppResource, ppUpload, descriptorHeapIndex, cpuHandle, gpuHandle);
+    }
+}
+
 
 inline void CreateRenderTargetResource(
 	ID3D12Device* device,
@@ -934,4 +997,37 @@ inline void CreateGeometry(
 
 		CreateBufferSRV(device, desc.vb.count, sizeof(desc.vb.vertices[0]), descriptorHeap, &geometry->vb.buffer);
 	}
+}
+
+// Calculates a normalize tangent vector for a triangle given vertices' positions p* and their uv* coordinates.
+inline XMFLOAT3 CalculateTangent(const XMFLOAT3& p0, const XMFLOAT3& p1, const XMFLOAT3& p2, const XMFLOAT2& uv0, const XMFLOAT2& uv1, const XMFLOAT2& uv2)
+{
+    // A tangent can be computed by solving the following equations
+    // E1 = (P1 - P0) = T * (u1 - u0) + B * (v1 - v0)
+    // E2 = (P2 - P0) = T * (u2 - u0) + B * (v2 - v0)
+    //   expressed in Matrix form as
+    //   (  E1  ) =  (  u10  v10  ) (  T  ) 
+    //   (  E2  ) =  (  u20  v20  ) (  B  )  
+    //
+    //  That is by multiplying with an inverse UV matrix and solving for T
+    //
+    //   (  T  ) =   1 / det(UV)  (  v20  -v10  )  (  E1  )
+    //   (  B  ) =                (  -u20  u10  )  (  E2  )
+    //  where det(UV) = u10 * v20 - v10 * u20
+
+    XMFLOAT3 e10 = XMFLOAT3(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+    XMFLOAT3 e20 = XMFLOAT3(p2.x - p0.x, p2.y - p0.y, p2.z - p0.z);
+
+    XMFLOAT2 d_uv10 = XMFLOAT2(uv1.x - uv0.x, uv1.y - uv0.y);
+    XMFLOAT2 d_uv20 = XMFLOAT2(uv2.x - uv0.x, uv2.y - uv0.y);
+
+    float invDetUV = 1 / (d_uv10.x * d_uv20.y - d_uv10.y * d_uv20.x);
+
+    XMFLOAT3 tangent;
+    tangent.x = invDetUV * (e10.x * d_uv20.y - e20.x * d_uv10.y);
+    tangent.y = invDetUV * (e10.y * d_uv20.y - e20.y * d_uv10.y);
+    tangent.z = invDetUV * (e10.z * d_uv20.y - e20.z * d_uv10.y);
+    XMStoreFloat3(&tangent, XMVector3Normalize(XMLoadFloat3(&tangent)));
+
+    return tangent;
 }

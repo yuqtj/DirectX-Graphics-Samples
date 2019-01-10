@@ -221,6 +221,8 @@ void PlyParser::ParseBody(SceneParser::Mesh &mesh)
             pIterator += m_BytesPerIndex;
         }
     }
+
+    mesh.GenerateTangents();
 }
 
 void PlyParser::Parse(const string &filename, SceneParser::Mesh &mesh)

@@ -60,6 +60,7 @@
 #include <GeometricPrimitive.h>
 #include <DirectXMath.h>
 #include <WICTextureLoader.h>
+#include <DDSTextureLoader.h>
 
 // UI 
 #include <d2d1_3.h>

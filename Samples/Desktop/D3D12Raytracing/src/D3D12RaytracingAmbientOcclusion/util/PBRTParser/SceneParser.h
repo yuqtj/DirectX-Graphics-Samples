@@ -108,6 +108,7 @@ namespace SceneParser
 		std::string m_DiffuseTextureFilename;
 		std::string m_SpecularTextureFilename;
 		std::string m_OpacityTextureFilename;
+        std::string m_NormalMapTextureFilename;
 	};
 
 	struct Vertex
@@ -127,7 +128,45 @@ namespace SceneParser
         std::vector<Vertex> m_VertexBuffer;
 		XMMATRIX m_transform;
 
-        bool m_AreTangentsValid;
+        void GenerateTangents()
+        {
+            // Zero tangents.
+            for (auto& vertex : m_VertexBuffer)
+            {
+                vertex.Tangents.xmFloat3 = XMFLOAT3(0, 0, 0);
+            }
+
+            // Add tangents from all triangles a vertex corresponds to.
+            for (UINT i = 0; i < m_IndexBuffer.size(); i += 3)
+            {
+                auto& index0 = m_IndexBuffer[i];
+                auto& index1 = m_IndexBuffer[i+1];
+                auto& index2 = m_IndexBuffer[i+2];
+                XMFLOAT3& v0 = m_VertexBuffer[index0].Position.xmFloat3;
+                XMFLOAT3& v1 = m_VertexBuffer[index1].Position.xmFloat3;
+                XMFLOAT3& v2 = m_VertexBuffer[index2].Position.xmFloat3;
+
+                XMFLOAT2& uv0 = m_VertexBuffer[index0].UV.xmFloat2;
+                XMFLOAT2& uv1 = m_VertexBuffer[index1].UV.xmFloat2;
+                XMFLOAT2& uv2 = m_VertexBuffer[index2].UV.xmFloat2;
+
+                Vector3& tangent1 = m_VertexBuffer[index0].Tangents;
+                Vector3& tangent2 = m_VertexBuffer[index1].Tangents;
+                Vector3& tangent3 = m_VertexBuffer[index2].Tangents;
+
+                XMVECTOR tangent = XMLoadFloat3(&CalculateTangent(v0, v1, v2, uv0, uv1, uv2));
+
+                XMStoreFloat3(&tangent1.xmFloat3, tangent1.GetXMVECTOR() + tangent);
+                XMStoreFloat3(&tangent2.xmFloat3, tangent2.GetXMVECTOR() + tangent);
+                XMStoreFloat3(&tangent3.xmFloat3, tangent3.GetXMVECTOR() + tangent);
+            }
+
+            // Renormalize the tangents.
+            for (auto& vertex : m_VertexBuffer)
+            {
+                XMStoreFloat3(&vertex.Tangents.xmFloat3, XMVector3Normalize(XMLoadFloat3(&vertex.Tangents.xmFloat3)));
+            }
+        }
     };
 
     struct AreaLight

@@ -21,7 +21,6 @@ using namespace SceneParser;
 using namespace std;
 
 #define DISABLE_CAMERA_TRANSFORMS / ToDo remove
-#define SKIP_TEXTURE_ASSETS 0
 
 namespace PBRTParser
 {
@@ -189,6 +188,7 @@ namespace PBRTParser
 	}
 
 
+    // ToDo is this needed?
 	void PBRTParser::SetWindingOrder(bool bSetClockwiseOrder, SceneParser::Scene &scene)
 	{
 		// Ensure LH clockwise triangle vertices order 
@@ -400,14 +400,8 @@ namespace PBRTParser
                 std::string textureName;
                 inStream >> textureName;
                 textureName = CorrectNameString(textureName);
-#if SKIP_TEXTURE_ASSETS
-				material.m_Diffuse = Vector3(1, 1, 1);
-				material.m_Specular = Vector3(1, 1, 1);
-				material.m_Opacity = Vector3(1, 1, 1);
-#else
                 textureFileName = m_TextureNameToFileName[textureName];
                 ThrowIfTrue(textureFileName.size() == 0);
-#endif
             }
 
             inStream >> lastParsedWord;
@@ -450,6 +444,12 @@ namespace PBRTParser
 				{
 					pfnParseMaterialColor(lineStream, material.m_Opacity, material.m_OpacityTextureFilename);
 				}
+                else if (!lastParsedWord.compare("Normal\""))
+                {
+                    Vector3 dummy;
+                    pfnParseMaterialColor(lineStream, dummy, material.m_NormalMapTextureFilename);
+                    ThrowIfTrue(material.m_NormalMapTextureFilename.empty(), L"String was not followed by a texture name or texture was not found");
+                }
             }
             else if (!lastParsedWord.compare("\"float"))
             {
@@ -532,10 +532,6 @@ namespace PBRTParser
         // "float uscale"[20.000000] "float vscale"[20.000000] "rgb tex1"[0.325000 0.310000 0.250000] "rgb tex2"[0.725000 0.710000 0.680000]
         auto &lineStream = GetLineStream();
 
-#if SKIP_TEXTURE_ASSETS
-		lastParsedWord = "";
-		return;
-#endif
         std::string textureName;
         lineStream >> textureName;
         textureName = CorrectNameString(textureName);
@@ -740,6 +736,8 @@ namespace PBRTParser
         ThrowIfTrue(pMesh->m_pMaterial == nullptr, L"Material name not found");
 		pMesh->m_transform = m_currentTransform;
         ParseShape(fileStream, outputScene, *pMesh);
+
+
     }
 
     void PBRTParser::ParseShape(std::ifstream &fileStream, SceneParser::Scene &outputScene, SceneParser::Mesh &mesh)
@@ -753,6 +751,8 @@ namespace PBRTParser
 
             std::string correctedFileName = CorrectNameString(ParseString(fileStream));
             PlyParser::PlyParser().Parse(m_relativeDirectory + correctedFileName, mesh);
+
+
         }
         else if (!lastParsedWord.compare("\"trianglemesh\""))
         {
@@ -785,6 +785,7 @@ namespace PBRTParser
                 fileStream >> lastParsedWord;
             }
 
+            bool verticesProcessed = false;
             if (!lastParsedWord.compare("\"point"))
             {
                 fileStream >> lastParsedWord;
@@ -803,6 +804,7 @@ namespace PBRTParser
                     if (fileStream.good())
                     {
                         mesh.m_VertexBuffer.push_back(vertex);
+                        verticesProcessed = true;
                     }
                     else
                     {
@@ -816,6 +818,7 @@ namespace PBRTParser
                 fileStream >> lastParsedWord;
             }
 
+            bool normalsProcessed = false;
             if (!lastParsedWord.compare("\"normal"))
             {
                 fileStream >> lastParsedWord;
@@ -840,6 +843,7 @@ namespace PBRTParser
                         vertex.Normal.x = x;
                         vertex.Normal.y = y;
                         vertex.Normal.z = -z;
+                        normalsProcessed = true;
                     }
                     else
                     {
@@ -853,6 +857,7 @@ namespace PBRTParser
                 fileStream >> lastParsedWord;
             }
 
+            bool uvsProcessed = false;
             if (!lastParsedWord.compare("\"float"))
             {
                 fileStream >> lastParsedWord;
@@ -875,6 +880,7 @@ namespace PBRTParser
 
                         vertex.UV.u = u;
                         vertex.UV.v = v;
+                        uvsProcessed = true;
                     }
                     else
                     {
@@ -888,7 +894,11 @@ namespace PBRTParser
                 fileStream >> lastParsedWord;
             }
 
-            mesh.m_AreTangentsValid = false;
+            // Generate tangents
+            if (verticesProcessed && uvsProcessed)
+            {
+                mesh.GenerateTangents();
+            }
         }
     }
 

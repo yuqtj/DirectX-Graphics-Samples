@@ -537,7 +537,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
                 tangent = CalculateTangent(v0, v1, v2, uv0, uv1, uv2);
             }
 
-            float3 bumpNormal = normalize(l_texNormalMap.SampleLevel(LinearWrapSampler, texCoord, 0).xyz) * 2.f - 1.f;
+            float3 bumpNormal = normalize(l_texNormalMap.SampleLevel(LinearWrapSampler, texCoord, 2).xyz) * 2.f - 1.f;
             normal = BumpMapNormalToWorldSpaceNormal(bumpNormal, normal, tangent);
         }
     }

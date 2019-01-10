@@ -386,6 +386,7 @@ float3 BumpMapNormalToWorldSpaceNormal(float3 bumpNormal, float3 surfaceNormal, 
 }
 
 
+// ToDo remove
 // Calculate a tangent from triangle's vertices and their uv coordinates.
 // Ref: http://www.opengl-tutorial.org/intermediate-tutorials/tutorial-13-normal-mapping/
 float3 CalculateTangent(in float3 v0, in float3 v1, in float3 v2, in float2 uv0, in float2 uv1, in float2 uv2)

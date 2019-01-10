@@ -240,26 +240,30 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
         cb.specularPower = 50;
 		cb.isMirror = mesh.m_pMaterial->m_Opacity.r < 0.5f ? 1 : 0;
         cb.hasDiffuseTexture = !mesh.m_pMaterial->m_DiffuseTextureFilename.empty();
-        cb.hasNormalTexture = false;
+        cb.hasNormalTexture = !mesh.m_pMaterial->m_NormalMapTextureFilename.empty();
+        cb.hasPerVertexTangents = true;
 
-        D3DTexture* diffuseTexture = &m_nullTexture;
-        D3DTexture* normalTexture = &m_nullTexture;
 
-        if (cb.hasDiffuseTexture)
+        auto LoadPBRTTexture = [&](auto** ppOutTexture, auto& textureFilename)
         {
             auto& srcString = mesh.m_pMaterial->m_DiffuseTextureFilename;
-            wstring filename(srcString.begin(), srcString.end());
+            wstring filename(textureFilename.begin(), textureFilename.end());
             textures.push_back(D3DTexture());
             auto* texture = &textures.back();
             LoadTexture(device, commandList, filename.c_str(), m_cbvSrvUavHeap.get(), &texture->resource, &texture->upload, &texture->heapIndex, &texture->cpuDescriptorHandle, &texture->gpuDescriptorHandle);
-            diffuseTexture = texture;
+            *ppOutTexture = texture;
+        };
 
-            textures.push_back(D3DTexture());
-            texture = &textures.back();
-            cb.hasPerVertexTangents = false;
-            LoadTexture(device, commandList, L"Assets\\house\\textures\\Tiles.NormalMap.3x3.50b.png", m_cbvSrvUavHeap.get(), &texture->resource, &texture->upload, &texture->heapIndex, &texture->cpuDescriptorHandle, &texture->gpuDescriptorHandle);
-            normalTexture = texture;    
-            cb.hasNormalTexture = true;
+        D3DTexture* diffuseTexture = &m_nullTexture;
+        if (cb.hasDiffuseTexture)
+        {
+            LoadPBRTTexture(&diffuseTexture, mesh.m_pMaterial->m_DiffuseTextureFilename);
+        }
+
+        D3DTexture* normalTexture = &m_nullTexture;
+        if (cb.hasNormalTexture)
+        {
+            LoadPBRTTexture(&normalTexture, mesh.m_pMaterial->m_NormalMapTextureFilename);
         }
 
 		UINT materialID = static_cast<UINT>(m_materials.size());
