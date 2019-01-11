@@ -188,6 +188,9 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 
     auto& textures = m_geometryTextures[GeometryType::PBRT];
 
+    ResourceUploadBatch resourceUpload(device);
+    resourceUpload.Begin();
+
 	XMVECTOR test = XMVector3TransformNormal(XMVectorSet(0, -1, 0, 0), m_pbrtScene.m_transform);
 	// ToDo
 	m_numTriangles[GeometryType::PBRT] = 0;
@@ -250,7 +253,7 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
             wstring filename(textureFilename.begin(), textureFilename.end());
             textures.push_back(D3DTexture());
             auto* texture = &textures.back();
-            LoadTexture(device, commandList, filename.c_str(), m_cbvSrvUavHeap.get(), &texture->resource, &texture->upload, &texture->heapIndex, &texture->cpuDescriptorHandle, &texture->gpuDescriptorHandle);
+            LoadWICTexture(device, &resourceUpload, filename.c_str(), m_cbvSrvUavHeap.get(), &texture->resource, &texture->heapIndex, &texture->cpuDescriptorHandle, &texture->gpuDescriptorHandle, true);
             *ppOutTexture = texture;
         };
 
@@ -275,6 +278,12 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 #endif
 		m_numTriangles[GeometryType::PBRT] += desc.ib.count / 3;
 	}
+
+    // Upload the resources to the GPU.
+    auto finish = resourceUpload.End(commandQueue);
+
+    // Wait for the upload thread to terminate
+    finish.wait();
 }
 
 
@@ -646,7 +655,7 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(7);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
-        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_ANISOTROPIC);
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
 		SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::ComposeRenderPassesCS], L"Root signature: ComposeRenderPassesCS");
@@ -690,7 +699,8 @@ void D3D12RaytracingAmbientOcclusion::CreateAoBlurCSResources()
         rootParameters[Slot::InputAO].InitAsDescriptorTable(1, &ranges[3]);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
-        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+        // ToDo test aniso perf impact.
+        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_ANISOTROPIC);
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
 		SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::AoBlurCS], L"Root signature: AoBlurCS");
@@ -793,7 +803,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
         rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(4);
 
-        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_ANISOTROPIC);
 
         CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
 		SerializeAndCreateRootSignature(device, globalRootSignatureDesc, &m_raytracingGlobalRootSignature, L"Global root signature");

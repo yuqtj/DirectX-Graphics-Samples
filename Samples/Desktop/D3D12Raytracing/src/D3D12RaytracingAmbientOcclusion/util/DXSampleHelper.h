@@ -582,6 +582,22 @@ inline void LoadWICTexture(
     CreateTextureSRV(device, *ppResource, descriptorHeap, descriptorHeapIndex, cpuHandle, gpuHandle);
 }
 
+// Loads a WIC texture
+inline void LoadWICTexture(
+    ID3D12Device* device,
+    ResourceUploadBatch* resourceUpload,
+    const wchar_t* filename,
+    DescriptorHeap* descriptorHeap,
+    ID3D12Resource** ppResource,
+    UINT* descriptorHeapIndex,
+    D3D12_CPU_DESCRIPTOR_HANDLE* cpuHandle,
+    D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle,
+    bool loadMipmaps = true)
+{
+    ThrowIfFailed(CreateWICTextureFromFile(device, *resourceUpload, filename, ppResource, loadMipmaps));
+    CreateTextureSRV(device, *ppResource, descriptorHeap, descriptorHeapIndex, cpuHandle, gpuHandle);
+}
+
 
 // Loads a texture and issues upload on the commandlist. 
 // The caller is expected to execute the commandList.

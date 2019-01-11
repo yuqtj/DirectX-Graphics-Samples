@@ -61,6 +61,7 @@
 #include <DirectXMath.h>
 #include <WICTextureLoader.h>
 #include <DDSTextureLoader.h>
+#include "ResourceUploadBatch.h"
 
 // UI 
 #include <d2d1_3.h>

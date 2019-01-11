@@ -499,7 +499,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     UINT materialID = l_materialCB.materialID;
     PrimitiveMaterialBuffer material = g_materials[materialID];
 
-    // Load normal.
+    // Load triangle normal.
     float3 normal;
     {
         // Retrieve corresponding vertex normals for the triangle vertices.
@@ -517,31 +517,48 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         float orientation = HitKind() == HIT_KIND_TRIANGLE_FRONT_FACE ? 1 : -1;
         normal *= orientation;
 #endif
-
-        if (material.hasNormalTexture)
-        {
-            float3 tangent;
-            if (material.hasPerVertexTangents)
-            {
-                float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
-                tangent = HitAttribute(vertexTangents, attr);
-            }
-            else
-            {
-                float3 v0 = vertices[0].position;
-                float3 v1 = vertices[1].position;
-                float3 v2 = vertices[2].position;
-                float2 uv0 = vertices[0].textureCoordinate;
-                float2 uv1 = vertices[1].textureCoordinate;
-                float2 uv2 = vertices[2].textureCoordinate;
-                tangent = CalculateTangent(v0, v1, v2, uv0, uv1, uv2);
-            }
-
-            float3 bumpNormal = normalize(l_texNormalMap.SampleLevel(LinearWrapSampler, texCoord, 2).xyz) * 2.f - 1.f;
-            normal = BumpMapNormalToWorldSpaceNormal(bumpNormal, normal, tangent);
-        }
     }
 
+    float2 ddx, ddy;
+    if (material.hasDiffuseTexture || material.hasNormalTexture)
+    {
+        float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
+        float3 tangent = HitAttribute(vertexTangents, attr);
+        float3 bitangent = normalize(cross(tangent, normal));
+
+        CalculateUVDerivatives(ddx, ddy, 
+            HitWorldPosition(), texCoord, tangent, bitangent, normal,
+            vertices[0].position, vertices[1].position, vertices[2].position,
+            vertices[0].textureCoordinate, vertices[1].textureCoordinate, vertices[2].textureCoordinate,
+            g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
+        // ToDo. Lower by 0.5 to sharpen texture filtering.
+        ddx *= 0.5;
+        ddy *= 0.5;
+    }
+
+    // Apply NormalMap
+    if (material.hasNormalTexture)
+    {
+        float3 tangent;
+        if (material.hasPerVertexTangents)
+        {
+            float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
+            tangent = HitAttribute(vertexTangents, attr);
+        }
+        else
+        {
+            float3 v0 = vertices[0].position;
+            float3 v1 = vertices[1].position;
+            float3 v2 = vertices[2].position;
+            float2 uv0 = vertices[0].textureCoordinate;
+            float2 uv1 = vertices[1].textureCoordinate;
+            float2 uv2 = vertices[2].textureCoordinate;
+            tangent = CalculateTangent(v0, v1, v2, uv0, uv1, uv2);
+        }
+
+        float3 bumpNormal = normalize(l_texNormalMap.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz) * 2.f - 1.f;
+        normal = BumpMapNormalToWorldSpaceNormal(bumpNormal, normal, tangent);
+    }
 #if ALLOW_MIRRORS
 	if (material.isMirror && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
 	{
@@ -561,7 +578,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         float3 diffuse;
         if (material.hasDiffuseTexture)
         {
-            diffuse = l_texDiffuse.SampleLevel(LinearWrapSampler, texCoord, 0).xyz;
+            diffuse = l_texDiffuse.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz;
         }
         else
         {
