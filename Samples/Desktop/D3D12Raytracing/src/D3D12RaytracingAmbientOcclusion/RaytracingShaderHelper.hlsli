@@ -20,12 +20,6 @@
 #define FLT_MIN         1.175494351e-38 
 #define FLT_MAX         3.402823466e+38 
 
-struct Ray
-{
-    float3 origin;
-    float3 direction;
-};
-
 float length_toPow2(float2 p)
 {
     return dot(p, p);
@@ -407,8 +401,9 @@ float3 CalculateTangent(in float3 v0, in float3 v1, in float3 v2, in float2 uv0,
 
 float3 RayPlaneIntersection(float3 planeOrigin, float3 planeNormal, float3 rayOrigin, float3 rayDirection)
 {
-    float t = dot(-planeNormal, rayOrigin - planeOrigin) / dot(planeNormal, rayDirection);
-    return rayOrigin + rayDirection * t;
+    float d = -dot(planeNormal, planeOrigin);
+    float t = (-dot(planeNormal, rayOrigin) - d) / dot(planeNormal, rayDirection);
+    return rayOrigin + t * rayDirection;
 }
 
 bool Inverse2x2(float2x2 mat, out float2x2 inverse)
@@ -449,10 +444,12 @@ void CalculateTrianglePartialDerivatives(float2 uv0, float2 uv1, float2 uv2, flo
     float2x3 pointVector;
     pointVector[0] = p0 - p2;
     pointVector[1] = p1 - p2;
+
     float2x2 inverse;
     Inverse2x2(linearEquation, inverse);
-    dpdu = pointVector[0] * inverse[0][0] + pointVector[1] * inverse[0][1];
-    dpdv = pointVector[0] * inverse[1][0] + pointVector[1] * inverse[1][1];
+
+    dpdu = inverse[0][0] * pointVector[0] + inverse[0][1] * pointVector[1];
+    dpdv = inverse[1][0] * pointVector[0] + inverse[1][1] * pointVector[1];
 }
 
 /*
@@ -465,13 +462,14 @@ Note described only with pX, but the same is also applied to pY
 ( dpdu.y, dpdv.y)   (dU)   =   (pX.y - p.y)
 ( dpdu.z, dpdv.z)   (dV)   =   (pX.z - p.z)
 
-Because the problem is over-constrained (3 equations and only 2 unknowns), we pick 2 channels, and solve for dU, dV by inverting the matrix
+Because the problem is over-constrained (3 equations and only 2 unknowns), we pick 2 channels. Since one of the equations can
+be degenerate, we pick the other 2 - namely 2 with least magnitude in their cross product, which are conveniently available in n.
+THen we solve for dU, dV by inverting the matrix
 
 dU    =   ( dpdu.x, dpdv.x)^-1  (pX.x - p.x)
 dV    =   ( dpdu.y, dpdv.y)     (pX.y - p.y)
 */
-
-void CalculateUVDerivatives(float3 normal, float3 dpdu, float3 dpdv, float3 p, float3 pX, float3 pY, out float2 ddX, out float2 ddY)
+void CalculateUVDerivatives(float3 normal, float3 dpdu, float3 dpdv, float3 p, float3 pX, float3 pY, out float2 ddx, out float2 ddy)
 {
     int2 indices;
     float3 absNormal = abs(normal);
@@ -494,19 +492,21 @@ void CalculateUVDerivatives(float3 normal, float3 dpdu, float3 dpdv, float3 p, f
 
     float2x2 inverse;
     Inverse2x2(linearEquation, inverse);
+
     float2 pointOffset = float2(pX[indices.x] - p[indices.x], pX[indices.y] - p[indices.y]);
-    ddX = abs(mul(inverse, pointOffset));
+    ddx = abs(mul(inverse, pointOffset));
 
     pointOffset = float2(pY[indices.x] - p[indices.x], pY[indices.y] - p[indices.y]);
-    ddY = abs(mul(inverse, pointOffset));
+    ddy = abs(mul(inverse, pointOffset));
 }
 
 
-void CalculateUVDerivatives(out float2 ddx, out float2 ddy,
+void CalculateUVDerivatives(
     in float2 uv, in float3 hitPosition, in float3 triangleNormal,
     in float3 p0, in float3 p1, in float3 p2, 
     in float2 uv0, in float2 uv1, in float2 uv2,
-    in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
+    in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin,
+    out float2 ddx, out float2 ddy)
 {
     Ray ray10 = GenerateCameraRay(DispatchRaysIndex().xy + uint2(1, 0), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);
     Ray ray01 = GenerateCameraRay(DispatchRaysIndex().xy + uint2(0, 1), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);
@@ -519,22 +519,28 @@ void CalculateUVDerivatives(out float2 ddx, out float2 ddy,
     CalculateUVDerivatives(triangleNormal, dpdu, dpdv, hitPosition, xOffsetPoint, yOffsetPoint, ddx, ddy);
 }
 
-// Calculate derivatives of texture coordinates.
-void CalculateUVDerivatives(out float2 ddx, out float2 ddy,
+// Calculate derivatives of texture coordinates on a given triangle.
+void CalculateUVDerivatives(
     in float3 hitPosition, in float2 uv, in float3 tangent, in float3 bitangent, in float3 triangleNormal,
-    in float3 p0, in float3 p1, in float3 p2,
-    in float2 uv0, in float2 uv1, in float2 uv2,
-    in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
+    in float3 p0,                      // Current ray's intersection point with the triangle.
+    in Ray rx, in Ray ry,              // Auxilary rays
+    in float2 uv0, in float2 uv1, in float2 uv2,    // UV coordinates at the triangle's vertices.
+    in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin,
+    out float2 ddx, out float2 ddy,    // UV derivatives
+    out float3 px, out float3 py)      // Auxilary rays' intersection points with the triangle.)
 {
-    Ray ray10 = GenerateCameraRay(DispatchRaysIndex().xy + uint2(1, 0), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);
-    Ray ray01 = GenerateCameraRay(DispatchRaysIndex().xy + uint2(0, 1), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);
+    px = RayPlaneIntersection(hitPosition, triangleNormal, rx.origin, rx.direction);
+    py = RayPlaneIntersection(hitPosition, triangleNormal, ry.origin, ry.direction);
 
-    float3 xOffsetPoint = RayPlaneIntersection(hitPosition, triangleNormal, ray10.origin, ray10.direction);
-    float3 yOffsetPoint = RayPlaneIntersection(hitPosition, triangleNormal, ray01.origin, ray01.direction);
-
-    CalculateUVDerivatives(triangleNormal, tangent, bitangent, hitPosition, xOffsetPoint, yOffsetPoint, ddx, ddy);
+    CalculateUVDerivatives(triangleNormal, tangent, bitangent, hitPosition, px, py, ddx, ddy);
 }
 
+// Retrieves auxilary camera rays offset by one pixel in x and y directions in screen space. 
+void GetAuxilaryCameraRays(in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin, out Ray rx, out Ray ry)
+{
+    rx = GenerateCameraRay(DispatchRaysIndex().xy + uint2(1, 0), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);
+    ry = GenerateCameraRay(DispatchRaysIndex().xy + uint2(0, 1), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);
+}
 
 
 #endif // RAYTRACINGSHADERHELPER_H

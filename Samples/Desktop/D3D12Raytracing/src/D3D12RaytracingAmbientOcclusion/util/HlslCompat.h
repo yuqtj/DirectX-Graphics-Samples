@@ -21,5 +21,6 @@ typedef uint UINT;
 typedef uint2 XMUINT2;
 typedef uint3 XMUINT3;
 typedef int2 XMINT2;
+typedef int BOOL;
 
 #endif // HLSLCOMPAT_H

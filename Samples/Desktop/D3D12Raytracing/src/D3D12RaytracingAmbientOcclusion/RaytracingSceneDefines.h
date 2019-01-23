@@ -102,6 +102,7 @@ namespace GlobalRootSignature {
             SceneConstant,
 			MaterialBuffer,
             SampleBuffers,
+            EnvironmentMap,
             Count
         };
     }

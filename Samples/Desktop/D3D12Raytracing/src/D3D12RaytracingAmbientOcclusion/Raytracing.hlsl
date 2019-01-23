@@ -46,6 +46,8 @@ Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Materia
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<float4> g_texGBufferNormal : register(t8);
 Texture2D<float4> g_texGBufferDistance : register(t9);
+TextureCube<float4> g_texEnvironmentMap : register(t12);
+
 // ToDo remove AOcoefficient and use AO hits instead?
 RWTexture2D<float> g_rtAOcoefficient : register(u10);
 RWTexture2D<uint> g_rtAORayHits : register(u11);
@@ -154,7 +156,8 @@ bool TraceShadowRayAndReportIfHit(in Ray ray, in UINT currentRayRecursionDepth, 
 }
 
 // Trace a camera ray into the scene.
-GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth)
+// rx, ry - auxilary rays offset in screen space by one pixel in x, y directions.
+GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT currentRayRecursionDepth)
 {
 	// Set the ray's extents.
 	RayDesc rayDesc;
@@ -163,13 +166,13 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth)
 	// ToDo update comments about Tmins
 	// Set TMin to a zero value to avoid aliasing artifacts along contact areas.
 	// Note: make sure to enable face culling so as to avoid surface face fighting.
-	// ToDo Tmin
+	// ToDo Tmin - this should be offset along normal.
 	rayDesc.TMin = 0.001;
 	rayDesc.TMax = 10000;
 #if ALLOW_MIRRORS
-	GBufferRayPayload rayPayload = {false, (uint2)0, (float3)0, (float3)0, currentRayRecursionDepth + 1 };
+	GBufferRayPayload rayPayload = { currentRayRecursionDepth + 1, false, (uint2)0, (float3)0, (float3)0, rx, ry };
 #else
-	GBufferRayPayload rayPayload = { false, (uint2)0, (float3)0, (float3)0 };
+	GBufferRayPayload rayPayload = { false, (uint2)0, (float3)0, (float3)0, rx, ry };
 #endif
 	TraceRay(g_scene,
 #if FACE_CULLING
@@ -195,17 +198,36 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 
 #if AO_HITPOSITION_BASED_SEED
 #if AO_SAMPLES_SPREAD_ACCROSS_PIXELS
-	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
-	{
+    // Neighboring samples NxN share a sample set.
+    // Get a sample set ID and seed shared across neighboring pixels.
+    uint numSampleSetsInX = (DispatchRaysDimensions().x + g_sceneCB.numPixelsPerDimPerSet - 1) / g_sceneCB.numPixelsPerDimPerSet;
+    uint2 sampleSetId = DispatchRaysIndex().xy / g_sceneCB.numPixelsPerDimPerSet;
+    uint2 pixelZeroId = sampleSetId * g_sceneCB.numPixelsPerDimPerSet;
+    float3 pixelZeroHitPosition = g_texGBufferPositionRT[pixelZeroId].xyz;
 
-	}
+    uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + g_sceneCB.seed;
 
+    uint RNGState = RNG::SeedThread(sampleSetSeed);
+    uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
+
+    // Get a pixel ID within the shared set across neighboring pixels.
+    uint2 pixeIDPerSet2D = DispatchRaysIndex().xy % g_sceneCB.numPixelsPerDimPerSet;
+    uint pixeIDPerSet = pixeIDPerSet2D.y * g_sceneCB.numPixelsPerDimPerSet + pixeIDPerSet2D.x;
+
+    // ToDo is RNG being used here any useful?
+    uint numPixelsPerSet = g_sceneCB.numPixelsPerDimPerSet * g_sceneCB.numPixelsPerDimPerSet;
+    uint sampleJump = (pixeIDPerSet + RNG::Random(RNGState, 0, numPixelsPerSet - 1)) % numPixelsPerSet;
+    sampleJump *= g_sceneCB.numSamplesToUse;
+
+    for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
+    {
+        // Load a pregenerated random sample from the sample set.
+        float3 sample = g_sampleSets[sampleSetJump + sampleJump + i].value;
 #else
 	// Seed:
 	// - DispatchRaysDimensions to break correlation among neighboring pixels.
 	// - hash(hitPosition) to break correlation for the same pixel but differet hitPosition when moving camera/objects.
-	uint seed = (DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x) * hash(hitPosition) + g_sceneCB.seed;
-
+    uint seed = (DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x) * hash(hitPosition) + g_sceneCB.seed;
 
 	uint RNGState = RNG::SeedThread(seed);
 	uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
@@ -215,7 +237,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 	{
 		// Load a pregenerated random sample from the sample set.
 		float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % g_sceneCB.numSamples].value;
-
+#endif
 		// Calculate coordinate system for the hemisphere
 		float3 u, v, w;
 		w = surfaceNormal;
@@ -235,7 +257,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 		// ToDo hitPosition adjustment - fix crease artifacts
 		// Todo fix noise on flat surface / box
 		Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
-#endif
+
 #else
     uint2 BTid = DispatchRaysIndex().xy & 3; // 4x4 BlockThreadID
 	uint RNGState = RNG::SeedThread(g_sceneCB.seed + (BTid.y << 2 | BTid.x));
@@ -315,9 +337,12 @@ void MyRayGenShader_GBuffer()
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
 	Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
 
+    Ray rx, ry;
+    GetAuxilaryCameraRays(g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, rx, ry);
+
 	// Cast a ray into the scene and retrieve GBuffer information.
 	UINT currentRayRecursionDepth = 0;
-	GBufferRayPayload rayPayload = TraceGBufferRay(ray, currentRayRecursionDepth);
+	GBufferRayPayload rayPayload = TraceGBufferRay(ray, rx, ry, currentRayRecursionDepth);
 
 	// Write out GBuffer information to rendertargets.
 	// ToDo Test conditional write on all output 
@@ -519,21 +544,25 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #endif
     }
 
-    float2 ddx, ddy;
+    float3 hitPosition = HitWorldPosition();
+    float2 ddx = 0;
+    float2 ddy = 0;
+
+    // Calculate auxilary rays' intersection points with the triangle.
+    float3 px, py;
+    px = RayPlaneIntersection(hitPosition, normal, rayPayload.rx.origin, rayPayload.rx.direction);
+    py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
+    
     if (material.hasDiffuseTexture || material.hasNormalTexture)
     {
         float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
         float3 tangent = HitAttribute(vertexTangents, attr);
         float3 bitangent = normalize(cross(tangent, normal));
-
-        CalculateUVDerivatives(ddx, ddy, 
-            HitWorldPosition(), texCoord, tangent, bitangent, normal,
-            vertices[0].position, vertices[1].position, vertices[2].position,
-            vertices[0].textureCoordinate, vertices[1].textureCoordinate, vertices[2].textureCoordinate,
-            g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
+        
+        CalculateUVDerivatives(normal, tangent, bitangent, hitPosition, px, py, ddx, ddy);
         // ToDo. Lower by 0.5 to sharpen texture filtering.
-        ddx *= 0.5;
-        ddy *= 0.5;
+        //ddx *= 0.5;
+        //ddy *= 0.5;
     }
 
     // Apply NormalMap
@@ -560,17 +589,23 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         normal = BumpMapNormalToWorldSpaceNormal(bumpNormal, normal, tangent);
     }
 #if ALLOW_MIRRORS
-	if (material.isMirror && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
-	{
+    if (material.isMirror && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
+    {
         // ToDo offset hitposition, add comment.
 #if TURN_MIRRORS_SEETHROUGH
-		Ray passThroughRay = { HitWorldPosition() + 0.05f * WorldRayDirection(), WorldRayDirection() };
-		rayPayload = TraceGBufferRay(passThroughRay, rayPayload.rayRecursionDepth);
-
+        // Calculate refracted rx, ry
+        // No refraction ,just passing the rays through.
+        Ray rx = rayPayload.rx;
+        Ray ry = rayPayload.ry;
+        Ray ray = { hitPosition + 0.05f * WorldRayDirection(), WorldRayDirection() };
 #else
-		Ray reflectionRay = { HitWorldPosition(), reflect(WorldRayDirection(), normal) };
-		rayPayload = TraceGBufferRay(reflectionRay, rayPayload.rayRecursionDepth);
+        // Calculate reflected rx, ry
+        Ray rx = { px, reflect(rayPayload.rx.direction, normal) };
+        Ray ry = { py, reflect(rayPayload.ry.direction, normal) };
+        Ray ray = { hitPosition, reflect(WorldRayDirection(), normal) };
 #endif
+
+        rayPayload = TraceGBufferRay(ray, rx, ry, rayPayload.rayRecursionDepth);
 	}
     else
 #endif
@@ -586,7 +621,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         }
         rayPayload.hit = true;
         rayPayload.materialInfo = EncodeMaterial16b(materialID, diffuse);
-        rayPayload.hitPosition = HitWorldPosition();
+        rayPayload.hitPosition = hitPosition;
         rayPayload.surfaceNormal = normal;
     }
 }
@@ -614,6 +649,10 @@ void MyMissShader_ShadowRay(inout ShadowRayPayload rayPayload)
 void MyMissShader_GBuffer(inout GBufferRayPayload rayPayload)
 {
 	rayPayload.hit = false;
+#if USE_ENVIRONMENT_MAP
+    float3 color = g_texEnvironmentMap.SampleLevel(LinearWrapSampler, WorldRayDirection(), 0).xyz;
+    rayPayload.materialInfo = EncodeMaterial16b(0, color);
+#endif
 }
 
 

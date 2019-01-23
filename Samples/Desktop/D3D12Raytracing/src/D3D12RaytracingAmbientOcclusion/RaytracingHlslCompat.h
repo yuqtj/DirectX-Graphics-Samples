@@ -23,6 +23,8 @@
 #define RUNTIME_AS_UPDATES 0
 #define USE_GPU_TRANSFORM 1
 
+
+#define USE_ENVIRONMENT_MAP 1
 #define DEBUG_AS 0
 
 #define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
@@ -42,6 +44,9 @@
 #define ADD_INVERTED_FACE 0
 #define CORRECT_NORMALS 0
 
+//#define SAMPLER_FILTER D3D12_FILTER_MIN_MAG_MIP_LINEAR
+#define SAMPLER_FILTER D3D12_FILTER_ANISOTROPIC  // TODo blurry at various angles
+
 
 // ToDo 16bit per component normals?
 #define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 1
@@ -52,6 +57,7 @@
 #define TWO_STAGE_AO_BLUR 1
 #define AO_RANDOM_SEED_EVERY_FRAME 0
 #define AO_HITPOSITION_BASED_SEED 1
+#define AO_SAMPLES_SPREAD_ACCROSS_PIXELS 1
 #define VARIANCE_APPROXIMATION 1
 
 #define COMPRES_NORMALS 1
@@ -213,6 +219,7 @@ typedef UINT16 Index;
 #define DEPTH_SHADING 0
 #define SINGLE_COLOR_SHADING 0
 
+// ToDo clean up
 struct ProceduralPrimitiveAttributes
 {
     XMFLOAT3 normal;
@@ -224,15 +231,24 @@ struct RayPayload
     UINT   recursionDepth;
 };
 
+struct Ray
+{
+    XMFLOAT3 origin;
+    XMFLOAT3 direction;
+};
+
 struct GBufferRayPayload
 {
+    // ToDo Having rayRecursionDepth causes DeviceRemoved on recursive trace ray. Check on alignments mismatch?
+#if ALLOW_MIRRORS
+    UINT rayRecursionDepth;
+#endif
 	UINT hit;
 	XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
 	XMFLOAT3 hitPosition;
 	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
-#if ALLOW_MIRRORS
-	UINT rayRecursionDepth;
-#endif
+    Ray rx;    // Auxilary camera ray offset by one pixel in x dimension in screen space.
+    Ray ry;    // Auxilary camera ray offset by one pixel in y dimension in screen space.
 };
 
 struct ShadowRayPayload
@@ -281,9 +297,10 @@ struct SceneConstantBuffer
     UINT seed;
     UINT numSamples;
     UINT numSampleSets;
-    UINT numSamplesToUse;    
+    UINT numSamplesToUse;
+    UINT numPixelsPerDimPerSet;
+    float padding;
     XMFLOAT2 cameraJitter;
-	XMFLOAT2 padding;
 };
  
 // ToDo explain padding

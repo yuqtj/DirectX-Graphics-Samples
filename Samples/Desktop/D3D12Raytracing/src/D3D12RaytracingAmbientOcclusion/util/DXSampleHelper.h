@@ -8,7 +8,7 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-
+//ToDo cleanup
 #pragma once
 
 // Note that while ComPtr is used to manage the lifetime of resources on the CPU,
@@ -235,6 +235,38 @@ void ResetUniquePtrArray(T* uniquePtrArray)
         i.reset();
     }
 }
+
+
+struct D3DBuffer
+{
+    ComPtr<ID3D12Resource> resource;
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
+    UINT heapIndex = UINT_MAX;
+};
+
+// ToDo rename 
+struct D3DGeometry
+{
+    struct Buffer
+    {
+        D3DBuffer buffer;
+        ComPtr<ID3D12Resource> upload;	// ToDo delete these after initialization? Should there be a common upload?
+    };
+
+    Buffer vb;
+    Buffer ib;
+};
+
+struct D3DTexture
+{
+    ComPtr<ID3D12Resource> resource;
+    ComPtr<ID3D12Resource> upload; // ToDo delete these after initialization? Should there be a common upload?
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
+    UINT heapIndex = UINT_MAX;
+};
+
 
 class GpuUploadBuffer
 {
@@ -493,11 +525,12 @@ inline void CreateTextureSRV(
 	DescriptorHeap* descriptorHeap,
 	UINT* descriptorHeapIndex,
 	D3D12_CPU_DESCRIPTOR_HANDLE* cpuHandle,
-	D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle)
+	D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle,
+    D3D12_SRV_DIMENSION srvDimension = D3D12_SRV_DIMENSION_TEXTURE2D)
 {
 	// Describe and create an SRV.
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.ViewDimension = srvDimension;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Format = resource->GetDesc().Format;
 	srvDesc.Texture2D.MipLevels = resource->GetDesc().MipLevels;
@@ -510,6 +543,8 @@ inline void CreateTextureSRV(
 		*descriptorHeapIndex, descriptorHeap->DescriptorSize());
 };
 
+
+
 // Loads a DDS texture and issues upload on the commandlist. 
 // The caller is expected to execute the commandList.
 inline void LoadDDSTexture(
@@ -521,7 +556,8 @@ inline void LoadDDSTexture(
     ID3D12Resource** ppUpload,
     UINT* descriptorHeapIndex,
     D3D12_CPU_DESCRIPTOR_HANDLE* cpuHandle,
-    D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle)
+    D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle,
+    D3D12_SRV_DIMENSION srvDimension = D3D12_SRV_DIMENSION_TEXTURE2D)
 {
     std::unique_ptr<uint8_t[]> ddsData;
     std::vector<D3D12_SUBRESOURCE_DATA> subresources;
@@ -542,8 +578,18 @@ inline void LoadDDSTexture(
     UpdateSubresources(commandList, *ppResource, *ppUpload, 0, 0, static_cast<UINT>(subresources.size()), subresources.data());
     commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(*ppResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
-    CreateTextureSRV(device, *ppResource, descriptorHeap, descriptorHeapIndex, cpuHandle, gpuHandle);
+    CreateTextureSRV(device, *ppResource, descriptorHeap, descriptorHeapIndex, cpuHandle, gpuHandle, srvDimension);
+}
 
+inline void LoadDDSTexture(
+    ID3D12Device* device,
+    ID3D12GraphicsCommandList4* commandList,
+    const wchar_t* filename,
+    DescriptorHeap* descriptorHeap,
+    D3DTexture* tex,
+    D3D12_SRV_DIMENSION srvDimension = D3D12_SRV_DIMENSION_TEXTURE2D)
+{
+    LoadDDSTexture(device, commandList, filename, descriptorHeap, &tex->resource, &tex->upload, &tex->heapIndex, &tex->cpuDescriptorHandle, &tex->gpuDescriptorHandle, srvDimension);
 }
 
 // Loads a WIC texture and issues upload on the commandlist. 
@@ -767,36 +813,6 @@ inline void SerializeAndCreateRootSignature(
 }
 
 
-struct D3DBuffer
-{
-	ComPtr<ID3D12Resource> resource;
-	D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle;
-	D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
-	UINT heapIndex = UINT_MAX;
-};
-
-// ToDo rename 
-struct D3DGeometry
-{
-	struct Buffer
-	{
-		D3DBuffer buffer;
-		ComPtr<ID3D12Resource> upload;	// ToDo delete these after initialization? Should there be a common upload?
-	};
-
-	Buffer vb;
-	Buffer ib;
-};
-
-struct D3DTexture
-{
-    ComPtr<ID3D12Resource> resource;
-    ComPtr<ID3D12Resource> upload; // ToDo delete these after initialization? Should there be a common upload?
-    D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
-    UINT heapIndex = UINT_MAX;
-};
-
 
 
 struct GeometryDescriptor
@@ -1015,6 +1031,7 @@ inline void CreateGeometry(
 	}
 }
 
+
 // Calculates a normalize tangent vector for a triangle given vertices' positions p* and their uv* coordinates.
 inline XMFLOAT3 CalculateTangent(const XMFLOAT3& p0, const XMFLOAT3& p1, const XMFLOAT3& p2, const XMFLOAT2& uv0, const XMFLOAT2& uv1, const XMFLOAT2& uv2)
 {
@@ -1027,8 +1044,8 @@ inline XMFLOAT3 CalculateTangent(const XMFLOAT3& p0, const XMFLOAT3& p1, const X
     //
     //  That is by multiplying with an inverse UV matrix and solving for T
     //
-    //   (  T  ) =   1 / det(UV)  (  v20  -v10  )  (  E1  )
-    //   (  B  ) =                (  -u20  u10  )  (  E2  )
+    //   (  T  ) =   1 /     (  v20  -v10  )  (  E1  )
+    //   (  B  ) =   det(UV) (  -u20  u10  )  (  E2  )
     //  where det(UV) = u10 * v20 - v10 * u20
 
     XMFLOAT3 e10 = XMFLOAT3(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
@@ -1043,7 +1060,6 @@ inline XMFLOAT3 CalculateTangent(const XMFLOAT3& p0, const XMFLOAT3& p1, const X
     tangent.x = invDetUV * (e10.x * d_uv20.y - e20.x * d_uv10.y);
     tangent.y = invDetUV * (e10.y * d_uv20.y - e20.y * d_uv10.y);
     tangent.z = invDetUV * (e10.z * d_uv20.y - e20.z * d_uv10.y);
-    XMStoreFloat3(&tangent, XMVector3Normalize(XMLoadFloat3(&tangent)));
 
     return tangent;
 }

@@ -11,6 +11,7 @@
 
 #pragma once
 
+// ToDo move some to cpp?
 #include "DXSample.h"
 #include "StepTimer.h"
 #include "RaytracingSceneDefines.h"
@@ -21,6 +22,7 @@
 #include "UILayer.h"
 #include "GpuKernels.h"
 #include "PBRTParser.h"
+//#include "SSAO.h"
 
 class D3D12RaytracingAmbientOcclusion : public DXSample
 {
@@ -158,6 +160,7 @@ private:
 	SceneParser::Scene m_pbrtScene;
 	std::vector<D3DGeometry> m_geometries[GeometryType::Count];
     std::vector<D3DTexture> m_geometryTextures[GeometryType::Count];
+    D3DTexture m_environmentMap;
 
 
 	StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;

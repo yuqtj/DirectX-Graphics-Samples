@@ -9,6 +9,8 @@
 //
 //*********************************************************
 
+// ToDo move assets to common sample directory?
+
 #include "stdafx.h"
 #include "D3D12RaytracingAmbientOcclusion.h"
 #include "GameInput.h"
@@ -101,6 +103,7 @@ namespace SceneArgs
     BoolVar UseSpatialVariance(L"AO denoise use spatial variance", true);
     BoolVar ApproximateSpatialVariance(L"Approximate spatial variance", false);
     
+    
     BoolVar RenderAOonly(L"Render AO only", true);  // ToDo don't render redundant passes?
     BoolVar EnableAO(L"Enable AO", true);  // ToDo don't render redundant passes?
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5", L"Gaussian5x5" };
@@ -114,7 +117,8 @@ namespace SceneArgs
     NumVar g_AODenoiseDepthSigma(L"AO Denoise: Depth Sigma", 0.7f, 0.0f, 10.0f, 0.02f);
 #endif
     NumVar g_AODenoiseNormalSigma(L"AO Denoise: Normal Sigma", 128, 0, 256, 4);
-	IntVar AOSampleCountPerDimension(L"AO samples NxN", 3, 1, 32, 1, OnRecreateSamples, nullptr);
+	IntVar AOSampleCountPerDimension(L"AO samples per pixel NxN", 2, 1, 32, 1, OnRecreateSamples, nullptr);
+    IntVar AOSampleSetDistributedAcrossPixels(L"AO sample set distribution across pixels NxN", 3, 1, 8, 1, OnRecreateSamples, nullptr);
 
     // ToDo test tessFactor 16
 	// ToDo fix alias on TessFactor 2
@@ -157,9 +161,10 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 
 	// Work
 #if 1
+    PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
 	PBRTParser::PBRTParser().Parse("Assets\\car2\\scene.pbrt", m_pbrtScene);
 	PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);		// ToDo model is mirrored
-	PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene); // ToDo crashes
+	PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene);
 #else
 	PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
@@ -585,7 +590,8 @@ void D3D12RaytracingAmbientOcclusion::CreateSamplesRNG()
     auto frameCount = m_deviceResources->GetBackBufferCount();
 
 	m_sppAO = SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension;
-    m_randomSampler.Reset(m_sppAO, 83, Samplers::HemisphereDistribution::Cosine);
+    UINT samplesPerSet = m_sppAO * SceneArgs::AOSampleSetDistributedAcrossPixels * SceneArgs::AOSampleSetDistributedAcrossPixels;
+    m_randomSampler.Reset(samplesPerSet, 83, Samplers::HemisphereDistribution::Cosine);
 
     // Create root signature.
     {
@@ -655,7 +661,7 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(7);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
-        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_ANISOTROPIC);
+        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, SAMPLER_FILTER);
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
 		SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::ComposeRenderPassesCS], L"Root signature: ComposeRenderPassesCS");
@@ -700,7 +706,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAoBlurCSResources()
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
         // ToDo test aniso perf impact.
-        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_ANISOTROPIC);
+        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, SAMPLER_FILTER);
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
 		SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::AoBlurCS], L"Root signature: AoBlurCS");
@@ -784,12 +790,14 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
     {
 		using namespace GlobalRootSignature;
 
-        CD3DX12_DESCRIPTOR_RANGE ranges[5]; // Perfomance TIP: Order from most frequent to least frequent.
+        // ToDo reorder
+        CD3DX12_DESCRIPTOR_RANGE ranges[6]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output textures
 		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 5);  // 5 output GBuffer textures
 		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input GBuffer textures
 		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 10);  // 2 output AO textures
 		ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 12);  // 1 output visibility texture
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12);  // 1 input environment map texture
 
 
         CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
@@ -798,12 +806,13 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 		rootParameters[Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[2]);
 		rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[3]);
 		rootParameters[Slot::VisibilityResource].InitAsDescriptorTable(1, &ranges[4]);
+        rootParameters[Slot::EnvironmentMap].InitAsDescriptorTable(1, &ranges[5]);
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
         rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
         rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(4);
 
-        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_ANISOTROPIC);
+        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, SAMPLER_FILTER);
 
         CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
 		SerializeAndCreateRootSignature(device, globalRootSignatureDesc, &m_raytracingGlobalRootSignature, L"Global root signature");
@@ -1027,7 +1036,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 #if ATROUS_DENOISER
         CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
 #else
-        CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_GBufferWidth, m_raytracinm_GBufferHeightgHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"AO Smoothed");
 #endif
         // ToDo 8 bit hit count?
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"AO HitCount");
@@ -1377,6 +1386,7 @@ void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
 void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
 {
 	auto device = m_deviceResources->GetD3DDevice();
+    auto commandList = m_deviceResources->GetCommandList();
 
     // Create a null SRV for geometries with no diffuse texture.
     // Null descriptors are needed in order to achieve the effect of an "unbound" resource.
@@ -1406,6 +1416,10 @@ void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
 
 	m_materialBuffer.Create(device, static_cast<UINT>(m_materials.size()), 1, L"Structured buffer: materials");
 	copy(m_materials.begin(), m_materials.end(), m_materialBuffer.begin());
+
+    // ToDo move
+    LoadDDSTexture(device, commandList, L"Assets\\Textures\\flower_road_8khdri_1kcubemap.BC7.dds", m_cbvSrvUavHeap.get(), &m_environmentMap, D3D12_SRV_DIMENSION_TEXTURECUBE);
+    //LoadDDSTexture(device, commandList, L"Assets\\Textures\\cloud_layers_8khdri_1kcubemap.BC7.dds", m_cbvSrvUavHeap.get(), &m_environmentMap, D3D12_SRV_DIMENSION_TEXTURECUBE);
 
 #if !RUNTIME_AS_UPDATES
 	InitializeAccelerationStructures();
@@ -2133,8 +2147,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 #endif
 	m_sceneCB->numSamples = m_randomSampler.NumSamples();
 	m_sceneCB->numSampleSets = m_randomSampler.NumSampleSets();
-	m_sceneCB->numSamplesToUse = m_randomSampler.NumSamples();
-
+	m_sceneCB->numSamplesToUse = SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension;
+    m_sceneCB->numPixelsPerDimPerSet = SceneArgs::AOSampleSetDistributedAcrossPixels;
 #if CAMERA_JITTER
 
 	// ToDo remove?
@@ -2185,6 +2199,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
 	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, m_environmentMap.gpuDescriptorHandle);
 
 	// Bind output RTs.
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorWriteAccess);
@@ -2774,7 +2789,7 @@ void D3D12RaytracingAmbientOcclusion::RenderRNGVisualizations()
 		static UINT seed = 0;
 		UINT NumFramesPerIter = 400;
 		static UINT frameID = NumFramesPerIter * 4;
-		m_csHemisphereVisualizationCB->numSamplesToShow = m_sppAO;// (frameID++ / NumFramesPerIter) % m_randomSampler.NumSamples();
+		m_csHemisphereVisualizationCB->numSamplesToShow = m_randomSampler.NumSamples();// (frameID++ / NumFramesPerIter) % m_randomSampler.NumSamples();
 		m_csHemisphereVisualizationCB->sampleSetBase = ((seed++ / NumFramesPerIter) % m_randomSampler.NumSampleSets()) * m_randomSampler.NumSamples();
 		m_csHemisphereVisualizationCB->stratums = XMUINT2(static_cast<UINT>(sqrt(m_randomSampler.NumSamples())),
 			static_cast<UINT>(sqrt(m_randomSampler.NumSamples())));

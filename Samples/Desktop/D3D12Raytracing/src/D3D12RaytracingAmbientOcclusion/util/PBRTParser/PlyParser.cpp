@@ -153,7 +153,7 @@ void PlyParser::ParseBody(SceneParser::Mesh &mesh)
     mesh.m_VertexBuffer.resize(m_numVertices);
 	mesh.m_IndexBuffer.reserve(3 * m_numFaces);
 
-    const UINT vertexSize = static_cast<UINT>(m_elementLayout.size() * sizeof(FLOAT));
+    const UINT vertexSize = static_cast<UINT>(m_elementLayout.size() * sizeof(float));
     const UINT verticesPerBuffer = 150;
     const UINT bufferSize = vertexSize * verticesPerBuffer;
     unique_ptr<char[]> pLineBuffer = unique_ptr<char[]>(new char[bufferSize]);

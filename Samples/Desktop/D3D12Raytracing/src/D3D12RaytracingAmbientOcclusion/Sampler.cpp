@@ -23,7 +23,7 @@ Sampler::Sampler() :
 {
 }
 
-// Get a valid index from <0, m_numSapleSets * m_numSamples>.
+// Get a valid index from <0, m_numSampleSets * m_numSamples>.
 // The index increases by 1 on each call, but on a first 
 // access of a next sample set, the:
 // - sample set is randomly picked

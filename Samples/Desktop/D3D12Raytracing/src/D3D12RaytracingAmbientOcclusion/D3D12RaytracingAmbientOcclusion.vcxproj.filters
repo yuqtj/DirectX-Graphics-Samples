@@ -31,6 +31,12 @@
     <Filter Include="Assets\Scene\PBRTParser">
       <UniqueIdentifier>{a353e976-b333-4508-9ef8-ee785fe93db5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="SSAO">
+      <UniqueIdentifier>{d55f5c04-5cdd-4c64-8bac-f050911c29d0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SSAO\Shaders">
+      <UniqueIdentifier>{af9acbca-a1ba-4545-a926-c92c125f398b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -111,6 +117,24 @@
     <ClInclude Include="util\PBRTParser\PlyParser.h">
       <Filter>Assets\Scene\PBRTParser</Filter>
     </ClInclude>
+    <ClInclude Include="SSAO\SSAO.h">
+      <Filter>SSAO</Filter>
+    </ClInclude>
+    <ClInclude Include="SSAO\SSAOHlslCompat.h">
+      <Filter>SSAO</Filter>
+    </ClInclude>
+    <ClInclude Include="SSAO\GlobalSharedHlslCompat.h">
+      <Filter>SSAO</Filter>
+    </ClInclude>
+    <ClInclude Include="SSAO\GeneralHelper.h">
+      <Filter>SSAO</Filter>
+    </ClInclude>
+    <ClInclude Include="SSAO\Lighting.h">
+      <Filter>SSAO</Filter>
+    </ClInclude>
+    <ClInclude Include="SSAO\Menus.h">
+      <Filter>SSAO</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -173,10 +197,22 @@
     <ClCompile Include="util\PBRTParser\PlyParser.cpp">
       <Filter>Assets\Scene\PBRTParser</Filter>
     </ClCompile>
+    <ClCompile Include="SSAO\SSAO.cpp">
+      <Filter>SSAO</Filter>
+    </ClCompile>
+    <ClCompile Include="SSAO\Menus.cpp">
+      <Filter>SSAO</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="readme.md" />
     <None Include="packages.config" />
+    <None Include="SSAO\Shaders\SSAOBlurAndUpsampleCS.hlsli">
+      <Filter>SSAO\Shaders</Filter>
+    </None>
+    <None Include="SSAO\Shaders\SSAORenderCS.hlsli">
+      <Filter>SSAO\Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Raytracing.hlsl">
@@ -241,6 +277,33 @@
     </FxCompile>
     <FxCompile Include="util\UpsampleBilateralFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="SSAO\Shaders\SSAOBlurUpsampleBlendOutCS.hlsl">
+      <Filter>SSAO\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SSAO\Shaders\SSAOBlurUpsampleCS.hlsl">
+      <Filter>SSAO\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SSAO\Shaders\SSAOBlurUpsamplePreMinBlendOutCS.hlsl">
+      <Filter>SSAO\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SSAO\Shaders\SSAOBlurUpsamplePreMinCS.hlsl">
+      <Filter>SSAO\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SSAO\Shaders\SSAOGBufferRenderCS.hlsl">
+      <Filter>SSAO\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SSAO\Shaders\SSAOPrepareDepthBuffers1CS.hlsl">
+      <Filter>SSAO\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SSAO\Shaders\SSAOPrepareDepthBuffers2CS.hlsl">
+      <Filter>SSAO\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SSAO\Shaders\SSAORender1CS.hlsl">
+      <Filter>SSAO\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SSAO\Shaders\SSAORender2CS.hlsl">
+      <Filter>SSAO\Shaders</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

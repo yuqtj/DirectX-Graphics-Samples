@@ -86,8 +86,17 @@ void main(uint2 DTid : SV_DispatchThreadID )
 	}
 	else
 	{
-		color = BackgroundColor;
-	}
+#if USE_ENVIRONMENT_MAP
+        uint2 materialInfo = g_texGBufferMaterial[DTid];
+        UINT materialID;
+        float3 diffuse;
+        DecodeMaterial16b(materialInfo, materialID, diffuse);
+        diffuse = RemoveSRGB(diffuse);
+        color = float4(diffuse, 1);
+#else
+        color = BackgroundColor;
+#endif
+    }
 
 	// Write the composited color to the output texture.
     g_renderTarget[DTid] = float4(ApplySRGB(color.rgb), color.a);
