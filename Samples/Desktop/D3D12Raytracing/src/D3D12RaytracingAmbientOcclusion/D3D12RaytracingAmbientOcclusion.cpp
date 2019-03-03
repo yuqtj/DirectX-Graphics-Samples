@@ -907,6 +907,7 @@ void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12
 // with all configuration options resolved, such as local signatures and other state.
 void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
 {
+    // ToDo review
     // Create 18 subobjects that combine into a RTPSO:
     // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
     // Default association applies to every exported shader entrypoint that doesn't have any of the same type of subobject associated with it.
@@ -929,7 +930,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
     // Shader config
     // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
     auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-    UINT payloadSize = max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload));		// ToDo revise
+    UINT payloadSize = static_cast<UINT>(max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload)));		// ToDo revise
     UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics
     shaderConfig->Config(payloadSize, attributeSize);
 

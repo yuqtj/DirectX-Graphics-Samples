@@ -18,7 +18,7 @@ Texture2D<float3> NormalTex : register(t1);
 RWTexture2D<float> Occlusion : register(u0);
 SamplerState PointSamplerClamp : register(s3);
 
-ConstantBuffer<SceneConstantBuffer> SceneCB : register(b0);
+ConstantBuffer<SSAOSceneConstantBuffer> SceneCB : register(b0);
 ConstantBuffer<SSAORenderConstantBuffer> RenderCB : register(b1);
 
 #if WIDE_SAMPLING

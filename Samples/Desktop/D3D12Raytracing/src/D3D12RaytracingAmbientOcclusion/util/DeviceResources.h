@@ -100,6 +100,8 @@ namespace DX
         unsigned int                GetDeviceOptions() const { return m_options; }
         LPCWSTR                     GetAdapterDescription() const { return m_adapterDescription.c_str(); }
         UINT                        GetAdapterID() const { return m_adapterID; }
+        LONG                        GetScreenWidth() const { return std::max<long>(GetOutputSize().right - GetOutputSize().left, 1); }
+        LONG                        GetScreenHeight() const { return std::max<long>(GetOutputSize().bottom - GetOutputSize().top, 1); }
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView() const
         {

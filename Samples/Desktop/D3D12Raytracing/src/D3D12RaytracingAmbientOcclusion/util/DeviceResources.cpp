@@ -265,8 +265,8 @@ void DeviceResources::CreateWindowSizeDependentResources()
     }
 
     // Determine the render target size in pixels.
-    UINT backBufferWidth = max(m_outputSize.right - m_outputSize.left, 1);
-    UINT backBufferHeight = max(m_outputSize.bottom - m_outputSize.top, 1);
+    UINT backBufferWidth = max(m_outputSize.right - m_outputSize.left, 1l);
+    UINT backBufferHeight = max(m_outputSize.bottom - m_outputSize.top, 1l);
     DXGI_FORMAT backBufferFormat = NoSRGB(m_backBufferFormat);
 
     // If the swap chain already exists, resize it, otherwise create one.

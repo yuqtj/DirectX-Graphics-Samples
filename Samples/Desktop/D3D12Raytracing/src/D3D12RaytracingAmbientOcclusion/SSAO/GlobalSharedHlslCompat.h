@@ -1,12 +1,14 @@
 #ifndef GLOBALSHAREDHLSLCOMPAT_H
 #define GLOBALSHAREDHLSLCOMPAT_H
 
+
 #ifdef HLSL
-#include "../../util/HlslCompat.h"
+#include "../util/HlslCompat.h"
 #else
 using namespace DirectX;
 #endif
 
+// ToDo remove
 #define SSAO_DISABLED_CODE 0
 
 #define NEAR_PLANE 1.f
@@ -14,7 +16,8 @@ using namespace DirectX;
 #define ZSCALE (float(FAR_PLANE - NEAR_PLANE) / float(NEAR_PLANE))
 #define BACKGROUND XMFLOAT4(0.0f, 0.2f, 0.4f, 1.0f)
 
-struct SceneConstantBuffer
+
+struct SSAOSceneConstantBuffer
 {
     XMMATRIX worldView;
 
@@ -31,7 +34,7 @@ struct SceneConstantBuffer
     XMFLOAT4 noiseTile;
 };
 
-struct MaterialConstantBuffer
+struct SSAOMaterialConstantBuffer
 {
     XMFLOAT3 ambient;
     BOOL isDiffuseTexture;
@@ -41,12 +44,13 @@ struct MaterialConstantBuffer
     BOOL isNormalTexture;
 };
 
-struct Vertex
+struct SSAOVertex
 {
     XMFLOAT3 position;
     XMFLOAT3 normal;
     XMFLOAT2 texcoord;
     XMFLOAT3 tangent;
 };
+
 
 #endif

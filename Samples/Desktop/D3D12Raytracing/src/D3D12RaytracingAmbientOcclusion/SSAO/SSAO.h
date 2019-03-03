@@ -14,6 +14,8 @@
 #include "Lighting.h"
 #include "PrimitiveBatch.h"
 #include "VertexTypes.h"
+#include "DXSampleHelper.h"
+#include "DescriptorHeap.h"     // ToDo remove sample's impl of DescriptorHeap?
 
 namespace SSAOPerObjectCSUDesc
 {
@@ -130,7 +132,7 @@ class SSAO : public Lighting
 public:
     SSAO();
 
-    void Setup(std::shared_ptr<DeviceResources> pDeviceResources);
+    void Setup(std::shared_ptr<DX::DeviceResources> pDeviceResources);
     void Run(Microsoft::WRL::ComPtr<ID3D12Resource> pSceneConstantResource);
 #if SSAO_DISABLED_CODE
     void SetMesh(std::shared_ptr<Mesh> pMesh);
@@ -225,8 +227,8 @@ private:
     // Constant Buffers.
     union AlignedMaterialConstantBuffer
     {
-        MaterialConstantBuffer constants;
-        uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(MaterialConstantBuffer))];
+        SSAOMaterialConstantBuffer constants;
+        uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(SSAOMaterialConstantBuffer))];
     };
     std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_materialListCB;
 

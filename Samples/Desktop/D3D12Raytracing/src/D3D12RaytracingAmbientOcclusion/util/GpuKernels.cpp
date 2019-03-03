@@ -111,8 +111,8 @@ namespace GpuKernels
 			m_csReduceSumOutputs.resize(numIterations);
 			for (UINT i = 0; i < numIterations; i++)
 			{
-				width = max(1, CeilDivide(width, ReduceSumCS::ThreadGroup::Width));
-				height = max(1, CeilDivide(height, ReduceSumCS::ThreadGroup::Height));
+				width = max(1u, CeilDivide(width, ReduceSumCS::ThreadGroup::Width));
+				height = max(1u, CeilDivide(height, ReduceSumCS::ThreadGroup::Height));
 
 				m_csReduceSumOutputs[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
 				CreateRenderTargetResource(device, format, width, height, descriptorHeap,

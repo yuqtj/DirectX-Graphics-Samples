@@ -9,7 +9,10 @@
 
 #include "CommonStates.h"
 #include "Menus.h"
+
+#if SSAO_DISABLED_CODE
 #include "Mesh.h"
+#endif
 
 class Lighting
 {
@@ -31,8 +34,9 @@ public:
 
     virtual void Run(Microsoft::WRL::ComPtr<ID3D12Resource> pSceneConstantResource) = 0;
 
+#if SSAO_DISABLED_CODE
     virtual void SetMesh(std::shared_ptr<Mesh> pMesh) = 0;
-
+#endif
     virtual void OnSizeChanged() { }
 
     virtual void OnOptionUpdate(std::shared_ptr<Menus> pMenu) = 0;

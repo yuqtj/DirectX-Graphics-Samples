@@ -2,7 +2,7 @@
 #define SSAOHLSLCOMPAT_H
 
 #ifdef HLSL
-#include "../../util/HlslCompat.h"
+#include "../util/HlslCompat.h"
 #else
 using namespace DirectX;
 #endif

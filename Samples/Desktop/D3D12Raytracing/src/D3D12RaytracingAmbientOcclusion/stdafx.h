@@ -19,6 +19,10 @@
 #define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers.
 #endif
 
+
+// Use the C++ standard templated min/max
+#define NOMINMAX
+
 #include <windows.h>
 
 // C RunTime Header Files
@@ -35,6 +39,7 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
+#include <algorithm>
 #include <atlbase.h>
 #include <assert.h>
 #include <array>
@@ -62,6 +67,7 @@
 #include <WICTextureLoader.h>
 #include <DDSTextureLoader.h>
 #include "ResourceUploadBatch.h"
+#include <Keyboard.h>
 
 // UI 
 #include <d2d1_3.h>

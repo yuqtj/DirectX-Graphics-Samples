@@ -20,7 +20,7 @@
 template <class T>
 inline T Clamp(T value, T minValue, T maxValue)
 {
-	return max(minValue, min(maxValue, value));
+	return std::max(minValue, std::min(maxValue, value));
 }
 
 struct AccelerationStructureBuffers
@@ -52,7 +52,7 @@ public:
 	AccelerationStructure();
 	virtual ~AccelerationStructure() {}
 	void ReleaseD3DResources();
-	UINT64 RequiredScratchSize() { return max(m_prebuildInfo.ScratchDataSizeInBytes, m_prebuildInfo.UpdateScratchDataSizeInBytes); }
+	UINT64 RequiredScratchSize() { return std::max(m_prebuildInfo.ScratchDataSizeInBytes, m_prebuildInfo.UpdateScratchDataSizeInBytes); }
 	UINT64 RequiredResultDataSizeInBytes() { return m_prebuildInfo.ResultDataMaxSizeInBytes; }
 	ID3D12Resource* GetResource() { return m_accelerationStructure.Get(); }
 	const D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO& PrebuildInfo() { return m_prebuildInfo; }

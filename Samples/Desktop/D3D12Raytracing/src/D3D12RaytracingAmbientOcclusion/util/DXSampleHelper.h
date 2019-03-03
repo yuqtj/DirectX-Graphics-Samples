@@ -175,12 +175,13 @@ inline void SetNameIndexed(ID3D12Object*, LPCWSTR, UINT)
 #define NAME_D3D12_OBJECT(x) SetName((x).Get(), L#x)
 #define NAME_D3D12_OBJECT_INDEXED(x, n) SetNameIndexed((x)[n].Get(), L#x, n)
 
-inline UINT Align(UINT size, UINT alignment)
+// Align to a certain value of power of 2.
+inline constexpr UINT Align(UINT size, UINT alignment)
 {
     return (size + (alignment - 1)) & ~(alignment - 1);
 }
 
-inline UINT CalculateConstantBufferByteSize(UINT byteSize)
+inline constexpr UINT CalculateConstantBufferByteSize(UINT byteSize)
 {
     // Constant buffer size is required to be aligned.
     return Align(byteSize, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
@@ -450,7 +451,7 @@ public:
 		else
 		{
 			ThrowIfFalse(descriptorIndexToUse < m_descriptorHeap->GetDesc().NumDescriptors, L"Requested descriptor index is out of bounds!");
-			m_descriptorsAllocated = max(descriptorIndexToUse + 1, m_descriptorsAllocated);
+			m_descriptorsAllocated = std::max(descriptorIndexToUse + 1, m_descriptorsAllocated);
 		}
 
 		auto descriptorHeapCpuBase = m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();

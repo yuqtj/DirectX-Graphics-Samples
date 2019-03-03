@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "ATGColors.h"
+//ToDo #include "ATGColors.h"
 #include "Effects.h"
 #include "PrimitiveBatch.h"
 #include "SpriteFont.h"
@@ -63,6 +63,7 @@ public:
         return tmp != m_current;
     }
 
+#if SSAO_DISABLED_CODE
     DirectX::XMVECTORF32 SlectionColor()
     {
         if (IsLowerLimit())
@@ -76,7 +77,7 @@ public:
 
         return ATG::Colors::White;
     }
-
+#endif
     bool IsLowerLimit()
     {
         return m_current == m_min;
@@ -156,7 +157,7 @@ private:
     std::unique_ptr<DirectX::BasicEffect> m_basicEffect;
 
     // Heaps.
-    std::unique_ptr<DirectX::DescriptorHeap> m_csuDescriptors;
+    std::unique_ptr<DescriptorHeap> m_csuDescriptors;
 
     // AO.
     std::wstring m_aoSampleNames[2] = {

@@ -18,9 +18,6 @@
 #include "CompiledShaders/SSAOPrepareDepthBuffers2CS.hlsl.h"
 #include "CompiledShaders/SSAORender1CS.hlsl.h"
 #include "CompiledShaders/SSAORender2CS.hlsl.h"
-#include "CompiledShaders/GBufferVS.hlsl.h"
-#include "CompiledShaders/GBufferGS.hlsl.h"
-#include "CompiledShaders/GBufferPS.hlsl.h"
 
 using namespace DX;
 using namespace DirectX;
@@ -92,6 +89,8 @@ void SSAO::SetupPipelines()
 {
     auto device = m_deviceResources->GetD3DDevice();
 
+
+#if SSAO_DISABLED_CODE
     // Rasterizer Pipeline.
     {
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
@@ -124,6 +123,7 @@ void SSAO::SetupPipelines()
         gBufferPsoDesc.SampleDesc.Count = 1;
         ThrowIfFailed(device->CreateGraphicsPipelineState(&gBufferPsoDesc, IID_PPV_ARGS(&m_gBufferResourcePipelineState)));
     }
+#endif
 
     // Compute Pipeline.
     {
@@ -172,28 +172,28 @@ void SSAO::CreateDescriptorHeaps()
     // Allocate a csu heap.
     {
         const uint32_t c_csuCount = SSAOCSUDesc::CSUCount;
-        m_csuDescriptors = std::make_unique<DescriptorHeap>(
+        m_csuDescriptors = std::make_unique<DirectX::DescriptorHeap>(
             device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, c_csuCount);
     }
 
     // Allocate a sampler heap.
     {
         const uint32_t c_samplerCount = SSAOSamplerDesc::SamplerCount;
-        m_samplerDescriptors = std::make_unique<DescriptorHeap>(
+        m_samplerDescriptors = std::make_unique<DirectX::DescriptorHeap>(
             device, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, c_samplerCount);
     }
 
     // Allocate a rtv.
     {
         const uint32_t c_rtvCount = SSAORTVDesc::RTVCount;
-        m_rtvDescriptors = std::make_unique<DescriptorHeap>(
+        m_rtvDescriptors = std::make_unique<DirectX::DescriptorHeap>(
             device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, c_rtvCount);
     }
 
     // Allocate a dsv.
     {
         const uint32_t c_dsvCount = SSAODSVDesc::DSVCount;
-        m_dsvDescriptors = std::make_unique<DescriptorHeap>(
+        m_dsvDescriptors = std::make_unique<DirectX::DescriptorHeap>(
             device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, c_dsvCount);
     }
 }
@@ -1082,6 +1082,7 @@ void SSAO::Run(ComPtr<ID3D12Resource> pSceneConstantResource)
             m_samplerDescriptors->GetGpuHandle(SSAOSamplerDesc::SamplerLinearWrap));
     }
 
+#if SSAO_DISABLED_CODE
     // Phase 1: Render GBuffer.
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render GBuffer");
     {
@@ -1138,6 +1139,8 @@ void SSAO::Run(ComPtr<ID3D12Resource> pSceneConstantResource)
         commandList->ResourceBarrier(_countof(RTVToGBufferBarrier), RTVToGBufferBarrier);
     }
     PIXEndEvent(commandList);
+#endif
+    assert(0 && "ToDo pass in G-buffers");
 
     // Phase 2: Decompress, linearize, downsample, and deinterleave the depth buffer.
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Decompress and Downsample.");
