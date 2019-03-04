@@ -133,13 +133,20 @@ public:
     SSAO();
 
     void Setup(std::shared_ptr<DX::DeviceResources> pDeviceResources);
-    void Run(Microsoft::WRL::ComPtr<ID3D12Resource> pSceneConstantResource);
+    void Run(ComPtr<ID3D12Resource> pSceneConstantResource);
 #if SSAO_DISABLED_CODE
     void SetMesh(std::shared_ptr<Mesh> pMesh);
 #endif
-    void OnSizeChanged();
+    void OnSizeChanged(UINT width, UINT height);
+#if SSAO_DISABLED_CODE
     void OnOptionUpdate(std::shared_ptr<Menus> pMenu);
+#endif
+    void OnCameraChanged(XMMATRIX& projection);
     void OnCameraChanged(XMMATRIX& world, XMMATRIX& view, XMMATRIX& projection);
+
+    void SetParameters(float noiseFilterTolerance, float blurTolerance, float upsampleTolerance, float normalMultiply);
+    void BindGBufferResources(ID3D12Resource* normal, ID3D12Resource* depth);
+    ID3D12Resource* GetSSAOOutputResource() { return m_ssaoResources.Get(); }
 
 private:
     void BindResources();
@@ -194,35 +201,39 @@ private:
     std::shared_ptr<Mesh> m_mesh;
 #endif
 
+    // Input/Output dimensions.
+    UINT m_width = 0;
+    UINT m_height = 0;
+
     // Root signature.
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
+    ComPtr<ID3D12RootSignature> m_rootSignature;
 
     // Pipeline states.
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_gBufferResourcePipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePreMinPipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_SSAOBlurUpsampleBlendOutPipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePreMinBlendOutPipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_SSAOGBufferRenderPipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_SSAOPrepareDepthBuffers1PipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_SSAOPrepareDepthBuffers2PipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_SSAOPRender1PipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_SSAOPRender2PipelineState;
+    ComPtr<ID3D12PipelineState> m_gBufferResourcePipelineState;
+    ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePipelineState;
+    ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePreMinPipelineState;
+    ComPtr<ID3D12PipelineState> m_SSAOBlurUpsampleBlendOutPipelineState;
+    ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePreMinBlendOutPipelineState;
+    ComPtr<ID3D12PipelineState> m_SSAOGBufferRenderPipelineState;
+    ComPtr<ID3D12PipelineState> m_SSAOPrepareDepthBuffers1PipelineState;
+    ComPtr<ID3D12PipelineState> m_SSAOPrepareDepthBuffers2PipelineState;
+    ComPtr<ID3D12PipelineState> m_SSAOPRender1PipelineState;
+    ComPtr<ID3D12PipelineState> m_SSAOPRender2PipelineState;
 
-    // Resources
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_depthDownsizeResource[NUM_BUFFERS];
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_depthTiledResource[NUM_BUFFERS];
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_normalDownsizeResource[NUM_BUFFERS];
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_normalTiledResource[NUM_BUFFERS];
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_mergedResource[NUM_BUFFERS];
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_smoothResource[NUM_BUFFERS - 1];
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_highQualityResource[NUM_BUFFERS];
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_linearDepthResource;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_gBufferResource;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_dBufferResource;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_samplerResources[2];
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_ssaoResources;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_outFrameResources;
+    // Resources.
+    ComPtr<ID3D12Resource> m_depthDownsizeResource[NUM_BUFFERS];
+    ComPtr<ID3D12Resource> m_depthTiledResource[NUM_BUFFERS];
+    ComPtr<ID3D12Resource> m_normalDownsizeResource[NUM_BUFFERS];
+    ComPtr<ID3D12Resource> m_normalTiledResource[NUM_BUFFERS];
+    ComPtr<ID3D12Resource> m_mergedResource[NUM_BUFFERS];
+    ComPtr<ID3D12Resource> m_smoothResource[NUM_BUFFERS - 1];
+    ComPtr<ID3D12Resource> m_highQualityResource[NUM_BUFFERS];
+    ComPtr<ID3D12Resource> m_linearDepthResource;
+    ComPtr<ID3D12Resource> m_gBufferResource;
+    ComPtr<ID3D12Resource> m_dBufferResource;
+    ComPtr<ID3D12Resource> m_samplerResources[2];
+    ComPtr<ID3D12Resource> m_ssaoResources;
+    ComPtr<ID3D12Resource> m_outFrameResources;
 
     // Constant Buffers.
     union AlignedMaterialConstantBuffer
@@ -230,7 +241,7 @@ private:
         SSAOMaterialConstantBuffer constants;
         uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(SSAOMaterialConstantBuffer))];
     };
-    std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> m_materialListCB;
+    std::vector<ComPtr<ID3D12Resource>> m_materialListCB;
 
     // Buffer sizes.
     uint32_t bufferWidth[NUM_BUFFERS + 2];
@@ -253,10 +264,10 @@ private:
         SSAORenderConstantBuffer constants;
         uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(SSAORenderConstantBuffer))];
     };
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_mappedDepthTiledSSAORenderConstantResource[NUM_BUFFERS];
+    ComPtr<ID3D12Resource> m_mappedDepthTiledSSAORenderConstantResource[NUM_BUFFERS];
     void* m_mappedDepthTiledSSAORenderConstantData[NUM_BUFFERS];
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_mappedHighQualitySSAORenderConstantResource[NUM_BUFFERS];
+    ComPtr<ID3D12Resource> m_mappedHighQualitySSAORenderConstantResource[NUM_BUFFERS];
     void* m_mappedHighQualitySSAORenderConstantData[NUM_BUFFERS];
 
     union AlignedBlurAndUpscaleConstantBuffer
@@ -264,6 +275,6 @@ private:
         BlurAndUpscaleConstantBuffer constants;
         uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(BlurAndUpscaleConstantBuffer))];
     };
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_mappedBlurAndUpscaleConstantResource[NUM_BUFFERS];
+    ComPtr<ID3D12Resource> m_mappedBlurAndUpscaleConstantResource[NUM_BUFFERS];
     void* m_mappedBlurAndUpscaleConstantData[NUM_BUFFERS];
 };

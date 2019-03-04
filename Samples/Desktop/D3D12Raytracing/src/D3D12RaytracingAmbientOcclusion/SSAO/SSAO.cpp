@@ -8,6 +8,7 @@
 #include "stdafx.h"
 #include "SSAO.h"
 #include "CommonStates.h"
+#include "DirectXRaytracingHelper.h"
 
 #include "CompiledShaders/SSAOBlurUpsampleCS.hlsl.h"
 #include "CompiledShaders/SSAOBlurUpsamplePreMinCS.hlsl.h"
@@ -202,11 +203,8 @@ void SSAO::CreateResources()
 {
     auto device = m_deviceResources->GetD3DDevice();
     auto renderTarget = m_deviceResources->GetRenderTarget();
-    auto screenWidth =
-        m_deviceResources->GetScreenWidth()
-        * m_screenWidthScale;
-    auto screenHeight =
-        m_deviceResources->GetScreenHeight();
+    auto screenWidth = m_width * m_screenWidthScale;
+    auto screenHeight = m_height;
 
     D3D12_CLEAR_VALUE clear = {};
     clear.Color[0] = .0f;
@@ -230,7 +228,8 @@ void SSAO::CreateResources()
             &clear,
             DXGI_FORMAT_R11G11B10_FLOAT,
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-            D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+            D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,
+            L"SSAO GBuffer Normal"
         );
 
         depthClear.Format = DXGI_FORMAT_D32_FLOAT;
@@ -243,7 +242,8 @@ void SSAO::CreateResources()
             &depthClear,
             DXGI_FORMAT_D32_FLOAT,
             D3D12_RESOURCE_STATE_DEPTH_WRITE,
-            D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL
+            D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
+            L"SSAO GBuffer Depth"
         );
     }
 
@@ -266,7 +266,8 @@ void SSAO::CreateResources()
                 device,
                 nullptr,
                 sizeof(AlignedBlurAndUpscaleConstantBuffer),
-                &m_mappedDepthTiledSSAORenderConstantResource[i]
+                &m_mappedDepthTiledSSAORenderConstantResource[i],
+                L"SSAO DepthTiledSSAORenderConstantResource"
             );
 
             m_mappedDepthTiledSSAORenderConstantResource[i]->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedDepthTiledSSAORenderConstantData[i]));
@@ -278,7 +279,8 @@ void SSAO::CreateResources()
                 device,
                 nullptr,
                 sizeof(AlignedSSAORenderConstantBuffer),
-                &m_mappedHighQualitySSAORenderConstantResource[i]
+                &m_mappedHighQualitySSAORenderConstantResource[i],
+                L"SSAO HighQualitySSAORenderConstantResource"
             );
 
             m_mappedHighQualitySSAORenderConstantResource[i]->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedHighQualitySSAORenderConstantData[i]));
@@ -290,7 +292,8 @@ void SSAO::CreateResources()
                 device,
                 nullptr,
                 sizeof(AlignedSSAORenderConstantBuffer),
-                &m_mappedBlurAndUpscaleConstantResource[i]
+                &m_mappedBlurAndUpscaleConstantResource[i],
+                L"SSAO BlurAndUpscaleConstantResource"
             );
 
             m_mappedBlurAndUpscaleConstantResource[i]->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedBlurAndUpscaleConstantData[i]));
@@ -308,7 +311,8 @@ void SSAO::CreateResources()
             nullptr,
             DXGI_FORMAT_R16_FLOAT,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            L"SSAO linearDepthResource"
         );
 
         for (unsigned int i = 0; i < _countof(m_depthDownsizeResource); i++)
@@ -322,7 +326,8 @@ void SSAO::CreateResources()
                 nullptr,
                 DXGI_FORMAT_R32_FLOAT,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                L"SSAO depthDownsizeResource"
             );
         }
 
@@ -337,7 +342,8 @@ void SSAO::CreateResources()
                 nullptr,
                 DXGI_FORMAT_R16_FLOAT,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                L"SSAO depthTiledResource"
             );
         }
 
@@ -352,7 +358,8 @@ void SSAO::CreateResources()
                 nullptr,
                 DXGI_FORMAT_R10G10B10A2_UNORM,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                L"SSAO normalDownsizeResource"
             );
         }
 
@@ -367,7 +374,8 @@ void SSAO::CreateResources()
                 nullptr,
                 DXGI_FORMAT_R10G10B10A2_UNORM,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                L"SSAO normalTiledResource"
             );
         }
 
@@ -382,7 +390,8 @@ void SSAO::CreateResources()
                 nullptr,
                 DXGI_FORMAT_R8_UNORM,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                L"SSAO mergedResource"
             );
         }
 
@@ -397,7 +406,8 @@ void SSAO::CreateResources()
                 nullptr,
                 DXGI_FORMAT_R8_UNORM,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                L"SSAO smoothResource"
             );
         }
 
@@ -412,7 +422,8 @@ void SSAO::CreateResources()
                 nullptr,
                 DXGI_FORMAT_R8_UNORM,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                L"SSAO highQualityResource"
             );
         }
     }
@@ -427,8 +438,9 @@ void SSAO::CreateResources()
             1,
             nullptr,
             DXGI_FORMAT_R8_UNORM,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            L"SSAO ssaoResources"
         );
 
         AllocateTexture2DArr(
@@ -440,7 +452,8 @@ void SSAO::CreateResources()
             nullptr,
             renderTarget->GetDesc().Format,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            L"SSAO outFrameResource"
         );
     }
 }
@@ -610,6 +623,7 @@ void SSAO::BindResources()
         );
     }
 
+#if SSAO_DISABLED_CODE
     // GBuffer.
     {
         CreateRTV(
@@ -641,7 +655,7 @@ void SSAO::BindResources()
             );
         }
     }
-
+#endif
     // Final output.
     {
         CreateTexture2DSRV(
@@ -966,9 +980,7 @@ void SSAO::UpdateBlurAndUpsampleConstant(
     const unsigned int highWidth,
     const unsigned int highHeight)
 {
-    auto screenWidth =
-        m_deviceResources->GetScreenWidth()
-        * m_screenWidthScale;
+    auto screenWidth = m_width * m_screenWidthScale;
 
     float blurTolerance = 1.f - powf(10.f, m_blurTolerance) * static_cast<float>(screenWidth) / (float)lowWidth;
     blurTolerance *= blurTolerance;
@@ -1035,14 +1047,16 @@ void SSAO::DispatchBlurAndUpsample(
     }
 }
 
-void SSAO::Run(ComPtr<ID3D12Resource> pSceneConstantResource)
+void SSAO::Run(
+    ComPtr<ID3D12Resource> pSceneConstantResource)
 {
     auto commandList = m_deviceResources->GetCommandList();
     auto renderTarget = m_deviceResources->GetRenderTarget();
 
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"SSAO");
 
-    // Clear DSV.
+#if SSAO_DISABLED_CODE
+    // Clear DSV. // ToDo remove
     commandList->ClearDepthStencilView(
         m_dsvDescriptors->GetCpuHandle(SSAODSVDesc::DSVGBuffer),
         D3D12_CLEAR_FLAG_DEPTH,
@@ -1050,7 +1064,7 @@ void SSAO::Run(ComPtr<ID3D12Resource> pSceneConstantResource)
         0,
         0,
         nullptr);
-
+#endif
     // Setup screenspace.
     auto viewport = m_deviceResources->GetScreenViewport();
     viewport.Width *= m_screenWidthScale;
@@ -1139,8 +1153,23 @@ void SSAO::Run(ComPtr<ID3D12Resource> pSceneConstantResource)
         commandList->ResourceBarrier(_countof(RTVToGBufferBarrier), RTVToGBufferBarrier);
     }
     PIXEndEvent(commandList);
+#else
+    {
+        D3D12_RESOURCE_BARRIER startBarrier[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_ssaoResources.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+        };
+        commandList->ResourceBarrier(_countof(startBarrier), startBarrier);
+    }
 #endif
-    assert(0 && "ToDo pass in G-buffers");
+
+
+    std::vector<D3D12_RESOURCE_BARRIER> restoreBufferBarrier = {
+#if SSAO_DISABLED_CODE
+        CD3DX12_RESOURCE_BARRIER::Transition(m_dBufferResource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE),
+        CD3DX12_RESOURCE_BARRIER::Transition(m_ssaoResources.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+#endif
+        CD3DX12_RESOURCE_BARRIER::Transition(m_linearDepthResource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+    };
 
     // Phase 2: Decompress, linearize, downsample, and deinterleave the depth buffer.
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Decompress and Downsample.");
@@ -1362,6 +1391,7 @@ void SSAO::Run(ComPtr<ID3D12Resource> pSceneConstantResource)
     }
     PIXEndEvent(commandList);
 
+#if SSAO_DISABLED_CODE
     // Phase 5: Render.
     PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, L"Render.");
     {
@@ -1373,7 +1403,7 @@ void SSAO::Run(ComPtr<ID3D12Resource> pSceneConstantResource)
                 };
                 commandList->ResourceBarrier(_countof(startBarrier), startBarrier);
             }
-
+            
             D3D12_GPU_DESCRIPTOR_HANDLE handleSRV[] = {
                 m_csuDescriptors->GetGpuHandle(SSAOCSUDesc::SRVSSAO),
                 m_csuDescriptors->GetGpuHandle(SSAOCSUDesc::SRVGBuffer),
@@ -1457,13 +1487,23 @@ void SSAO::Run(ComPtr<ID3D12Resource> pSceneConstantResource)
         }
     }
     PIXEndEvent(commandList);
+#else
+    {
+        D3D12_RESOURCE_BARRIER startBarrier[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_ssaoResources.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+        };
+        commandList->ResourceBarrier(_countof(startBarrier), startBarrier);
+    }
+#endif
 
     // Restore original state.
     {
         std::vector<D3D12_RESOURCE_BARRIER> restoreBufferBarrier = {
+#if SSAO_DISABLED_CODE
             CD3DX12_RESOURCE_BARRIER::Transition(m_dBufferResource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_linearDepthResource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_ssaoResources.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+            CD3DX12_RESOURCE_BARRIER::Transition(m_ssaoResources.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+#endif
+            CD3DX12_RESOURCE_BARRIER::Transition(m_linearDepthResource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
         };
         {
             for (auto& el : m_depthDownsizeResource)
@@ -1616,8 +1656,10 @@ void SSAO::UpdateConstants()
     }
 }
 
-void SSAO::OnSizeChanged()
+void SSAO::OnSizeChanged(UINT width, UINT height)
 {
+    m_width = width;
+    m_height = height;
     // Allocate resouces (dependent on frame).
     {
         // Create resources.
@@ -1631,22 +1673,49 @@ void SSAO::OnSizeChanged()
     UpdateConstants();
 }
 
-void SSAO::OnOptionUpdate(std::shared_ptr<Menus> pMenu)
+void SSAO::SetParameters(float noiseFilterTolerance, float blurTolerance, float upsampleTolerance, float normalMultiply)
 {
     // Update options.
-    m_noiseFilterTolerance = float(pMenu->m_ssaoNoiseFilterTolerance.Value());
-    m_blurTolerance = float(pMenu->m_ssaoBlurTolerance.Value());
-    m_upsampleTolerance = float(pMenu->m_ssaoUpsampleTolerance.Value());
-    m_normalMultiply = float(pMenu->m_ssaoNormalMultiply.Value());
+    m_noiseFilterTolerance = noiseFilterTolerance;
+    m_blurTolerance = blurTolerance;
+    m_upsampleTolerance = upsampleTolerance;
+    m_normalMultiply = normalMultiply;
 
     UpdateConstants();
 }
 
-void SSAO::OnCameraChanged(XMMATRIX& world, XMMATRIX& view, XMMATRIX& projection)
+void SSAO::BindGBufferResources(ID3D12Resource* normal, ID3D12Resource* depth)
 {
-    UNREFERENCED_PARAMETER(world);
-    UNREFERENCED_PARAMETER(view);
-    
+    auto device = m_deviceResources->GetD3DDevice();
+
+    CreateTexture2DArrSRV(
+        device,
+        normal,
+        m_csuDescriptors->GetCpuHandle(SSAOCSUDesc::SRVGBuffer),
+        normal->GetDesc().DepthOrArraySize,
+        normal->GetDesc().Format);
+
+    CreateTexture2DSRV(
+        device,
+        depth,
+        m_csuDescriptors->GetCpuHandle(SSAOCSUDesc::SRVDepth),
+        depth->GetDesc().Format);
+}
+
+#if SSAO_DISABLED_CODE
+void SSAO::OnOptionUpdate(std::shared_ptr<Menus> pMenu)
+{
+    // Update options.
+    SetParameters(
+        float(pMenu->m_ssaoNoiseFilterTolerance.Value()),
+        float(pMenu->m_ssaoBlurTolerance.Value()),
+        float(pMenu->m_ssaoUpsampleTolerance.Value()),
+        float(pMenu->m_ssaoNormalMultiply.Value()));
+}
+#endif
+
+void SSAO::OnCameraChanged(XMMATRIX& projection)
+{
     // Load first element of projection matrix which is the cotangent of the horizontal FOV divided by 2.
     float fovTangent = 1.f / XMVectorGetByIndex(projection.r[0], 0);
 
@@ -1674,4 +1743,13 @@ void SSAO::OnCameraChanged(XMMATRIX& world, XMMATRIX& view, XMMATRIX& projection
             fovTangent
         );
     }
+}
+
+// ToDo remove?
+void SSAO::OnCameraChanged(XMMATRIX& world, XMMATRIX& view, XMMATRIX& projection)
+{
+    UNREFERENCED_PARAMETER(world);
+    UNREFERENCED_PARAMETER(view);
+
+    OnCameraChanged(projection);
 }

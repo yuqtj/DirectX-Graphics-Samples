@@ -16,6 +16,7 @@
 HWND Win32Application::m_hwnd = nullptr;
 bool Win32Application::m_fullscreenMode = false;
 RECT Win32Application::m_windowRect;
+
 using Microsoft::WRL::ComPtr;
 
 int Win32Application::Run(DXSample* pSample, HINSTANCE hInstance, int nCmdShow)

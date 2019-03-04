@@ -86,7 +86,7 @@ namespace GpuKernels
 
 	void ReduceSum::CreateInputResourceSizeDependentResources(
 		ID3D12Device* device,
-		DescriptorHeap* descriptorHeap,
+		DX::DescriptorHeap* descriptorHeap,
 		UINT frameCount,
 		UINT width,
 		UINT height,
@@ -767,7 +767,7 @@ namespace GpuKernels
 
     void RootMeanSquareError::CreateInputResourceSizeDependentResources(
         ID3D12Device* device,
-        DescriptorHeap* descriptorHeap,
+        DX::DescriptorHeap* descriptorHeap,
         UINT frameCount,
         UINT width,
         UINT height,
@@ -917,7 +917,7 @@ namespace GpuKernels
 
     void AtrousWaveletTransformCrossBilateralFilter::CreateInputResourceSizeDependentResources(
         ID3D12Device* device,
-        DescriptorHeap* descriptorHeap,
+        DX::DescriptorHeap* descriptorHeap,
         UINT width,
         UINT height)
     {

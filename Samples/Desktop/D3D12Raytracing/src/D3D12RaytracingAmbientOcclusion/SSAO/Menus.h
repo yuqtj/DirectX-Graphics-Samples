@@ -157,7 +157,7 @@ private:
     std::unique_ptr<DirectX::BasicEffect> m_basicEffect;
 
     // Heaps.
-    std::unique_ptr<DescriptorHeap> m_csuDescriptors;
+    std::unique_ptr<DirectX::DescriptorHeap> m_csuDescriptors;
 
     // AO.
     std::wstring m_aoSampleNames[2] = {

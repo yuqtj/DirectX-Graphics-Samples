@@ -68,6 +68,7 @@
 #include <DDSTextureLoader.h>
 #include "ResourceUploadBatch.h"
 #include <Keyboard.h>
+#include <DirectXCollision.h>
 
 // UI 
 #include <d2d1_3.h>

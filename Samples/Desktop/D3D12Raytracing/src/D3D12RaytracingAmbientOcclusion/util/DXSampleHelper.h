@@ -188,7 +188,7 @@ inline constexpr UINT CalculateConstantBufferByteSize(UINT byteSize)
 }
 
 #ifdef D3D_COMPILE_STANDARD_FILE_INCLUDE
-inline Microsoft::WRL::ComPtr<ID3DBlob> CompileShader(
+inline ComPtr<ID3DBlob> CompileShader(
     const std::wstring& filename,
     const D3D_SHADER_MACRO* defines,
     const std::string& entrypoint,
@@ -201,8 +201,8 @@ inline Microsoft::WRL::ComPtr<ID3DBlob> CompileShader(
 
     HRESULT hr;
 
-    Microsoft::WRL::ComPtr<ID3DBlob> byteCode = nullptr;
-    Microsoft::WRL::ComPtr<ID3DBlob> errors;
+    ComPtr<ID3DBlob> byteCode = nullptr;
+    ComPtr<ID3DBlob> errors;
     hr = D3DCompileFromFile(filename.c_str(), defines, D3D_COMPILE_STANDARD_FILE_INCLUDE,
         entrypoint.c_str(), target.c_str(), compileFlags, 0, &byteCode, &errors);
 
@@ -408,72 +408,75 @@ public:
     }
 };
 
-class DescriptorHeap
+// ToDo replace with DirectX::DescriptorHeap?
+namespace DX
 {
-	ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
-	UINT m_descriptorsAllocated;
-	UINT m_descriptorSize;
+    class DescriptorHeap
+    {
+        ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
+        UINT m_descriptorsAllocated;
+        UINT m_descriptorSize;
 
-public:
-	DescriptorHeap(ID3D12Device* device, UINT numDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE type)
-	{
-		D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
-		// Allocate a heap for descriptors:
-		// 2 per geometry - vertex and index  buffer SRVs
-		// 1 - raytracing output texture SRV
-		// 2 per BLAS - one for the acceleration structure and one for its instance desc 
-		// 1 - top level acceleration structure
-		//ToDo
-		descriptorHeapDesc.NumDescriptors = numDescriptors;
-		descriptorHeapDesc.Type = type;
-		descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		descriptorHeapDesc.NodeMask = 0;
-		device->CreateDescriptorHeap(&descriptorHeapDesc, IID_PPV_ARGS(&m_descriptorHeap));
-		NAME_D3D12_OBJECT(m_descriptorHeap);
+    public:
+        DescriptorHeap(ID3D12Device* device, UINT numDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE type)
+        {
+            D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
+            // Allocate a heap for descriptors:
+            // 2 per geometry - vertex and index  buffer SRVs
+            // 1 - raytracing output texture SRV
+            // 2 per BLAS - one for the acceleration structure and one for its instance desc 
+            // 1 - top level acceleration structure
+            //ToDo
+            descriptorHeapDesc.NumDescriptors = numDescriptors;
+            descriptorHeapDesc.Type = type;
+            descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+            descriptorHeapDesc.NodeMask = 0;
+            device->CreateDescriptorHeap(&descriptorHeapDesc, IID_PPV_ARGS(&m_descriptorHeap));
+            NAME_D3D12_OBJECT(m_descriptorHeap);
 
-		m_descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	}
+            m_descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        }
 
-	ID3D12DescriptorHeap* GetHeap() { return m_descriptorHeap.Get(); }
-	ID3D12DescriptorHeap** GetAddressOf() { return m_descriptorHeap.GetAddressOf(); }
-	UINT DescriptorSize() { return m_descriptorSize; }
+        ID3D12DescriptorHeap* GetHeap() { return m_descriptorHeap.Get(); }
+        ID3D12DescriptorHeap** GetAddressOf() { return m_descriptorHeap.GetAddressOf(); }
+        UINT DescriptorSize() { return m_descriptorSize; }
 
-	// Allocate a descriptor and return its index. 
-	// Passing descriptorIndexToUse as UINT_MAX will allocate next available descriptor.
-	// Otherwise the descriptorIndexToUse will be used instead of allocating a new one.
-	UINT AllocateDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE* cpuDescriptor, UINT descriptorIndexToUse = UINT_MAX)
-	{
-		if (descriptorIndexToUse == UINT_MAX)
-		{
-			ThrowIfFalse(m_descriptorsAllocated < m_descriptorHeap->GetDesc().NumDescriptors, L"Ran out of descriptors on the heap!");
-			descriptorIndexToUse = m_descriptorsAllocated++;
-		}
-		else
-		{
-			ThrowIfFalse(descriptorIndexToUse < m_descriptorHeap->GetDesc().NumDescriptors, L"Requested descriptor index is out of bounds!");
-			m_descriptorsAllocated = std::max(descriptorIndexToUse + 1, m_descriptorsAllocated);
-		}
+        // Allocate a descriptor and return its index. 
+        // Passing descriptorIndexToUse as UINT_MAX will allocate next available descriptor.
+        // Otherwise the descriptorIndexToUse will be used instead of allocating a new one.
+        UINT AllocateDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE* cpuDescriptor, UINT descriptorIndexToUse = UINT_MAX)
+        {
+            if (descriptorIndexToUse == UINT_MAX)
+            {
+                ThrowIfFalse(m_descriptorsAllocated < m_descriptorHeap->GetDesc().NumDescriptors, L"Ran out of descriptors on the heap!");
+                descriptorIndexToUse = m_descriptorsAllocated++;
+            }
+            else
+            {
+                ThrowIfFalse(descriptorIndexToUse < m_descriptorHeap->GetDesc().NumDescriptors, L"Requested descriptor index is out of bounds!");
+                m_descriptorsAllocated = std::max(descriptorIndexToUse + 1, m_descriptorsAllocated);
+            }
 
-		auto descriptorHeapCpuBase = m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
-		*cpuDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(descriptorHeapCpuBase, descriptorIndexToUse, m_descriptorSize);
-		return descriptorIndexToUse;
-	}
+            auto descriptorHeapCpuBase = m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+            *cpuDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(descriptorHeapCpuBase, descriptorIndexToUse, m_descriptorSize);
+            return descriptorIndexToUse;
+        }
 
-	// Allocate multiple descriptor indices and return an index of a first one. 
-	// Passing firstDescriptorIndexToUse as UINT_MAX will allocate next available descriptors.
-	// Otherwise the firstDescriptorIndexToUse will be used instead of allocating a new one.
-	UINT AllocateDescriptorIndices(UINT numDescriptors, UINT firstDescriptorIndexToUse = UINT_MAX)
-	{
-		firstDescriptorIndexToUse = AllocateDescriptor(&D3D12_CPU_DESCRIPTOR_HANDLE(), firstDescriptorIndexToUse);
+        // Allocate multiple descriptor indices and return an index of a first one. 
+        // Passing firstDescriptorIndexToUse as UINT_MAX will allocate next available descriptors.
+        // Otherwise the firstDescriptorIndexToUse will be used instead of allocating a new one.
+        UINT AllocateDescriptorIndices(UINT numDescriptors, UINT firstDescriptorIndexToUse = UINT_MAX)
+        {
+            firstDescriptorIndexToUse = AllocateDescriptor(&D3D12_CPU_DESCRIPTOR_HANDLE(), firstDescriptorIndexToUse);
 
-		for (UINT i = 1; i < numDescriptors; i++)
-		{
-			AllocateDescriptor(&D3D12_CPU_DESCRIPTOR_HANDLE(), firstDescriptorIndexToUse + i);
-		}
-		return firstDescriptorIndexToUse;
-	}
-};
-
+            for (UINT i = 1; i < numDescriptors; i++)
+            {
+                AllocateDescriptor(&D3D12_CPU_DESCRIPTOR_HANDLE(), firstDescriptorIndexToUse + i);
+            }
+            return firstDescriptorIndexToUse;
+        }
+    };
+}
 
 inline float lerp(float a, float b, float t)
 {
@@ -523,7 +526,7 @@ struct RWGpuResource
 inline void CreateTextureSRV(
 	ID3D12Device* device,
 	ID3D12Resource* resource,
-	DescriptorHeap* descriptorHeap,
+	DX::DescriptorHeap* descriptorHeap,
 	UINT* descriptorHeapIndex,
 	D3D12_CPU_DESCRIPTOR_HANDLE* cpuHandle,
 	D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle,
@@ -544,15 +547,13 @@ inline void CreateTextureSRV(
 		*descriptorHeapIndex, descriptorHeap->DescriptorSize());
 };
 
-
-
 // Loads a DDS texture and issues upload on the commandlist. 
 // The caller is expected to execute the commandList.
 inline void LoadDDSTexture(
     ID3D12Device* device,
     ID3D12GraphicsCommandList4* commandList,
     const wchar_t* filename,
-    DescriptorHeap* descriptorHeap,
+    DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
     ID3D12Resource** ppUpload,
     UINT* descriptorHeapIndex,
@@ -586,7 +587,7 @@ inline void LoadDDSTexture(
     ID3D12Device* device,
     ID3D12GraphicsCommandList4* commandList,
     const wchar_t* filename,
-    DescriptorHeap* descriptorHeap,
+    DX::DescriptorHeap* descriptorHeap,
     D3DTexture* tex,
     D3D12_SRV_DIMENSION srvDimension = D3D12_SRV_DIMENSION_TEXTURE2D)
 {
@@ -599,7 +600,7 @@ inline void LoadWICTexture(
     ID3D12Device* device,
     ID3D12GraphicsCommandList4* commandList,
     const wchar_t* filename,
-    DescriptorHeap* descriptorHeap,
+    DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
     ID3D12Resource** ppUpload,
     UINT* descriptorHeapIndex,
@@ -634,7 +635,7 @@ inline void LoadWICTexture(
     ID3D12Device* device,
     ResourceUploadBatch* resourceUpload,
     const wchar_t* filename,
-    DescriptorHeap* descriptorHeap,
+    DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
     UINT* descriptorHeapIndex,
     D3D12_CPU_DESCRIPTOR_HANDLE* cpuHandle,
@@ -652,7 +653,7 @@ inline void LoadTexture(
     ID3D12Device* device,
     ID3D12GraphicsCommandList4* commandList,
     const wchar_t* filename,
-    DescriptorHeap* descriptorHeap,
+    DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
     ID3D12Resource** ppUpload,
     UINT* descriptorHeapIndex,
@@ -676,7 +677,7 @@ inline void CreateRenderTargetResource(
 	DXGI_FORMAT format,
 	UINT width,
 	UINT height,
-	DescriptorHeap* descriptorHeap,
+	DX::DescriptorHeap* descriptorHeap,
 	RWGpuResource* dest,
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_RENDER_TARGET,
 	const wchar_t* resourceName = nullptr)
@@ -734,7 +735,7 @@ inline void AllocateUAVBuffer(
 	UINT elementSize,
 	RWGpuResource* dest,
 	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN,
-	DescriptorHeap* descriptorHeap = nullptr,
+	DX::DescriptorHeap* descriptorHeap = nullptr,
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_COMMON, 
 	const wchar_t* resourceName = nullptr)
 {
@@ -881,7 +882,7 @@ inline void CreateBufferSRV(
 	ID3D12Device* device,
 	UINT numElements,
 	UINT elementSize,
-	DescriptorHeap* descriptorHeap,
+	DX::DescriptorHeap* descriptorHeap,
 	D3D12_CPU_DESCRIPTOR_HANDLE* cpuDescriptorHandle,
 	D3D12_GPU_DESCRIPTOR_HANDLE* gpuDescriptorHandle,
 	UINT* heapIndex,
@@ -916,7 +917,7 @@ inline void CreateBufferSRV(
 	ID3D12Device* device,
 	UINT numElements,
 	UINT elementSize,
-	DescriptorHeap* descriptorHeap,
+	DX::DescriptorHeap* descriptorHeap,
 	D3DBuffer* dest,
 	UINT firstElement = 0)
 {
@@ -936,7 +937,7 @@ inline void CreateBufferSRV(
 inline void CreateGeometry(
 	ID3D12Device* device,
 	ID3D12GraphicsCommandList* commandList,
-	DescriptorHeap* descriptorHeap,
+	DX::DescriptorHeap* descriptorHeap,
 	const GeometryDescriptor& desc,
 	D3DGeometry* geometry
 )

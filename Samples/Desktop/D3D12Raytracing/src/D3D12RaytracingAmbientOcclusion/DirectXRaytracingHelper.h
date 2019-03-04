@@ -227,6 +227,7 @@ void DefineExports(T* obj, LPCWSTR(&Exports)[N][M])
         }
 }
 
+// Allocate buffer and fill with input data.
 inline void AllocateUploadBuffer(ID3D12Device* pDevice, void *pData, UINT64 datasize, ID3D12Resource **ppResource, const wchar_t* resourceName = nullptr)
 {
     auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -238,14 +239,19 @@ inline void AllocateUploadBuffer(ID3D12Device* pDevice, void *pData, UINT64 data
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(ppResource)));
+
     if (resourceName)
     {
         (*ppResource)->SetName(resourceName);
     }
-    void *pMappedData;
-    (*ppResource)->Map(0, nullptr, &pMappedData);
-    memcpy(pMappedData, pData, datasize);
-    (*ppResource)->Unmap(0, nullptr);
+
+    if (pData)
+    {
+        void *pMappedData;
+        (*ppResource)->Map(0, nullptr, &pMappedData);
+        memcpy(pMappedData, pData, datasize);
+        (*ppResource)->Unmap(0, nullptr);
+    }
 }
 
 // Pretty-print a state object tree.

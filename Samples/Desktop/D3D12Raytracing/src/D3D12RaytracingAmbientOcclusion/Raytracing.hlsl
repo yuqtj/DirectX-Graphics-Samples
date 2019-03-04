@@ -41,6 +41,7 @@ RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material 
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
 RWTexture2D<float4> g_rtGBufferNormal : register(u8);
 RWTexture2D<float> g_rtGBufferDistance : register(u9);
+
 Texture2D<uint> g_texGBufferPositionHits : register(t5); 
 Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Material Id, 3x Diffuse.RGB}
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
@@ -52,6 +53,8 @@ TextureCube<float4> g_texEnvironmentMap : register(t12);
 RWTexture2D<float> g_rtAOcoefficient : register(u10);
 RWTexture2D<uint> g_rtAORayHits : register(u11);
 RWTexture2D<float> g_rtVisibilityCoefficient : register(u12);
+RWTexture2D<float> g_rtGBufferDepth : register(u13);
+RWTexture2D<float4> g_rtGBufferNormalRGB : register(u14);   // for SSAO. ToDo cleanup
 
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
@@ -386,6 +389,18 @@ void MyRayGenShader_GBuffer()
     g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
 #endif
     g_rtGBufferDistance[DispatchRaysIndex().xy] = rayLength;
+
+    // ToDo revise
+    // Convert distance to nonLinearDepth.
+    {
+        const float zNear = 0.1;
+        const float zFar = 5000.0;
+
+        float nonLinearDepth = (zFar + zNear - 2.0 * zNear * zFar / rayLength) / (zFar - zNear);
+        nonLinearDepth = (nonLinearDepth + 1.0) / 2.0;
+        g_rtGBufferDepth[DispatchRaysIndex().xy] = nonLinearDepth;
+    }
+    g_rtGBufferNormalRGB[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, 0);
 }
 
 [shader("raygeneration")]

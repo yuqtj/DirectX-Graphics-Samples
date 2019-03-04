@@ -22,7 +22,7 @@ using namespace std;
 void SquidRoomAssets::LoadGeometry(
 	ID3D12Device* device,
 	ID3D12GraphicsCommandList* commandList,
-	DescriptorHeap* descriptorHeap,
+	DX::DescriptorHeap* descriptorHeap,
 	LPCWSTR assetPath,
 	D3DGeometry* geometry,
     std::vector<D3DTexture>* textures,

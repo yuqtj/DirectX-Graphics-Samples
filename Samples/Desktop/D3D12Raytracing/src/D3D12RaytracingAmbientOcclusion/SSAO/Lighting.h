@@ -8,9 +8,9 @@
 #pragma once
 
 #include "CommonStates.h"
-#include "Menus.h"
 
 #if SSAO_DISABLED_CODE
+#include "Menus.h"
 #include "Mesh.h"
 #endif
 
@@ -20,8 +20,10 @@ public:
     virtual ~Lighting()
     {
         m_deviceResources.reset();
+#if SSAO_DISABLED_CODE
         m_primitiveBatch.reset();
         m_basicEffect.reset();
+#endif
     }
 
     virtual void Setup(
@@ -29,17 +31,23 @@ public:
     {
         m_deviceResources = pDeviceResources;
 
+#if SSAO_DISABLED_CODE
         SetupSplitRendering();
+#endif
     }
 
-    virtual void Run(Microsoft::WRL::ComPtr<ID3D12Resource> pSceneConstantResource) = 0;
+#if SSAO_DISABLED_CODE
+    virtual void Run(ComPtr<ID3D12Resource> pSceneConstantResource) = 0;
+#endif
 
 #if SSAO_DISABLED_CODE
     virtual void SetMesh(std::shared_ptr<Mesh> pMesh) = 0;
 #endif
     virtual void OnSizeChanged() { }
 
+#if SSAO_DISABLED_CODE
     virtual void OnOptionUpdate(std::shared_ptr<Menus> pMenu) = 0;
+#endif
 
     virtual void OnCameraChanged(XMMATRIX& world, XMMATRIX& view, XMMATRIX& projection)
     {
@@ -58,6 +66,7 @@ public:
         m_deviceResources->WaitForGpu();
     }
 
+#if SSAO_DISABLED_CODE
     void SetupSplitRendering()
     {
         auto device = m_deviceResources->GetD3DDevice();
@@ -88,12 +97,15 @@ public:
             );
         }
     }
+#endif
 
 protected:
     std::shared_ptr<DX::DeviceResources> m_deviceResources;
     float m_screenWidthScale = 1.f;
 
+#if SSAO_DISABLED_CODE
     // Split rendering.
     std::unique_ptr<DirectX::PrimitiveBatch<DirectX::VertexPositionTexture>> m_primitiveBatch;
     std::unique_ptr<DirectX::BasicEffect> m_basicEffect;
+#endif
 };

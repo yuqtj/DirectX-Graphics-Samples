@@ -205,7 +205,7 @@ void UILayer::Resize(ComPtr<ID3D12Resource>* ppRenderTargets, UINT width, UINT h
 
     // Create DWrite text format objects.
     const float fontSize = m_height / 30.0f;
-    const float smallFontSize = m_height / 40.0f;
+    const float smallFontSize = m_height / 60.0f;
 
     ThrowIfFailed(m_dwriteFactory->CreateTextFormat(
         L"Arial",
@@ -219,6 +219,7 @@ void UILayer::Resize(ComPtr<ID3D12Resource>* ppRenderTargets, UINT width, UINT h
 
     ThrowIfFailed(m_textFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER));
     ThrowIfFailed(m_textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR));
+    // ToDo this overwrites above??
     ThrowIfFailed(m_dwriteFactory->CreateTextFormat(
         L"Arial",
         nullptr,

@@ -22,37 +22,6 @@ inline constexpr UINT GetNumGrps(const UINT size, const UINT numThreads)
     return (size + numThreads - 1) / numThreads;
 }
 
-// Allocate buffer and fill with input data.
-inline void AllocateUploadBuffer(
-    ID3D12Device* pDevice,
-    void* pData,
-    UINT64 datasize,
-    ID3D12Resource** ppResource,
-    const wchar_t* resourceName = nullptr)
-{
-    auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-    auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(datasize);
-    ThrowIfFailed(pDevice->CreateCommittedResource(
-        &uploadHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &bufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(ppResource)));
-    if (resourceName)
-    {
-        (*ppResource)->SetName(resourceName);
-    }
-
-    if (pData)
-    {
-        void *pMappedData;
-        (*ppResource)->Map(0, nullptr, &pMappedData);
-        memcpy(pMappedData, pData, datasize);
-        (*ppResource)->Unmap(0, nullptr);
-    }
-}
-
 // Allocate texture2D and upload data to the GPU.
 inline void AllocateTexture2D(
     ID3D12Device* pDevice,
@@ -63,7 +32,8 @@ inline void AllocateTexture2D(
     UINT width,
     UINT height,
     UINT stride,
-    DXGI_FORMAT format = DXGI_FORMAT_R32G32B32A32_FLOAT)
+    DXGI_FORMAT format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+    const wchar_t* resourceName = nullptr)
 {
     auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1);
@@ -85,6 +55,11 @@ inline void AllocateTexture2D(
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(ppUploadResource)));
+
+    if (resourceName)
+    {
+        (*ppResource)->SetName(resourceName);
+    }
 
     // Upload the texture info to the GPU.
     D3D12_SUBRESOURCE_DATA resource;
@@ -110,7 +85,8 @@ inline void AllocateTexture2DArr(
     D3D12_CLEAR_VALUE* pClear = nullptr,
     DXGI_FORMAT format = DXGI_FORMAT_R32G32B32A32_FLOAT,
     D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_GENERIC_READ,
-    D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE)
+    D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE,
+    const wchar_t* resourceName = nullptr)
 {
     auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, (UINT16)arr, 1, 1, 0, flags);
     CD3DX12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
@@ -122,6 +98,11 @@ inline void AllocateTexture2DArr(
         state,
         pClear,
         IID_PPV_ARGS(ppResource)));
+
+    if (resourceName)
+    {
+        (*ppResource)->SetName(resourceName);
+    }
 }
 
 
@@ -142,6 +123,7 @@ inline void AllocateBuffer(
         initialResourceState,
         nullptr,
         IID_PPV_ARGS(ppResource)));
+
     if (resourceName)
     {
         (*ppResource)->SetName(resourceName);
@@ -342,10 +324,10 @@ inline void CreateTexture2DSampler(
 inline void SerializeAndCreateRootSignature(
     ID3D12Device* device,
     D3D12_ROOT_SIGNATURE_DESC& desc,
-    Microsoft::WRL::ComPtr<ID3D12RootSignature>& rootSig)
+    ComPtr<ID3D12RootSignature>& rootSig)
 {
-    Microsoft::WRL::ComPtr<ID3DBlob> blob;
-    Microsoft::WRL::ComPtr<ID3DBlob> error;
+    ComPtr<ID3DBlob> blob;
+    ComPtr<ID3DBlob> error;
     ThrowIfFailed(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error));
     ThrowIfFailed(device->CreateRootSignature(1, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(rootSig.GetAddressOf())));
 }

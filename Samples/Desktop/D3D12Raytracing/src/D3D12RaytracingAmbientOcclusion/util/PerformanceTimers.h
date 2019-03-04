@@ -126,8 +126,8 @@ namespace DX
     private:
         static const size_t c_timerSlots = c_maxTimers * 2;
 
-        Microsoft::WRL::ComPtr<ID3D12QueryHeap> m_heap;
-        Microsoft::WRL::ComPtr<ID3D12Resource>  m_buffer;
+        ComPtr<ID3D12QueryHeap> m_heap;
+        ComPtr<ID3D12Resource>  m_buffer;
         double                                  m_gpuFreqInv;
         float                                   m_avg[c_maxTimers];
         UINT64                                  m_timing[c_timerSlots];

@@ -11,7 +11,7 @@
 
 #pragma once
 
-// ToDo move some to cpp?
+// ToDo move some to cpp or stdafx?
 #include "DXSample.h"
 #include "StepTimer.h"
 #include "RaytracingSceneDefines.h"
@@ -22,7 +22,7 @@
 #include "UILayer.h"
 #include "GpuKernels.h"
 #include "PBRTParser.h"
-//#include "SSAO.h"
+#include "SSAO\SSAO.h"
 
 class D3D12RaytracingAmbientOcclusion : public DXSample
 {
@@ -122,14 +122,14 @@ private:
 
 	ComPtr<ID3D12Fence>                 m_fence;
 	UINT64                              m_fenceValues[FrameCount];
-	Microsoft::WRL::Wrappers::Event     m_fenceEvent;
+    Microsoft::WRL::Wrappers::Event     m_fenceEvent;
 	// Root signatures
 	ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
 	ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature[LocalRootSignature::Type::Count];
 
 	// ToDo move to deviceResources
-	std::unique_ptr<DescriptorHeap> m_cbvSrvUavHeap;
-	std::unique_ptr<DescriptorHeap> m_samplerHeap;
+	std::unique_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
+	std::unique_ptr<DX::DescriptorHeap> m_samplerHeap;
 
 	// Raytracing scene
 	ConstantBuffer<SceneConstantBuffer> m_sceneCB;
@@ -138,8 +138,13 @@ private:
 
     D3DTexture m_nullTexture;
 	
-	// Geometry
+    // SSAO
+    SSAO        m_SSAO;
+    ConstantBuffer<SSAOSceneConstantBuffer> m_SSAOCB;
+    UINT m_SSAOsrvDescriptorHeapIndex = UINT_MAX;
+    D3D12_GPU_DESCRIPTOR_HANDLE SSAOgpuDescriptorReadAccess = { UINT64_MAX };
 
+	// Geometry
 	DX::GPUTimer m_gpuTimers[GpuTimers::Count];
 
 	// ToDo clean up buffer management
@@ -179,6 +184,7 @@ private:
 	RWGpuResource m_AOResources[AOResource::Count];
     RWGpuResource m_AOLowResResources[AOResource::Count];   // ToDo remove unused
 	RWGpuResource m_VisibilityResource;
+
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;
     
@@ -232,7 +238,7 @@ private:
 	void RenderPass_CalculateVisibility();
 	void RenderPass_CalculateAmbientOcclusion();
     void RenderPass_BlurAmbientOcclusion();
-	void RenderPass_ComposeRenderPassesCS();
+	void RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV);
 
 	// ToDo cleanup
 	// Utility functions

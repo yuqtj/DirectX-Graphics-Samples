@@ -103,6 +103,8 @@ namespace GlobalRootSignature {
 			MaterialBuffer,
             SampleBuffers,
             EnvironmentMap,
+            GBufferDepth,   // ToDo move to the above slot for GBufferResources ?
+            GbufferNormalRGB,
             Count
         };
     }
@@ -204,6 +206,8 @@ namespace GBufferResource {
 		HitPosition,	// 3D position of hit.
 		SurfaceNormal,	// 3D normal at a hit and dot(normal, rayDir) in W,
         Distance,       // Length along ray of hit.
+        Depth,          // Non-linear depth of the hit.
+        SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate
 		Count
 	};
 }

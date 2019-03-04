@@ -33,7 +33,7 @@ namespace GpuKernels
 		void Initialize(ID3D12Device* device, Type type);
 		void CreateInputResourceSizeDependentResources(
 			ID3D12Device* device,
-			DescriptorHeap* descriptorHeap,
+			DX::DescriptorHeap* descriptorHeap,
 			UINT frameCount,
 			UINT width,
 			UINT height,
@@ -218,7 +218,7 @@ namespace GpuKernels
         void Initialize(ID3D12Device* device);
         void CreateInputResourceSizeDependentResources(
             ID3D12Device* device,
-            DescriptorHeap* descriptorHeap,
+            DX::DescriptorHeap* descriptorHeap,
             UINT frameCount,
             UINT width,
             UINT height,
@@ -259,7 +259,7 @@ namespace GpuKernels
         void Initialize(ID3D12Device* device, UINT maxFilterPasses);
         void CreateInputResourceSizeDependentResources(
             ID3D12Device* device,
-            DescriptorHeap* descriptorHeap,
+            DX::DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height);
         void Execute(
