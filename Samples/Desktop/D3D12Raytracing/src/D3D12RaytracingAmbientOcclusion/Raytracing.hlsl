@@ -297,18 +297,19 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
         Ray shadowRay = { hitPosition + 1e-3 * surfaceNormal, rayDirection };
 #endif
 
-#if DEVICE_REMOVAL_ON_AO_COEF
+#if REPRO_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF
         const float tMax = g_sceneCB.maxShadowRayHitTime;
         float tHit;
         if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
         {
-            // Setting coef to 1 and then 0.5 below causes device removal. Wth?
+            // ToDo Setting coef to 1 and then 0.5 below causes device removal. Wth?
             float occlusionCoef = 1;
             if (g_sceneCB.RTAO_IsExponentialFalloffEnabled)
             {
-                float t = tHit / tMax;
-                float lambda = g_sceneCB.RTAO_exponentialFalloffDecayConstant;
-                occlusionCoef = 0.5;// 1 - t;// exp(-lambda * t*t);
+                //float t = tHit / tMax;
+                //float lambda = g_sceneCB.RTAO_exponentialFalloffDecayConstant;
+                occlusionCoef = 0;    // Causes device removal
+                //occlusionCoef = 1 - t;  // Works...
             }
             occlussionCoefSum += occlusionCoef;// (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
 
