@@ -24,8 +24,10 @@
 #include "PBRTParser.h"
 #include "SSAO\SSAO.h"
 
+
 class D3D12RaytracingAmbientOcclusion : public DXSample
 {
+  
 public:
 	D3D12RaytracingAmbientOcclusion(UINT width, UINT height, std::wstring name);
 	~D3D12RaytracingAmbientOcclusion();

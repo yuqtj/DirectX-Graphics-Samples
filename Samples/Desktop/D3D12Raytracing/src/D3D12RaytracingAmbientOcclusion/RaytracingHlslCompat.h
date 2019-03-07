@@ -12,6 +12,11 @@
 #ifndef RAYTRACINGHLSLCOMPAT_H
 #define RAYTRACINGHLSLCOMPAT_H
 
+// Workarounds - ToDo remove/document
+#define REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO 1
+#define REPR_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF 0
+#define REPRO_INVISIBLE_WALL 0
+
 //**********************************************************************************************
 //
 // RaytracingHLSLCompat.h
@@ -83,11 +88,11 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 0
+#define PBRT_SCENE 1
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
-#define AO_RAY_T_MAX 2
+#define AO_RAY_T_MAX 6
 #else
 #define DISTANCE_FALLOFF 0
 #define AO_RAY_T_MAX 35
@@ -249,7 +254,7 @@ struct GBufferRayPayload
 #if ALLOW_MIRRORS
     UINT rayRecursionDepth;
 #endif
-	UINT hit;
+	UINT hit; // ToDo compact
 	XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
 	XMFLOAT3 hitPosition;
 	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
@@ -259,7 +264,8 @@ struct GBufferRayPayload
 
 struct ShadowRayPayload
 {
-    UINT hit;
+    // ToDo use 1 byte value for true/false?
+    float tHit;         // Hit time <0,..> on Hit. -1 on miss.
 };
 
 struct RNGConstantBuffer
@@ -291,37 +297,60 @@ struct AtrousWaveletTransformFilterConstantBuffer
 };
 
 
+// ToDo split CB?
 struct SceneConstantBuffer
 {
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
     XMVECTOR cameraPosition;
 	XMVECTOR lightPosition;
-    float    reflectance;
-    float    elapsedTime;                 // Elapsed application time.
+
+    float reflectance;
+    float elapsedTime;                 // Elapsed application time.
 	float Zmin;
 	float Zmax;
+    
     UINT seed;
     UINT numSamples;
     UINT numSampleSets;
     UINT numSamplesToUse;
+    
     UINT numPixelsPerDimPerSet;
-    float padding;
+    BOOL useShadowRayHitTime;           // ToDo Rename "use"
     XMFLOAT2 cameraJitter;
+
+    float maxShadowRayHitTime;
+    BOOL RTAO_approximateInterreflections;      // Approximate interreflections. 
+    float RTAO_diffuseReflectance;              // Diffuse reflectance from occluding surfaces. 
+    float RTAO_minimumAmbientIllumnination;       // Ambient illumination coef when a ray is occluded.
+
+    BOOL RTAO_IsExponentialFalloffEnabled;               // Apply exponential falloff to AO coefficient based on ray hit distance.    
+    float RTAO_exponentialFalloffDecayConstant; 
+    float padding2[2];
+
 };
  
+// Final render output composition modes.
+enum CompositionType {
+    PhongLighting = 0,
+    AmbientOcclusionOnly,
+    NormalsOnly,
+    DepthOnly,
+    Count
+};
+
 // ToDo explain padding
 struct ComposeRenderPassesConstantBuffer
 {
 	XMUINT2 rtDimensions;
 	XMFLOAT2 padding1;
 	XMFLOAT3 cameraPosition;
-    UINT renderAOonly;
+    float padding2;
 	XMFLOAT3 lightPosition;     // ToDo cb doesn't match if XMFLOAT starts at offset 1. Can this be caught?
     UINT enableAO;
 	XMFLOAT3 lightAmbientColor;
-	float padding4;
+    CompositionType compositionType;
 	XMFLOAT3 lightDiffuseColor;		
-	float padding5;
+	float padding3;
 };
 
 struct AoBlurConstantBuffer

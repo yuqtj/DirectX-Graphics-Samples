@@ -43,11 +43,15 @@ void main(uint2 DTid : SV_DispatchThreadID )
 	bool hit = g_texGBufferPositionHits[DTid] > 0;
 	float distance = 1e6;
 	float4 color;
-
+#if 0
+    float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
+    if (hit && length(hitPosition.xz + float2(10,-10)) < 60)
+    {
+#else
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
-
+#endif
 #if COMPRES_NORMALS
         float3 surfaceNormal = Decode(g_texGBufferNormal[DTid].xy);
 #else
@@ -55,47 +59,62 @@ void main(uint2 DTid : SV_DispatchThreadID )
 #endif
 		float visibilityCoefficient = g_texVisibility[DTid];
         float ambientCoef = g_CB.enableAO ? g_texAO[DTid] : 1;
-        
 
-		// Calculate final color.
-        uint2 materialInfo = g_texGBufferMaterial[DTid];
-        UINT materialID;
-        float3 diffuse;
-        DecodeMaterial16b(materialInfo, materialID, diffuse);
-
-        PrimitiveMaterialBuffer material = g_materials[materialID];
-		float3 toEyeRay = normalize(g_CB.cameraPosition.xyz - hitPosition);
-        diffuse = RemoveSRGB(diffuse);
-        float3 specular = RemoveSRGB(material.specular);
-		float3 phongColor = CalculatePhongLighting(surfaceNormal, hitPosition, toEyeRay, visibilityCoefficient, ambientCoef, diffuse, specular, material.specularPower);
-		color = float4(phongColor, 1);
-
-		// Apply visibility falloff.
-        // ToDo incorrect when subtracting camera
-        distance = length(hitPosition);// -g_CB.cameraPosition.xyz);
-		float t = distance;
-		color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF*t*t*t));
-
-        // ToDo cleanup
-        if (g_CB.renderAOonly)
+        // Calculate final color.
+        if (g_CB.compositionType == CompositionType::PhongLighting)
         {
-            color = ambientCoef;// 10 * sqrt(ambientCoef);
+            uint2 materialInfo = g_texGBufferMaterial[DTid];
+            UINT materialID;
+            float3 diffuse;
+            DecodeMaterial16b(materialInfo, materialID, diffuse);
+
+            PrimitiveMaterialBuffer material = g_materials[materialID];
+            float3 toEyeRay = normalize(g_CB.cameraPosition.xyz - hitPosition);
+            diffuse = RemoveSRGB(diffuse);
+            float3 specular = RemoveSRGB(material.specular);
+            float3 phongColor = CalculatePhongLighting(surfaceNormal, hitPosition, toEyeRay, visibilityCoefficient, ambientCoef, diffuse, specular, material.specularPower);
+            color = float4(phongColor, 1);
+
+            // Apply visibility falloff.
+            // ToDo incorrect when subtracting camera
+            distance = length(hitPosition);// -g_CB.cameraPosition.xyz);
+            float t = distance;
+            color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF * t*t*t));
+        }
+        else if (g_CB.compositionType == CompositionType::AmbientOcclusionOnly)
+        {
+            color = ambientCoef;
             float4 albedo = float4(1, 1, 1, 1);// float4(0.75f, 0.75f, 0.75f, 1.0f);
             color *= albedo;
+        }
+        else if (g_CB.compositionType == CompositionType::NormalsOnly)
+        {
+            color = float4(surfaceNormal, 1);
+        }
+        else if (g_CB.compositionType == CompositionType::DepthOnly)
+        {
+            color = float4(0, 0, 0, 1); // ToDo
         }
 	}
 	else
 	{
+        if (g_CB.compositionType == CompositionType::PhongLighting)
+        {
 #if USE_ENVIRONMENT_MAP
-        uint2 materialInfo = g_texGBufferMaterial[DTid];
-        UINT materialID;
-        float3 diffuse;
-        DecodeMaterial16b(materialInfo, materialID, diffuse);
-        diffuse = RemoveSRGB(diffuse);
-        color = float4(diffuse, 1);
+            uint2 materialInfo = g_texGBufferMaterial[DTid];
+            UINT materialID;
+            float3 diffuse;
+            DecodeMaterial16b(materialInfo, materialID, diffuse);
+            diffuse = RemoveSRGB(diffuse);
+            color = float4(diffuse, 1);
 #else
-        color = BackgroundColor;
+            color = BackgroundColor;
 #endif
+        }
+        else
+        {
+            color = float4(0, 0, 0, 1);
+        }
     }
 
 	// Write the composited color to the output texture.

@@ -28,7 +28,7 @@ void AccelerationStructure::ReleaseD3DResources()
 	m_accelerationStructure.Reset();
 }
 
-void AccelerationStructure::AllocateResource(ID3D12Device* device)
+void AccelerationStructure::AllocateResource(ID3D12Device* device, const wchar_t* resourceName)
 {
 	// Allocate resource for acceleration structures.
 	// Acceleration structures can only be placed in resources that are created in the default heap (or custom heap equivalent). 
@@ -38,7 +38,7 @@ void AccelerationStructure::AllocateResource(ID3D12Device* device)
 	//  - the system will be doing this type of access in its implementation of acceleration structure builds behind the scenes.
 	//  - from the app point of view, synchronization of writes/reads to acceleration structures is accomplished using UAV barriers.
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-	AllocateUAVBuffer(device, m_prebuildInfo.ResultDataMaxSizeInBytes, &m_accelerationStructure, initialResourceState, L"BottomLevelAccelerationStructure");
+	AllocateUAVBuffer(device, m_prebuildInfo.ResultDataMaxSizeInBytes, &m_accelerationStructure, initialResourceState, resourceName);
 }
 
 
@@ -128,7 +128,7 @@ void BottomLevelAccelerationStructure::Initialize(
 	m_buildFlags = buildFlags;
 	BuildGeometryDescs(indexFormat, ibStrideInBytes, vbStrideInBytes, geometries);
 	ComputePrebuildInfo();
-	AllocateResource(device);
+	AllocateResource(device, L"BottomLevelAccelerationStructure");
 	m_isDirty = true;
 }
 
@@ -232,7 +232,7 @@ void TopLevelAccelerationStructure::Initialize(ID3D12Device* device, vector<Bott
 	m_buildFlags = buildFlags;
 	BuildInstanceDescs(device, vBottomLevelAS, bottomLevelASinstanceDescsDescritorHeapIndices);
 	ComputePrebuildInfo();
-	AllocateResource(device);
+	AllocateResource(device, L"TopLevelAccelerationStructure");
 }
 
 void TopLevelAccelerationStructure::Build(ID3D12GraphicsCommandList* commandList, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, bool bUpdate)

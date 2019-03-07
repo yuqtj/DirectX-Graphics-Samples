@@ -16,6 +16,7 @@
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
 #include "RandomNumberGenerator.hlsli"
+#include "SSAO/GlobalSharedHlslCompat.h" // ToDo remove
 
 // ToDo split to Raytracing for GBUffer and AO?
 
@@ -120,7 +121,7 @@ float4 TraceRadianceRay(in Ray ray, in UINT currentRayRecursionDepth)
 
 // Trace a shadow ray and return true if it hits any geometry.
 // ToDo add surface normal and skip tracing a ray for surfaces facing away.
-bool TraceShadowRayAndReportIfHit(in Ray ray, in UINT currentRayRecursionDepth, in float TMax = 10000)
+bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRayRecursionDepth, in float TMax = 10000)
 {
     if (currentRayRecursionDepth >= MAX_RAY_RECURSION_DEPTH)
     {
@@ -131,31 +132,46 @@ bool TraceShadowRayAndReportIfHit(in Ray ray, in UINT currentRayRecursionDepth, 
     RayDesc rayDesc;
     rayDesc.Origin = ray.origin;
     rayDesc.Direction = ray.direction;
-    // Set TMin to a zero value to avoid aliasing artifcats along contact areas.
+    // Set TMin to a zero value to avoid aliasing artifacts along contact areas. // ToDo update comment re-floating error
     // Note: make sure to enable back-face culling so as to avoid surface face fighting.
     rayDesc.TMin = 0.0;
-	rayDesc.TMax = TMax;	// ToDo set this to dist to light
+	rayDesc.TMax = TMax;
 
     // Initialize shadow ray payload.
-    // Set the initial value to true since closest and any hit shaders are skipped. 
-    // Shadow miss shader, if called, will set it to false.
-    ShadowRayPayload shadowPayload = { true };
-    TraceRay(g_scene,
-#if FACE_CULLING
-		RAY_FLAG_CULL_BACK_FACING_TRIANGLES
+    // Set the initial value to a hit at TMax. 
+    // Miss shader will set it to -1.
+    // This way closest and any hit shaders can be skipped if true tHit is not needed. 
+    ShadowRayPayload shadowPayload = { TMax };
+
+    UINT rayFlags =
+#if FACE_CULLING            // ToDo remove one path?
+        RAY_FLAG_CULL_BACK_FACING_TRIANGLES
 #else
-		0
+        0
 #endif
-		| RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH
-        | RAY_FLAG_FORCE_OPAQUE             // ~skip any hit shaders
-        | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, // ~skip closest hit shaders,
+#if REPRO_INVISIBLE_WALL
+        | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH
+#endif
+        | RAY_FLAG_FORCE_OPAQUE;             // ~skip any hit shaders
+    
+    // Skip closest hit shaders of tHit time is not needed.
+    if (!g_sceneCB.useShadowRayHitTime)
+    {
+        rayFlags |= RAY_FLAG_SKIP_CLOSEST_HIT_SHADER;
+    }
+
+    TraceRay(g_scene,
+        rayFlags,
         TraceRayParameters::InstanceMask,
         TraceRayParameters::HitGroup::Offset[RayType::Shadow],
         TraceRayParameters::HitGroup::GeometryStride,
         TraceRayParameters::MissShader::Offset[RayType::Shadow],
         rayDesc, shadowPayload);
+    
+    // Report a hit if Miss Shader didn't set the value to -1.
+    tHit = shadowPayload.tHit;
 
-    return shadowPayload.hit;
+    return shadowPayload.tHit > (-1 + 0.001f);
 }
 
 // Trace a camera ray into the scene.
@@ -198,6 +214,7 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numShadowRayHits)
 {
     numShadowRayHits = 0;
+    float occlussionCoefSum = 0;
 
 #if AO_HITPOSITION_BASED_SEED
 #if AO_SAMPLES_SPREAD_ACCROSS_PIXELS
@@ -236,37 +253,38 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 	uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
 	uint sampleJump = 0; RNG::Random(RNGState, 0, g_sceneCB.numSamples - 1);
 
-	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
-	{
-		// Load a pregenerated random sample from the sample set.
-		float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % g_sceneCB.numSamples].value;
+    for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
+    {
+        // Load a pregenerated random sample from the sample set.
+        float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % g_sceneCB.numSamples].value;
 #endif
-		// Calculate coordinate system for the hemisphere
-		float3 u, v, w;
-		w = surfaceNormal;
+        // Calculate coordinate system for the hemisphere
+        float3 u, v, w;
+        w = surfaceNormal;
 
-		// Break hemisphere coordinate correlation
-		float x = RNG::Random01(RNGState);
-		float y = RNG::Random01(RNGState);
-		float z = RNG::Random01(RNGState);
-		float3 right = normalize(float3(x, y, z));
+        // ToDo is this needed
+        // Break hemisphere coordinate correlation
+        float x = RNG::Random01(RNGState);
+        float y = RNG::Random01(RNGState);
+        float z = RNG::Random01(RNGState);
+        float3 right = normalize(float3(x, y, z) * 2 - 1);
 
-		//        float3 right = normalize(float3(0.0072, 1.0, 0.0034));
-		v = normalize(cross(w, right));
-		u = cross(v, w);
+        //float3 right = normalize(float3(0.0072, 1.0, 0.0034));
+        v = normalize(cross(w, right));
+        u = cross(v, w);
 
-		float3 rayDirection = sample.x * u + sample.y * v + sample.z * w;
+        float3 rayDirection = sample.x * u + sample.y * v + sample.z * w;
 
-		// ToDo hitPosition adjustment - fix crease artifacts
-		// Todo fix noise on flat surface / box
-		Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
+        // ToDo hitPosition adjustment - fix crease artifacts
+        // Todo fix noise on flat surface / box
+        Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
 
 #else
     uint2 BTid = DispatchRaysIndex().xy & 3; // 4x4 BlockThreadID
-	uint RNGState = RNG::SeedThread(g_sceneCB.seed + (BTid.y << 2 | BTid.x));
+    uint RNGState = RNG::SeedThread(g_sceneCB.seed + (BTid.y << 2 | BTid.x));
 
-	for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
-	{
+    for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
+    {
         // Compute random normal using cylindrical coordinates
         float theta = RNG::Random01ex(RNGState) * 6.2831853;
         float height = RNG::Random01(RNGState) * 2.0 - 1.0;
@@ -279,15 +297,83 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
         Ray shadowRay = { hitPosition + 1e-3 * surfaceNormal, rayDirection };
 #endif
 
-		if (TraceShadowRayAndReportIfHit(shadowRay, 0, AO_RAY_T_MAX))
-			numShadowRayHits++;
-	}
-#if AO_ANY_HIT_FULL_OCCLUSION
-	float ambientCoef = numShadowRayHits > 0 ? 0 : 1;
+#if DEVICE_REMOVAL_ON_AO_COEF
+        const float tMax = g_sceneCB.maxShadowRayHitTime;
+        float tHit;
+        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
+        {
+            // Setting coef to 1 and then 0.5 below causes device removal. Wth?
+            float occlusionCoef = 1;
+            if (g_sceneCB.RTAO_IsExponentialFalloffEnabled)
+            {
+                float t = tHit / tMax;
+                float lambda = g_sceneCB.RTAO_exponentialFalloffDecayConstant;
+                occlusionCoef = 0.5;// 1 - t;// exp(-lambda * t*t);
+            }
+            occlussionCoefSum += occlusionCoef;// (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
+
+            numShadowRayHits++;
+        }
+    }
+    float occlusionCoef = saturate(occlussionCoefSum / g_sceneCB.numSamplesToUse);
+    float ambientCoef = 1.f - occlusionCoef;
+#elif REPRO_INVISIBLE_WALL
+        const float tMax = g_sceneCB.maxShadowRayHitTime;
+        float tHit;
+        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
+        {
+            float occlusionCoef = 0;
+            float t = tHit / tMax;
+            if (g_sceneCB.RTAO_IsExponentialFalloffEnabled && t >= g_sceneCB.RTAO_minimumAmbientIllumnination)
+            {
+                float lambda = g_sceneCB.RTAO_exponentialFalloffDecayConstant;
+                occlusionCoef = 1 - t;// exp(-lambda * t*t);
+            }
+            //occlussionCoefSum += occlusionCoef;// (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
+            occlussionCoefSum = max(occlusionCoef, occlussionCoefSum);// (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
+
+            numShadowRayHits++;
+        }
+    }
+    occlussionCoefSum *= g_sceneCB.numSamplesToUse;
+    float occlusionCoef = saturate(occlussionCoefSum / g_sceneCB.numSamplesToUse);
+    float ambientCoef = 1.f - occlusionCoef;
 #else
-	float ambientCoef = 1.f - ((float)numShadowRayHits / g_sceneCB.numSamplesToUse);
+        const float tMax = g_sceneCB.maxShadowRayHitTime;
+        float tHit;
+        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
+        {
+            float occlusionCoef = 1;
+            if (g_sceneCB.RTAO_IsExponentialFalloffEnabled)
+            {
+                float t = tHit / tMax;
+                float lambda = g_sceneCB.RTAO_exponentialFalloffDecayConstant;
+                occlusionCoef = exp(-lambda * t*t);
+            }
+            occlussionCoefSum += (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
+
+            numShadowRayHits++;
+        }
+    }
+#if AO_ANY_HIT_FULL_OCCLUSION
+    float ambientCoef = numShadowRayHits > 0 ? 0 : 1;
+#else
+    float occlusionCoef = saturate(occlussionCoefSum / g_sceneCB.numSamplesToUse);
+    float ambientCoef = 1.f - occlusionCoef;
+#endif
 #endif
 	
+    // Approximate interreflections of light from blocking surfaces which are generally not completely dark.
+    // This will lighten the AO based on set diffuse reflectance value.
+    // Ref: Ch 11.3.3, Real-Time Rendering (4th edition).
+    if (g_sceneCB.RTAO_approximateInterreflections)
+    {
+        float kA = ambientCoef;
+        float rho = g_sceneCB.RTAO_diffuseReflectance;
+
+        ambientCoef = kA / (1 - rho * (1 - kA));
+    }
+
 	return ambientCoef;
 }
 
@@ -317,7 +403,9 @@ void MyRayGenShader_Visibility()
 		float3 surfaceNormal = g_texGBufferNormal[DispatchRaysIndex().xy].xyz;
 #endif
         Ray visibilityRay = { hitPosition + 0.001f * surfaceNormal, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
-		inShadow = TraceShadowRayAndReportIfHit(visibilityRay, 0);
+
+        float tHit;
+		inShadow = TraceShadowRayAndReportIfHit(tHit, visibilityRay, 0);
 	}
 
 	// ToDo add option to be true distance and do contact hardening
@@ -355,27 +443,24 @@ void MyRayGenShader_GBuffer()
     // ToDo Use calculated hitposition based on distance from GBuffer instead?
 	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
 
-#if 1
     float rayLength = FLT_MAX;
     float obliqueness = 0;
+
+    
+#if  REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // CB value is incorrect on rayPayload.hit boundaries causing blocky artifacts when within if (hit) block
     if (rayPayload.hit)
     {
         float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
-        rayLength = length(raySegment);
-        float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
-        obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
-    }
-#else   // ToDo why this causes blocky obliqueness? driver bug?
+#else
+
     float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
-    float rayLength = 0.0, obliqueness = 0.0;
     if (rayPayload.hit)
     {
+#endif
         rayLength = length(raySegment);
         float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
-        // ToDo
         obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
     }
-#endif
 
 
 #if COMPRES_NORMALS
@@ -393,14 +478,23 @@ void MyRayGenShader_GBuffer()
     // ToDo revise
     // Convert distance to nonLinearDepth.
     {
-        const float zNear = 0.1;
-        const float zFar = 5000.0;
-
-        float nonLinearDepth = (zFar + zNear - 2.0 * zNear * zFar / rayLength) / (zFar - zNear);
+#if 1
+        float nonLinearDepth =  rayPayload.hit ? 
+                                    (FAR_PLANE + NEAR_PLANE - 2.0 * NEAR_PLANE * FAR_PLANE / rayLength) / (FAR_PLANE - NEAR_PLANE)
+                                :   1;
         nonLinearDepth = (nonLinearDepth + 1.0) / 2.0;
+#elif 0
+
+        float nonLinearDepth =  rayPayload.hit ?
+                                    (1 - (1 - rayLength) / (rayLength * ZSCALE))
+                                :   0;
+#else
+        float nonLinearDepth = rayPayload.hit ? rayLength : 1;
+
+#endif
         g_rtGBufferDepth[DispatchRaysIndex().xy] = nonLinearDepth;
     }
-    g_rtGBufferNormalRGB[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, 0);
+    g_rtGBufferNormalRGB[DispatchRaysIndex().xy] = rayPayload.hit ? float4(rayPayload.surfaceNormal, 0) : float4(0,0,0,0);
 }
 
 [shader("raygeneration")]
@@ -513,6 +607,12 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
 }
 
 [shader("closesthit")]
+void MyClosestHitShader_ShadowRay(inout ShadowRayPayload rayPayload, in BuiltInTriangleIntersectionAttributes attr)
+{
+    rayPayload.tHit = RayTCurrent();
+}
+
+[shader("closesthit")]
 void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTriangleIntersectionAttributes attr)
 {
 #if ONLY_SQUID_SCENE_BLAS
@@ -559,7 +659,12 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #endif
     }
 
+#if 0
+    float3 hitPosition = HitAttribute(vertices, attr);
+    
+#else
     float3 hitPosition = HitWorldPosition();
+#endif
     float2 ddx = 0;
     float2 ddy = 0;
 
@@ -656,7 +761,7 @@ void MyMissShader(inout RayPayload rayPayload)
 [shader("miss")]
 void MyMissShader_ShadowRay(inout ShadowRayPayload rayPayload)
 {
-    rayPayload.hit = false;
+    rayPayload.tHit = -1;
 }
 
 // ToDo - remove miss shader for GBuffer

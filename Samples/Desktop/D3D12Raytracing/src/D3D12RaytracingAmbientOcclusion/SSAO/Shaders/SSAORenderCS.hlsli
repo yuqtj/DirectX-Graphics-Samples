@@ -210,7 +210,7 @@ void main(uint3 Gid : SV_GroupID, uint GI : SV_GroupIndex, uint3 GTid : SV_Group
         ao *= 2.0f;
 #endif
         ao = 1.0f - (RenderCB.normalMultiply * ao * depth);
-        ao *= ao;
+        //ao *= ao;
     }
 #ifdef INTERLEAVE_RESULT
     uint2 OutPixel = DTid.xy << 2 | uint2(DTid.z & 3, DTid.z >> 2);

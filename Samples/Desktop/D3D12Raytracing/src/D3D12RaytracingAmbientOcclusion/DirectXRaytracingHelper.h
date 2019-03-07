@@ -58,7 +58,7 @@ public:
 	const D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO& PrebuildInfo() { return m_prebuildInfo; }
 
 protected:
-	void AllocateResource(ID3D12Device* device);
+	void AllocateResource(ID3D12Device* device, const wchar_t* resourceName = nullptr);
 };
 
 class BottomLevelAccelerationStructure : public AccelerationStructure
