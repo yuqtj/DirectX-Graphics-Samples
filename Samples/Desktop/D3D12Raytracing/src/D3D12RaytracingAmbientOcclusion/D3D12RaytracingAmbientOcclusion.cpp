@@ -1524,7 +1524,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
 	copy(m_materials.begin(), m_materials.end(), m_materialBuffer.begin());
 
     // ToDo move
-    LoadDDSTexture(device, commandList, L"Assets\\Textures\\flower_road_8khdri_1kcubemap.BC7.dds", m_cbvSrvUavHeap.get(), &m_environmentMap, D3D12_SRV_DIMENSION_TEXTURECUBE);
+    LoadDDSTexture(device, commandList, L"Assets\\Textures\\FlowerRoad\\flower_road_8khdri_1kcubemap.BC7.dds", m_cbvSrvUavHeap.get(), &m_environmentMap, D3D12_SRV_DIMENSION_TEXTURECUBE);
     //LoadDDSTexture(device, commandList, L"Assets\\Textures\\cloud_layers_8khdri_1kcubemap.BC7.dds", m_cbvSrvUavHeap.get(), &m_environmentMap, D3D12_SRV_DIMENSION_TEXTURECUBE);
 
 #if !RUNTIME_AS_UPDATES

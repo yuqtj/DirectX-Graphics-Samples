@@ -15,7 +15,7 @@
 // Workarounds - ToDo remove/document
 #define REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO 0
 #define REPR_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF 0
-#define REPRO_INVISIBLE_WALL 1
+#define REPRO_INVISIBLE_WALL 0
 
 //**********************************************************************************************
 //
