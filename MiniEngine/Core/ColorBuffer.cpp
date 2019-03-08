@@ -13,12 +13,11 @@
 
 #include "pch.h"
 #include "ColorBuffer.h"
-#include "GraphicsCore.h"
+#include "GraphicsCommon.h"
 #include "CommandContext.h"
 #include "EsramAllocator.h"
 
 using namespace Graphics;
-
 
 void ColorBuffer::CreateDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format, uint32_t ArraySize, uint32_t NumMips)
 {
@@ -104,9 +103,6 @@ void ColorBuffer::CreateFromSwapChain( const std::wstring& Name, ID3D12Resource*
 {
     AssociateWithResource(Graphics::g_Device, Name, BaseResource, D3D12_RESOURCE_STATE_PRESENT);
 
-    //m_UAVHandle[0] = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    //Graphics::g_Device->CreateUnorderedAccessView(m_pResource.Get(), nullptr, nullptr, m_UAVHandle[0]);
-
     m_RTVHandle = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     Graphics::g_Device->CreateRenderTargetView(m_pResource.Get(), nullptr, m_RTVHandle);
 }
@@ -133,13 +129,14 @@ void ColorBuffer::Create(const std::wstring& Name, uint32_t Width, uint32_t Heig
 }
 
 void ColorBuffer::Create(const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t NumMips,
-    DXGI_FORMAT Format, EsramAllocator&)
+    DXGI_FORMAT Format, EsramAllocator& Allocator)
 {
+    (Allocator);
     Create(Name, Width, Height, NumMips, Format);
 }
 
-void ColorBuffer::CreateArray( const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t ArrayCount,
-    DXGI_FORMAT Format, D3D12_GPU_VIRTUAL_ADDRESS VidMem )
+void ColorBuffer::CreateArray( const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t ArrayCount, DXGI_FORMAT Format,
+    D3D12_GPU_VIRTUAL_ADDRESS VidMem )
 {
     D3D12_RESOURCE_FLAGS Flags = CombineResourceFlags();
     D3D12_RESOURCE_DESC ResourceDesc = DescribeTex2D(Width, Height, ArrayCount, 1, Format, Flags);
@@ -155,9 +152,10 @@ void ColorBuffer::CreateArray( const std::wstring& Name, uint32_t Width, uint32_
     CreateDerivedViews(Graphics::g_Device, Format, ArrayCount, 1);
 }
 
-void ColorBuffer::CreateArray( const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t ArrayCount,
-    DXGI_FORMAT Format, EsramAllocator& )
+void ColorBuffer::CreateArray( const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t ArrayCount, DXGI_FORMAT Format,
+    EsramAllocator& Allocator )
 {
+    (Allocator);
     CreateArray(Name, Width, Height, ArrayCount, Format);
 }
 
@@ -168,7 +166,7 @@ void ColorBuffer::GenerateMipMaps(CommandContext& BaseContext)
 
     ComputeContext& Context = BaseContext.GetComputeContext();
 
-    Context.SetRootSignature(Graphics::g_GenerateMipsRS);
+    Context.SetRootSignature(Graphics::g_CommonRS);
 
     Context.TransitionResource(*this, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     Context.SetDynamicDescriptor(1, 0, m_SRVHandle);

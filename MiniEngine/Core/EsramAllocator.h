@@ -15,6 +15,8 @@
 
 #include "pch.h"
 
+using std::uint32_t;
+
 class EsramAllocator
 {
 public:

@@ -15,6 +15,7 @@
 
 #include "PixelBuffer.h"
 #include "Color.h"
+#include "GpuBuffer.h"
 
 class EsramAllocator;
 
@@ -26,7 +27,8 @@ public:
     {
         m_SRVHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
         m_RTVHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
-        std::memset(m_UAVHandle, 0xFF, sizeof(m_UAVHandle));
+        for (auto& uav : m_UAVHandle)
+            uav.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
     }
 
     // Create a color buffer from a swap chain buffer.  Unordered access is restricted.

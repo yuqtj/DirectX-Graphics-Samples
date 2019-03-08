@@ -36,6 +36,8 @@ public:
     {
     }
 
+    ~GpuResource() { Destroy(); }
+
     virtual void Destroy()
     {
         m_pResource = nullptr;
@@ -45,6 +47,7 @@ public:
             VirtualFree(m_UserAllocatedMemory, 0, MEM_RELEASE);
             m_UserAllocatedMemory = nullptr;
         }
+        ++m_VersionID;
     }
 
     ID3D12Resource* operator->() { return m_pResource.Get(); } 
@@ -54,6 +57,8 @@ public:
     const ID3D12Resource* GetResource() const { return m_pResource.Get(); }
 
     D3D12_GPU_VIRTUAL_ADDRESS GetGpuVirtualAddress() const { return m_GpuVirtualAddress; }
+
+    uint32_t GetVersionID() const { return m_VersionID; }
 
 protected:
 
@@ -65,4 +70,7 @@ protected:
     // When using VirtualAlloc() to allocate memory directly, record the allocation here so that it can be freed.  The
     // GpuVirtualAddress may be offset from the true allocation start.
     void* m_UserAllocatedMemory;
+
+    // Used to identify when a resource changes so descriptors can be copied etc.
+    uint32_t m_VersionID = 0;
 };

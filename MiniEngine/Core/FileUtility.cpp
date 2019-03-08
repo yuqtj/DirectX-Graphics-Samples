@@ -38,11 +38,9 @@ ByteArray ReadFileHelper(const wstring& fileName)
     if (!file)
         return NullFile;
 
-    Utility::ByteArray byteArray = make_shared<vector<byte> >( file.seekg(0, ios::end).tellg() );
-    file.seekg(0, ios::beg).read( (char*)byteArray->data(), byteArray->size() );
+    Utility::ByteArray byteArray = make_shared<vector<byte> >( fileStat.st_size );
+    file.read( (char*)byteArray->data(), byteArray->size() );
     file.close();
-
-    ASSERT(byteArray->size() == (size_t)fileStat.st_size);
 
     return byteArray;
 }

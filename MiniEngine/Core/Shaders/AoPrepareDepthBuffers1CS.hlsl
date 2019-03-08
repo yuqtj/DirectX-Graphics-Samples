@@ -13,6 +13,17 @@
 
 #include "SSAORS.hlsli"
 
+#ifndef ENABLE_CHECKERBOARD
+#define ENABLE_CHECKERBOARD 0
+#endif
+
+#if ENABLE_CHECKERBOARD
+Texture2DMS<float> Depth : register(t0);
+#else
+Texture2D<float> Depth : register(t0);
+#endif
+ByteAddressBuffer HTile : register(t5);
+
 RWTexture2D<float> LinearZ : register(u0);
 RWTexture2D<float2> DS2x : register(u1);
 RWTexture2DArray<float> DS2xAtlas : register(u2);
@@ -23,7 +34,7 @@ cbuffer CB0 : register(b0)
     float ZMagic;
 }
 
-Texture2D<float> Depth : register(t0);
+groupshared float g_CacheW[256];
 
 float Linearize( uint2 st )
 {
@@ -32,8 +43,6 @@ float Linearize( uint2 st )
     LinearZ[st] = dist;
     return dist;
 }
-
-groupshared float g_CacheW[256];
 
 [RootSignature(SSAO_RootSig)]
 [numthreads( 8, 8, 1 )]

@@ -32,7 +32,6 @@ struct handle_closer { void operator()(HANDLE h) { if (h) CloseHandle(h); } };
 typedef public std::unique_ptr<void, handle_closer> ScopedHandle;
 inline HANDLE safe_handle( HANDLE h ) { return (h == INVALID_HANDLE_VALUE) ? 0 : h; }
 
-
 //--------------------------------------------------------------------------------------
 static HRESULT LoadTextureDataFromFile( _In_z_ const wchar_t* fileName,
                                         std::unique_ptr<uint8_t[]>& ddsData,
@@ -379,7 +378,6 @@ static void GetSurfaceInfo( _In_ size_t width,
         planar = true;
         bpe = 4;
         break;
-
     }
 
     if (bc)
@@ -862,7 +860,7 @@ static HRESULT CreateD3DResources( _In_ ID3D12Device* d3dDevice,
                     }
                     else
                     {
-                        tex->SetName(L"DDSTextureLoader");
+                        tex->SetName(L"DDS Texture (1D)");
                         tex->Release();
                     }
                 }
@@ -920,7 +918,7 @@ static HRESULT CreateD3DResources( _In_ ID3D12Device* d3dDevice,
                     }
                     else
                     {
-                        tex->SetName(L"DDSTextureLoader");
+                        tex->SetName(L"DDS Texture (2D)");
                         tex->Release();
                     }
                 }
@@ -1342,6 +1340,9 @@ HRESULT CreateDDSTextureFromFile(
 
     if ( alphaMode )
         *alphaMode = GetAlphaMode( header );
+
+    if (SUCCEEDED(hr))
+        (*texture)->SetName(fileName);
 
     return hr;
 }

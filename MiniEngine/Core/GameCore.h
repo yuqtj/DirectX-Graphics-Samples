@@ -17,6 +17,8 @@
 
 namespace GameCore
 {
+    extern bool gIsSupending;
+
     class IGameApp
     {
     public:
@@ -39,21 +41,35 @@ namespace GameCore
         // Optional UI (overlay) rendering pass.  This is LDR.  The buffer is already cleared.
         virtual void RenderUI( class GraphicsContext& ) {};
     };
-
-    void RunApplication( IGameApp& app, const wchar_t* className );
 }
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-    #define MAIN_FUNCTION()  int wmain(/*int argc, wchar_t** argv*/)
-#else
-    #define MAIN_FUNCTION()  [Platform::MTAThread] int main(Platform::Array<Platform::String^>^)
-#endif
+
+namespace GameCore
+{
+    void RunApplication( IGameApp& app, const wchar_t* className, int argc, wchar_t** argv );
+}
 
 #define CREATE_APPLICATION( app_class ) \
-    MAIN_FUNCTION() \
+    int wmain(int argc, wchar_t** argv) \
     { \
-        IGameApp* app = new app_class(); \
-        GameCore::RunApplication( *app, L#app_class ); \
-        delete app; \
+        CommandLineArgs::Initialize(argc, argv); \
+        GameCore::RunApplication( app_class(), L#app_class, argc, argv ); \
         return 0; \
     }
+
+#else // WinRT
+
+namespace GameCore
+{
+    void RunApplication( IGameApp& app, const wchar_t* className, Platform::Array<Platform::String^>^ args );
+}
+
+#define CREATE_APPLICATION( app_class ) \
+    [Platform::MTAThread] int main(Platform::Array<Platform::String^>^ args) \
+    { \
+        GameCore::RunApplication( app_class(), L#app_class, args ); \
+        return 0; \
+    }
+
+#endif

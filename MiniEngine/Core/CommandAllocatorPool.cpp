@@ -25,7 +25,7 @@ CommandAllocatorPool::~CommandAllocatorPool()
     Shutdown();
 }
 
-void CommandAllocatorPool::Create(ID3D12Device * pDevice)
+void CommandAllocatorPool::Create(ID3D12Device* pDevice)
 {
     m_Device = pDevice;
 }
@@ -38,7 +38,7 @@ void CommandAllocatorPool::Shutdown()
     m_AllocatorPool.clear();
 }
 
-ID3D12CommandAllocator * CommandAllocatorPool::RequestAllocator(uint64_t CompletedFenceValue)
+ID3D12CommandAllocator* CommandAllocatorPool::RequestAllocator(uint64_t CompletedFenceValue)
 {
     std::lock_guard<std::mutex> LockGuard(m_AllocatorMutex);
 
@@ -69,7 +69,7 @@ ID3D12CommandAllocator * CommandAllocatorPool::RequestAllocator(uint64_t Complet
     return pAllocator;
 }
 
-void CommandAllocatorPool::DiscardAllocator(uint64_t FenceValue, ID3D12CommandAllocator * Allocator)
+void CommandAllocatorPool::DiscardAllocator(uint64_t FenceValue, ID3D12CommandAllocator* Allocator)
 {
     std::lock_guard<std::mutex> LockGuard(m_AllocatorMutex);
 

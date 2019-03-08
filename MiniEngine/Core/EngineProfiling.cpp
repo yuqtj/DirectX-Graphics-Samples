@@ -13,7 +13,7 @@
 
 #include "pch.h"
 #include "SystemTime.h"
-#include "GraphicsCore.h"
+#include "Display.h"
 #include "TextRenderer.h"
 #include "GraphRenderer.h"
 #include "GameInput.h"
@@ -373,7 +373,7 @@ public:
     void Toggle()
     { 
         //if (m_GraphHandle == PERF_GRAPH_ERROR)
-        //    m_GraphHandle = GraphRenderer::InitGraph(GraphType::Profile);
+        //	m_GraphHandle = GraphRenderer::InitGraph(GraphType::Profile);
         //m_IsGraphed = GraphRenderer::ManageGraphs(m_GraphHandle, GraphType::Profile);
     }
     bool IsGraphed(){ return m_IsGraphed;}

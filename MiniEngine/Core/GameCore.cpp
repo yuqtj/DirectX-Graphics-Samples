@@ -19,6 +19,7 @@
 #include "BufferManager.h"
 #include "CommandContext.h"
 #include "PostEffects.h"
+#include "Display.h"
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     #pragma comment(lib, "runtimeobject.lib")
@@ -27,10 +28,9 @@
     using namespace Windows::ApplicationModel;
     using namespace Windows::UI::Core;
     using namespace Windows::UI::ViewManagement;
-    using Windows::ApplicationModel::Core::CoreApplication;
-    using Windows::ApplicationModel::Core::CoreApplicationView;
-    using Windows::ApplicationModel::Activation::IActivatedEventArgs;
-    using Windows::Foundation::TypedEventHandler;
+    using namespace Windows::Foundation;
+    using namespace Windows::ApplicationModel::Core;
+    using namespace Windows::ApplicationModel::Activation;
 #endif
 
 namespace Graphics
@@ -42,6 +42,8 @@ namespace GameCore
 {
     using namespace Graphics;
     const bool TestGenerateMips = false;
+
+    bool gIsSupending = false;
 
     void InitializeApplication( IGameApp& game )
     {
@@ -55,6 +57,8 @@ namespace GameCore
 
     void TerminateApplication( IGameApp& game )
     {
+        g_CommandManager.IdleGPU();
+
         game.Cleanup();
 
         GameInput::Shutdown();
@@ -97,11 +101,13 @@ namespace GameCore
         UiContext.SetViewportAndScissor(0, 0, g_OverlayBuffer.GetWidth(), g_OverlayBuffer.GetHeight());
         game.RenderUI(UiContext);
 
+        UiContext.SetRenderTarget(g_OverlayBuffer.GetRTV());
+        UiContext.SetViewportAndScissor(0, 0, g_OverlayBuffer.GetWidth(), g_OverlayBuffer.GetHeight());
         EngineTuning::Display( UiContext, 10.0f, 40.0f, 1900.0f, 1040.0f );
 
         UiContext.Finish();
 
-        Graphics::Present();
+        Display::Present();
 
         return !game.IsDone();
     }
@@ -165,6 +171,8 @@ namespace GameCore
     void MyApplicationView::Initialize(CoreApplicationView^ applicationView)
     {
         applicationView->Activated += ref new TypedEventHandler<CoreApplicationView^, IActivatedEventArgs^>(this, &MyApplicationView::OnActivated);
+        CoreApplication::Suspending += ref new EventHandler< SuspendingEventArgs^ >(this, &MyApplicationView::OnSuspending);
+        CoreApplication::Resuming += ref new EventHandler< Platform::Object^ >(this, &MyApplicationView::OnResuming);
     }
 
     // Called when we are provided a window.
@@ -187,7 +195,6 @@ namespace GameCore
 
     void MyApplicationView::Load(Platform::String^ entryPoint)
     {
-        InitializeApplication(*m_game);
     }
 
     // Called by the system after initialization is complete.  This implements the traditional game loop.
@@ -199,13 +206,15 @@ namespace GameCore
             // cleaned up when we get proper process lifetime management in a future release.
             g_window->Dispatcher->ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
 
-            m_IsRunning = UpdateApplication(*m_game);
+            if (gIsSupending == false)
+            {
+                m_IsRunning = UpdateApplication(*m_game);
+            }
         }
     }
 
     void MyApplicationView::Uninitialize()
     {
-        Graphics::Terminate();
         TerminateApplication(*m_game);
         Graphics::Shutdown();
     }
@@ -213,6 +222,21 @@ namespace GameCore
     // Called when the application is activated.  For now, there is just one activation kind - Launch.
     void MyApplicationView::OnActivated(CoreApplicationView^ applicationView, IActivatedEventArgs^ args)
     {
+        if (nullptr != args && Windows::ApplicationModel::Activation::ActivationKind::Launch == args->Kind)
+        {
+            Windows::ApplicationModel::Activation::LaunchActivatedEventArgs ^launchArgs = (Windows::ApplicationModel::Activation::LaunchActivatedEventArgs ^) args;
+
+            static bool firstActivation = true;
+
+            if (firstActivation == true)
+            {
+                CommandLineArgs::Initialize(launchArgs->Arguments->Data());
+                InitializeApplication(*m_game);
+
+                firstActivation = false;
+            }
+        }
+
 #if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_TV_TITLE)
         float DpiScale = 96.0f / Windows::Graphics::Display::DisplayInformation::GetForCurrentView()->LogicalDpi;
         ApplicationView::PreferredLaunchWindowingMode = ApplicationViewWindowingMode::PreferredLaunchViewSize;
@@ -226,13 +250,22 @@ namespace GameCore
         g_window->Activate();
     }
 
-    void MyApplicationView::OnSuspending(Platform::Object^ sender, SuspendingEventArgs^ args) {}
-    void MyApplicationView::OnResuming(Platform::Object^ sender, Platform::Object^ args) {}
+    void MyApplicationView::OnSuspending(Platform::Object^ sender, SuspendingEventArgs^ args)
+    {
+        gIsSupending = true;
+        Graphics::g_CommandManager.GetGraphicsQueue().GetCommandQueue()->SuspendX(0);
+
+    }
+    void MyApplicationView::OnResuming(Platform::Object^ sender, Platform::Object^ args)
+    {
+        Graphics::g_CommandManager.GetGraphicsQueue().GetCommandQueue()->ResumeX();
+        gIsSupending = false;
+    }
 
 #if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_TV_TITLE)
     void MyApplicationView::OnWindowSizeChanged(CoreWindow^ sender, WindowSizeChangedEventArgs^ args)
     {
-        Graphics::Resize((uint32_t)sender->Bounds.Width, (uint32_t)sender->Bounds.Height);
+        Display::Resize((uint32_t)sender->Bounds.Width, (uint32_t)sender->Bounds.Height);
     }
 
     void MyApplicationView::OnWindowClosed(CoreWindow^ sender, CoreWindowEventArgs^ args) 
@@ -290,7 +323,7 @@ namespace GameCore
     }
 #endif
 
-    void RunApplication( IGameApp& app, const wchar_t* className )
+    void RunApplication( IGameApp& app, const wchar_t* className, Platform::Array<Platform::String^>^ args )
     {
         m_game = &app;
         (void)className;
@@ -302,14 +335,16 @@ namespace GameCore
 
     HWND g_hWnd = nullptr;
 
-    void InitWindow( const wchar_t* className );
     LRESULT CALLBACK WndProc( HWND, UINT, WPARAM, LPARAM );
 
-    void RunApplication( IGameApp& app, const wchar_t* className )
+    void RunApplication( IGameApp& app, const wchar_t* className, int argc, wchar_t** argv )
     {
-        //ASSERT_SUCCEEDED(CoInitializeEx(nullptr, COINITBASE_MULTITHREADED));
+#if _WIN32_WINNT >= _WIN32_WINNT_WIN10
         Microsoft::WRL::Wrappers::RoInitializeWrapper InitializeWinRT(RO_INIT_MULTITHREADED);
         ASSERT_SUCCEEDED(InitializeWinRT);
+#else
+        ASSERT_SUCCEEDED(CoInitializeEx(nullptr, COINITBASE_MULTITHREADED));
+#endif
 
         HINSTANCE hInst = GetModuleHandle(0);
 
@@ -353,9 +388,8 @@ namespace GameCore
             if (msg.message == WM_QUIT)
                 break;
         }
-        while (UpdateApplication(app));    // Returns false to quit loop
+        while (UpdateApplication(app));	// Returns false to quit loop
 
-        Graphics::Terminate();
         TerminateApplication(app);
         Graphics::Shutdown();
     }
@@ -368,7 +402,7 @@ namespace GameCore
         switch( message )
         {
             case WM_SIZE:
-                Graphics::Resize((UINT)(UINT64)lParam & 0xFFFF, (UINT)(UINT64)lParam >> 16);
+                Display::Resize((UINT)(UINT64)lParam & 0xFFFF, (UINT)(UINT64)lParam >> 16);
                 break;
 
             case WM_DESTROY:

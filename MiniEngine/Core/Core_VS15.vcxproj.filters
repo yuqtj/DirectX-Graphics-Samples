@@ -127,9 +127,6 @@
     <ClInclude Include="DescriptorHeap.h">
       <Filter>Source Files\Graphics</Filter>
     </ClInclude>
-    <ClInclude Include="DDSTextureLoader.h">
-      <Filter>Source Files\Graphics</Filter>
-    </ClInclude>
     <ClInclude Include="CommandListManager.h">
       <Filter>Source Files\Graphics</Filter>
     </ClInclude>
@@ -137,9 +134,6 @@
       <Filter>Source Files\Graphics</Filter>
     </ClInclude>
     <ClInclude Include="CommandSignature.h">
-      <Filter>Source Files\Graphics</Filter>
-    </ClInclude>
-    <ClInclude Include="dds.h">
       <Filter>Source Files\Graphics</Filter>
     </ClInclude>
     <ClInclude Include="DynamicDescriptorHeap.h">
@@ -166,9 +160,6 @@
     <ClInclude Include="Math\Random.h">
       <Filter>Source Files\Math</Filter>
     </ClInclude>
-    <ClInclude Include="TextureManager.h">
-      <Filter>Source Files\Graphics</Filter>
-    </ClInclude>
     <ClInclude Include="d3dx12.h">
       <Filter>Source Files\Graphics</Filter>
     </ClInclude>
@@ -184,9 +175,6 @@
     <ClInclude Include="BuddyAllocator.h">
       <Filter>Source Files\Graphics</Filter>
     </ClInclude>
-    <ClInclude Include="DynamicUploadBuffer.h">
-      <Filter>Source Files\Graphics</Filter>
-    </ClInclude>
     <ClInclude Include="TemporalEffects.h">
       <Filter>Source Files\Graphics</Filter>
     </ClInclude>
@@ -197,6 +185,33 @@
       <Filter>Source Files\Graphics</Filter>
     </ClInclude>
     <ClInclude Include="ReadbackBuffer.h">
+      <Filter>Source Files\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="UploadBuffer.h">
+      <Filter>Source Files\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Texture.h">
+      <Filter>Source Files\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Math\BoundingBox.h">
+      <Filter>Source Files\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="dds.h">
+      <Filter>Source Files\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="DDSTextureLoader.h">
+      <Filter>Source Files\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="TextureManager.h">
+      <Filter>Source Files\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\CommandLineArg.h">
+      <Filter>Source Files\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="ImageScaling.h">
+      <Filter>Source Files\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Display.h">
       <Filter>Source Files\Graphics</Filter>
     </ClInclude>
   </ItemGroup>
@@ -249,9 +264,6 @@
     <ClCompile Include="DescriptorHeap.cpp">
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
-    <ClCompile Include="DDSTextureLoader.cpp">
-      <Filter>Source Files\Graphics</Filter>
-    </ClCompile>
     <ClCompile Include="EngineTuning.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -280,9 +292,6 @@
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="TextRenderer.cpp">
-      <Filter>Source Files\Graphics</Filter>
-    </ClCompile>
-    <ClCompile Include="TextureManager.cpp">
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="PostEffects.cpp">
@@ -336,9 +345,6 @@
     <ClCompile Include="Color.cpp">
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
-    <ClCompile Include="DynamicUploadBuffer.cpp">
-      <Filter>Source Files\Graphics</Filter>
-    </ClCompile>
     <ClCompile Include="TemporalEffects.cpp">
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
@@ -349,6 +355,30 @@
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="ReadbackBuffer.cpp">
+      <Filter>Source Files\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="UploadBuffer.cpp">
+      <Filter>Source Files\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Texture.cpp">
+      <Filter>Source Files\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="DDSTextureLoader.cpp">
+      <Filter>Source Files\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="TextureManager.cpp">
+      <Filter>Source Files\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Math\BoundingSphere.cpp">
+      <Filter>Source Files\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Util\CommandLineArg.cpp">
+      <Filter>Source Files\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="ImageScaling.cpp">
+      <Filter>Source Files\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Display.cpp">
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
   </ItemGroup>
@@ -403,6 +433,12 @@
     </Filter>
     <Filter Include="Shaders\BitonicSort">
       <UniqueIdentifier>{29bbd948-3d9f-4b00-a170-52bc3e18d6ce}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Util">
+      <UniqueIdentifier>{2e67f087-7ee1-4218-986e-24e41b2eff5e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders\Present\Scaling">
+      <UniqueIdentifier>{0a4315e5-fa06-47c2-bf51-a0ced6353ec3}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -649,17 +685,8 @@
     <FxCompile Include="Shaders\LinearizeDepthCS.hlsl">
       <Filter>Shaders\SSAO</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\BicubicUpsamplePS.hlsl">
-      <Filter>Shaders\Present</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\BilinearUpsamplePS.hlsl">
-      <Filter>Shaders\Present</Filter>
-    </FxCompile>
     <FxCompile Include="Shaders\BufferCopyPS.hlsl">
       <Filter>Shaders\Present</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\ScreenQuadVS.hlsl">
-      <Filter>Shaders\Misc</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\GenerateMipsGammaCS.hlsl">
       <Filter>Shaders\GenerateMips</Filter>
@@ -684,21 +711,6 @@
     </FxCompile>
     <FxCompile Include="Shaders\GenerateMipsLinearOddYCS.hlsl">
       <Filter>Shaders\GenerateMips</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\BicubicUpsampleGammaPS.hlsl">
-      <Filter>Shaders\Present</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\SharpeningUpsamplePS.hlsl">
-      <Filter>Shaders\Present</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\SharpeningUpsampleGammaPS.hlsl">
-      <Filter>Shaders\Present</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\BicubicHorizontalUpsamplePS.hlsl">
-      <Filter>Shaders\Present</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\BicubicVerticalUpsamplePS.hlsl">
-      <Filter>Shaders\Present</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\MagnifyPixelsPS.hlsl">
       <Filter>Shaders\Present</Filter>
@@ -805,6 +817,78 @@
     <FxCompile Include="Shaders\FXAAPass2VDebug2CS.hlsl">
       <Filter>Shaders\FXAA</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\LanczosCS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\LanczosHorizontalPS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\LanczosVerticalPS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\LanczosFast16CS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\LanczosFast32CS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\LanczosFast24CS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BicubicHorizontalUpsamplePS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BicubicUpsampleGammaPS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BicubicUpsamplePS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BicubicVerticalUpsamplePS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BilinearUpsamplePS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\SharpeningUpsampleGammaPS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\SharpeningUpsamplePS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BicubicUpsampleCS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BicubicUpsampleFast16CS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BicubicUpsampleFast24CS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BicubicUpsampleFast32CS.hlsl">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\CompositeSDRPS.hlsl">
+      <Filter>Shaders\Present</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ScaleAndCompositeSDRPS.hlsl">
+      <Filter>Shaders\Present</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\CompositeHDRPS.hlsl">
+      <Filter>Shaders\Present</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ScaleAndCompositeHDRPS.hlsl">
+      <Filter>Shaders\Present</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BlendUIHDRPS.hlsl">
+      <Filter>Shaders\Present</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ScreenQuadPresentVS.hlsl">
+      <Filter>Shaders\Present</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ScreenQuadCommonVS.hlsl">
+      <Filter>Shaders\Misc</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Math\Functions.inl">
@@ -858,6 +942,9 @@
     <None Include="Shaders\PresentRS.hlsli">
       <Filter>Shaders\Present</Filter>
     </None>
+    <None Include="Shaders\DepthDecompressUtility.hlsli">
+      <Filter>Shaders\Misc</Filter>
+    </None>
     <None Include="Shaders\PixelPacking.hlsli">
       <Filter>Shaders\Misc</Filter>
     </None>
@@ -866,9 +953,6 @@
     </None>
     <None Include="Shaders\GenerateMipsCS.hlsli">
       <Filter>Shaders\GenerateMips</Filter>
-    </None>
-    <None Include="Shaders\PixelPacking_LUV.hlsli">
-      <Filter>Shaders\Misc</Filter>
     </None>
     <None Include="Shaders\PixelPacking_RGBE.hlsli">
       <Filter>Shaders\Misc</Filter>
@@ -885,6 +969,15 @@
     <None Include="packages.config" />
     <None Include="Shaders\BitonicSortCommon.hlsli">
       <Filter>Shaders\BitonicSort</Filter>
+    </None>
+    <None Include="Shaders\LanczosFunctions.hlsli">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </None>
+    <None Include="Shaders\BicubicFilterFunctions.hlsli">
+      <Filter>Shaders\Present\Scaling</Filter>
+    </None>
+    <None Include="Shaders\CommonRS.hlsli">
+      <Filter>Shaders\Misc</Filter>
     </None>
   </ItemGroup>
 </Project>

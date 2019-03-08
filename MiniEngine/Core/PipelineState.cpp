@@ -34,7 +34,8 @@ void PSO::DestroyAll(void)
 }
 
 
-GraphicsPSO::GraphicsPSO()
+GraphicsPSO::GraphicsPSO(const wchar_t* Name)
+    : PSO(Name)
 {
     ZeroMemory(&m_PSODesc, sizeof(m_PSODesc));
     m_PSODesc.NodeMask = 1;
@@ -138,6 +139,7 @@ void GraphicsPSO::Finalize()
     {
         ASSERT_SUCCEEDED( g_Device->CreateGraphicsPipelineState(&m_PSODesc, MY_IID_PPV_ARGS(&m_PSO)) );
         s_GraphicsPSOHashMap[HashCode].Attach(m_PSO);
+        m_PSO->SetName(m_Name);
     }
     else
     {
@@ -176,6 +178,7 @@ void ComputePSO::Finalize()
     {
         ASSERT_SUCCEEDED( g_Device->CreateComputePipelineState(&m_PSODesc, MY_IID_PPV_ARGS(&m_PSO)) );
         s_ComputePSOHashMap[HashCode].Attach(m_PSO);
+        m_PSO->SetName(m_Name);
     }
     else
     {
@@ -185,7 +188,8 @@ void ComputePSO::Finalize()
     }
 }
 
-ComputePSO::ComputePSO()
+ComputePSO::ComputePSO(const wchar_t* Name)
+    : PSO(Name)
 {
     ZeroMemory(&m_PSODesc, sizeof(m_PSODesc));
     m_PSODesc.NodeMask = 1;
