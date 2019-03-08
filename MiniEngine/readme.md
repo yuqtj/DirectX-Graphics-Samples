@@ -28,4 +28,4 @@ Notes:  Some IBL cube maps are provided for physically based rendering in the Mo
 
 DirectXMesh and DirectXTex are used for compiling content the first time it is loaded.  For example, image files will have mip maps generated, encoded to a block compressed format, and then saved as a DDS for subsequent loading.  This means that first-time loading takes a little longer.
 
-Caveat: This support for glTF 2.0 was implemented at the end of 2017 and be a bit out of date.  Not all features were implemented, though the majority of the samples worked at the time, including skinning and animation.
+Caveat: This support for glTF 2.0 was implemented at the end of 2017 and may be out of date.  Not all features were implemented, though the majority of the samples worked at the time, including skinning and animation.
