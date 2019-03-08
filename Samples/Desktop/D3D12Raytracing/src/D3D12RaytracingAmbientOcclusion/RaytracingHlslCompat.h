@@ -268,6 +268,12 @@ struct ShadowRayPayload
     float tHit;         // Hit time <0,..> on Hit. -1 on miss.
 };
 
+struct ShadowRayPayloadWithSurfaceInformation
+{
+    // ToDo use 1 byte value for true/false?
+    float tHit;         // Hit time <0,..> on Hit. -1 on miss. 
+};
+
 struct RNGConstantBuffer
 {
     XMUINT2 uavOffset;     // offset where [0,0] thread should write to.
@@ -320,7 +326,7 @@ struct SceneConstantBuffer
 
     float maxShadowRayHitTime;
     BOOL RTAO_approximateInterreflections;      // Approximate interreflections. 
-    float RTAO_diffuseReflectance;              // Diffuse reflectance from occluding surfaces. 
+    float RTAO_diffuseReflectanceScale;              // Diffuse reflectance from occluding surfaces. 
     float RTAO_minimumAmbientIllumnination;       // Ambient illumination coef when a ray is occluded.
 
     BOOL RTAO_IsExponentialFalloffEnabled;               // Apply exponential falloff to AO coefficient based on ray hit distance.    

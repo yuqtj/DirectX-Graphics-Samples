@@ -32,6 +32,7 @@ float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 toLightRay, i
 float3 CalculateSpecularCoefficient(in float3 hitPosition, in float3 toEyeRay, in float3 toLightRay, in float3 normal, in float specularPower);
 float3 CalculatePhongLighting(in float3 normal, in float3 hitPosition, in float3 toEyeRay, in float visibilityCoefficient, in float ambientCoef, in float3 diffuse, in float3 specular, in float specularPower = 50);
 
+// ToDo Cleanup SRGB here and elsewhere dfealing with in/out colors
 [numthreads(ComposeRenderPassesCS::ThreadGroup::Width, ComposeRenderPassesCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID )
 {

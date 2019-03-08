@@ -44,7 +44,7 @@ RWTexture2D<float4> g_rtGBufferNormal : register(u8);
 RWTexture2D<float> g_rtGBufferDistance : register(u9);
 
 Texture2D<uint> g_texGBufferPositionHits : register(t5); 
-Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Material Id, 3x Diffuse.RGB}
+Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Material Id, 3x Diffuse.RGB}       // ToDo rename to material like in composerenderpasses
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<float4> g_texGBufferNormal : register(t8);
 Texture2D<float4> g_texGBufferDistance : register(t9);
@@ -211,7 +211,7 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 
 
 // ToDo comment
-float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numShadowRayHits)
+float CalculateAO(out uint numShadowRayHits, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1))
 {
     numShadowRayHits = 0;
     float occlussionCoefSum = 0;
@@ -365,12 +365,16 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 #endif
 	
     // Approximate interreflections of light from blocking surfaces which are generally not completely dark.
-    // This will lighten the AO based on set diffuse reflectance value.
-    // Ref: Ch 11.3.3, Real-Time Rendering (4th edition).
+    // Ref: Ch 11.3.3 Accounting for Interreflections, Real-Time Rendering (4th edition).
+    // The approximation assumes:
+    //      o All surfaces incoming and outgoing radiance is the same 
+    //      o Current surface color is the same as that of the occluders
+    // Since this sample uses scalar ambient coefficient, we use the scalar luminance of the surface color.
+    // This will generally brighten the AO making it closer to the result of full Global Illumination, including interreflections.
     if (g_sceneCB.RTAO_approximateInterreflections)
     {
         float kA = ambientCoef;
-        float rho = g_sceneCB.RTAO_diffuseReflectance;
+        float rho = g_sceneCB.RTAO_diffuseReflectanceScale * RGBtoLuminance(surfaceAlbedo);
 
         ambientCoef = kA / (1 - rho * (1 - kA));
     }
@@ -382,7 +386,7 @@ float CalculateAO(in float3 hitPosition, in float3 surfaceNormal, out uint numSh
 float CalculateAO(in float3 hitPosition, in float3 surfaceNormal)
 {
 	uint numShadowRayHits;
-	return CalculateAO(hitPosition, surfaceNormal, numShadowRayHits);
+	return CalculateAO(numShadowRayHits, hitPosition, surfaceNormal);
 }
 
 //***************************************************************************
@@ -504,7 +508,7 @@ void MyRayGenShader_AO()
     uint2 DTid = DispatchRaysIndex().xy;
 
 	bool hit = g_texGBufferPositionHits[DTid] > 0;
-	uint shadowRayHits = 0;
+	uint numShadowRayHits = 0;
 	float ambientCoef = 0;
 	if (hit)
 	{
@@ -514,13 +518,23 @@ void MyRayGenShader_AO()
 #else
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
-		ambientCoef = CalculateAO(hitPosition, surfaceNormal, shadowRayHits);
+
+        float3 surfaceAlbedo = float3(1, 1, 1);
+        if (g_sceneCB.RTAO_approximateInterreflections)
+        {
+            uint2 materialInfo = g_texGBufferMaterialInfo[DTid];
+            UINT materialID;
+            DecodeMaterial16b(materialInfo, materialID, surfaceAlbedo);
+            surfaceAlbedo = surfaceAlbedo;
+        }
+
+		ambientCoef = CalculateAO(numShadowRayHits, hitPosition, surfaceNormal, surfaceAlbedo);
 	}
 
 	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
 #if GBUFFER_AO_COUNT_AO_HITS
 	// ToDo test perf impact of writing this
-	g_rtAORayHits[DispatchRaysIndex().xy] = shadowRayHits;
+	g_rtAORayHits[DispatchRaysIndex().xy] = numShadowRayHits;
 #endif
 }
 
@@ -530,7 +544,7 @@ void MyRayGenShaderQuarterRes_AO()
     uint2 DTid = DispatchRaysIndex().xy * 2;
 
 	bool hit = g_texGBufferPositionHits[DTid] > 0;
-	uint shadowRayHits = 0;
+	uint numShadowRayHits = 0;
 	float ambientCoef = 0;
 	if (hit)
 	{
@@ -540,13 +554,14 @@ void MyRayGenShaderQuarterRes_AO()
 #else
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
-		ambientCoef = CalculateAO(hitPosition, surfaceNormal, shadowRayHits);
+        // ToDo Standardize naming AO vs AmbientOcclusion ?
+		ambientCoef = CalculateAO(numShadowRayHits, hitPosition, surfaceNormal);
 	}
 
 	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
 #if GBUFFER_AO_COUNT_AO_HITS
 	// ToDo test perf impact of writing this
-	g_rtAORayHits[DispatchRaysIndex().xy] = shadowRayHits;
+	g_rtAORayHits[DispatchRaysIndex().xy] = numShadowRayHits;
 #endif
 }
 

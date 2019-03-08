@@ -89,6 +89,11 @@ bool IsInRange(in float val, in float min, in float max)
     return (val >= min && val <= max);
 }
 
+float RGBtoLuminance(in float3 color)
+{
+    return 0.2126f * color.r + 0.7152f * color.g + 0.0722f * color.b;
+}
+
 // Load three 16 bit indices from a byte addressed buffer.
 static
 uint3 Load3x16BitIndices(uint offsetBytes, ByteAddressBuffer Indices)

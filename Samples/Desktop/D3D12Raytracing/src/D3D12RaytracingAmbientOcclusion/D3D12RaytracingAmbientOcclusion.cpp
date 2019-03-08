@@ -129,15 +129,15 @@ namespace SceneArgs
 #endif
     BoolVar AOEnabled(L"AO/Enabled", true);
     // RTAO
-    BoolVar QuarterResAO(L"AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
+    BoolVar QuarterResAO(L"AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
     IntVar AOSampleCountPerDimension(L"AO/RTAO/Samples per pixel NxN", 2, 1, 32, 1, OnRecreateSamples, nullptr);
     IntVar AOSampleSetDistributedAcrossPixels(L"AO/RTAO/Sample set distribution across NxN pixels ", 3, 1, 8, 1, OnRecreateSamples, nullptr);
-    NumVar RTAOMaxRayHitTime(L"AO/RTAO/Max ray hit time", 22, 0.0f, 50.0f, 0.1f);
-    BoolVar RTAOApproximateInterreflections(L"AO/RTAO/Approximate interreflections", true);
-    NumVar RTAODiffuseReflectance(L"AO/RTAO/Diffuse reflectance", 0.25f, 0.0f, 1.0f, 0.01f);
-    NumVar  RTAOMinimumAmbientIllumnination(L"AO/RTAO/Minimum Ambient Illumination", 0.4f, 0.0f, 1.0f, 0.01f);
+    NumVar RTAOMaxRayHitTime(L"AO/RTAO/Max ray hit time", 22.0, 0.0f, 50.0f, 0.2f);
+    BoolVar RTAOApproximateInterreflections(L"AO/RTAO/Approximate Interreflections/Enabled", true);
+    NumVar RTAODiffuseReflectanceScale(L"AO/RTAO/Approximate Interreflections/Diffuse Reflectance Scale", 0.5f, 0.0f, 1.0f, 0.1f);
+    NumVar  minimumAmbientIllumination(L"AO/RTAO/Minimum Ambient Illumination", 0.1f, 0.0f, 1.0f, 0.01f);
     BoolVar RTAOIsExponentialFalloffEnabled(L"AO/RTAO/Exponential Falloff", true);
-    NumVar RTAO_ExponentialFalloffDecayConstant(L"AO/RTAO/Exponential Falloff Decay Constant", 6.0f, 0.0f, 20.f, 0.1f);
+    NumVar RTAO_ExponentialFalloffDecayConstant(L"AO/RTAO/Exponential Falloff Decay Constant", 2.0f, 0.0f, 20.f, 0.25f);
 
     // ToDo standardixe AO RTAO prefix
 
@@ -2281,8 +2281,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     // ToDo standardize RTAO RTAO_ prefix
     m_sceneCB->maxShadowRayHitTime = SceneArgs::RTAOMaxRayHitTime;
     m_sceneCB->RTAO_approximateInterreflections = SceneArgs::RTAOApproximateInterreflections;
-    m_sceneCB->RTAO_diffuseReflectance = SceneArgs::RTAODiffuseReflectance;
-    m_sceneCB->RTAO_minimumAmbientIllumnination = SceneArgs::RTAOMinimumAmbientIllumnination;
+    m_sceneCB->RTAO_diffuseReflectanceScale = SceneArgs::RTAODiffuseReflectanceScale;
+    m_sceneCB->RTAO_minimumAmbientIllumnination = SceneArgs::minimumAmbientIllumination;
     m_sceneCB->RTAO_IsExponentialFalloffEnabled = SceneArgs::RTAOIsExponentialFalloffEnabled;
     m_sceneCB->RTAO_exponentialFalloffDecayConstant = SceneArgs::RTAO_ExponentialFalloffDecayConstant;
 	PIXBeginEvent(commandList, 0, L"GenerateGBuffer");
