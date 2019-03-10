@@ -509,7 +509,7 @@ void MyRayGenShader_AO()
 
 	bool hit = g_texGBufferPositionHits[DTid] > 0;
 	uint numShadowRayHits = 0;
-	float ambientCoef = 0;
+	float ambientCoef = 1;  // ToDo 1 or 0?
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;

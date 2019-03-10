@@ -114,7 +114,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
         }
         else
         {
-            color = float4(0, 0, 0, 1);
+            color = float4(1, 1, 1, 1);
         }
     }
 

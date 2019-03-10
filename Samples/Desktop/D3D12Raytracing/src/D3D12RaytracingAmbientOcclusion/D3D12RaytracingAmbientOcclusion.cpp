@@ -131,7 +131,7 @@ namespace SceneArgs
     // RTAO
     BoolVar QuarterResAO(L"AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
     IntVar AOSampleCountPerDimension(L"AO/RTAO/Samples per pixel NxN", 2, 1, 32, 1, OnRecreateSamples, nullptr);
-    IntVar AOSampleSetDistributedAcrossPixels(L"AO/RTAO/Sample set distribution across NxN pixels ", 3, 1, 8, 1, OnRecreateSamples, nullptr);
+    IntVar AOSampleSetDistributedAcrossPixels(L"AO/RTAO/Sample set distribution across NxN pixels ", 4, 1, 8, 1, OnRecreateSamples, nullptr);
     NumVar RTAOMaxRayHitTime(L"AO/RTAO/Max ray hit time", 22.0, 0.0f, 50.0f, 0.2f);
     BoolVar RTAOApproximateInterreflections(L"AO/RTAO/Approximate Interreflections/Enabled", true);
     NumVar RTAODiffuseReflectanceScale(L"AO/RTAO/Approximate Interreflections/Diffuse Reflectance Scale", 0.5f, 0.0f, 1.0f, 0.1f);
@@ -149,12 +149,12 @@ namespace SceneArgs
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5", L"Gaussian5x5" };
     EnumVar DenoisingMode(L"AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
-    IntVar AtrousFilterPasses(L"AO/RTAO/Denoising/Num passes", 5, 1, 8, 1);
-    BoolVar ReverseFilterOrder(L"AO/RTAO/Denoising/Reverse filter order", true);
+    IntVar AtrousFilterPasses(L"AO/RTAO/Denoising/Num passes", 6, 1, 8, 1);
+    BoolVar ReverseFilterOrder(L"AO/RTAO/Denoising/Reverse filter order", false);
     NumVar AODenoiseValueSigma(L"AO/RTAO/Denoising/Value Sigma", 10, 0.0f, 30.0f, 0.1f);
 
 #if PBRT_SCENE
-    NumVar AODenoiseDepthSigma(L"AO/RTAO/Denoising/Depth Sigma", 0.12f, 0.0f, 10.0f, 0.02f);
+    NumVar AODenoiseDepthSigma(L"AO/RTAO/Denoising/Depth Sigma", 0.3f, 0.0f, 10.0f, 0.02f);
 #else
     NumVar AODenoiseDepthSigma(L"AO/RTAO/Denoising/Depth Sigma", 0.7f, 0.0f, 10.0f, 0.02f);
 #endif

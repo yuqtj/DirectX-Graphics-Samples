@@ -126,6 +126,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
                 if (r != 2 || c != 2)
                     AddFilterContribution2(minVal, maxVal, value, depth, normal, obliqueness, r, c, DTid);
 
+        // ToDo
         // Approximate variance as max(Value) - min(Value)
         // Ref: Bavoil2009, Multi-Layer Dual-Resolution Screen-Space Ambient Occlusion
         variance = maxVal - minVal;

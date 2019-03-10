@@ -213,6 +213,12 @@
     <None Include="SSAO\Shaders\SSAORenderCS.hlsli">
       <Filter>SSAO\Shaders</Filter>
     </None>
+    <None Include="Kernels.hlsli">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilterCS.hlsli">
+      <Filter>Assets\Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Raytracing.hlsl">

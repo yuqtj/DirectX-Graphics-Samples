@@ -585,6 +585,8 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <None Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilterCS.hlsli" />
+    <None Include="Kernels.hlsli" />
     <None Include="packages.config" />
     <ClInclude Include="RandomNumberGenerator.hlsli">
       <FileType>Document</FileType>
