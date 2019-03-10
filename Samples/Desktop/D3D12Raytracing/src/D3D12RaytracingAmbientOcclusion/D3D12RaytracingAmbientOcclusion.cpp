@@ -2126,6 +2126,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
     RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
 
+    m_gpuTimers[GpuTimers::Denoising].Start(commandList);
+
     // Calculate local variance.
     {
         m_gpuTimers[GpuTimers::Raytracing_Variance].Start(commandList);
@@ -2199,6 +2201,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             SceneArgs::UseSpatialVariance);
         m_gpuTimers[GpuTimers::Raytracing_BlurAO].Stop(commandList);
     }
+
+    m_gpuTimers[GpuTimers::Denoising].Stop(commandList);
 };
 
 void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
@@ -2700,14 +2704,15 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
 		wLabel.precision(2);
 		wLabel << fixed << L" CameraRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS() << L"ms  ~" << 
 			0.001f* NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_GBufferWidth, m_GBufferHeight)  << " GigaRay/s\n";
-
+        // ToDo use profiler from MiniEngine
 		float numAOGigaRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * (SceneArgs::QuarterResAO ? 0.25f : 1) * m_sppAO / m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS();
 		wLabel << fixed << L" AORay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_AO].GetAverageMS() << L"ms  ~" <<	numAOGigaRays << " GigaRay/s\n";
-		wLabel << fixed << L" AO Blurring: " << m_gpuTimers[GpuTimers::Raytracing_BlurAO].GetAverageMS() << L"ms\n";
-        wLabel << fixed << L" Variance: " << m_gpuTimers[GpuTimers::Raytracing_Variance].GetAverageMS() << L"ms\n";
-        wLabel << fixed << L" Var Smoothing: " << m_gpuTimers[GpuTimers::Raytracing_VarianceSmoothing].GetAverageMS() << L"ms\n";
-        wLabel << fixed << L" AO downsample: " << m_gpuTimers[GpuTimers::DownsampleGBufferBilateral].GetAverageMS() << L"ms\n";
-        wLabel << fixed << L" AO upsample: " << m_gpuTimers[GpuTimers::UpsampleAOBilateral].GetAverageMS() << L"ms\n";
+        wLabel << fixed << L" AO Denoising: " << m_gpuTimers[GpuTimers::Denoising].GetAverageMS() << L"ms\n";
+        wLabel << fixed << L" - AO Blurring: " << m_gpuTimers[GpuTimers::Raytracing_BlurAO].GetAverageMS() << L"ms\n";
+        wLabel << fixed << L" - Variance: " << m_gpuTimers[GpuTimers::Raytracing_Variance].GetAverageMS() << L"ms\n";
+        wLabel << fixed << L" - Var Smoothing: " << m_gpuTimers[GpuTimers::Raytracing_VarianceSmoothing].GetAverageMS() << L"ms\n";
+        wLabel << fixed << L" - AO downsample: " << m_gpuTimers[GpuTimers::DownsampleGBufferBilateral].GetAverageMS() << L"ms\n";
+        wLabel << fixed << L" - AO upsample: " << m_gpuTimers[GpuTimers::UpsampleAOBilateral].GetAverageMS() << L"ms\n";
 
 		float numVisibilityRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] / m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS();
 		//wLabel << fixed << L" VisibilityRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() << L"ms  ~" << numVisibilityRays << " GigaRay/s\n";

@@ -9,6 +9,7 @@
 //
 //*********************************************************
 
+// ToDo shaders are in root while this is in Util...
 // ToDo standardize naming
 #include "../stdafx.h"
 #include "PerformanceTimers.h"

@@ -10,9 +10,5 @@
 //*********************************************************
 
 #define HLSL
-#include "RaytracingHlslCompat.h"
-#include "RaytracingShaderHelper.hlsli"
-
-#define HLSL
 #define BOX_KERNEL_3X3
 #include "EdgeStoppingAtrousWaveletTransfromCrossBilateralFilterCS.hlsli"

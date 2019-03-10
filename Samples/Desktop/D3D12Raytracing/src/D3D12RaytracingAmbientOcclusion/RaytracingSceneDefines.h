@@ -167,6 +167,7 @@ namespace GeometryType {
     };
 }
 
+// ToDo fix names
 // ToDo Gputimers bug out changing enums around
 namespace GpuTimers {
 	enum Enum {
@@ -176,13 +177,14 @@ namespace GpuTimers {
         Raytracing_Variance,
         Raytracing_VarianceSmoothing,
 		Raytracing_Visibility,
-		ComposeRenderPassesCS,
-		UpdateBLAS,
-		ReduceSum,
-		UpdateTLAS,
+        Denoising,
         DownsampleToBackbuffer,
         DownsampleGBufferBilateral,
         UpsampleAOBilateral,
+        ComposeRenderPassesCS,
+        UpdateBLAS,
+        ReduceSum,
+        UpdateTLAS,
 		Count
 	};
 }
