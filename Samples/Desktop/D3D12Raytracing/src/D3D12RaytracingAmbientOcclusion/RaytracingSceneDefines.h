@@ -55,6 +55,7 @@ namespace ComputeShader {
 					Visibility,
 					MaterialBuffer,
 					ConstantBuffer,
+                    FilterWeightSum,
 					Count
 				};
 			}
@@ -103,6 +104,7 @@ namespace GlobalRootSignature {
 			MaterialBuffer,
             SampleBuffers,
             EnvironmentMap,
+            FilterWeightSum,
             GBufferDepth,   // ToDo move to the above slot for GBufferResources ?
             GbufferNormalRGB,
             Count
@@ -172,12 +174,13 @@ namespace GeometryType {
 namespace GpuTimers {
 	enum Enum {
 		Raytracing_GBuffer = 0,
-		Raytracing_AO,
-		Raytracing_BlurAO,
         Raytracing_Variance,
+		Raytracing_AO,
+        Denoising,
+		Raytracing_BlurAO,
+        Raytracing_FilterWeightSum,
         Raytracing_VarianceSmoothing,
 		Raytracing_Visibility,
-        Denoising,
         DownsampleToBackbuffer,
         DownsampleGBufferBilateral,
         UpsampleAOBilateral,
@@ -219,6 +222,7 @@ namespace AOResource {
 		Coefficient = 0,
         Smoothed,
 		HitCount,
+        FilterWeightSum,
 		Count
 	};
 }

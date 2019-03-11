@@ -49,6 +49,7 @@ Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<float4> g_texGBufferNormal : register(t8);
 Texture2D<float4> g_texGBufferDistance : register(t9);
 TextureCube<float4> g_texEnvironmentMap : register(t12);
+Texture2D<float> g_filterWeightSum : register(t13);
 
 // ToDo remove AOcoefficient and use AO hits instead?
 RWTexture2D<float> g_rtAOcoefficient : register(u10);
@@ -211,7 +212,7 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 
 
 // ToDo comment
-float CalculateAO(out uint numShadowRayHits, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1))
+float CalculateAO(out uint numShadowRayHits, in UINT numSamples, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1))
 {
     numShadowRayHits = 0;
     float occlussionCoefSum = 0;
@@ -228,7 +229,7 @@ float CalculateAO(out uint numShadowRayHits, in float3 hitPosition, in float3 su
     uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + g_sceneCB.seed;
 
     uint RNGState = RNG::SeedThread(sampleSetSeed);
-    uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
+    uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamplesPerSet;
 
     // Get a pixel ID within the shared set across neighboring pixels.
     uint2 pixeIDPerSet2D = DispatchRaysIndex().xy % g_sceneCB.numPixelsPerDimPerSet;
@@ -239,7 +240,7 @@ float CalculateAO(out uint numShadowRayHits, in float3 hitPosition, in float3 su
     uint sampleJump = (pixeIDPerSet + RNG::Random(RNGState, 0, numPixelsPerSet - 1)) % numPixelsPerSet;
     sampleJump *= g_sceneCB.numSamplesToUse;
 
-    for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
+    for (uint i = 0; i < numSamples; i++)
     {
         // Load a pregenerated random sample from the sample set.
         float3 sample = g_sampleSets[sampleSetJump + sampleJump + i].value;
@@ -316,7 +317,7 @@ float CalculateAO(out uint numShadowRayHits, in float3 hitPosition, in float3 su
             numShadowRayHits++;
         }
     }
-    float occlusionCoef = saturate(occlussionCoefSum / g_sceneCB.numSamplesToUse);
+    float occlusionCoef = saturate(occlussionCoefSum / numSamples);
     float ambientCoef = 1.f - occlusionCoef;
 #elif REPRO_INVISIBLE_WALL
         const float tMax = g_sceneCB.maxShadowRayHitTime;
@@ -336,8 +337,8 @@ float CalculateAO(out uint numShadowRayHits, in float3 hitPosition, in float3 su
             numShadowRayHits++;
         }
     }
-    occlussionCoefSum *= g_sceneCB.numSamplesToUse;
-    float occlusionCoef = saturate(occlussionCoefSum / g_sceneCB.numSamplesToUse);
+    occlussionCoefSum *= numSamples;
+    float occlusionCoef = saturate(occlussionCoefSum / numSamples);
     float ambientCoef = 1.f - occlusionCoef;
 #else
         const float tMax = g_sceneCB.maxShadowRayHitTime;
@@ -359,7 +360,7 @@ float CalculateAO(out uint numShadowRayHits, in float3 hitPosition, in float3 su
 #if AO_ANY_HIT_FULL_OCCLUSION
     float ambientCoef = numShadowRayHits > 0 ? 0 : 1;
 #else
-    float occlusionCoef = saturate(occlussionCoefSum / g_sceneCB.numSamplesToUse);
+    float occlusionCoef = saturate(occlussionCoefSum / numSamples);
     float ambientCoef = 1.f - occlusionCoef;
 #endif
 #endif
@@ -383,10 +384,10 @@ float CalculateAO(out uint numShadowRayHits, in float3 hitPosition, in float3 su
 }
 
 
-float CalculateAO(in float3 hitPosition, in float3 surfaceNormal)
+float CalculateAO(in float3 hitPosition, UINT numSamples, in float3 surfaceNormal)
 {
 	uint numShadowRayHits;
-	return CalculateAO(numShadowRayHits, hitPosition, surfaceNormal);
+	return CalculateAO(numShadowRayHits, numSamples, hitPosition, surfaceNormal);
 }
 
 //***************************************************************************
@@ -528,7 +529,14 @@ void MyRayGenShader_AO()
             surfaceAlbedo = surfaceAlbedo;
         }
 
-		ambientCoef = CalculateAO(numShadowRayHits, hitPosition, surfaceNormal, surfaceAlbedo);
+        UINT numSamples = g_sceneCB.numSamplesToUse;
+
+        if (g_sceneCB.RTAO_UseAdaptiveSampling)
+        {
+            float filterWeightSum = g_filterWeightSum[DTid].x;
+            numSamples = filterWeightSum <= g_sceneCB.RTAO_AdaptiveSamplingMaxWeightSum ? 4* numSamples : numSamples;
+        }
+		ambientCoef = CalculateAO(numShadowRayHits, numSamples, hitPosition, surfaceNormal, surfaceAlbedo);
 	}
 
 	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
@@ -555,7 +563,7 @@ void MyRayGenShaderQuarterRes_AO()
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
         // ToDo Standardize naming AO vs AmbientOcclusion ?
-		ambientCoef = CalculateAO(numShadowRayHits, hitPosition, surfaceNormal);
+		ambientCoef = CalculateAO(numShadowRayHits, g_sceneCB.numSamplesToUse, hitPosition, surfaceNormal);
 	}
 
 	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
@@ -601,7 +609,7 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
     // PERFORMANCE TIP: it is recommended to avoid values carry over across TraceRay() calls. 
     // Therefore, in cases like retrieving HitWorldPosition(), it is recomputed every time.
 #if AO_ONLY
-	float ambientCoef = CalculateAO(HitWorldPosition(), triangleNormal);
+	float ambientCoef = CalculateAO(HitWorldPosition(), g_sceneCB.numSamplesToUse, triangleNormal);
 	float4 color = ambientCoef * float4(0.75, 0.75, 0.75, 0.75);
 #else
     // Shadow component.
@@ -613,7 +621,7 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
   //  bool shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, rayPayload.recursionDepth);
 	
     // Calculate final color.
-	float ambientCoef = CalculateAO(HitWorldPosition(), triangleNormal);
+	float ambientCoef = CalculateAO(HitWorldPosition(), g_sceneCB.numSamplesToUse, triangleNormal);
 	float4 color = float4(1, 0, 0, 0); //ToDo
     //float3 phongColor = CalculatePhongLighting(triangleNormal, shadowRayHit, ambient, l_materialCB.diffuse, l_materialCB.specular, l_materialCB.specularPower);
 	//float4 color =  float4(phongColor, 1);

@@ -112,7 +112,7 @@ namespace SceneArgs
     // ToDo Modularize parameters?
     // ToDO standardize capitalization
 
-    const WCHAR* CompositionModes[CompositionType::Count] = { L"Phong Lighting", L"Ambient Occlusion", L"Suface Normals", L"Depth Buffer" };
+    const WCHAR* CompositionModes[CompositionType::Count] = { L"Phong Lighting", L"Ambient Occlusion", L"Ambient Occlusion High Res Sample Pixels", L"Suface Normals", L"Depth Buffer" };
     EnumVar CompositionMode(L"Render composition mode", CompositionType::AmbientOcclusionOnly, CompositionType::Count, CompositionModes);
 
     //**********************************************************************************************************************************
@@ -130,14 +130,16 @@ namespace SceneArgs
     BoolVar AOEnabled(L"AO/Enabled", true);
     // RTAO
     BoolVar QuarterResAO(L"AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
-    IntVar AOSampleCountPerDimension(L"AO/RTAO/Samples per pixel NxN", 2, 1, 32, 1, OnRecreateSamples, nullptr);
+    BoolVar RTAOAdaptiveSampling(L"AO/RTAO/Adaptive sampling", true);
+    NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"AO/RTAO/Adaptive sampling max filter weight", 0.915f, 0.0f, 1.f, 0.005f);
+    IntVar AOSampleCountPerDimension(L"AO/RTAO/Samples per pixel NxN", 1, 1, 32, 1, OnRecreateSamples, nullptr);
     IntVar AOSampleSetDistributedAcrossPixels(L"AO/RTAO/Sample set distribution across NxN pixels ", 4, 1, 8, 1, OnRecreateSamples, nullptr);
     NumVar RTAOMaxRayHitTime(L"AO/RTAO/Max ray hit time", 22.0, 0.0f, 50.0f, 0.2f);
     BoolVar RTAOApproximateInterreflections(L"AO/RTAO/Approximate Interreflections/Enabled", true);
     NumVar RTAODiffuseReflectanceScale(L"AO/RTAO/Approximate Interreflections/Diffuse Reflectance Scale", 0.5f, 0.0f, 1.0f, 0.1f);
     NumVar  minimumAmbientIllumination(L"AO/RTAO/Minimum Ambient Illumination", 0.1f, 0.0f, 1.0f, 0.01f);
     BoolVar RTAOIsExponentialFalloffEnabled(L"AO/RTAO/Exponential Falloff", true);
-    NumVar RTAO_ExponentialFalloffDecayConstant(L"AO/RTAO/Exponential Falloff Decay Constant", 2.0f, 0.0f, 20.f, 0.25f);
+    NumVar RTAO_ExponentialFalloffDecayConstant(L"AO/RTAO/Exponential Falloff Decay Constant", 1.25f, 0.0f, 20.f, 0.25f);
 
     // ToDo standardixe AO RTAO prefix
 
@@ -147,9 +149,9 @@ namespace SceneArgs
     BoolVar UseSpatialVariance(L"AO/RTAO/Denoising/Use spatial variance", true);
     BoolVar ApproximateSpatialVariance(L"AO/RTAO/Denoising/Approximate spatial variance", false);
 
-    const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5", L"Gaussian5x5" };
+    const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
-    IntVar AtrousFilterPasses(L"AO/RTAO/Denoising/Num passes", 6, 1, 8, 1);
+    IntVar AtrousFilterPasses(L"AO/RTAO/Denoising/Num passes", 5, 1, 8, 1);
     BoolVar ReverseFilterOrder(L"AO/RTAO/Denoising/Reverse filter order", false);
     NumVar AODenoiseValueSigma(L"AO/RTAO/Denoising/Value Sigma", 10, 0.0f, 30.0f, 0.1f);
 
@@ -738,17 +740,19 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 	{
 		using namespace CSRootSignature::ComposeRenderPassesCS;
 
-		CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
+		CD3DX12_DESCRIPTOR_RANGE ranges[5]; // Perfomance TIP: Order from most frequent to least frequent.
 		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
 		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);  // 5 input GBuffer textures
 		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input AO texture
 		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // 1 input Visibility texture
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // 1 input filterWeightSum texture
 
 		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
 		rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
 		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
 		rootParameters[Slot::AO].InitAsDescriptorTable(1, &ranges[2]);
 		rootParameters[Slot::Visibility].InitAsDescriptorTable(1, &ranges[3]);
+        rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[4]);
 		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(7);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
@@ -884,7 +888,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 		using namespace GlobalRootSignature;
 
         // ToDo reorder
-        CD3DX12_DESCRIPTOR_RANGE ranges[8]; // Perfomance TIP: Order from most frequent to least frequent.
+        CD3DX12_DESCRIPTOR_RANGE ranges[9]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output textures
 		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 5);  // 5 output GBuffer textures
 		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input GBuffer textures
@@ -893,6 +897,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12);  // 1 input environment map texture
         ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 13);  // 1 output depth texture
         ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 14);  // 1 output normal texture
+        ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 13);  // 1 input filter weight sum texture
 
 
         CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
@@ -904,6 +909,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         rootParameters[Slot::EnvironmentMap].InitAsDescriptorTable(1, &ranges[5]);
         rootParameters[Slot::GBufferDepth].InitAsDescriptorTable(1, &ranges[6]);
         rootParameters[Slot::GbufferNormalRGB].InitAsDescriptorTable(1, &ranges[7]);
+        rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[8]);
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
         rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
@@ -1146,8 +1152,13 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 #endif
         // ToDo 8 bit hit count?
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"AO HitCount");
+
+        // ToDo use lower bit float?
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::FilterWeightSum], initialResourceState, L"AO Filter Weight Sum");
+
     }
 
+    // ToDo merge low/full-res or only create one at a time?
     // Low-res AO resources.
     {
         // Preallocate subsequent descriptor indices for both SRV and UAV groups.
@@ -1167,6 +1178,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Smoothed], initialResourceState, L"AO LowRes Smoothed");
 #endif
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::HitCount], initialResourceState, L"AO LowRes HitCount");
+
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::FilterWeightSum], initialResourceState, L"AO LowRes Filter Weight Sum");
     }
 
     // ToDo move
@@ -1983,7 +1996,11 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     {
         UpdateUI();
     }
-}
+
+    // ToDo move
+    m_sceneCB->RTAO_UseAdaptiveSampling = SceneArgs::RTAOAdaptiveSampling;
+    m_sceneCB->RTAO_AdaptiveSamplingMaxWeightSum = SceneArgs::RTAOAdaptiveSamplingMaxFilterWeight;
+ }
 
 // Parse supplied command line args.
 void D3D12RaytracingAmbientOcclusion::ParseCommandLineArgs(WCHAR* argv[], int argc)
@@ -2153,7 +2170,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
     }
 
     // ToDo, should the smoothing be applied after each pass?
-    // Calculate local variance.
+    // Smoothen the local variance which is prone to error due to undersampled input.
     {
         m_gpuTimers[GpuTimers::Raytracing_VarianceSmoothing].Start(commandList);
         m_gaussianSmoothingKernel.Execute(
@@ -2178,7 +2195,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
-
+    
     // A-trous edge-preserving wavelet tranform filter
     {
         m_gpuTimers[GpuTimers::Raytracing_BlurAO].Start(commandList);
@@ -2197,12 +2214,67 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
             SceneArgs::AtrousFilterPasses,
+            GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance);
         m_gpuTimers[GpuTimers::Raytracing_BlurAO].Stop(commandList);
     }
 
     m_gpuTimers[GpuTimers::Denoising].Stop(commandList);
+};
+
+
+// Calculate adaptive per-pixel sampling counts
+// Ref: Bauszat et al. 2011, Adaptive Sampling for Geometry-aware Reconstruction Filters
+// The per-pixel sampling counts are calculated in two steps:
+//  - Computing a per-pixel filter weight. This value represents how much of neighborhood contributes
+//    to a pixel when filtering. Pixels with small values benefit from filtering only a little and thus will 
+//    benefit from increased sampling the most.
+//  - Calculating per-pixel sampling count based on the filter weight;
+void D3D12RaytracingAmbientOcclusion::CalculateAdaptiveSamplingCounts()
+{
+    auto commandList = m_deviceResources->GetCommandList();
+
+    RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
+    RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
+    
+    // Transition the output resource to UAV state.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::FilterWeightSum].resource.Get(), before, after));
+    }
+
+    // Calculate filter weight sum for each pixel. 
+    {
+        m_gpuTimers[GpuTimers::Raytracing_FilterWeightSum].Start(commandList);
+        m_atrousWaveletTransformFilter.Execute(
+            commandList,
+            m_cbvSrvUavHeap->GetHeap(),
+            static_cast<GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType>(static_cast<UINT>(SceneArgs::DenoisingMode)),
+            AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
+            GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
+            GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
+            GBufferResources[GBufferResource::Material].gpuDescriptorReadAccess,
+            m_varianceResource.gpuDescriptorReadAccess,
+            m_smoothedVarianceResource.gpuDescriptorReadAccess,
+            &AOResources[AOResource::FilterWeightSum],
+            SceneArgs::AODenoiseValueSigma,
+            SceneArgs::AODenoiseDepthSigma,
+            SceneArgs::AODenoiseNormalSigma,
+            1,
+            GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputPerPixelFilterWeightSum,
+            SceneArgs::ReverseFilterOrder,
+            SceneArgs::UseSpatialVariance);
+        m_gpuTimers[GpuTimers::Raytracing_FilterWeightSum].Stop(commandList);
+    }
+
+    // Transition the output to SRV.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::FilterWeightSum].resource.Get(), before, after));
+    }
 };
 
 void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
@@ -2262,7 +2334,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 #else
 	m_sceneCB->seed = 1879;
 #endif
-	m_sceneCB->numSamples = m_randomSampler.NumSamples();
+	m_sceneCB->numSamplesPerSet = m_randomSampler.NumSamples();
 	m_sceneCB->numSampleSets = m_randomSampler.NumSampleSets();
 	m_sceneCB->numSamplesToUse = SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension;
     m_sceneCB->numPixelsPerDimPerSet = SceneArgs::AOSampleSetDistributedAcrossPixels;
@@ -2328,7 +2400,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, m_environmentMap.gpuDescriptorHandle);
-
+    
 	// Bind output RTs.
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferDepth, m_GBufferResources[GBufferResource::Depth].gpuDescriptorWriteAccess);
@@ -2485,7 +2557,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
     RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
 
-    // Transition AO resources to shader resource state.
+    // Transition AO resources to UAV state.        // ToDo check all comments
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2501,6 +2573,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResourcesIn, GBufferResources[0].gpuDescriptorReadAccess);
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
 	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));   // ToDo let AO have its own CB.
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::FilterWeightSum, AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
 
 	// Bind output RT.
 	// ToDo remove output and rename AOout
@@ -2621,8 +2694,11 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 		m_csComposeRenderPassesCB->rtDimensions = XMUINT2(m_GBufferWidth, m_GBufferHeight);
         m_csComposeRenderPassesCB->enableAO = SceneArgs::AOEnabled;
         m_csComposeRenderPassesCB->compositionType = static_cast<CompositionType>(static_cast<UINT>(SceneArgs::CompositionMode));
+        m_csComposeRenderPassesCB->RTAO_AdaptiveSamplingMaxWeightSum = SceneArgs::RTAOAdaptiveSamplingMaxFilterWeight;
         m_csComposeRenderPassesCB.CopyStagingToGpu(frameIndex);
 	}
+
+    RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
 
 	// Set pipeline state.
 	{
@@ -2645,6 +2721,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 		commandList->SetComputeRootDescriptorTable(Slot::Visibility, m_VisibilityResource.gpuDescriptorReadAccess);
 		commandList->SetComputeRootShaderResourceView(Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
+        commandList->SetComputeRootDescriptorTable(Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
 	}
 
 	// Dispatch.
@@ -2995,6 +3072,10 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     // AO. 
     if (SceneArgs::AOMode == SceneArgs::AOType::RTAO)
     {
+        if (SceneArgs::RTAOAdaptiveSampling)
+        {
+            CalculateAdaptiveSamplingCounts();
+        }
         RenderPass_CalculateAmbientOcclusion();
 
 #if BLUR_AO

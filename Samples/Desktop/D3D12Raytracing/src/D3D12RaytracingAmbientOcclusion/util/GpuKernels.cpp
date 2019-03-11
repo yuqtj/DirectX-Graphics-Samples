@@ -840,6 +840,9 @@ namespace GpuKernels
                 enum Enum {
                     Output = 0,
                     VarianceOutput,
+#if !WORKAROUND_ATROUS_VARYING_OUTPUTS
+                    FilterWeightSumOutput,
+#endif
                     Input,
                     Normals,
                     NormalsOct,
@@ -860,7 +863,7 @@ namespace GpuKernels
         {
             using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
 
-            CD3DX12_DESCRIPTOR_RANGE ranges[8];
+            CD3DX12_DESCRIPTOR_RANGE ranges[9];
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // input normals
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // input depths
@@ -869,6 +872,7 @@ namespace GpuKernels
             ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // input smoothed variance
             ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output filtered values
             ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // output filtered variance
+            ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // output filter weight sum
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
@@ -879,6 +883,9 @@ namespace GpuKernels
             rootParameters[Slot::SmoothedVariance].InitAsDescriptorTable(1, &ranges[5]);
             rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[6]);
             rootParameters[Slot::VarianceOutput].InitAsDescriptorTable(1, &ranges[7]);
+#if !WORKAROUND_ATROUS_VARYING_OUTPUTS
+            rootParameters[Slot::FilterWeightSumOutput].InitAsDescriptorTable(1, &ranges[8]);
+#endif
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -913,6 +920,7 @@ namespace GpuKernels
         // Create shader resources.
         {
             m_CB.Create(device, maxFilterPasses, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter");
+            m_CBfilterWeigth.Create(device, maxFilterPasses, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter FilterWeightSum");
         }
     }
 
@@ -935,15 +943,15 @@ namespace GpuKernels
             m_intermediateVarianceOutputs[1].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, width, height, descriptorHeap,
                 &m_intermediateVarianceOutputs[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate variance output 1");
+
+            // ToDo remove
+            m_filterWeightOutput.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, width, height, descriptorHeap,
+                &m_filterWeightOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter filter weight sum output");
         }
 
-        // Update the Constant Buffers.
         m_CB->textureDim = XMINT2(width, height);
-        for (UINT i = 0; i < m_CB.NumInstances(); i++)
-        {
-            m_CB->kernelStepShift = i;
-            m_CB.CopyStagingToGpu(i);
-        }
+        m_CBfilterWeigth->textureDim = XMINT2(width, height);
     }
 
     // ToDo add option to allow input, output being the same
@@ -963,6 +971,7 @@ namespace GpuKernels
         float depthSigma,
         float normalSigma,
         UINT numFilterPasses,
+        Mode filterMode,
         bool reverseFilterPassOrder,
         bool useCalculatedVariance)
     {
@@ -982,8 +991,10 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::SmoothedVariance, inputSmoothedVarianceResourceHandle);
         }
 
+        // ToDo split these into separate GpuKernels?
+        auto& CB = filterMode == OutputFilteredValue ? m_CB : m_CBfilterWeigth;
         // Update the Constant Buffers.
-        for (UINT i = 0; i < m_CB.NumInstances(); i++)
+        for (UINT i = 0; i < CB.NumInstances(); i++)
         {
             // Ref: Dammertz2010
             // Tighten value range smoothing for higher passes.
@@ -997,18 +1008,21 @@ namespace GpuKernels
                 _i = i;
             if (useCalculatedVariance)
             {
-                m_CB->valueSigma = valueSigma;
+                CB->valueSigma = valueSigma;
             }
             else
             {
-                m_CB->valueSigma = _i > 0 ? valueSigma * powf(2.f, -float(i)) : 1;
+                CB->valueSigma = _i > 0 ? valueSigma * powf(2.f, -float(i)) : 1;
             }
-            m_CB->depthSigma = depthSigma;
-            m_CB->normalSigma = normalSigma;
-            m_CB->kernelStepShift = _i;
-            m_CB->scatterOutput = _i == numFilterPasses - 1;
-            m_CB->useCalculatedVariance = useCalculatedVariance;
-            m_CB.CopyStagingToGpu(i);
+            CB->depthSigma = depthSigma;
+            CB->normalSigma = normalSigma;
+            CB->kernelStepShift = _i;
+            CB->scatterOutput = _i == numFilterPasses - 1;
+            CB->useCalculatedVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
+            CB->outputFilteredVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
+            CB->outputFilteredValue = filterMode == OutputFilteredValue;
+            CB->outputFilterWeigthSum = filterMode == OutputPerPixelFilterWeightSum;
+            CB.CopyStagingToGpu(i);
         }
 
         //
@@ -1038,13 +1052,18 @@ namespace GpuKernels
 
             // First iteration reads from input resource.		
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
+#if WORKAROUND_ATROUS_VARYING_OUTPUTS
             commandList->SetComputeRootDescriptorTable(Slot::Output, outValueResources[0]->gpuDescriptorWriteAccess);
+#else
+            UINT outputSlot = (filterMode == Mode::OutputFilteredValue) ? Slot::Output : Slot::FilterWeightSumOutput; // ToDo Cleanup
+            commandList->SetComputeRootDescriptorTable(outputSlot, outValueResources[0]->gpuDescriptorWriteAccess);
+#endif
             commandList->SetComputeRootDescriptorTable(Slot::VarianceOutput, m_intermediateVarianceOutputs[0].gpuDescriptorWriteAccess);
 
             for (UINT i = 0; i < numFilterPasses; i++)
 #endif
             {
-                commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(i));
+                commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, CB.GpuVirtualAddress(i));
                                 
                 // Dispatch.
                 commandList->Dispatch(groupSize.x, groupSize.y, 1);

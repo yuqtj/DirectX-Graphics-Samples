@@ -23,6 +23,9 @@ Texture2D<float> g_inVariance : register(t4);   // ToDo remove
 Texture2D<float> g_inSmoothedVariance : register(t5);   // ToDo rename
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
+#if !WORKAROUND_ATROUS_VARYING_OUTPUTS 
+RWTexture2D<float> g_outFilterWeightSum : register(u2);
+#endif
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
 
@@ -31,6 +34,7 @@ void AddFilterContribution(
     inout float weightedVarianceSum, 
     inout float weightSum, 
     in float value, 
+    in float stdDeviation,
     in float depth, 
     in float3 normal, 
     float obliqueness, 
@@ -42,22 +46,28 @@ void AddFilterContribution(
     const float normalSigma = cb.normalSigma;
     const float depthSigma = cb.depthSigma;
 
+
     int2 id = int2(DTid) + (int2(row - FilterKernel::Radius, col - FilterKernel::Radius) << cb.kernelStepShift);
     if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
     {
-        float iValue = g_inValues[id];
-
+        float iValue = 0.f;
         float iVariance;
-        float e_x;
-        if (cb.useCalculatedVariance)
+        float e_x = 0;
+
+        if (cb.outputFilteredValue)
         {
+            iValue = g_inValues[id];
             iVariance = g_inSmoothedVariance[id];
-            const float errorOffset = 0.005f;
-            e_x = valueSigma > 0.01f ? -abs(value - iValue) / (valueSigma * sqrt(max(iVariance, 0)) + errorOffset) : 0;
-        }
-        else
-        {
-            e_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - iValue) / (valueSigma * valueSigma)) : 0 : 0;
+
+            if (cb.useCalculatedVariance)
+            {
+                const float errorOffset = 0.005f;
+                e_x = valueSigma > 0.01f ? -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset) : 0;
+            }
+            else
+            {
+                e_x = valueSigma > 0.01f ? cb.kernelStepShift > 0 ? exp(-abs(value - iValue) / (valueSigma * valueSigma)) : 0 : 0;
+            }
         }
 
         // ToDo standardize index vs id
@@ -84,11 +94,15 @@ void AddFilterContribution(
         float w_xd = exp(e_x + e_d);        // exp(x) * exp(y) == exp(x + y)
         float w = w_h * w_n * w_xd;
 
-        weightedValueSum += w * iValue;
+        if (cb.outputFilteredValue)
+        {
+            weightedValueSum += w * iValue;
+        }
+
         weightSum += w;
 
         // ToDo standardize cb naming
-        if (cb.useCalculatedVariance)
+        if (cb.outputFilteredVariance)
         {
             weightedVarianceSum += w * w * iVariance;
         }
@@ -118,19 +132,27 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 #if PACK_NORMAL_AND_DEPTH
     float depth = normal4.w;
 #else
-    float  depth = g_inDepth[DTid];
+    float depth = g_inDepth[DTid];
 #endif
 
-    float  value = g_inValues[DTid];
+    float value = 0;
+    if (cb.outputFilteredValue)
+    {
+        value = g_inValues[DTid];
+    }
 
-    float weightedValueSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] * value;
     float weightSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius];
+    float weightedValueSum = weightSum * value;
     float weightedVarianceSum = 0;
+    float variance = 0;
+    float stdDeviation = 0;
   
     if (cb.useCalculatedVariance)
     {
+        variance = g_inSmoothedVariance[DTid];
         weightedVarianceSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius]
-                              * g_inSmoothedVariance[DTid];
+                              * variance;
+        stdDeviation = sqrt(variance);
     }
 
     // Add contributions from the neighborhood.
@@ -139,12 +161,27 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
     [unroll]
     for (UINT c = 0; c < FilterKernel::Width; c++)
         if (r != FilterKernel::Radius || c != FilterKernel::Radius)
-             AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, depth, normal, obliqueness, r, c, DTid);
+             AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, obliqueness, r, c, DTid);
 
-    g_outFilteredValues[DTid] = weightedValueSum / weightSum;
+#if WORKAROUND_ATROUS_VARYING_OUTPUTS
+    float outputValue = (cb.outputFilterWeigthSum) ? weightSum : weightedValueSum / weightSum;
+    g_outFilteredValues[DTid] = outputValue;
+#else
+    // ToDo why the resource doesnt get picked up in PIX if its written to under condition?
+    if (cb.outputFilterWeigthSum)
+    {
+        g_outFilterWeightSum[DTid] = weightSum;
+    }
 
-    if (cb.useCalculatedVariance)
+    // ToDo separate output filtered value and weight sum into two shaders?
+    if (cb.outputFilteredValue)
+    {
+        g_outFilteredValues[DTid] = weightedValueSum / weightSum;
+    }
+#endif
+    if (cb.outputFilteredVariance)
     {
         g_outFilteredVariance[DTid] = weightedVarianceSum / (weightSum * weightSum);
     }
+
 }

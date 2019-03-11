@@ -28,6 +28,7 @@
 #define RUNTIME_AS_UPDATES 0
 #define USE_GPU_TRANSFORM 1
 
+#define WORKAROUND_ATROUS_VARYING_OUTPUTS 1
 
 #define USE_ENVIRONMENT_MAP 1
 #define DEBUG_AS 0
@@ -294,12 +295,16 @@ struct AtrousWaveletTransformFilterConstantBuffer
     XMINT2 textureDim;
     UINT kernelStepShift;
     UINT scatterOutput;
+
     float valueSigma;
     float depthSigma;
     float normalSigma;
     UINT useCalculatedVariance;
-    XMFLOAT3 padding;
+    
     UINT useApproximateVariance;
+    BOOL outputFilteredValue;
+    BOOL outputFilteredVariance;
+    BOOL outputFilterWeigthSum;
 };
 
 
@@ -316,7 +321,7 @@ struct SceneConstantBuffer
 	float Zmax;
     
     UINT seed;
-    UINT numSamples;
+    UINT numSamplesPerSet;
     UINT numSampleSets;
     UINT numSamplesToUse;
     
@@ -331,7 +336,8 @@ struct SceneConstantBuffer
 
     BOOL RTAO_IsExponentialFalloffEnabled;               // Apply exponential falloff to AO coefficient based on ray hit distance.    
     float RTAO_exponentialFalloffDecayConstant; 
-    float padding2[2];
+    BOOL RTAO_UseAdaptiveSampling;
+    float RTAO_AdaptiveSamplingMaxWeightSum;
 
 };
  
@@ -339,6 +345,7 @@ struct SceneConstantBuffer
 enum CompositionType {
     PhongLighting = 0,
     AmbientOcclusionOnly,
+    AmbientOcclusionHighResSamplingPixels,
     NormalsOnly,
     DepthOnly,
     Count
@@ -349,14 +356,18 @@ struct ComposeRenderPassesConstantBuffer
 {
 	XMUINT2 rtDimensions;
 	XMFLOAT2 padding1;
+
 	XMFLOAT3 cameraPosition;
     float padding2;
+
 	XMFLOAT3 lightPosition;     // ToDo cb doesn't match if XMFLOAT starts at offset 1. Can this be caught?
     UINT enableAO;
+
 	XMFLOAT3 lightAmbientColor;
     CompositionType compositionType;
+
 	XMFLOAT3 lightDiffuseColor;		
-	float padding3;
+    float RTAO_AdaptiveSamplingMaxWeightSum;
 };
 
 struct AoBlurConstantBuffer

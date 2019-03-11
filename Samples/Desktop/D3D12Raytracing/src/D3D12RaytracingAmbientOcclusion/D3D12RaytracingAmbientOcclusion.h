@@ -259,6 +259,7 @@ private:
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
     void ApplyAtrousWaveletTransformFilter();
+    void CalculateAdaptiveSamplingCounts();
 
 	void DownsampleRaytracingOutput();
     void DownsampleGBufferBilateral();

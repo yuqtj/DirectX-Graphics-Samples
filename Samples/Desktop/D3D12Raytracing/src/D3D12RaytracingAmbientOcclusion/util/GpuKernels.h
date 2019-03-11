@@ -243,11 +243,15 @@ namespace GpuKernels
     class AtrousWaveletTransformCrossBilateralFilter
     {
     public:
+        enum Mode {
+            OutputFilteredValue,
+            OutputPerPixelFilterWeightSum
+        };
+
         enum FilterType {
             EdgeStoppingBox3x3 = 0,
             EdgeStoppingGaussian3x3,
             EdgeStoppingGaussian5x5,
-            Gaussian5x5,
             Count
         };
 
@@ -277,6 +281,7 @@ namespace GpuKernels
             float depthSigma,
             float normalSigma,
             UINT numFilterPasses = 5,
+            Mode filterMode = OutputFilteredValue,
             bool reverseFilterPassOrder = false,
             bool useCalculatedVariance = true);
 
@@ -285,7 +290,9 @@ namespace GpuKernels
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
         RWGpuResource			            m_intermediateValueOutput;
         RWGpuResource			            m_intermediateVarianceOutputs[2];
+        RWGpuResource			            m_filterWeightOutput;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
+        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CBfilterWeigth;
     };
 
 

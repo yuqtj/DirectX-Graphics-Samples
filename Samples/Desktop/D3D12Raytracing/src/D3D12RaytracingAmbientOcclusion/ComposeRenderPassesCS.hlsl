@@ -25,6 +25,7 @@ Texture2D<float4> g_texGBufferNormal : register(t3);	// ToDo merge some GBuffers
 Texture2D<float> g_texAO : register(t5);
 Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
+Texture2D<float> g_texFilterWeightSum : register(t8);
 
 SamplerState LinearWrapSampler : register(s0);
 
@@ -88,6 +89,11 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float4 albedo = float4(1, 1, 1, 1);// float4(0.75f, 0.75f, 0.75f, 1.0f);
             color *= albedo;
         }
+        else if (g_CB.compositionType == CompositionType::AmbientOcclusionHighResSamplingPixels)
+        {
+            float value = g_texFilterWeightSum[DTid] <= g_CB.RTAO_AdaptiveSamplingMaxWeightSum ? 1 : 0;
+            color = float4(value, value, value, 1);
+        }
         else if (g_CB.compositionType == CompositionType::NormalsOnly)
         {
             color = float4(surfaceNormal, 1);
@@ -111,6 +117,10 @@ void main(uint2 DTid : SV_DispatchThreadID )
 #else
             color = BackgroundColor;
 #endif
+        }
+        else if (g_CB.compositionType == CompositionType::AmbientOcclusionHighResSamplingPixels)
+        {
+            color = float4(0, 0, 0, 1);
         }
         else
         {
