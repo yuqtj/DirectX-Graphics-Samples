@@ -91,8 +91,30 @@ void main(uint2 DTid : SV_DispatchThreadID )
         }
         else if (g_CB.compositionType == CompositionType::AmbientOcclusionHighResSamplingPixels)
         {
-            float value = g_texFilterWeightSum[DTid] <= g_CB.RTAO_AdaptiveSamplingMaxWeightSum ? 1 : 0;
-            color = float4(value, value, value, 1);
+            UINT numSamples = g_CB.RTAO_MaxSPP;
+            if (g_CB.RTAO_UseAdaptiveSampling)
+            {
+                float filterWeightSum = g_texFilterWeightSum[DTid].x;
+                float clampedFilterWeightSum = min(filterWeightSum, g_CB.RTAO_AdaptiveSamplingMaxWeightSum);
+                float sampleScale = 1 - (clampedFilterWeightSum / g_CB.RTAO_AdaptiveSamplingMaxWeightSum);
+
+                UINT minSamples = g_CB.RTAO_AdaptiveSamplingMinSamples;
+                UINT extraSamples = g_CB.RTAO_MaxSPP - minSamples;
+
+                if (g_CB.RTAO_AdaptiveSamplingMinMaxSampling)
+                {
+                    numSamples = minSamples + (sampleScale >= 0.001 ? extraSamples : 0);
+                }
+                else
+                {
+                    float scaleExponent = g_CB.RTAO_AdaptiveSamplingScaleExponent;
+                    numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
+                }
+            }
+            float3 minSampleColor = float3(170, 220, 200) / 255;
+            float3 maxSampleColor = float3(153, 18, 15) / 255;
+            float sppScale = float(numSamples) / g_CB.RTAO_MaxSPP;
+            color = float4(lerp(minSampleColor, maxSampleColor, sppScale), 1);
         }
         else if (g_CB.compositionType == CompositionType::NormalsOnly)
         {
@@ -120,7 +142,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
         }
         else if (g_CB.compositionType == CompositionType::AmbientOcclusionHighResSamplingPixels)
         {
-            color = float4(0, 0, 0, 1);
+            color = float4(1, 1, 1, 1);
         }
         else
         {

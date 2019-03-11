@@ -115,6 +115,8 @@ namespace SceneArgs
     const WCHAR* CompositionModes[CompositionType::Count] = { L"Phong Lighting", L"Ambient Occlusion", L"Ambient Occlusion High Res Sample Pixels", L"Suface Normals", L"Depth Buffer" };
     EnumVar CompositionMode(L"Render composition mode", CompositionType::AmbientOcclusionOnly, CompositionType::Count, CompositionModes);
 
+    const UINT DefaultSpp = 4;  // ToDo Cleanup
+
     //**********************************************************************************************************************************
     // Ambient Occlusion
     // TODo standardize naming in options
@@ -130,9 +132,15 @@ namespace SceneArgs
     BoolVar AOEnabled(L"AO/Enabled", true);
     // RTAO
     BoolVar QuarterResAO(L"AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
-    BoolVar RTAOAdaptiveSampling(L"AO/RTAO/Adaptive sampling", true);
-    NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"AO/RTAO/Adaptive sampling max filter weight", 0.915f, 0.0f, 1.f, 0.005f);
-    IntVar AOSampleCountPerDimension(L"AO/RTAO/Samples per pixel NxN", 1, 1, 32, 1, OnRecreateSamples, nullptr);
+    BoolVar RTAOAdaptiveSampling(L"AO/RTAO/Adaptive Sampling/Enabled", true);
+    BoolVar RTAOUseNormalMaps(L"AO/RTAO/Normal maps", true);
+    NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
+    BoolVar RTAOAdaptiveSamplingMinMaxSampling(L"AO/RTAO/Adaptive Sampling/Only min\\max sampling", false);
+    NumVar RTAOAdaptiveSamplingScaleExponent(L"AO/RTAO/Adaptive Sampling/Sampling scale exponent", 0.7, 0.0f, 10, 0.1f);
+    IntVar RTAOAdaptiveSamplingMinSamples(L"AO/RTAO/Adaptive Sampling/Min samples", 1, 1, 1, 1);
+
+
+    IntVar AOSampleCountPerDimension(L"AO/RTAO/Samples per pixel NxN", 3, 1, 32, 1, OnRecreateSamples, nullptr);
     IntVar AOSampleSetDistributedAcrossPixels(L"AO/RTAO/Sample set distribution across NxN pixels ", 4, 1, 8, 1, OnRecreateSamples, nullptr);
     NumVar RTAOMaxRayHitTime(L"AO/RTAO/Max ray hit time", 22.0, 0.0f, 50.0f, 0.2f);
     BoolVar RTAOApproximateInterreflections(L"AO/RTAO/Approximate Interreflections/Enabled", true);
@@ -140,6 +148,7 @@ namespace SceneArgs
     NumVar  minimumAmbientIllumination(L"AO/RTAO/Minimum Ambient Illumination", 0.1f, 0.0f, 1.0f, 0.01f);
     BoolVar RTAOIsExponentialFalloffEnabled(L"AO/RTAO/Exponential Falloff", true);
     NumVar RTAO_ExponentialFalloffDecayConstant(L"AO/RTAO/Exponential Falloff Decay Constant", 1.25f, 0.0f, 20.f, 0.25f);
+    NumVar RTAO_ExponentialFalloffMinOcclusionCutoff(L"AO/RTAO/Exponential Falloff Min Occlusion Cutoff", 0.1f, 0.0f, 1.f, 0.05f);
 
     // ToDo standardixe AO RTAO prefix
 
@@ -156,7 +165,7 @@ namespace SceneArgs
     NumVar AODenoiseValueSigma(L"AO/RTAO/Denoising/Value Sigma", 10, 0.0f, 30.0f, 0.1f);
 
 #if PBRT_SCENE
-    NumVar AODenoiseDepthSigma(L"AO/RTAO/Denoising/Depth Sigma", 0.3f, 0.0f, 10.0f, 0.02f);
+    NumVar AODenoiseDepthSigma(L"AO/RTAO/Denoising/Depth Sigma", 0.5f, 0.0f, 10.0f, 0.02f);
 #else
     NumVar AODenoiseDepthSigma(L"AO/RTAO/Denoising/Depth Sigma", 0.7f, 0.0f, 10.0f, 0.02f);
 #endif
@@ -2000,6 +2009,12 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     // ToDo move
     m_sceneCB->RTAO_UseAdaptiveSampling = SceneArgs::RTAOAdaptiveSampling;
     m_sceneCB->RTAO_AdaptiveSamplingMaxWeightSum = SceneArgs::RTAOAdaptiveSamplingMaxFilterWeight;
+    m_sceneCB->RTAO_UseNormalMaps = SceneArgs::RTAOUseNormalMaps;
+    m_sceneCB->RTAO_AdaptiveSamplingMinMaxSampling = SceneArgs::RTAOAdaptiveSamplingMinMaxSampling;
+    m_sceneCB->RTAO_AdaptiveSamplingScaleExponent = SceneArgs::RTAOAdaptiveSamplingScaleExponent;
+    m_sceneCB->RTAO_AdaptiveSamplingMinSamples = SceneArgs::RTAOAdaptiveSamplingMinSamples;
+
+    SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
  }
 
 // Parse supplied command line args.
@@ -2355,12 +2370,30 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     // ToDo move
     m_sceneCB->useShadowRayHitTime = SceneArgs::RTAOIsExponentialFalloffEnabled;
     // ToDo standardize RTAO RTAO_ prefix
-    m_sceneCB->maxShadowRayHitTime = SceneArgs::RTAOMaxRayHitTime;
+    m_sceneCB->RTAO_maxShadowRayHitTime = SceneArgs::RTAOMaxRayHitTime;
     m_sceneCB->RTAO_approximateInterreflections = SceneArgs::RTAOApproximateInterreflections;
     m_sceneCB->RTAO_diffuseReflectanceScale = SceneArgs::RTAODiffuseReflectanceScale;
     m_sceneCB->RTAO_minimumAmbientIllumnination = SceneArgs::minimumAmbientIllumination;
     m_sceneCB->RTAO_IsExponentialFalloffEnabled = SceneArgs::RTAOIsExponentialFalloffEnabled;
     m_sceneCB->RTAO_exponentialFalloffDecayConstant = SceneArgs::RTAO_ExponentialFalloffDecayConstant;
+
+    // Calculate a theoretical max ray distance to be used in occlusion factor computation.
+    // Occlusion factor of a ray hit is computed based of its ray hit time, falloff exponent and a max ray hit time.
+    // By specifying a min occlusion factor of a ray, we can skip tracing rays that would have an occlusion 
+    // factor less than the cutoff to save a bit of performance (generally 1-10% perf win without visible AO result impact). 
+    // Therefore we discern between true maxRayHitTime, used in TraceRay, 
+    // and a theoretical one used of calculating the occlusion factor on hit.
+    {
+        float occclusionCutoff = SceneArgs::RTAO_ExponentialFalloffMinOcclusionCutoff;
+        float lambda = SceneArgs::RTAO_ExponentialFalloffDecayConstant;
+
+        // Invert occlusionFactor = exp(-lambda * t * t), where t is tHit/tMax of a ray.
+        float t = sqrt(logf(occclusionCutoff) / -lambda);
+
+        m_sceneCB->RTAO_maxShadowRayHitTime = t * SceneArgs::RTAOMaxRayHitTime;
+        m_sceneCB->RTAO_maxTheoreticalShadowRayHitTime = SceneArgs::RTAOMaxRayHitTime;
+    }
+
 	PIXBeginEvent(commandList, 0, L"GenerateGBuffer");
 
 	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
@@ -2694,7 +2727,15 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 		m_csComposeRenderPassesCB->rtDimensions = XMUINT2(m_GBufferWidth, m_GBufferHeight);
         m_csComposeRenderPassesCB->enableAO = SceneArgs::AOEnabled;
         m_csComposeRenderPassesCB->compositionType = static_cast<CompositionType>(static_cast<UINT>(SceneArgs::CompositionMode));
+
+        m_csComposeRenderPassesCB->RTAO_UseAdaptiveSampling = SceneArgs::RTAOAdaptiveSampling;
         m_csComposeRenderPassesCB->RTAO_AdaptiveSamplingMaxWeightSum = SceneArgs::RTAOAdaptiveSamplingMaxFilterWeight;
+        m_csComposeRenderPassesCB->RTAO_AdaptiveSamplingMinMaxSampling = SceneArgs::RTAOAdaptiveSamplingMinMaxSampling;
+        m_csComposeRenderPassesCB->RTAO_AdaptiveSamplingScaleExponent = SceneArgs::RTAOAdaptiveSamplingScaleExponent;
+        m_csComposeRenderPassesCB->RTAO_AdaptiveSamplingMinSamples = SceneArgs::RTAOAdaptiveSamplingMinSamples;
+
+        m_csComposeRenderPassesCB->RTAO_MaxSPP = SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension;
+
         m_csComposeRenderPassesCB.CopyStagingToGpu(frameIndex);
 	}
 

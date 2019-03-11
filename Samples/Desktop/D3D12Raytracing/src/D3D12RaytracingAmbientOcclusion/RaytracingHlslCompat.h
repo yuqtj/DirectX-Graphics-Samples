@@ -323,22 +323,29 @@ struct SceneConstantBuffer
     UINT seed;
     UINT numSamplesPerSet;
     UINT numSampleSets;
-    UINT numSamplesToUse;
+    UINT numSamplesToUse;       // ToDo rename to max samples
     
     UINT numPixelsPerDimPerSet;
     BOOL useShadowRayHitTime;           // ToDo Rename "use"
     XMFLOAT2 cameraJitter;
 
-    float maxShadowRayHitTime;
+    float RTAO_maxShadowRayHitTime;             // Max shadow ray hit time used for tMax in TraceRay.
     BOOL RTAO_approximateInterreflections;      // Approximate interreflections. 
     float RTAO_diffuseReflectanceScale;              // Diffuse reflectance from occluding surfaces. 
     float RTAO_minimumAmbientIllumnination;       // Ambient illumination coef when a ray is occluded.
+
+    float RTAO_maxTheoreticalShadowRayHitTime;  // Max shadow ray hit time used in falloff computation accounting for
+                                                // RTAO_ExponentialFalloffMinOcclusionCutoff and RTAO_maxShadowRayHitTime.
 
     BOOL RTAO_IsExponentialFalloffEnabled;               // Apply exponential falloff to AO coefficient based on ray hit distance.    
     float RTAO_exponentialFalloffDecayConstant; 
     BOOL RTAO_UseAdaptiveSampling;
     float RTAO_AdaptiveSamplingMaxWeightSum;
 
+    float RTAO_AdaptiveSamplingScaleExponent;   // ToDo weight exponent instead?
+    BOOL RTAO_UseNormalMaps;
+    BOOL RTAO_AdaptiveSamplingMinMaxSampling;
+    UINT RTAO_AdaptiveSamplingMinSamples;
 };
  
 // Final render output composition modes.
@@ -368,6 +375,14 @@ struct ComposeRenderPassesConstantBuffer
 
 	XMFLOAT3 lightDiffuseColor;		
     float RTAO_AdaptiveSamplingMaxWeightSum;
+
+    BOOL RTAO_UseAdaptiveSampling;
+    float RTAO_AdaptiveSamplingScaleExponent;   // ToDo weight exponent instead?
+    BOOL RTAO_AdaptiveSamplingMinMaxSampling;
+    UINT RTAO_AdaptiveSamplingMinSamples;
+
+    UINT RTAO_MaxSPP;
+    float padding3[3];
 };
 
 struct AoBlurConstantBuffer

@@ -299,7 +299,7 @@ float CalculateAO(out uint numShadowRayHits, in UINT numSamples, in float3 hitPo
 #endif
 
 #if REPRO_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF
-        const float tMax = g_sceneCB.maxShadowRayHitTime;
+        const float tMax = g_sceneCB.RTAO_maxShadowRayHitTime;
         float tHit;
         if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
         {
@@ -320,7 +320,7 @@ float CalculateAO(out uint numShadowRayHits, in UINT numSamples, in float3 hitPo
     float occlusionCoef = saturate(occlussionCoefSum / numSamples);
     float ambientCoef = 1.f - occlusionCoef;
 #elif REPRO_INVISIBLE_WALL
-        const float tMax = g_sceneCB.maxShadowRayHitTime;
+        const float tMax = g_sceneCB.RTAO_maxShadowRayHitTime;
         float tHit;
         if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
         {
@@ -341,15 +341,17 @@ float CalculateAO(out uint numShadowRayHits, in UINT numSamples, in float3 hitPo
     float occlusionCoef = saturate(occlussionCoefSum / numSamples);
     float ambientCoef = 1.f - occlusionCoef;
 #else
-        const float tMax = g_sceneCB.maxShadowRayHitTime;
+        const float tMax = g_sceneCB.RTAO_maxShadowRayHitTime;
         float tHit;
         if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
         {
             float occlusionCoef = 1;
             if (g_sceneCB.RTAO_IsExponentialFalloffEnabled)
             {
-                float t = tHit / tMax;
+                float theoreticalTMax = g_sceneCB.RTAO_maxTheoreticalShadowRayHitTime;
+                float t = tHit / theoreticalTMax;
                 float lambda = g_sceneCB.RTAO_exponentialFalloffDecayConstant;
+                // Note: update tMax calculation on falloff expression change.
                 occlusionCoef = exp(-lambda * t*t);
             }
             occlussionCoefSum += (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
@@ -489,11 +491,6 @@ void MyRayGenShader_GBuffer()
                                     (FAR_PLANE + NEAR_PLANE - 2.0 * NEAR_PLANE * FAR_PLANE / rayLength) / (FAR_PLANE - NEAR_PLANE)
                                 :   1;
         nonLinearDepth = (nonLinearDepth + 1.0) / 2.0;
-#elif 0
-
-        float nonLinearDepth =  rayPayload.hit ?
-                                    (1 - (1 - rayLength) / (rayLength * ZSCALE))
-                                :   0;
 #else
         float nonLinearDepth = rayPayload.hit ? rayLength : 1;
 
@@ -534,7 +531,21 @@ void MyRayGenShader_AO()
         if (g_sceneCB.RTAO_UseAdaptiveSampling)
         {
             float filterWeightSum = g_filterWeightSum[DTid].x;
-            numSamples = filterWeightSum <= g_sceneCB.RTAO_AdaptiveSamplingMaxWeightSum ? 4* numSamples : numSamples;
+            float clampedFilterWeightSum = min(filterWeightSum, g_sceneCB.RTAO_AdaptiveSamplingMaxWeightSum);
+            float sampleScale = 1 - (clampedFilterWeightSum / g_sceneCB.RTAO_AdaptiveSamplingMaxWeightSum);
+            
+            UINT minSamples = g_sceneCB.RTAO_AdaptiveSamplingMinSamples;
+            UINT extraSamples = g_sceneCB.numSamplesToUse - minSamples;
+
+            if (g_sceneCB.RTAO_AdaptiveSamplingMinMaxSampling)
+            {
+                numSamples = minSamples + (sampleScale >= 0.001 ? extraSamples : 0);
+            }
+            else
+            {
+                float scaleExponent = g_sceneCB.RTAO_AdaptiveSamplingScaleExponent;
+                numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
+            }
         }
 		ambientCoef = CalculateAO(numShadowRayHits, numSamples, hitPosition, surfaceNormal, surfaceAlbedo);
 	}
@@ -697,7 +708,8 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     px = RayPlaneIntersection(hitPosition, normal, rayPayload.rx.origin, rayPayload.rx.direction);
     py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
     
-    if (material.hasDiffuseTexture || material.hasNormalTexture)
+    if (material.hasDiffuseTexture || 
+        (g_sceneCB.RTAO_UseNormalMaps && material.hasNormalTexture))
     {
         float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
         float3 tangent = HitAttribute(vertexTangents, attr);
@@ -710,7 +722,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     }
 
     // Apply NormalMap
-    if (material.hasNormalTexture)
+    if (g_sceneCB.RTAO_UseNormalMaps && material.hasNormalTexture)
     {
         float3 tangent;
         if (material.hasPerVertexTangents)

@@ -77,6 +77,9 @@ public:
     virtual std::wstring ToFormattedString() const override;
     virtual std::wstring ToString() const override;
     virtual void SetValue( FILE* file, const std::wstring& setting)  override;
+    void SetMaxValue(float value) { m_MaxValue = value; m_MinValue = std::min(m_MinValue, value); }
+    void SetMinValue(float value) { m_MinValue = value; m_MaxValue = std::max(m_MaxValue, value); }
+
 
 protected:
     float Clamp( float val ) { return val > m_MaxValue ? m_MaxValue : val < m_MinValue ? m_MinValue : val; }
@@ -113,6 +116,8 @@ public:
     virtual std::wstring ToFormattedString() const override;
     virtual std::wstring ToString() const override;
     virtual void SetValue( FILE* file, const std::wstring& setting ) override;
+    void SetMaxValue(int32_t value) { m_MaxValue = value; m_MinValue = std::min(m_MinValue, value); }
+    void SetMinValue(int32_t value) { m_MinValue = value; m_MaxValue = std::max(m_MaxValue, value); }
 
 protected:
     int32_t Clamp( int32_t val ) { return val > m_MaxValue ? m_MaxValue : val < m_MinValue ? m_MinValue : val; }
