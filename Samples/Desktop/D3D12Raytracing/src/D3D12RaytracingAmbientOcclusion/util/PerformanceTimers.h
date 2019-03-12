@@ -16,6 +16,7 @@
 #pragma once
 
 
+
 namespace DX
 {
     //----------------------------------------------------------------------------------
@@ -128,13 +129,13 @@ namespace DX
 
         ComPtr<ID3D12QueryHeap> m_heap;
         ComPtr<ID3D12Resource>  m_buffer;
-        double                                  m_gpuFreqInv;
-        float                                   m_avg[c_maxTimers];
-        UINT64                                  m_timing[c_timerSlots];
-        size_t                                  m_maxframeCount;
-		float									m_avgRefreshPeriodMs;
-		float									m_avgPeriodTotal[c_maxTimers];
-		UINT									m_avgTimestampsTotal;
-		CPUTimer								m_avgPeriodTimer;
+        double                  m_gpuFreqInv;
+        float                   m_avg[c_maxTimers];
+        UINT64                  m_timing[c_timerSlots];
+        size_t                  m_maxframeCount;
+		float					m_avgRefreshPeriodMs;
+		float					m_avgPeriodTotal[c_maxTimers];
+		UINT					m_avgTimestampsTotal;
+		CPUTimer				m_avgPeriodTimer;
     };
 }

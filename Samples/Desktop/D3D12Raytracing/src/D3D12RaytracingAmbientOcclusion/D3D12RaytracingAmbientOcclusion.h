@@ -18,6 +18,7 @@
 #include "DirectXRaytracingHelper.h"
 #include "CameraController.h"
 #include "PerformanceTimers.h"
+#include "GpuTimeManager.h"
 #include "Sampler.h"
 #include "UILayer.h"
 #include "GpuKernels.h"
@@ -147,7 +148,7 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE SSAOgpuDescriptorReadAccess = { UINT64_MAX };
 
 	// Geometry
-	DX::GPUTimer m_gpuTimers[GpuTimers::Count];
+	DX::GpuTimeManager m_gpuTimeManager;
 
 	// ToDo clean up buffer management
 	// SquidRoom buffers
@@ -256,8 +257,8 @@ private:
     void UpdateGridGeometryTransforms();
     void InitializeScene();
 	void UpdateAccelerationStructures(bool forceBuild = false);
-	void DispatchRays(ID3D12Resource* rayGenShaderTable, DX::GPUTimer* gpuTimer, uint32_t width=0, uint32_t height=0);
-	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
+	void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT gpuTimerId, uint32_t width=0, uint32_t height=0);
+	void CalculateRayHitCount(ReduceSumCalculations::Enum type, UINT gpuTimerId);
     void ApplyAtrousWaveletTransformFilter();
     void CalculateAdaptiveSamplingCounts();
 
@@ -291,6 +292,5 @@ private:
     void BuildShaderTables();
     void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
     void CalculateFrameStats();
-	float NumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(), m_raytracingWidth, m_raytracingHeight); }
-	float NumRayGeometryHitsPerSecond(ReduceSumCalculations::Enum type) { return NumMPixelsPerSecond(m_gpuTimers[GpuTimers::Raytracing_GBuffer].GetAverageMS(type), m_raytracingWidth, m_raytracingHeight); }
+	float NumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimeManager.GetAverageMS(GpuTimers::Raytracing_GBuffer), m_raytracingWidth, m_raytracingHeight); }
 };

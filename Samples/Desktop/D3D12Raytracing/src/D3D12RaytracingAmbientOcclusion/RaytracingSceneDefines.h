@@ -186,7 +186,8 @@ namespace GpuTimers {
         UpsampleAOBilateral,
         ComposeRenderPassesCS,
         UpdateBLAS,
-        ReduceSum,
+        CameraRayHitsReduceSum,
+        AORayHitsReduceSum,
         UpdateTLAS,
 		Count
 	};

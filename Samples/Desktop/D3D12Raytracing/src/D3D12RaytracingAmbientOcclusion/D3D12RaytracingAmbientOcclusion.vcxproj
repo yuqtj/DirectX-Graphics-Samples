@@ -196,6 +196,7 @@
     <ClInclude Include="util\EngineTuning.h" />
     <ClInclude Include="util\GameInput.h" />
     <ClInclude Include="util\GpuKernels.h" />
+    <ClInclude Include="util\GpuTimeManager.h" />
     <ClInclude Include="util\HlslCompat.h" />
     <ClInclude Include="util\PBRTParser\PBRTParser.h" />
     <ClInclude Include="util\PBRTParser\PlyParser.h" />
@@ -243,6 +244,7 @@
     </ClCompile>
     <ClCompile Include="util\GameInput.cpp" />
     <ClCompile Include="util\GpuKernels.cpp" />
+    <ClCompile Include="util\GpuTimeManager.cpp" />
     <ClCompile Include="util\PBRTParser\PBRTParser.cpp" />
     <ClCompile Include="util\PBRTParser\PlyParser.cpp" />
     <ClCompile Include="util\PerformanceTimers.cpp" />

@@ -135,6 +135,9 @@
     <ClInclude Include="SSAO\Menus.h">
       <Filter>SSAO</Filter>
     </ClInclude>
+    <ClInclude Include="util\GpuTimeManager.h">
+      <Filter>Header Files\Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -202,6 +205,9 @@
     </ClCompile>
     <ClCompile Include="SSAO\Menus.cpp">
       <Filter>SSAO</Filter>
+    </ClCompile>
+    <ClCompile Include="util\GpuTimeManager.cpp">
+      <Filter>Source Files\Util</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
