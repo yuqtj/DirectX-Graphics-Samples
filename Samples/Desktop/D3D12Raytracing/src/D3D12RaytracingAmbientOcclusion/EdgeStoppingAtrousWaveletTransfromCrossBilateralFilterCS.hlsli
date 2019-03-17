@@ -18,9 +18,10 @@ Texture2D<float> g_inValues : register(t0);
 
 Texture2D<float4> g_inNormal : register(t1);
 Texture2D<float> g_inDepth : register(t2);
-Texture2D<uint> g_inNormalOct : register(t3);
 Texture2D<float> g_inVariance : register(t4);   // ToDo remove
 Texture2D<float> g_inSmoothedVariance : register(t5);   // ToDo rename
+Texture2D<float> g_inHitDistance : register(t6);   // ToDo remove?
+
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
 #if !WORKAROUND_ATROUS_VARYING_OUTPUTS 
@@ -104,7 +105,7 @@ void AddFilterContribution(
         // ToDo standardize cb naming
         if (cb.outputFilteredVariance)
         {
-            weightedVarianceSum += w * w * iVariance;
+            weightedVarianceSum += w * w * iVariance;   // ToDo rename to sqWeight...
         }
     }
 }

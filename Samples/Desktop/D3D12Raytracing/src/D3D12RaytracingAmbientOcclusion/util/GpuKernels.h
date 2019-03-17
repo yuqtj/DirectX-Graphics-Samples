@@ -119,11 +119,11 @@ namespace GpuKernels
 	};
 
     // ToDo rename to GBuffer downsample
-    class DownsampleBilateralFilter
+    class DownsampleNormalDepthHitPositionGeometryHitBilateralFilter
     {
     public:
         enum Type {
-            Filter2X2 = 0,
+            FilterDepthAware2x2 = 0       // ToDo rename to DepthAware
         };
 
         void Release()
@@ -149,11 +149,39 @@ namespace GpuKernels
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
     };
 
+    class DownsampleValueNormalDepthBilateralFilter
+    {
+    public:
+        enum Type {
+            FilterDepthAware2x2 = 0,
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device, Type type);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            UINT width,
+            UINT height,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalDepthResourceHandle);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+    };
+
     class UpsampleBilateralFilter
     {
     public:
         enum Type {
-            Filter2X2 = 0,
+            Filter2x2 = 0,
         };
 
         void Release()
@@ -177,6 +205,37 @@ namespace GpuKernels
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
     };
 
+    // ToDo rename
+    class MultiScale_UpsampleBilateralFilterAndCombine
+    {
+    public:
+        enum Type {
+            Filter2x2 = 0,
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device, Type type);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            UINT width,
+            UINT height,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValue1ResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValue2ResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+    };
+
     class GaussianFilter
     {
     public:
@@ -190,7 +249,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device);
+        void Initialize(ID3D12Device* device, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList* commandList,
             UINT width,
@@ -198,7 +257,8 @@ namespace GpuKernels
             FilterType type,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+            UINT perFrameInstanceId = 0);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -260,7 +320,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, UINT maxFilterPasses);
+        void Initialize(ID3D12Device* device, UINT maxFilterPasses, UINT numCallsPerFrame = 1);
         void CreateInputResourceSizeDependentResources(
             ID3D12Device* device,
             DX::DescriptorHeap* descriptorHeap,
@@ -270,20 +330,23 @@ namespace GpuKernels
             ID3D12GraphicsCommandList* commandList,
             ID3D12DescriptorHeap* descriptorHeap, 
             FilterType type,
+            // ToDo use helper structs to pass the data in
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputSmoothedVarianceResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
             RWGpuResource* outputResourceHandle,
             float valueSigma,
             float depthSigma,
             float normalSigma,
+            UINT kernelStepShifts[5],
             UINT numFilterPasses = 5,
             Mode filterMode = OutputFilteredValue,
             bool reverseFilterPassOrder = false,
-            bool useCalculatedVariance = true);
+            bool useCalculatedVariance = true,
+            UINT perFrameInstanceId = 0);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -293,6 +356,7 @@ namespace GpuKernels
         RWGpuResource			            m_filterWeightOutput;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CBfilterWeigth;
+        UINT                                m_maxFilterPasses = 0;
     };
 
 
@@ -310,7 +374,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device);
+        void Initialize(ID3D12Device* device, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -320,11 +384,11 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
             float depthSigma,
             float normalSigma,
-            bool useApproximateVariance = true);
+            bool useApproximateVariance = true,
+            UINT perFrameInstanceId = 0);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -357,7 +421,6 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
             float depthSigma,
             float normalSigma,
@@ -369,3 +432,4 @@ namespace GpuKernels
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
     };
 }
+

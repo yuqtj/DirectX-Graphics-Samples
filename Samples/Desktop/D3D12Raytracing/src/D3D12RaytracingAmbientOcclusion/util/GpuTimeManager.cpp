@@ -93,7 +93,7 @@ void GpuTimeManager::RestoreDevice(ID3D12Device* device, ID3D12CommandQueue* com
     m_ReadBackBuffer->SetName(L"GpuTimeManager Readback Buffer");
 
     m_avg.resize(m_MaxNumTimers);
-    m_timing.resize(m_MaxNumTimers);
+    m_timing.resize(m_MaxNumTimerSlots);
     m_avgPeriodTotal.resize(m_MaxNumTimers);    
     Reset();
 }
@@ -107,12 +107,22 @@ void GpuTimeManager::ReleaseDevice()
 
 void GpuTimeManager::Start(ID3D12GraphicsCommandList* commandList, UINT timerid)
 {
+    // ToDo move this to the caller?
+    if (timerid == UINT_MAX)
+    {
+        return;
+    }
     assert(timerid < m_MaxNumTimers && L"Timer ID out of range");
     commandList->EndQuery(m_QueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timerid * 2);
 }
 
 void GpuTimeManager::Stop(ID3D12GraphicsCommandList* commandList, UINT timerid)
 {
+    // ToDo move this to the caller?
+    if (timerid == UINT_MAX)
+    {
+        return;
+    }
     assert(timerid < m_MaxNumTimers && L"Timer ID out of range");
     commandList->EndQuery(m_QueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timerid * 2 + 1);
 }

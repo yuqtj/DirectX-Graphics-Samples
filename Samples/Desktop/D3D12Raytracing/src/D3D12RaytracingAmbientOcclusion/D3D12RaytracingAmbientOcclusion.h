@@ -107,17 +107,28 @@ private:
 	ComPtr<ID3D12RootSignature>         m_computeRootSigs[ComputeShader::Type::Count];
 
 	GpuKernels::ReduceSum				m_reduceSumKernel;
+
     GpuKernels::AtrousWaveletTransformCrossBilateralFilter m_atrousWaveletTransformFilter;
+    const UINT                          MaxAtrousWaveletTransformFilterInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for calculating ImportanceMap
+    UINT                                m_atrousWaveletTransformFilterPerFrameInstanceId;
+
     GpuKernels::CalculateVariance       m_calculateVarianceKernel;
+    const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame = MaxAtrousWaveletTransformFilterInvocationsPerFrame;
+    UINT                                m_calculateVarianceKernelInstancePerFrameInstanceId;    // ToDo cleanup
+
     GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
+    const UINT                          MaxGaussianSmoothingKernelInvocationsPerFrame = c_MaxDenoisingScaleLevels;
+    UINT                                m_gaussianSmoothingKernelPerFrameInstanceId;
 
 	// ToDo combine kernels to an array
 	GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
-    GpuKernels::DownsampleBilateralFilter	m_downsampleGBufferBilateralFilterKernel;
+    GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter m_downsampleGBufferBilateralFilterKernel; //ToDo rename?
+    GpuKernels::DownsampleValueNormalDepthBilateralFilter m_downsampleValueNormalDepthBilateralFilterKernel;
     GpuKernels::UpsampleBilateralFilter	    m_upsampleBilateralFilterKernel;
-	const UINT c_SupersamplingScale = 2;
+    GpuKernels::MultiScale_UpsampleBilateralFilterAndCombine	    m_multiScale_upsampleBilateralFilterAndCombineKernel;
+	const UINT c_SupersamplingScale = 2;    // ToDo UI parameter
 	UINT								m_numRayGeometryHits[ReduceSumCalculations::Count];
 
 	ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -190,6 +201,23 @@ private:
 
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;
+
+    // Multi-scale
+    static const UINT c_MaxDenoisingScaleLevels = 8;
+    struct MultiScaleDenoisingResource
+    {
+        RWGpuResource m_value;
+        RWGpuResource m_normalDepth;
+
+        RWGpuResource m_smoothedValue;              // ToDo rename smoothed to denoised
+
+        RWGpuResource m_downsampledSmoothedValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
+        RWGpuResource m_downsampledNormalDepthValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
+
+        RWGpuResource m_varianceResource;
+        RWGpuResource m_smoothedVarianceResource;
+    };
+    MultiScaleDenoisingResource m_multiScaleDenoisingResources[c_MaxDenoisingScaleLevels];
     
 	UINT m_GBufferWidth;
 	UINT m_GBufferHeight;
@@ -260,10 +288,15 @@ private:
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT gpuTimerId, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type, UINT gpuTimerId);
     void ApplyAtrousWaveletTransformFilter();
+    void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
+    void ApplyMultiScaleAtrousWaveletTransformFilter();
     void CalculateAdaptiveSamplingCounts();
 
 	void DownsampleRaytracingOutput();
     void DownsampleGBufferBilateral();
+    // ToDo standardize const& vs *
+    void DownsampleValueNormalDepthBilateral(const RWGpuResource& inValueResource, const RWGpuResource& inNormalDepthResource, RWGpuResource* outValueResource, RWGpuResource* outNormalDepthResource, UINT timerId);
+    void DownsampleGBufferAndAoBilateral();
     void UpsampleAOBilateral();
 
     void CreateConstantBuffers();

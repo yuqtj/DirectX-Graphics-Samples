@@ -512,6 +512,7 @@ namespace ResourceRWFlags {
 }
 
 // ToDo turn into class and check rwFlags being properly set on access.
+// ToDo add state tracking
 struct RWGpuResource
 {
 	UINT rwFlags = ResourceRWFlags::None;
@@ -793,7 +794,7 @@ inline UINT CeilDivide(UINT value, UINT divisor)
 
 inline UINT CeilLogWithBase(UINT value, UINT base)
 {
-	return static_cast<UINT>(ceil(log(value)/ log(base)));
+	return static_cast<UINT>(ceil(log(value)/log(base)));
 }
 
 inline void SerializeAndCreateRootSignature(

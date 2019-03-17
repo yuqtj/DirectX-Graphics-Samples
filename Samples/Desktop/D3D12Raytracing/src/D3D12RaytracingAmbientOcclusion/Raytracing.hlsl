@@ -18,6 +18,8 @@
 #include "RandomNumberGenerator.hlsli"
 #include "SSAO/GlobalSharedHlslCompat.h" // ToDo remove
 
+#define HitDistanceOnMiss -1
+
 // ToDo split to Raytracing for GBUffer and AO?
 
 // ToDo dedupe code triangle normal calc,..
@@ -57,6 +59,7 @@ RWTexture2D<uint> g_rtAORayHits : register(u11);
 RWTexture2D<float> g_rtVisibilityCoefficient : register(u12);
 RWTexture2D<float> g_rtGBufferDepth : register(u13);
 RWTexture2D<float4> g_rtGBufferNormalRGB : register(u14);   // for SSAO. ToDo cleanup
+RWTexture2D<float> g_rtAORayHitDistance : register(u15);
 
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
@@ -140,7 +143,7 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRay
 
     // Initialize shadow ray payload.
     // Set the initial value to a hit at TMax. 
-    // Miss shader will set it to -1.
+    // Miss shader will set it to HitDistanceOnMiss.
     // This way closest and any hit shaders can be skipped if true tHit is not needed. 
     ShadowRayPayload shadowPayload = { TMax };
 
@@ -169,10 +172,10 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRay
         TraceRayParameters::MissShader::Offset[RayType::Shadow],
         rayDesc, shadowPayload);
     
-    // Report a hit if Miss Shader didn't set the value to -1.
+    // Report a hit if Miss Shader didn't set the value to HitDistanceOnMiss.
     tHit = shadowPayload.tHit;
 
-    return shadowPayload.tHit > (-1 + 0.001f);
+    return shadowPayload.tHit > (HitDistanceOnMiss + 0.001f);
 }
 
 // Trace a camera ray into the scene.
@@ -212,9 +215,11 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 
 
 // ToDo comment
-float CalculateAO(out uint numShadowRayHits, in UINT numSamples, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1))
+// HitDistance - averaged hit distance of all AO ray hits.
+float CalculateAO(out uint numShadowRayHits, out float hitDistance, in UINT numSamples, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1))
 {
     numShadowRayHits = 0;
+    hitDistance = 0;
     float occlussionCoefSum = 0;
 
 #if AO_HITPOSITION_BASED_SEED
@@ -356,6 +361,7 @@ float CalculateAO(out uint numShadowRayHits, in UINT numSamples, in float3 hitPo
             }
             occlussionCoefSum += (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
 
+            hitDistance += tHit;
             numShadowRayHits++;
         }
     }
@@ -381,6 +387,12 @@ float CalculateAO(out uint numShadowRayHits, in UINT numSamples, in float3 hitPo
 
         ambientCoef = kA / (1 - rho * (1 - kA));
     }
+    
+    // ToDo scale base on AO coef?
+    if (g_sceneCB.useShadowRayHitTime)
+    {
+        hitDistance = numShadowRayHits > 0 ? hitDistance / numShadowRayHits : HitDistanceOnMiss;
+    }
 
 	return ambientCoef;
 }
@@ -389,7 +401,8 @@ float CalculateAO(out uint numShadowRayHits, in UINT numSamples, in float3 hitPo
 float CalculateAO(in float3 hitPosition, UINT numSamples, in float3 surfaceNormal)
 {
 	uint numShadowRayHits;
-	return CalculateAO(numShadowRayHits, numSamples, hitPosition, surfaceNormal);
+    float hitDistance;
+	return CalculateAO(numShadowRayHits, hitDistance, numSamples, hitPosition, surfaceNormal);
 }
 
 //***************************************************************************
@@ -470,7 +483,6 @@ void MyRayGenShader_GBuffer()
         obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
     }
 
-
 #if COMPRES_NORMALS
     // compress normal
     // ToDo review precision of 16bit format - particularly rayLength (renormalize ray length?)
@@ -508,6 +520,7 @@ void MyRayGenShader_AO()
 	bool hit = g_texGBufferPositionHits[DTid] > 0;
 	uint numShadowRayHits = 0;
 	float ambientCoef = 1;  // ToDo 1 or 0?
+    float hitDistance = HitDistanceOnMiss;
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
@@ -547,7 +560,7 @@ void MyRayGenShader_AO()
                 numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
             }
         }
-		ambientCoef = CalculateAO(numShadowRayHits, numSamples, hitPosition, surfaceNormal, surfaceAlbedo);
+		ambientCoef = CalculateAO(numShadowRayHits, hitDistance, numSamples, hitPosition, surfaceNormal, surfaceAlbedo);
 	}
 
 	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
@@ -555,6 +568,11 @@ void MyRayGenShader_AO()
 	// ToDo test perf impact of writing this
 	g_rtAORayHits[DispatchRaysIndex().xy] = numShadowRayHits;
 #endif
+
+    if (g_sceneCB.useShadowRayHitTime)
+    {
+        g_rtAORayHitDistance[DispatchRaysIndex().xy] = hitDistance;
+    }
 }
 
 [shader("raygeneration")]
@@ -565,6 +583,7 @@ void MyRayGenShaderQuarterRes_AO()
 	bool hit = g_texGBufferPositionHits[DTid] > 0;
 	uint numShadowRayHits = 0;
 	float ambientCoef = 0;
+    float hitDistance;
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
@@ -574,7 +593,7 @@ void MyRayGenShaderQuarterRes_AO()
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
         // ToDo Standardize naming AO vs AmbientOcclusion ?
-		ambientCoef = CalculateAO(numShadowRayHits, g_sceneCB.numSamplesToUse, hitPosition, surfaceNormal);
+		ambientCoef = CalculateAO(numShadowRayHits, hitDistance, g_sceneCB.numSamplesToUse, hitPosition, surfaceNormal);
 	}
 
 	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
@@ -797,7 +816,7 @@ void MyMissShader(inout RayPayload rayPayload)
 [shader("miss")]
 void MyMissShader_ShadowRay(inout ShadowRayPayload rayPayload)
 {
-    rayPayload.tHit = -1;
+    rayPayload.tHit = HitDistanceOnMiss;
 }
 
 // ToDo - remove miss shader for GBuffer

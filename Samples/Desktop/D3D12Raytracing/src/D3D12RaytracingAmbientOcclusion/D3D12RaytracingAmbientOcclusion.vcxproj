@@ -324,6 +324,8 @@
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
+      <DisableOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </DisableOptimizations>
     </FxCompile>
     <FxCompile Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl">
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
@@ -334,6 +336,8 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.3</ShaderModel>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
+      <DisableOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </DisableOptimizations>
     </FxCompile>
     <FxCompile Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
@@ -344,6 +348,8 @@
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
+      <DisableOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </DisableOptimizations>
     </FxCompile>
     <FxCompile Include="RNGVisualizerCS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
@@ -493,7 +499,11 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </ExcludedFromBuild>
     </FxCompile>
-    <FxCompile Include="util\DownsampleBilateralFilter2x2CS.hlsl">
+    <FxCompile Include="util\DownsampleBilateralFilterCS.hlsli">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="util\DownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS.hlsl">
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.3</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
@@ -502,6 +512,7 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
+      <DisableOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DisableOptimizations>
     </FxCompile>
     <FxCompile Include="util\DownsampleBoxFilter2x2CS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
@@ -537,6 +548,21 @@
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
     </FxCompile>
+    <FxCompile Include="util\DownsampleValueDepthNormal_DepthAwareBilateralFilter2x2CS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>
+      <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
+      <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </ExcludedFromBuild>
+      <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.3</ShaderModel>
+      <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
+      <DisableOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DisableOptimizations>
+    </FxCompile>
     <FxCompile Include="util\GaussianFilter3x3CS.hlsl">
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
@@ -546,6 +572,16 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.3</ShaderModel>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
+    </FxCompile>
+    <FxCompile Include="util\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>
+      <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.3</ShaderModel>
+      <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
+      <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
+      <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
     </FxCompile>
     <FxCompile Include="util\ReduceSumUintCS.hlsl">
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>

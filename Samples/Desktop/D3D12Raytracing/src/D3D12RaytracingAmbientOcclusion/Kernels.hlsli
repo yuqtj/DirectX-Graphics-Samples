@@ -11,6 +11,9 @@
 
 #define HLSL
 
+
+// Note: [3/12/2019] DXC fails to compile with both /Od /Zi specified when a global symbol is defined under a namespace. Workaround: remove /Od.
+
 namespace FilterKernel
 {
 

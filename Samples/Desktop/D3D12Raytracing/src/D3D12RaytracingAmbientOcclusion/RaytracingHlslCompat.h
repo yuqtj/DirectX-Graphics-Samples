@@ -30,6 +30,8 @@
 
 #define WORKAROUND_ATROUS_VARYING_OUTPUTS 1
 
+#define RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS 1
+#define AO_SPP_N 3
 #define USE_ENVIRONMENT_MAP 1
 #define DEBUG_AS 0
 
@@ -89,11 +91,11 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 1
+#define PBRT_SCENE 0
 #define FACE_CULLING !PBRT_SCENE
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
-#define AO_RAY_T_MAX 6
+#define AO_RAY_T_MAX 22
 #else
 #define DISTANCE_FALLOFF 0
 #define AO_RAY_T_MAX 35
@@ -162,13 +164,26 @@ namespace DownsampleGaussianFilter {
 	}
 }
 
-namespace DownsampleBilateralFilter {
+// ToDo combine and reuse a default 8x8 ?
+namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 8 };
+    }
+}
+
+namespace DownsampleValueNormalDepthBilateralFilter {
     namespace ThreadGroup {
         enum Enum { Width = 8, Height = 8 };
     }
 }
 
 namespace UpsampleBilateralFilter {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 8 };
+    }
+}
+
+namespace MultiScale_UpsampleBilateralFilterAndCombine {
     namespace ThreadGroup {
         enum Enum { Width = 8, Height = 8 };
     }
@@ -334,6 +349,7 @@ struct SceneConstantBuffer
     float RTAO_diffuseReflectanceScale;              // Diffuse reflectance from occluding surfaces. 
     float RTAO_minimumAmbientIllumnination;       // Ambient illumination coef when a ray is occluded.
 
+    // toDo rename shadow to AO?
     float RTAO_maxTheoreticalShadowRayHitTime;  // Max shadow ray hit time used in falloff computation accounting for
                                                 // RTAO_ExponentialFalloffMinOcclusionCutoff and RTAO_maxShadowRayHitTime.
 
@@ -353,6 +369,7 @@ enum CompositionType {
     PhongLighting = 0,
     AmbientOcclusionOnly,
     AmbientOcclusionHighResSamplingPixels,
+    RTAOHitDistance,    // ToDo standardize naming
     NormalsOnly,
     DepthOnly,
     Count
@@ -382,7 +399,8 @@ struct ComposeRenderPassesConstantBuffer
     UINT RTAO_AdaptiveSamplingMinSamples;
 
     UINT RTAO_MaxSPP;
-    float padding3[3];
+    float RTAO_MaxRayHitDistance;   // ToDo standardize ray hit time vs distance
+    float padding3[2];
 };
 
 struct AoBlurConstantBuffer

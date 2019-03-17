@@ -56,6 +56,7 @@ namespace ComputeShader {
 					MaterialBuffer,
 					ConstantBuffer,
                     FilterWeightSum,
+                    AORayHitDistance,
 					Count
 				};
 			}
@@ -107,6 +108,7 @@ namespace GlobalRootSignature {
             FilterWeightSum,
             GBufferDepth,   // ToDo move to the above slot for GBufferResources ?
             GbufferNormalRGB,
+            AORayHitDistance,
             Count
         };
     }
@@ -183,6 +185,11 @@ namespace GpuTimers {
 		Raytracing_Visibility,
         DownsampleToBackbuffer,
         DownsampleGBufferBilateral,
+        Denoising_MultiScale,
+        Denoising_MultiScale_DownsampleValueBuffers,
+        Denoising_MultiScale_DenoiseBuffers,
+        Denoising_MultiScale_DownsampleDenoisedBuffers,
+        Denoising_MultiScale_Combine,
         UpsampleAOBilateral,
         ComposeRenderPassesCS,
         UpdateBLAS,
@@ -223,6 +230,7 @@ namespace AOResource {
 		Coefficient = 0,
         Smoothed,
 		HitCount,
+        RayHitDistance,
         FilterWeightSum,
 		Count
 	};

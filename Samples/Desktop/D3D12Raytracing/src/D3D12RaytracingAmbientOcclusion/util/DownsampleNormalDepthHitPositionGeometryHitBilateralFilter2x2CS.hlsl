@@ -12,11 +12,12 @@
 #define HLSL
 #include "..\RaytracingHlslCompat.h"
 #include "..\RaytracingShaderHelper.hlsli"
+#include "DownsampleBilateralFilterCS.hlsli"
 
 // ToDo strip _tex from names
 // ToDo remove unused input/ouput
 Texture2D<float> g_texInput : register(t0);
-Texture2D<float4> g_inNormal : register(t1);
+Texture2D<float4> g_inNormal : register(t1);        // ToDo rename to normal and depth everywhere
 Texture2D<float4> g_inHitPosition : register(t2);
 Texture2D<uint> g_inGeometryHit : register(t3);
 RWTexture2D<float> g_texOutput : register(u0);
@@ -24,27 +25,43 @@ RWTexture2D<float4> g_outNormal : register(u1);
 RWTexture2D<float4> g_outHitPosition : register(u2);
 RWTexture2D<uint> g_outGeometryHit : register(u3);   // ToDo rename hits to Geometryits everywhere
 
-void LoadDepthAndNormal(in uint2 texIndex, out float4 normal, out float depth)
+// ToDo rename to DownsampleGBuffer
+
+void LoadDepthAndEncodedNormal(in uint2 texIndex, out float4 normal, out float depth)
 {
+    // ToDo this is confusing as it doesn't decode the normal
     normal = g_inNormal[texIndex];
     depth = normal.z;
 }
 
-[numthreads(DownsampleBilateralFilter::ThreadGroup::Width, DownsampleBilateralFilter::ThreadGroup::Height, 1)]
+[numthreads(DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::ThreadGroup::Width, DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     uint2 topLeftSrcIndex = DTid << 1;
 
-    float4 normals[4];
+    float4 encodedNormals[4];
     float  depths[4];
 
     const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
-    LoadDepthAndNormal(topLeftSrcIndex, normals[0], depths[0]);
-    LoadDepthAndNormal(topLeftSrcIndex + srcIndexOffsets[1], normals[1], depths[1]);
-    LoadDepthAndNormal(topLeftSrcIndex + srcIndexOffsets[2], normals[2], depths[2]);
-    LoadDepthAndNormal(topLeftSrcIndex + srcIndexOffsets[3], normals[3], depths[3]);
+    LoadDepthAndEncodedNormal(topLeftSrcIndex, encodedNormals[0], depths[0]);
+    LoadDepthAndEncodedNormal(topLeftSrcIndex + srcIndexOffsets[1], encodedNormals[1], depths[1]);
+    LoadDepthAndEncodedNormal(topLeftSrcIndex + srcIndexOffsets[2], encodedNormals[2], depths[2]);
+    LoadDepthAndEncodedNormal(topLeftSrcIndex + srcIndexOffsets[3], encodedNormals[3], depths[3]);
 
 #if 1
+    // ToDo cleanup
+    //float4 vNormals = float4(encodedNormals[0], encodedNormals[1], encodedNormals[2], encodedNormals[3]);
+    //float4 vDepths = float4(depths[0], depths[1], depths[2], depths[3]);
+
+    float outWeigths[4];
+    UINT outDepthIndex;
+    GetWeightsForDownsampleDepthBilateral2x2(outWeigths, outDepthIndex, depths);
+
+    g_outNormal[DTid] = encodedNormals[outDepthIndex];
+    g_outHitPosition[DTid] = g_inHitPosition[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
+    g_outGeometryHit[DTid] = g_inGeometryHit[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
+
+#elif 1
     // ToDo optimize min/max and remove this path
     // ToDo min/max 1.2ms, just index 0 0.36ms for 4K
     int lowResSubIndex = 0;
@@ -52,7 +69,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     //uint2 lowResSrcIndex = topLeftSrcIndex + uint2(lowResSubIndex & 1, lowResSubIndex > 1 ? 1 : 0);
 
-    g_outNormal[DTid] = normals[lowResSubIndex];
+    g_outNormal[DTid] = encodedNormals[lowResSubIndex];
     g_outHitPosition[DTid] = g_inHitPosition[topLeftSrcIndex + srcIndexOffsets[lowResSubIndex]];
     g_outGeometryHit[DTid] = g_inGeometryHit[topLeftSrcIndex + srcIndexOffsets[lowResSubIndex]];
 
@@ -62,7 +79,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // Ref: http://c0de517e.blogspot.com/2016/02/downsampled-effects-with-depth-aware.html
     bool checkerboardMin = ((DTid.x + DTid.y) & 1) == 0;
 
-    // ToDo consider normals but decode first.
+    // ToDo consider encodedNormals but decode first.
     // ToDo consider reflections.
 #if 1
     float lowResDepth = max(max(depths[0], depths[1]), max(depths[2], depths[3]));
@@ -137,7 +154,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 #endif
     //uint2 lowResSrcIndex = topLeftSrcIndex + uint2(lowResSubIndex & 1, lowResSubIndex > 1 ? 1 : 0);
 
-    g_outNormal[DTid] = normals[lowResSubIndex];
+    g_outNormal[DTid] = encodedNormals[lowResSubIndex];
     g_outHitPosition[DTid] = g_inHitPosition[topLeftSrcIndex + srcIndexOffsets[lowResSubIndex]];
     g_outGeometryHit[DTid] = g_inGeometryHit[topLeftSrcIndex + srcIndexOffsets[lowResSubIndex]];
 #endif

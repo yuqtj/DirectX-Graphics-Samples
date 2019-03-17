@@ -19,8 +19,10 @@
 #include "CompiledShaders\DownsampleBoxFilter2x2CS.hlsl.h"
 #include "CompiledShaders\DownsampleGaussian9TapFilterCS.hlsl.h"
 #include "CompiledShaders\DownsampleGaussian25TapFilterCS.hlsl.h"
-#include "CompiledShaders\DownsampleBilateralFilter2x2CS.hlsl.h"
+#include "CompiledShaders\DownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS.hlsl.h"
+#include "CompiledShaders\DownsampleValueDepthNormal_DepthAwareBilateralFilter2x2CS.hlsl.h"
 #include "CompiledShaders\UpsampleBilateralFilter2x2CS.hlsl.h"
+#include "CompiledShaders\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl.h"
 #include "CompiledShaders\GaussianFilter3x3CS.hlsl.h"
 #include "CompiledShaders\PerPixelMeanSquareErrorCS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS.hlsl.h"
@@ -427,7 +429,7 @@ namespace GpuKernels
 
 
     namespace RootSignature {
-        namespace DownsampleBilateralFilter {
+        namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter {
             namespace Slot {
                 enum Enum {
                     Output = 0,
@@ -444,11 +446,12 @@ namespace GpuKernels
         }
     }
 
-    void DownsampleBilateralFilter::Initialize(ID3D12Device* device, Type type)
+    // ToDo move the Type parameter to Execute?
+    void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Initialize(ID3D12Device* device, Type type)
     {
         // Create root signature.
         {
-            using namespace RootSignature::DownsampleBilateralFilter;
+            using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
 
             CD3DX12_DESCRIPTOR_RANGE ranges[8]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
@@ -471,7 +474,7 @@ namespace GpuKernels
             rootParameters[Slot::OutputGeometryHit].InitAsDescriptorTable(1, &ranges[7]);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
-            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleBilateralFilter");
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
         }
 
         // Create compute pipeline state.
@@ -480,19 +483,19 @@ namespace GpuKernels
             descComputePSO.pRootSignature = m_rootSignature.Get();
             switch (type)
             {
-            case Filter2X2:
-                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pDownsampleBilateralFilter2x2CS), ARRAYSIZE(g_pDownsampleBilateralFilter2x2CS));
+            case FilterDepthAware2x2:
+                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pDownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS), ARRAYSIZE(g_pDownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS));
                 break;
             }
 
             ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-            m_pipelineStateObject->SetName(L"Pipeline state object: DownsampleBilateralFilter");
+            m_pipelineStateObject->SetName(L"Pipeline state object: DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
         }
     }
 
     // Downsamples input resource.
     // width, height - dimensions of the input resource.
-    void DownsampleBilateralFilter::Execute(
+    void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Execute(
         ID3D12GraphicsCommandList* commandList,
         UINT width,
         UINT height,
@@ -504,10 +507,10 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle)
     {
-        using namespace RootSignature::DownsampleBilateralFilter;
-        using namespace DownsampleBilateralFilter;
+        using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
+        using namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
 
-        PIXBeginEvent(commandList, 0, L"DownsampleBilateralFilter");
+        PIXBeginEvent(commandList, 0, L"DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
 
         // Set pipeline state.
         {
@@ -531,6 +534,96 @@ namespace GpuKernels
         PIXEndEvent(commandList);
     }
 
+
+
+    namespace RootSignature {
+        namespace DownsampleValueNormalDepthBilateralFilter {
+            namespace Slot {
+                enum Enum {
+                    OutputValue = 0,
+                    OutputNormalDepth,
+                    InputValue,
+                    InputNormalDepth,
+                    Count
+                };
+            }
+        }
+    }
+
+    void DownsampleValueNormalDepthBilateralFilter::Initialize(ID3D12Device* device, Type type)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::DownsampleValueNormalDepthBilateralFilter;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
+            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input value texture
+            ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input normal and depth texture
+            ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output value texture
+            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // 1 output normal and depth texture
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::InputValue].InitAsDescriptorTable(1, &ranges[0]);
+            rootParameters[Slot::InputNormalDepth].InitAsDescriptorTable(1, &ranges[1]);
+            rootParameters[Slot::OutputValue].InitAsDescriptorTable(1, &ranges[2]);
+            rootParameters[Slot::OutputNormalDepth].InitAsDescriptorTable(1, &ranges[3]);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleValueNormalDepthBilateralFilter");
+        }
+
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+            switch (type)
+            {
+            case FilterDepthAware2x2:
+                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pDownsampleValueDepthNormal_DepthAwareBilateralFilter2x2CS), ARRAYSIZE(g_pDownsampleValueDepthNormal_DepthAwareBilateralFilter2x2CS));
+                break;
+            }
+
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: DownsampleValueNormalDepthBilateralFilter");
+        }
+    }
+
+    // Downsamples input resource.
+    // width, height - dimensions of the input resource.
+    void DownsampleValueNormalDepthBilateralFilter::Execute(
+        ID3D12GraphicsCommandList* commandList,
+        UINT width,
+        UINT height,
+        ID3D12DescriptorHeap* descriptorHeap,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputValueResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputValueResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalDepthResourceHandle)
+    {
+        using namespace RootSignature::DownsampleValueNormalDepthBilateralFilter;
+        using namespace DownsampleValueNormalDepthBilateralFilter;
+
+        PIXBeginEvent(commandList, 0, L"DownsampleValueNormalDepthBilateralFilter");
+
+        // Set pipeline state.
+        {
+            commandList->SetDescriptorHeaps(1, &descriptorHeap);
+            commandList->SetComputeRootSignature(m_rootSignature.Get());
+            commandList->SetComputeRootDescriptorTable(Slot::InputValue, inputValueResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputNormalDepth, inputNormalDepthResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputValue, outputValueResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputNormalDepth, outputNormalDepthResourceHandle);
+            commandList->SetPipelineState(m_pipelineStateObject.Get());
+        }
+
+        // ToDo handle misaligned input
+        XMUINT2 groupSize(CeilDivide((width + 1) / 2 + 1, ThreadGroup::Width), CeilDivide((height + 1) / 2 + 1, ThreadGroup::Height));
+
+        // Dispatch.
+        commandList->Dispatch(groupSize.x, groupSize.y, 1);
+
+        PIXEndEvent(commandList);
+    }
 
     namespace RootSignature {
         namespace UpsampleBilateralFilter {
@@ -575,7 +668,7 @@ namespace GpuKernels
             descComputePSO.pRootSignature = m_rootSignature.Get();
             switch (type)
             {
-            case Filter2X2:
+            case Filter2x2:
                 descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pUpsampleBilateralFilter2x2CS), ARRAYSIZE(g_pUpsampleBilateralFilter2x2CS));
                 break;
             }
@@ -586,10 +679,11 @@ namespace GpuKernels
     }
 
     // Resamples input resource.
-    // width, height - dimensions of the input resource.
+    // width, height - dimensions of the output resource.
+    // ToDo should the input width/height be of output or input?
     void UpsampleBilateralFilter::Execute(
         ID3D12GraphicsCommandList* commandList,
-        UINT width,
+        UINT width, // Todo remove and deduce from outputResourceInstead?
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
@@ -600,6 +694,10 @@ namespace GpuKernels
         using namespace RootSignature::UpsampleBilateralFilter;
         using namespace UpsampleBilateralFilter;
 
+        // Each shader execution processes 2x2 hiRes pixels
+        width = CeilDivide(width, 2);
+        height = CeilDivide(height, 2);
+               
         PIXBeginEvent(commandList, 0, L"UpsampleBilateralFilter");
 
         // Set pipeline state.
@@ -623,6 +721,114 @@ namespace GpuKernels
         PIXEndEvent(commandList);
     }
 
+
+
+    namespace RootSignature {
+        namespace MultiScale_UpsampleBilateralFilterAndCombine {
+            namespace Slot {
+                enum Enum {
+                    Output = 0,
+                    InputLowResValue1,
+                    InputLowResValue2,
+                    InputLowResNormal,
+                    InputHiResValue,
+                    InputHiResNormal,
+                    Count
+                };
+            }
+        }
+    }
+
+    // ToDo test downsample,upsample on odd resolution
+    void MultiScale_UpsampleBilateralFilterAndCombine::Initialize(ID3D12Device* device, Type type)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::MultiScale_UpsampleBilateralFilterAndCombine;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[6]; // Perfomance TIP: Order from most frequent to least frequent.
+            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input low res value 1
+            ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input low res value 2
+            ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 input low res normal
+            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 input hi res value
+            ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 input hi res normal
+            ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::InputLowResValue1].InitAsDescriptorTable(1, &ranges[0]);
+            rootParameters[Slot::InputLowResValue2].InitAsDescriptorTable(1, &ranges[1]);
+            rootParameters[Slot::InputLowResNormal].InitAsDescriptorTable(1, &ranges[2]);
+            rootParameters[Slot::InputHiResValue].InitAsDescriptorTable(1, &ranges[3]);
+            rootParameters[Slot::InputHiResNormal].InitAsDescriptorTable(1, &ranges[4]);
+            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[5]);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: MultiScale_UpsampleBilateralFilterAndCombine");
+        }
+
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+            switch (type)
+            {
+            case Filter2x2:
+                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pMultiScale_UpsampleBilateralAndCombine2x2CS), ARRAYSIZE(g_pMultiScale_UpsampleBilateralAndCombine2x2CS));
+                break;
+            }
+
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: MultiScale_UpsampleBilateralFilterAndCombine");
+        }
+    }
+
+    // Resamples input resource.
+    // width, height - dimensions of the input resource.
+    void MultiScale_UpsampleBilateralFilterAndCombine::Execute(
+        ID3D12GraphicsCommandList* commandList,
+        UINT width,
+        UINT height,
+        ID3D12DescriptorHeap* descriptorHeap,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValue1ResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValue2ResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResValueResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
+    {
+        using namespace RootSignature::MultiScale_UpsampleBilateralFilterAndCombine;
+        using namespace MultiScale_UpsampleBilateralFilterAndCombine;
+
+        // Each shader execution processes 2x2 hiRes pixels
+        width = CeilDivide(width, 2);
+        height = CeilDivide(height, 2);
+
+        PIXBeginEvent(commandList, 0, L"MultiScale_UpsampleBilateralFilterAndCombine");
+
+        // Set pipeline state.
+        {
+            commandList->SetDescriptorHeaps(1, &descriptorHeap);
+            commandList->SetComputeRootSignature(m_rootSignature.Get());
+            commandList->SetComputeRootDescriptorTable(Slot::InputLowResValue1, inputLowResValue1ResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputLowResValue2, inputLowResValue2ResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputLowResNormal, inputLowResNormalResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputHiResValue, inputHiResValueResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputHiResNormal, inputHiResNormalResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
+            commandList->SetPipelineState(m_pipelineStateObject.Get());
+        }
+
+        // ToDo handle misaligned input
+        // Start from -1,-1 pixel to account for high-res pixel border around low-res pixel border.
+        XMUINT2 groupSize(CeilDivide(width + 1, ThreadGroup::Width), CeilDivide(height + 1, ThreadGroup::Height));
+
+        // Dispatch.
+        commandList->Dispatch(groupSize.x, groupSize.y, 1);
+
+        PIXEndEvent(commandList);
+    }
+
+
     namespace RootSignature {
         namespace GaussianFilter {
             namespace Slot {
@@ -636,7 +842,7 @@ namespace GpuKernels
         }
     }
 
-    void GaussianFilter::Initialize(ID3D12Device* device)
+    void GaussianFilter::Initialize(ID3D12Device* device, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -678,7 +884,7 @@ namespace GpuKernels
 
         // Create shader resources
         {
-            m_CB.Create(device, 1, L"Constant Buffer: GaussianFilter");
+            m_CB.Create(device, numCallsPerFrame, L"Constant Buffer: GaussianFilter");
         }
     }
 
@@ -693,16 +899,19 @@ namespace GpuKernels
         FilterType type,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+        UINT perFrameInstanceId)
     {
         using namespace RootSignature::GaussianFilter;
         using namespace GaussianFilter;
+
+        assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
 
         PIXBeginEvent(commandList, 0, L"GaussianFilter");
 
         m_CB->textureDim = XMUINT2(width, height);
         m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
-        m_CB.CopyStagingToGpu();
+        m_CB.CopyStagingToGpu(perFrameInstanceId);
 
         // Set pipeline state.
         {
@@ -710,7 +919,7 @@ namespace GpuKernels
             commandList->SetComputeRootSignature(m_rootSignature.Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
-            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress());
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
             commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
         }
 
@@ -845,11 +1054,11 @@ namespace GpuKernels
 #endif
                     Input,
                     Normals,
-                    NormalsOct,
                     Depths,
                     Variance,
                     SmoothedVariance,
                     ConstantBuffer,
+                    RayHitDistance,
                     Count
                 };
             }
@@ -857,28 +1066,29 @@ namespace GpuKernels
     }
 
     // ToDo move type to execute
-    void AtrousWaveletTransformCrossBilateralFilter::Initialize(ID3D12Device* device, UINT maxFilterPasses)
+    void AtrousWaveletTransformCrossBilateralFilter::Initialize(ID3D12Device* device, UINT maxFilterPasses, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
             using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
 
-            CD3DX12_DESCRIPTOR_RANGE ranges[9];
+            // ToDo reorganize slots and descriptors
+            CD3DX12_DESCRIPTOR_RANGE ranges[10];
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // input normals
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // input depths
-            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // input octahedron compressed normals
             ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // input variance
             ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // input smoothed variance
             ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output filtered values
             ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // output filtered variance
             ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // output filter weight sum
+            ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // input hit distance
+
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
             rootParameters[Slot::Normals].InitAsDescriptorTable(1, &ranges[1]);
             rootParameters[Slot::Depths].InitAsDescriptorTable(1, &ranges[2]);
-            rootParameters[Slot::NormalsOct].InitAsDescriptorTable(1, &ranges[3]);
             rootParameters[Slot::Variance].InitAsDescriptorTable(1, &ranges[4]);
             rootParameters[Slot::SmoothedVariance].InitAsDescriptorTable(1, &ranges[5]);
             rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[6]);
@@ -886,6 +1096,7 @@ namespace GpuKernels
 #if !WORKAROUND_ATROUS_VARYING_OUTPUTS
             rootParameters[Slot::FilterWeightSumOutput].InitAsDescriptorTable(1, &ranges[8]);
 #endif
+            rootParameters[Slot::RayHitDistance].InitAsDescriptorTable(1, &ranges[9]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -919,8 +1130,10 @@ namespace GpuKernels
 
         // Create shader resources.
         {
-            m_CB.Create(device, maxFilterPasses, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter");
-            m_CBfilterWeigth.Create(device, maxFilterPasses, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter FilterWeightSum");
+            m_maxFilterPasses = maxFilterPasses;
+            UINT numInstancesPerFrame = maxFilterPasses * numCallsPerFrame;
+            m_CB.Create(device, numInstancesPerFrame, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter");
+            m_CBfilterWeigth.Create(device, numInstancesPerFrame, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter FilterWeightSum");
         }
     }
 
@@ -963,20 +1176,24 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputSmoothedVarianceResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
         RWGpuResource* outputResource,
         float valueSigma,
         float depthSigma,
         float normalSigma,
+        UINT kernelStepShifts[5],
         UINT numFilterPasses,
         Mode filterMode,
         bool reverseFilterPassOrder,
-        bool useCalculatedVariance)
+        bool useCalculatedVariance,
+        UINT perFrameInstanceId)
     {
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
         using namespace AtrousWaveletTransformFilterCS;
+
+        assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
 
         PIXBeginEvent(commandList, 0, L"AtrousWaveletTransformCrossBilateralFilter");
 
@@ -987,14 +1204,14 @@ namespace GpuKernels
             commandList->SetPipelineState(m_pipelineStateObjects[filterType].Get());
             commandList->SetComputeRootDescriptorTable(Slot::Normals, inputNormalsResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Depths, inputDepthsResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::NormalsOct, inputNormalsOctResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::SmoothedVariance, inputSmoothedVarianceResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::RayHitDistance, inputHitDistanceHandle);
         }
 
         // ToDo split these into separate GpuKernels?
         auto& CB = filterMode == OutputFilteredValue ? m_CB : m_CBfilterWeigth;
         // Update the Constant Buffers.
-        for (UINT i = 0; i < CB.NumInstances(); i++)
+        for (UINT i = 0; i < numFilterPasses; i++)
         {
             // Ref: Dammertz2010
             // Tighten value range smoothing for higher passes.
@@ -1016,19 +1233,24 @@ namespace GpuKernels
             }
             CB->depthSigma = depthSigma;
             CB->normalSigma = normalSigma;
+#if RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS
+            CB->kernelStepShift = kernelStepShifts[_i];
+#else
             CB->kernelStepShift = _i;
+#endif
             CB->scatterOutput = _i == numFilterPasses - 1;
             CB->useCalculatedVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
             CB->outputFilteredVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
             CB->outputFilteredValue = filterMode == OutputFilteredValue;
             CB->outputFilterWeigthSum = filterMode == OutputPerPixelFilterWeightSum;
-            CB.CopyStagingToGpu(i);
+            CB.CopyStagingToGpu(perFrameInstanceId * m_maxFilterPasses + i);
         }
 
         //
         // Iterative filter
         //
         {
+            // ToDo use input resource dims.
             auto resourceDesc = outputResource->resource.Get()->GetDesc();
             XMUINT2 resourceDim(static_cast<UINT>(resourceDesc.Width), static_cast<UINT>(resourceDesc.Height));
             XMUINT2 groupSize(CeilDivide(resourceDim.x, ThreadGroup::Width), CeilDivide(resourceDim.y, ThreadGroup::Height));
@@ -1063,7 +1285,7 @@ namespace GpuKernels
             for (UINT i = 0; i < numFilterPasses; i++)
 #endif
             {
-                commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, CB.GpuVirtualAddress(i));
+                commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, CB.GpuVirtualAddress(perFrameInstanceId * m_maxFilterPasses + i));
                                 
                 // Dispatch.
                 commandList->Dispatch(groupSize.x, groupSize.y, 1);
@@ -1119,7 +1341,6 @@ namespace GpuKernels
                     Output = 0,
                     Input,
                     Normals,
-                    NormalsOct,
                     Depths,
                     ConstantBuffer,
                     Count
@@ -1129,7 +1350,7 @@ namespace GpuKernels
     }
 
     // ToDo move type to execute
-    void CalculateVariance::Initialize(ID3D12Device* device)
+    void CalculateVariance::Initialize(ID3D12Device* device, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -1139,15 +1360,13 @@ namespace GpuKernels
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // input normals
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // input depths
-            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // input octahedron compressed normals
-            ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output filtered values
+            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output filtered values
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
             rootParameters[Slot::Normals].InitAsDescriptorTable(1, &ranges[1]);
             rootParameters[Slot::Depths].InitAsDescriptorTable(1, &ranges[2]);
-            rootParameters[Slot::NormalsOct].InitAsDescriptorTable(1, &ranges[3]);
-            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[4]);
+            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[3]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -1178,7 +1397,7 @@ namespace GpuKernels
 
         // Create shader resources.
         {
-            m_CB.Create(device, 1, L"Constant Buffer: CalculateVariance");
+            m_CB.Create(device, numCallsPerFrame, L"Constant Buffer: CalculateVariance");
         }
     }
 
@@ -1191,16 +1410,18 @@ namespace GpuKernels
         UINT width,
         UINT height,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,  // ToDo standardize Normal vs Normals
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsOctResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
         float depthSigma,
         float normalSigma,
-        bool useApproximateVariance)
+        bool useApproximateVariance,
+        UINT perFrameInstanceId)
     {
         using namespace RootSignature::CalculateVariance;
         using namespace CalculateVariance_Bilateral;
+
+        assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
 
         // ToDo move out or rename
         PIXBeginEvent(commandList, 0, L"CalculateVariance_Bilateral5x5");
@@ -1213,7 +1434,6 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Normals, inputNormalsResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Depths, inputDepthsResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::NormalsOct, inputNormalsOctResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
         }
 
@@ -1222,8 +1442,8 @@ namespace GpuKernels
         m_CB->normalSigma = normalSigma;
         m_CB->textureDim = XMINT2(width, height);
         m_CB->useApproximateVariance = useApproximateVariance;
-        m_CB.CopyStagingToGpu();
-        commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress());
+        m_CB.CopyStagingToGpu(perFrameInstanceId);
+        commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
 
 
         // Dispatch.

@@ -284,9 +284,6 @@
     <FxCompile Include="util\DownsampleDepthAwareFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="util\DownsampleBilateralFilter2x2CS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="util\UpsampleBilateralFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
@@ -316,6 +313,18 @@
     </FxCompile>
     <FxCompile Include="SSAO\Shaders\SSAORender2CS.hlsl">
       <Filter>SSAO\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="util\DownsampleBilateralFilterCS.hlsli">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="util\DownsampleValueDepthNormal_DepthAwareBilateralFilter2x2CS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="util\DownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="util\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

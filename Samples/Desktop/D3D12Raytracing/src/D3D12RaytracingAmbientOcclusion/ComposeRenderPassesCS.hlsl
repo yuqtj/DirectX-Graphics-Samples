@@ -26,6 +26,7 @@ Texture2D<float> g_texAO : register(t5);
 Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
 Texture2D<float> g_texFilterWeightSum : register(t8);
+Texture2D<float> g_texRayHitDistance : register(t9);
 
 SamplerState LinearWrapSampler : register(s0);
 
@@ -116,6 +117,14 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float sppScale = float(numSamples) / g_CB.RTAO_MaxSPP;
             color = float4(lerp(minSampleColor, maxSampleColor, sppScale), 1);
         }
+        else if (g_CB.compositionType == CompositionType::RTAOHitDistance)
+        {
+            float3 minDistanceColor = float3(170, 220, 200) / 255;
+            float3 maxDistanceColor = float3(15, 18, 153) / 255;
+            float hitDistance = g_texRayHitDistance[DTid].x;
+            float hitCoef = hitDistance / g_CB.RTAO_MaxRayHitDistance;
+            color = float4(lerp(minDistanceColor, maxDistanceColor, hitCoef), 1);
+        }
         else if (g_CB.compositionType == CompositionType::NormalsOnly)
         {
             color = float4(surfaceNormal, 1);
@@ -139,10 +148,6 @@ void main(uint2 DTid : SV_DispatchThreadID )
 #else
             color = BackgroundColor;
 #endif
-        }
-        else if (g_CB.compositionType == CompositionType::AmbientOcclusionHighResSamplingPixels)
-        {
-            color = float4(1, 1, 1, 1);
         }
         else
         {
