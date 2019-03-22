@@ -88,6 +88,7 @@ namespace SceneArgs
 	EnumVar SceneType(L"Scene", Scene::Type::SingleObject, Scene::Type::Count, Scene::Type::Names, OnSceneChange, nullptr);
 #endif
 
+    // ToDo add an interface so that new UI values get applied on start of the frame, not in mid-flight
     enum UpdateMode { Build = 0, Update, Update_BuildEveryXFrames, Count };
     const WCHAR* UpdateModes[UpdateMode::Count] = { L"Build only", L"Update only", L"Update + build every X frames" };
     EnumVar ASUpdateMode(L"Acceleration structure/Update mode", Build, UpdateMode::Count, UpdateModes);
@@ -139,6 +140,7 @@ namespace SceneArgs
     NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
     BoolVar RTAOAdaptiveSamplingMinMaxSampling(L"AO/RTAO/Adaptive Sampling/Only min\\max sampling", false);
     NumVar RTAOAdaptiveSamplingScaleExponent(L"AO/RTAO/Adaptive Sampling/Sampling scale exponent", 0.7f, 0.0f, 10, 0.1f);
+    BoolVar RTAORandomFrameSeed(L"AO/RTAO/Random per-frame seed", true);
 
     IntVar RTAOAdaptiveSamplingMinSamples(L"AO/RTAO/Adaptive Sampling/Min samples", 2, 1, AO_SPP_N * AO_SPP_N, 1);
     IntVar RTAO_KernelStepShift0(L"AO/RTAO/Kernel Step Shifts/0", 0, 0, 10, 1);
@@ -164,7 +166,8 @@ namespace SceneArgs
     EnumVar VarianceFilterMode(L"AO/RTAO/Denoising/Variance filter", GpuKernels::CalculateVariance::FilterType::Bilateral5x5, GpuKernels::CalculateVariance::FilterType::Count, VarianceFilterModes);
     BoolVar UseSpatialVariance(L"AO/RTAO/Denoising/Use spatial variance", true);
     BoolVar ApproximateSpatialVariance(L"AO/RTAO/Denoising/Approximate spatial variance", false);
-    BoolVar UseMultiscaleDenoising(L"AO/RTAO/Denoising/Multi-scale denoising", true);
+    BoolVar RTAODenoisingUseMultiscale(L"AO/RTAO/Denoising/Multi-scale denoising", true);
+    IntVar RTAODenoisingMultiscaleLevels(L"AO/RTAO/Denoising/Multi-scale levels", 4, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
@@ -2334,17 +2337,15 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
 
     m_gpuTimeManager.Start(commandList, GpuTimers::Denoising_MultiScale);
-
-    // Do denoise pass on the full resolution.
-    //ApplyAtrousWaveletTransformFilter();
-
+    
+    // ToDo remove this since the next iter is downsampling.
     // Downsample input value.
     {
         m_gpuTimeManager.Start(commandList, GpuTimers::Denoising_MultiScale_DownsampleValueBuffers);
 
         RWGpuResource* inputResources[] = { &AOResources[AOResource::Coefficient], &GBufferResources[GBufferResource::SurfaceNormal] };
       
-        for (UINT i = 0; i < c_MaxDenoisingScaleLevels; i++)
+        for (int i = 0; i < SceneArgs::RTAODenoisingMultiscaleLevels; i++)
         {
             MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[i];
 
@@ -2383,6 +2384,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                 };
                 commandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
             }
+            // ToDo Cleanup - don't need to downsample values
             else
             {
                 MultiScaleDenoisingResource& msPrevIterResource = m_multiScaleDenoisingResources[i - 1];
@@ -2414,11 +2416,11 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
         m_gpuTimeManager.Stop(commandList, GpuTimers::Denoising_MultiScale_DownsampleValueBuffers);
     }
 
-    // Denoise input.
+    // Denoise and downsample each level.
     {
         m_gpuTimeManager.Start(commandList, GpuTimers::Denoising_MultiScale_DenoiseBuffers);
 
-        for (UINT i = 0; i < c_MaxDenoisingScaleLevels; i++)
+        for (int i = 0; i < SceneArgs::RTAODenoisingMultiscaleLevels; i++)
         {
             MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[i];
 
@@ -2497,11 +2499,33 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
         m_gpuTimeManager.Stop(commandList, GpuTimers::Denoising_MultiScale_DenoiseBuffers);
     }
 
+    // For single scale level, copy the denoised scale level 0 result.
+    if (SceneArgs::RTAODenoisingMultiscaleLevels < 2)
+    {
+        MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[0];
+
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_BARRIER preCopyBarriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedValue.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST)
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
+
+        commandList->CopyResource(msResource.m_value.resource.Get(), msResource.m_smoothedValue.resource.Get());
+
+        D3D12_RESOURCE_BARRIER postCopyBarriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedValue.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
+    }
     // Reconstruct the final result from all denoised scales.
+    else 
     {
         m_gpuTimeManager.Start(commandList, GpuTimers::Denoising_MultiScale_Combine);
 
-        for (int i = c_MaxDenoisingScaleLevels - 2; i >= 0; i--)
+        for (int i = SceneArgs::RTAODenoisingMultiscaleLevels - 2; i >= 0; i--)
         {
             MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[i];
             MultiScaleDenoisingResource& msLowResLevelResource = m_multiScaleDenoisingResources[i + 1];
@@ -2516,7 +2540,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
             // m_value resource is being used as an output resource going up the chain.
             // However, lowest resolution level is skipped and its m_value is m_smoothedValue.
             // Thus, on first iteration, use lower resource's m_smoothedValue instead.
-            const bool isFirstIter = i == c_MaxDenoisingScaleLevels - 2;
+            const bool isFirstIter = i == SceneArgs::RTAODenoisingMultiscaleLevels - 2;
             RWGpuResource *inLowResResource = isFirstIter ? &msLowResLevelResource.m_smoothedValue : &msLowResLevelResource.m_value;
 
             D3D12_RESOURCE_DESC desc = msResource.m_value.resource.Get()->GetDesc();
@@ -2528,7 +2552,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                 height,
                 m_cbvSrvUavHeap->GetHeap(),
                 msResource.m_downsampledSmoothedValue.gpuDescriptorReadAccess,
-                msLowResLevelResource.m_smoothedValue.gpuDescriptorReadAccess,
+                inLowResResource->gpuDescriptorReadAccess,
                 msResource.m_downsampledNormalDepthValue.gpuDescriptorReadAccess,
                 msResource.m_smoothedValue.gpuDescriptorReadAccess,
                 msResource.m_normalDepth.gpuDescriptorReadAccess,
@@ -2775,7 +2799,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 #if AO_RANDOM_SEED_EVERY_FRAME
 	m_sceneCB->seed = seedDistribution(m_generatorURNG);
 #else
-	m_sceneCB->seed = 1879;
+    if (SceneArgs::RTAORandomFrameSeed)
+    {
+        m_sceneCB->seed = seedDistribution(m_generatorURNG);
+    }
+    else
+    {
+        m_sceneCB->seed = 1879;
+    }
 #endif
 	m_sceneCB->numSamplesPerSet = m_randomSampler.NumSamples();
 	m_sceneCB->numSampleSets = m_randomSampler.NumSampleSets();
@@ -3017,7 +3048,7 @@ void D3D12RaytracingAmbientOcclusion::UpsampleAOBilateral()
     auto commandList = m_deviceResources->GetCommandList();
 
     RWGpuResource* inputLowResAOresource;
-    if (SceneArgs::UseMultiscaleDenoising)
+    if (SceneArgs::RTAODenoisingUseMultiscale)
     {
         inputLowResAOresource = &m_multiScaleDenoisingResources[0].m_value;
 
@@ -3646,7 +3677,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #if 0
         ApplyAtrousWaveletTransformFilter();
 #else
-        if (SceneArgs::UseMultiscaleDenoising)
+        if (SceneArgs::RTAODenoisingUseMultiscale)
         {
             ApplyMultiScaleAtrousWaveletTransformFilter();
         }
@@ -3687,7 +3718,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     D3D12_GPU_DESCRIPTOR_HANDLE AOSRV = SceneArgs::AOMode == SceneArgs::AOType::RTAO ? m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess : SSAOgpuDescriptorReadAccess;
 
     // ToDo cleanup
-    if (SceneArgs::AOMode == SceneArgs::AOType::RTAO && SceneArgs::UseMultiscaleDenoising && !SceneArgs::QuarterResAO)
+    if (SceneArgs::AOMode == SceneArgs::AOType::RTAO && SceneArgs::RTAODenoisingUseMultiscale && !SceneArgs::QuarterResAO)
     {
         AOSRV = m_multiScaleDenoisingResources[0].m_value.gpuDescriptorReadAccess;
     }

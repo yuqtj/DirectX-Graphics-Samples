@@ -203,7 +203,11 @@ private:
     RWGpuResource m_smoothedVarianceResource;
 
     // Multi-scale
-    static const UINT c_MaxDenoisingScaleLevels = 8;
+    // ToDo Cleanup
+    public:
+        static const UINT c_MaxDenoisingScaleLevels = 8;
+    private:
+
     struct MultiScaleDenoisingResource
     {
         RWGpuResource m_value;
