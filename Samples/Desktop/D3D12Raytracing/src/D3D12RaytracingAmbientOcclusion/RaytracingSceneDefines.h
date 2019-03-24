@@ -171,35 +171,6 @@ namespace GeometryType {
     };
 }
 
-// ToDo fix names
-// ToDo Gputimers bug out changing enums around
-namespace GpuTimers {
-	enum Enum {
-		Raytracing_GBuffer = 0,
-        Raytracing_Variance,
-		Raytracing_AO,
-        Denoising,
-		Raytracing_BlurAO,
-        Raytracing_FilterWeightSum,
-        Raytracing_VarianceSmoothing,
-		Raytracing_Visibility,
-        DownsampleToBackbuffer,
-        DownsampleGBufferBilateral,
-        Denoising_MultiScale,
-        Denoising_MultiScale_DownsampleValueBuffers,
-        Denoising_MultiScale_DenoiseBuffers,
-        Denoising_MultiScale_DownsampleDenoisedBuffers,
-        Denoising_MultiScale_Combine,
-        UpsampleAOBilateral,
-        ComposeRenderPassesCS,
-        UpdateBLAS,
-        CameraRayHitsReduceSum,
-        AORayHitsReduceSum,
-        UpdateTLAS,
-		Count
-	};
-}
-
 namespace UIParameters {
 	enum Enum {
 		RaytracingAPI = 0,

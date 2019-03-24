@@ -13,6 +13,7 @@
 
 #include "../stdafx.h"
 #include "EngineTuning.h"
+#include "EngineProfiling.h"
 #include "GameInput.h"
 using namespace std;
 
@@ -39,8 +40,8 @@ namespace EngineTuning
     float s_ScrollBottomTrigger = 1080.0f * 0.8f;
 
     // Internal functions
-    void AddToVariableGraph( const wstring& path, EngineVar& var );
-    void RegisterVariable( const wstring& path, EngineVar& var );
+    void AddToVariableGraph(const wstring& path, EngineVar& var);
+    void RegisterVariable(const wstring& path, EngineVar& var);
 
     EngineVar* sm_SelectedVariable = nullptr;
     bool sm_IsVisible = true;
@@ -52,35 +53,35 @@ class VariableGroup : public EngineVar
 public:
     VariableGroup() : m_IsExpanded(false) {}
 
-    EngineVar* FindChild( const wstring& name )
+    EngineVar* FindChild(const wstring& name)
     {
         auto iter = m_Children.find(name);
         return iter == m_Children.end() ? nullptr : iter->second;
     }
      
-    void AddChild( const wstring& name, EngineVar& child )
+    void AddChild(const wstring& name, EngineVar& child)
     {
         m_Children[name] = &child;
         child.m_GroupPtr = this;
     }
 
-    void Display(wstringstream* renderText, UINT leftMargin, EngineVar* highlightedTweak );
+    void Display(wstringstream* renderText, UINT leftMargin, EngineVar* highlightedTweak);
 
-    void SaveToFile( FILE* file, int fileMargin );
-    void LoadSettingsFromFile( FILE* file );
+    void SaveToFile(FILE* file, int fileMargin);
+    void LoadSettingsFromFile(FILE* file);
 
-    EngineVar* NextVariable( EngineVar* currentVariable );
-    EngineVar* PrevVariable( EngineVar* currentVariable );
-    EngineVar* FirstVariable( void );
-    EngineVar* LastVariable( void );
+    EngineVar* NextVariable(EngineVar* currentVariable);
+    EngineVar* PrevVariable(EngineVar* currentVariable);
+    EngineVar* FirstVariable(void);
+    EngineVar* LastVariable(void);
 
-    bool IsExpanded( void ) const { return m_IsExpanded; }
+    bool IsExpanded(void) const { return m_IsExpanded; }
 
-    virtual void Increment( void ) override { m_IsExpanded = true; }
-    virtual void Decrement( void ) override { m_IsExpanded = false; }
-    virtual void Bang( void ) override { m_IsExpanded = !m_IsExpanded; }
+    virtual void Increment(void) override { m_IsExpanded = true; }
+    virtual void Decrement(void) override { m_IsExpanded = false; }
+    virtual void Bang(void) override { m_IsExpanded = !m_IsExpanded; }
 
-    virtual void SetValue( FILE*, const wstring& ) override {}
+    virtual void SetValue(FILE*, const wstring&) override {}
     
     static VariableGroup sm_RootGroup;
 
@@ -94,17 +95,16 @@ VariableGroup VariableGroup::sm_RootGroup;
 //=====================================================================================================================
 // VariableGroup implementation
 
-wstring Indent(UINT spaces)
+namespace
 {
-	wstringstream indent;
-	for (UINT i = 0; i < spaces; i++)
-	{
-		indent << L" ";
-	}
-	return indent.str();
+    wstring Indent(UINT spaces)
+    {
+        wstring s;
+        return s.append(spaces, L' ');
+    }
 }
 
-void VariableGroup::Display( wstringstream* renderText, UINT leftMargin, EngineVar* highlightedTweak )
+void VariableGroup::Display(wstringstream* renderText, UINT leftMargin, EngineVar* highlightedTweak)
 {
     for (auto iter = m_Children.begin(); iter != m_Children.end(); ++iter)
     {
@@ -113,20 +113,21 @@ void VariableGroup::Display( wstringstream* renderText, UINT leftMargin, EngineV
         VariableGroup* subGroup = dynamic_cast<VariableGroup*>(iter->second);
         if (subGroup != nullptr)
         {
+            *renderText << Indent(leftMargin);
             if (subGroup->IsExpanded())
             {
-                *renderText << Indent(leftMargin) << L"- ";
+                *renderText << L"- ";
             }
             else
             {
-                *renderText << L"+ ";				
+                *renderText << L"+ ";
             }
             *renderText << iter->first;
             *renderText << L"/...\n";
 
             if (subGroup->IsExpanded())
             {
-                subGroup->Display(renderText, leftMargin + 1, highlightedTweak);
+                subGroup->Display(renderText, leftMargin + 4, highlightedTweak);
             }
         }
         else
@@ -139,7 +140,7 @@ void VariableGroup::Display( wstringstream* renderText, UINT leftMargin, EngineV
     }
 }
 
-void VariableGroup::SaveToFile( FILE* file, int fileMargin )
+void VariableGroup::SaveToFile(FILE* file, int fileMargin)
 {
     for (auto iter = m_Children.begin(); iter != m_Children.end(); ++iter)
     {
@@ -158,7 +159,7 @@ void VariableGroup::SaveToFile( FILE* file, int fileMargin )
     }
 }
 
-void VariableGroup::LoadSettingsFromFile( FILE* file )
+void VariableGroup::LoadSettingsFromFile(FILE* file)
 {
     for (auto iter = m_Children.begin(); iter != m_Children.end(); ++iter)
     {
@@ -176,12 +177,12 @@ void VariableGroup::LoadSettingsFromFile( FILE* file )
     }
 }
 
-EngineVar* VariableGroup::FirstVariable( void )
+EngineVar* VariableGroup::FirstVariable(void)
 {
     return m_Children.size() == 0 ? nullptr : m_Children.begin()->second;
 }
 
-EngineVar* VariableGroup::LastVariable( void )
+EngineVar* VariableGroup::LastVariable(void)
 {
     if (m_Children.size() == 0)
         return this;
@@ -196,7 +197,7 @@ EngineVar* VariableGroup::LastVariable( void )
     return LastVariable->second;
 }
 
-EngineVar* VariableGroup::NextVariable( EngineVar* curVar )
+EngineVar* VariableGroup::NextVariable(EngineVar* curVar)
 {
     auto iter = m_Children.begin();
     for (; iter != m_Children.end(); ++iter)
@@ -205,7 +206,7 @@ EngineVar* VariableGroup::NextVariable( EngineVar* curVar )
             break;
     }
 
-    ThrowIfFailed( iter != m_Children.end(), L"Did not find engine variable in its designated group" );
+    ThrowIfFailed(iter != m_Children.end(), L"Did not find engine variable in its designated group");
 
     auto nextIter = iter;
     ++nextIter;
@@ -216,7 +217,7 @@ EngineVar* VariableGroup::NextVariable( EngineVar* curVar )
         return nextIter->second;
 }
 
-EngineVar* VariableGroup::PrevVariable( EngineVar* curVar )
+EngineVar* VariableGroup::PrevVariable(EngineVar* curVar)
 {
     auto iter = m_Children.begin();
     for (; iter != m_Children.end(); ++iter)
@@ -225,7 +226,7 @@ EngineVar* VariableGroup::PrevVariable( EngineVar* curVar )
             break;
     }
 
-    ThrowIfFailed( iter != m_Children.end(), L"Did not find engine variable in its designated group" );
+    ThrowIfFailed(iter != m_Children.end(), L"Did not find engine variable in its designated group");
 
     if (iter == m_Children.begin())
         return this;
@@ -250,7 +251,7 @@ EngineVar::EngineVar(function<void(void*)> callback, void* args) :
 {
 }
 
-EngineVar::EngineVar( const wstring& path, function<void(void*)> callback, void* args) : 
+EngineVar::EngineVar(const wstring& path, function<void(void*)> callback, void* args) : 
 	m_GroupPtr(nullptr),
 	m_Callback(callback),
 	m_Arguments(args)
@@ -258,7 +259,7 @@ EngineVar::EngineVar( const wstring& path, function<void(void*)> callback, void*
     EngineTuning::RegisterVariable(path, *this);
 }
 
-EngineVar* EngineVar::NextVar( void )
+EngineVar* EngineVar::NextVar(void)
 {
     EngineVar* next = nullptr;
     VariableGroup* isGroup = dynamic_cast<VariableGroup*>(this);
@@ -271,7 +272,7 @@ EngineVar* EngineVar::NextVar( void )
     return next != nullptr ? next : this;
 }
 
-EngineVar* EngineVar::PrevVar( void )
+EngineVar* EngineVar::PrevVar(void)
 {
     EngineVar* prev = m_GroupPtr->PrevVariable(this);
     if (prev != nullptr && prev != m_GroupPtr)
@@ -292,7 +293,7 @@ void EngineVar::OnChanged()
 }
 
 
-BoolVar::BoolVar( const wstring& path, bool val, function<void(void*)> callback, void* args)
+BoolVar::BoolVar(const wstring& path, bool val, function<void(void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
     m_Flag = val;
@@ -303,7 +304,7 @@ wstring BoolVar::ToFormattedString() const
     return ToString();
 }
 
-wstring BoolVar::ToString( void ) const
+wstring BoolVar::ToString(void) const
 {
     return m_Flag ? L"on" : L"off";
 } 
@@ -321,10 +322,10 @@ void BoolVar::SetValue(FILE* file, const wstring& setting)
         0 == _wcsicmp(valstr, L"1") ||
         0 == _wcsicmp(valstr, L"on") ||
         0 == _wcsicmp(valstr, L"yes") ||
-        0 == _wcsicmp(valstr, L"true") );
+        0 == _wcsicmp(valstr, L"true"));
 }
 
-NumVar::NumVar( const wstring& path, float val, float minVal, float maxVal, float stepSize, function<void(void*)> callback, void* args)
+NumVar::NumVar(const wstring& path, float val, float minVal, float maxVal, float stepSize, function<void(void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
     ThrowIfFailed(minVal <= maxVal);
@@ -339,7 +340,7 @@ wstring NumVar::ToFormattedString() const
     return FormattedString(L"%-11f", m_Value);
 }
 
-wstring NumVar::ToString( void ) const
+wstring NumVar::ToString(void) const
 {
     WCHAR buf[128];
     swprintf_s(buf, L"%f", m_Value);
@@ -357,16 +358,16 @@ void NumVar::SetValue(FILE* file, const wstring& setting)
 }
 
 #if _MSC_VER < 1800
-__forceinline float log2( float x ) { return log(x) / log(2.0f); }
-__forceinline float exp2( float x ) { return pow(2.0f, x); }
+__forceinline float log2(float x) { return log(x) / log(2.0f); }
+__forceinline float exp2(float x) { return pow(2.0f, x); }
 #endif
 
-ExpVar::ExpVar( const wstring& path, float val, float minExp, float maxExp, float expStepSize, function<void(void*)> callback, void* args)
+ExpVar::ExpVar(const wstring& path, float val, float minExp, float maxExp, float expStepSize, function<void(void*)> callback, void* args)
     : NumVar(path, log2(val), minExp, maxExp, expStepSize)
 {
 }
 
-ExpVar& ExpVar::operator=( float val )
+ExpVar& ExpVar::operator=(float val)
 {
     m_Value = Clamp(log2(val));
     return *this;
@@ -382,7 +383,7 @@ wstring ExpVar::ToFormattedString() const
     return FormattedString(L"%-11f", (float)*this);
 }
 
-wstring ExpVar::ToString( void ) const
+wstring ExpVar::ToString(void) const
 {
     WCHAR buf[128];
     swprintf_s(buf, L"%f", (float)*this);
@@ -399,7 +400,7 @@ void ExpVar::SetValue(FILE* file, const wstring& setting)
         *this = valueRead;
 }
 
-IntVar::IntVar( const wstring& path, int32_t val, int32_t minVal, int32_t maxVal, int32_t stepSize, function<void(void*)> callback, void* args)
+IntVar::IntVar(const wstring& path, int32_t val, int32_t minVal, int32_t maxVal, int32_t stepSize, function<void(void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
     ThrowIfFailed(minVal <= maxVal);
@@ -414,7 +415,7 @@ wstring IntVar::ToFormattedString() const
     return FormattedString(L"%-11d", m_Value);
 }
 
-wstring IntVar::ToString( void ) const
+wstring IntVar::ToString(void) const
 {
     WCHAR buf[128];
     swprintf_s(buf, L"%d", m_Value);
@@ -431,7 +432,7 @@ void IntVar::SetValue(FILE* file, const wstring& setting)
 }
 
 
-EnumVar::EnumVar( const wstring& path, int32_t initialVal, int32_t listLength, const WCHAR** listLabels, function<void(void*)> callback, void* args)
+EnumVar::EnumVar(const wstring& path, int32_t initialVal, int32_t listLength, const WCHAR** listLabels, function<void(void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
     ThrowIfFailed(listLength > 0);
@@ -445,7 +446,7 @@ wstring EnumVar::ToFormattedString() const
     return m_EnumLabels[m_Value];
 }
 
-wstring EnumVar::ToString( void ) const
+wstring EnumVar::ToString(void) const
 {
     return m_EnumLabels[m_Value];
 } 
@@ -473,7 +474,7 @@ void EnumVar::SetValue(FILE* file, const wstring& setting)
 
 }
 
-CallbackTrigger::CallbackTrigger( const wstring& path, function<void (void*)> callback, void* args )
+CallbackTrigger::CallbackTrigger(const wstring& path, function<void (void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
     m_BangDisplay = 0;
@@ -499,7 +500,7 @@ void CallbackTrigger::SetValue(FILE* file, const wstring& setting)
 //=====================================================================================================================
 // EngineTuning namespace methods
 
-void EngineTuning::Initialize( void )
+void EngineTuning::Initialize(void)
 {
     for (int32_t i = 0; i < s_UnregisteredCount; ++i)
     {
@@ -510,7 +511,7 @@ void EngineTuning::Initialize( void )
     s_UnregisteredCount = -1;
 }
 
-void HandleDigitalButtonPress( GameInput::DigitalInput button, float timeDelta, function<void ()> action )
+void HandleDigitalButtonPress(GameInput::DigitalInput button, float timeDelta, function<void ()> action)
 {
     if (!GameInput::IsPressed(button))
         return;
@@ -534,10 +535,10 @@ void HandleDigitalButtonPress( GameInput::DigitalInput button, float timeDelta, 
         action();
 }
 
-void EngineTuning::Update( float frameTime )
+void EngineTuning::Update(float frameTime)
 {
-    if (GameInput::IsFirstPressed( GameInput::kBackButton )
-        || GameInput::IsFirstPressed( GameInput::kKey_back ))
+    if (GameInput::IsFirstPressed(GameInput::kBackButton)
+        || GameInput::IsFirstPressed(GameInput::kKey_back))
         sm_IsVisible = !sm_IsVisible;
 
     if (!sm_IsVisible)
@@ -550,18 +551,18 @@ void EngineTuning::Update( float frameTime )
         return;
 
     // Detect a DPad button press
-    HandleDigitalButtonPress(GameInput::kDPadRight, frameTime, []{ sm_SelectedVariable->Increment(); } );
-    HandleDigitalButtonPress(GameInput::kDPadLeft,	frameTime, []{ sm_SelectedVariable->Decrement(); } );
-    HandleDigitalButtonPress(GameInput::kDPadDown,	frameTime, []{ sm_SelectedVariable = sm_SelectedVariable->NextVar(); } );
-    HandleDigitalButtonPress(GameInput::kDPadUp,	frameTime, []{ sm_SelectedVariable = sm_SelectedVariable->PrevVar(); } );
+    HandleDigitalButtonPress(GameInput::kDPadRight, frameTime, []{ sm_SelectedVariable->Increment(); });
+    HandleDigitalButtonPress(GameInput::kDPadLeft,	frameTime, []{ sm_SelectedVariable->Decrement(); });
+    HandleDigitalButtonPress(GameInput::kDPadDown,	frameTime, []{ sm_SelectedVariable = sm_SelectedVariable->NextVar(); });
+    HandleDigitalButtonPress(GameInput::kDPadUp,	frameTime, []{ sm_SelectedVariable = sm_SelectedVariable->PrevVar(); });
 
-    HandleDigitalButtonPress(GameInput::kKey_right, frameTime, []{ sm_SelectedVariable->Increment(); } );
-    HandleDigitalButtonPress(GameInput::kKey_left,	frameTime, []{ sm_SelectedVariable->Decrement(); } );
-    HandleDigitalButtonPress(GameInput::kKey_down,	frameTime, []{ sm_SelectedVariable = sm_SelectedVariable->NextVar(); } );
-    HandleDigitalButtonPress(GameInput::kKey_up,	frameTime, []{ sm_SelectedVariable = sm_SelectedVariable->PrevVar(); } );
+    HandleDigitalButtonPress(GameInput::kKey_right, frameTime, []{ sm_SelectedVariable->Increment(); });
+    HandleDigitalButtonPress(GameInput::kKey_left,	frameTime, []{ sm_SelectedVariable->Decrement(); });
+    HandleDigitalButtonPress(GameInput::kKey_down,	frameTime, []{ sm_SelectedVariable = sm_SelectedVariable->NextVar(); });
+    HandleDigitalButtonPress(GameInput::kKey_up,	frameTime, []{ sm_SelectedVariable = sm_SelectedVariable->PrevVar(); });
 
-    if (GameInput::IsFirstPressed( GameInput::kAButton )
-        || GameInput::IsFirstPressed( GameInput::kKey_return ))
+    if (GameInput::IsFirstPressed(GameInput::kAButton)
+        || GameInput::IsFirstPressed(GameInput::kKey_return))
     {
         sm_SelectedVariable->Bang();
     }
@@ -573,7 +574,7 @@ void StartSave(void*)
     _wfopen_s(&settingsFile, L"engineTuning.txt", L"wb");
     if (settingsFile != nullptr)
     {
-        VariableGroup::sm_RootGroup.SaveToFile(settingsFile, 2 );
+        VariableGroup::sm_RootGroup.SaveToFile(settingsFile, 2);
         fclose(settingsFile);
     }
 }
@@ -594,13 +595,21 @@ function<void(void*)> StartLoadFunc = StartLoad;
 //ToDo static CallbackTrigger Load(L"Load Settings", StartLoadFunc, nullptr); 
 
 
-void EngineTuning::Display( wstringstream* renderText)
+void EngineTuning::Display(wstringstream* renderText)
 {
+    EngineProfiling::DisplayFrameRate(*renderText, 0);
+
+    if (!sm_IsVisible)
+    {
+        EngineProfiling::Display(*renderText, 0);
+        return;
+    }
+
 	*renderText << L"Engine Tuning (use arrow keys)\n";
-    VariableGroup::sm_RootGroup.Display( renderText, 0, sm_SelectedVariable );    
+    VariableGroup::sm_RootGroup.Display(renderText, 0, sm_SelectedVariable);    
 }
 
-void EngineTuning::AddToVariableGraph( const wstring& path, EngineVar& var )
+void EngineTuning::AddToVariableGraph(const wstring& path, EngineVar& var)
 {
     vector<wstring> separatedPath;
     wstring leafName;
@@ -623,7 +632,7 @@ void EngineTuning::AddToVariableGraph( const wstring& path, EngineVar& var )
 
     VariableGroup* group = &VariableGroup::sm_RootGroup;
 
-    for (auto iter = separatedPath.begin(); iter != separatedPath.end(); ++iter )
+    for (auto iter = separatedPath.begin(); iter != separatedPath.end(); ++iter)
     {
         VariableGroup* nextGroup;
         EngineVar* node = group->FindChild(*iter);
@@ -644,7 +653,7 @@ void EngineTuning::AddToVariableGraph( const wstring& path, EngineVar& var )
     group->AddChild(leafName, var);
 }
 
-void EngineTuning::RegisterVariable( const wstring& path, EngineVar& var )
+void EngineTuning::RegisterVariable(const wstring& path, EngineVar& var)
 {
     if (s_UnregisteredCount >= 0)
     {
@@ -654,11 +663,11 @@ void EngineTuning::RegisterVariable( const wstring& path, EngineVar& var )
     }
     else
     {
-        AddToVariableGraph( path, var );
+        AddToVariableGraph(path, var);
     }
 }
 
-bool EngineTuning::IsFocused( void )
+bool EngineTuning::IsFocused(void)
 {
     return sm_IsVisible;
 }

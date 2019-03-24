@@ -105,7 +105,7 @@ namespace DX
         void Start(_In_ ID3D12GraphicsCommandList* commandList, uint32_t timerid = 0);
         void Stop(_In_ ID3D12GraphicsCommandList* commandList, uint32_t timerid = 0);
 		
-		void SetAvgRefreshPeriod(float avgRefreshPeriodMs) { m_avgRefreshPeriodMs = avgRefreshPeriodMs; }
+		void SetAvgRefreshPeriodMS(float avgRefreshPeriodMs) { m_avgRefreshPeriodMs = avgRefreshPeriodMs; }
 
         // Reset running average
         void Reset();

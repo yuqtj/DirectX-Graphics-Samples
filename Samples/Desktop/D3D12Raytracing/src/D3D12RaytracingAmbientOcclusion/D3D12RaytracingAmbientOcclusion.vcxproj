@@ -193,6 +193,7 @@
     <ClInclude Include="util\DXRTextWithPrimitiveScene.h" />
     <ClInclude Include="util\DXSample.h" />
     <ClInclude Include="util\DXSampleHelper.h" />
+    <ClInclude Include="util\EngineProfiling.h" />
     <ClInclude Include="util\EngineTuning.h" />
     <ClInclude Include="util\GameInput.h" />
     <ClInclude Include="util\GpuKernels.h" />
@@ -238,6 +239,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="util\DXSample.cpp" />
+    <ClCompile Include="util\EngineProfiling.cpp" />
     <ClCompile Include="util\EngineTuning.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>

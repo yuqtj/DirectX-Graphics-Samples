@@ -13,7 +13,7 @@
 
 // ToDo move some to cpp or stdafx?
 #include "DXSample.h"
-#include "StepTimer.h"
+#include "StepTimer.h"  // ToDo remove
 #include "RaytracingSceneDefines.h"
 #include "DirectXRaytracingHelper.h"
 #include "CameraController.h"
@@ -157,10 +157,7 @@ private:
     ConstantBuffer<SSAOSceneConstantBuffer> m_SSAOCB;
     UINT m_SSAOsrvDescriptorHeapIndex = UINT_MAX;
     D3D12_GPU_DESCRIPTOR_HANDLE SSAOgpuDescriptorReadAccess = { UINT64_MAX };
-
-	// Geometry
-	DX::GpuTimeManager m_gpuTimeManager;
-
+    
 	// ToDo clean up buffer management
 	// SquidRoom buffers
 	ComPtr<ID3D12Resource> m_vertexBuffer;
@@ -289,8 +286,8 @@ private:
     void UpdateGridGeometryTransforms();
     void InitializeScene();
 	void UpdateAccelerationStructures(bool forceBuild = false);
-	void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT gpuTimerId, uint32_t width=0, uint32_t height=0);
-	void CalculateRayHitCount(ReduceSumCalculations::Enum type, UINT gpuTimerId);
+	void DispatchRays(ID3D12Resource* rayGenShaderTable, uint32_t width=0, uint32_t height=0);
+	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
     void ApplyAtrousWaveletTransformFilter();
     void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter();
@@ -299,7 +296,6 @@ private:
 	void DownsampleRaytracingOutput();
     void DownsampleGBufferBilateral();
     // ToDo standardize const& vs *
-    void DownsampleValueNormalDepthBilateral(const RWGpuResource& inValueResource, const RWGpuResource& inNormalDepthResource, RWGpuResource* outValueResource, RWGpuResource* outNormalDepthResource, UINT timerId);
     void DownsampleGBufferAndAoBilateral();
     void UpsampleAOBilateral();
 
@@ -329,5 +325,5 @@ private:
     void BuildShaderTables();
     void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
     void CalculateFrameStats();
-	float NumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimeManager.GetAverageMS(GpuTimers::Raytracing_GBuffer), m_raytracingWidth, m_raytracingHeight); }
+	//float NumCameraRaysPerSecondNumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimeManager.GetAverageMS(GpuTimers::Raytracing_GBuffer), m_raytracingWidth, m_raytracingHeight); }
 };

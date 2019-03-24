@@ -10,6 +10,7 @@
 //*********************************************************
 
 #pragma once
+//ToDo remove
 
 // Helper class for animation and simulation timing.
 class StepTimer

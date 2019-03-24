@@ -217,6 +217,8 @@ void DefineExports(T* obj, LPCWSTR(&Exports)[N])
     }
 }
 
+
+// ToDO remove
 template<class T, size_t N, size_t M>
 void DefineExports(T* obj, LPCWSTR(&Exports)[N][M])
 {

@@ -125,7 +125,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         hiResValues[i] = g_inHiResValue[topLeftHiResIndex + srcIndexOffsets[i]];
     }
-#define WORKAROUND_FOR_VALUES_OVERFLOW_ON_MULTISCALE_COMBINE 1
+#define WORKAROUND_FOR_VALUES_OVERFLOW_ON_MULTISCALE_COMBINE 0  // ToDo remove
     float lowResValues[4];
     for (int i = 0; i < 4; i++)
     {

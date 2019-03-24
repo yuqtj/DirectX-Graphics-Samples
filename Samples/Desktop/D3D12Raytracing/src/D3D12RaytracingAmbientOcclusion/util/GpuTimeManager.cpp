@@ -25,6 +25,10 @@ using namespace DX;
 using namespace std;
 
 
+static GpuTimeManager global_GpuTimeManager;
+UINT GpuTimeManager::s_numInstances = 0;
+
+
 namespace
 {
     inline float lerp(float a, float b, float f)
@@ -60,8 +64,15 @@ namespace
     }
 };
 
+
+GpuTimeManager& GpuTimeManager::instance()
+{
+    return global_GpuTimeManager;
+}
+
 void GpuTimeManager::RestoreDevice(ID3D12Device* device, ID3D12CommandQueue* commandQueue, UINT maxFrameCount, UINT MaxNumTimers)
 {
+    m_NumAllotedTimers = 0;
     m_maxframeCount = maxFrameCount;
     m_MaxNumTimers = MaxNumTimers;
     m_MaxNumTimerSlots = m_MaxNumTimers * 2;
@@ -127,7 +138,6 @@ void GpuTimeManager::Stop(ID3D12GraphicsCommandList* commandList, UINT timerid)
     commandList->EndQuery(m_QueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timerid * 2 + 1);
 }
 
-
 float GpuTimeManager::GetElapsedMS(UINT timerid) const
 {
     assert(timerid < m_MaxNumTimers && L"Timer ID out of range");
@@ -141,6 +151,10 @@ float GpuTimeManager::GetElapsedMS(UINT timerid) const
     return static_cast<float>(double(end - start) * m_GpuTickDelta);
 }
 
+uint32_t GpuTimeManager::NewTimer(void)
+{
+    return m_NumAllotedTimers++;
+}
 
 void GpuTimeManager::Reset()
 {
@@ -155,7 +169,6 @@ void GpuTimeManager::BeginFrame(ID3D12GraphicsCommandList* commandList)
 {
     UNREFERENCED_PARAMETER(commandList);
 }
-
 
 void GpuTimeManager::EndFrame(ID3D12GraphicsCommandList* commandList)
 {
