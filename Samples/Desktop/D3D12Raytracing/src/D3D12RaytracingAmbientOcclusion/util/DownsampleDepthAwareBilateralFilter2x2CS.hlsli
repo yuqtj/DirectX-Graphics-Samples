@@ -25,6 +25,7 @@ void LoadDepthAndEncodedNormal(in uint2 texIndex, out float4 encodedNormalAndDep
     depth = encodedNormalAndDepth.z;
 }
 
+
 // ToDo remove _DepthAware from the name?
 
 [numthreads(DownsampleValueNormalDepthBilateralFilter::ThreadGroup::Width, DownsampleValueNormalDepthBilateralFilter::ThreadGroup::Height, 1)]
@@ -44,8 +45,30 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float outWeigths[4];
     UINT outDepthIndex;
     // ToDo make it depth aware instead of defaulting to index 0
-    GetWeightsForDownsampleDepthBilateral2x2(outWeigths, outDepthIndex, depths);
+    GetWeightsForDownsampleDepthBilateral2x2(outWeigths, outDepthIndex, depths, DTid);
 
     g_outNormalAndDepth[DTid] = encodedNormalsAndDepths[outDepthIndex];
+#if 1
+    // TODo cleanup
+    float4 vDepths = float4(depths[0], depths[1], depths[2], depths[3]);
+
+    float4 values = float4(
+        g_inValue[topLeftSrcIndex],
+        g_inValue[topLeftSrcIndex + srcIndexOffsets[1]],
+        g_inValue[topLeftSrcIndex + srcIndexOffsets[2]],
+        g_inValue[topLeftSrcIndex + srcIndexOffsets[3]]);
+
+
+    
+    g_outValue[DTid] = BilateralDownsample(depths[outDepthIndex], vDepths, values);
+#elif 1
+    float blendedValue = 0;
+    for (int i = 0 ; i < 4; i++)
+        blendedValue += g_inValue[topLeftSrcIndex + srcIndexOffsets[i]];
+
+    g_outValue[DTid] = 0.25f * blendedValue;
+
+#else
     g_outValue[DTid] = g_inValue[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
+#endif
 }

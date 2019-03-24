@@ -419,7 +419,7 @@ void MyRayGenShader_Visibility()
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DispatchRaysIndex().xy].xyz;
 #if COMPRES_NORMALS
-        float3 surfaceNormal = Decode(g_texGBufferNormal[DispatchRaysIndex().xy].xy);
+        float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[DispatchRaysIndex().xy].xy);
 #else
 		float3 surfaceNormal = g_texGBufferNormal[DispatchRaysIndex().xy].xyz;
 #endif
@@ -464,7 +464,7 @@ void MyRayGenShader_GBuffer()
     // ToDo Use calculated hitposition based on distance from GBuffer instead?
 	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
 
-    float rayLength = FLT_MAX;
+    float rayLength = DISTANCE_ON_MISS;
     float obliqueness = 0;
 
     
@@ -478,15 +478,24 @@ void MyRayGenShader_GBuffer()
     if (rayPayload.hit)
     {
 #endif
+#if GBUFFER_RAYLENGTH_ALONG_CENTER_CAMERA_EYE_RAY
+        Ray forwardCameraRay = GenerateForwardCameraRay(g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
+        rayLength = dot(raySegment, forwardCameraRay.direction);
+#else
         rayLength = length(raySegment);
+#endif
         float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
         obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
+#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
+        obliqueness = -dot(rayPayload.surfaceNormal, rayPayload.hitPosition);
+#endif
     }
 
 #if COMPRES_NORMALS
+
     // compress normal
     // ToDo review precision of 16bit format - particularly rayLength (renormalize ray length?)
-    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(Encode(rayPayload.surfaceNormal), rayLength, obliqueness);
+    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(EncodeNormal(rayPayload.surfaceNormal), rayLength, obliqueness);
 #else
     #if PACK_NORMAL_AND_DEPTH
         obliqueness = rayLength;
@@ -525,7 +534,7 @@ void MyRayGenShader_AO()
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
 #if COMPRES_NORMALS
-        float3 surfaceNormal = Decode(g_texGBufferNormal[DispatchRaysIndex().xy].xy);
+        float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[DispatchRaysIndex().xy].xy);
 #else
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
@@ -588,7 +597,7 @@ void MyRayGenShaderQuarterRes_AO()
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
 #if COMPRES_NORMALS
-        float3 surfaceNormal = Decode(g_texGBufferNormal[DispatchRaysIndex().xy].xy);
+        float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[DispatchRaysIndex().xy].xy);
 #else
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif

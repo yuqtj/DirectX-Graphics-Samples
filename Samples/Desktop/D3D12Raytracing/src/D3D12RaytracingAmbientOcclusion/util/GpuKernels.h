@@ -123,7 +123,7 @@ namespace GpuKernels
     {
     public:
         enum Type {
-            FilterDepthAware2x2 = 0       // ToDo rename to DepthAware
+            FilterDepthAware2x2 = 0       // ToDo rename to PointSampled
         };
 
         void Release()
@@ -153,7 +153,10 @@ namespace GpuKernels
     {
     public:
         enum Type {
-            FilterDepthAware2x2 = 0,
+            FilterPointSampling2x2 = 0,
+            FilterDepthWeighted2x2,
+            FilterDepthNormalWeighted2x2,
+            Count
         };
 
         void Release()

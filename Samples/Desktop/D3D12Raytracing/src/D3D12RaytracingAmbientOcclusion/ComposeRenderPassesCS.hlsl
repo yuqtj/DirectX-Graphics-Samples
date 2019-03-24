@@ -56,7 +56,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
 #endif
 #if COMPRES_NORMALS
-        float3 surfaceNormal = Decode(g_texGBufferNormal[DTid].xy);
+        float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[DTid].xy);
 #else
         float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif

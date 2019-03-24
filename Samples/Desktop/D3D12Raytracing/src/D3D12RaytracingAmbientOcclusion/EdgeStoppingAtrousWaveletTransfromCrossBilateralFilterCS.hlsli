@@ -74,7 +74,9 @@ void AddFilterContribution(
         // ToDo standardize index vs id
 #if COMPRES_NORMALS
         float4 normalBufValue = g_inNormal[id];
-        float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
+        
+        float4 normal4 = float4(DecodeNormal(normalBufValue.xy), normalBufValue.z);
+        float iObliqueness = normalBufValue.w;
 #else
         float4 normal4 = g_inNormal[id];
 #endif 
@@ -85,12 +87,22 @@ void AddFilterContribution(
 #else
         float iDepth = g_inDepth[id];
 #endif
-        float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;
-
-        float w_h = FilterKernel::Kernel[row][col];
 
         // Ref: SVGF
         float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1;
+
+#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
+        float surfaceDistance = obliqueness;
+        float iSurfaceDistance = iObliqueness;
+
+        float e_surfaceDistance = w_n > 0.8 && depthSigma > 0.01f ? -abs(surfaceDistance - iSurfaceDistance) / (depthSigma) : 0;
+        float e_d = -abs(depth - iDepth) / (0.5 * 0.5);
+        e_d += e_surfaceDistance;
+#else
+        float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;
+#endif
+        float w_h = FilterKernel::Kernel[row][col];
+
         // ToDo apply exp combination where applicable 
         float w_xd = exp(e_x + e_d);        // exp(x) * exp(y) == exp(x + y)
         float w = w_h * w_n * w_xd;
@@ -118,8 +130,12 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
     // Initialize values to the current pixel / center filter kernel value.
 #if COMPRES_NORMALS
     float4 normalBufValue = g_inNormal[DTid];
-    float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
+    float4 normal4 = float4(DecodeNormal(normalBufValue.xy), normalBufValue.z);
+#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
+    float obliqueness = normalBufValue.w;    // ToDO review
+#else
     float obliqueness = max(0.0001f, pow(normalBufValue.w, 10));    // ToDO review
+#endif
 #else
     float4 normal4 = g_inNormal[DTid];
     #if PACK_NORMAL_AND_DEPTH

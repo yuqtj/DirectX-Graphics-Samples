@@ -43,6 +43,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightSum = 0;
     float4 weightedValueSum = float4(0, 0, 0, 0);
 
+    // ToDo use for loop
     AddFilterContribution(weightedValueSum, weightSum, 0, 0, index);
     AddFilterContribution(weightedValueSum, weightSum, 1, 0, index);
     AddFilterContribution(weightedValueSum, weightSum, 2, 0, index);

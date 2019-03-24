@@ -100,8 +100,9 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
+
     // ToDo test tessFactor 16
     // ToDo fix alias on TessFactor 2
     IntVar GeometryTesselationFactor(L"Geometry/Tesselation factor", 0/*14*/, 0, 80, 1, OnGeometryChange, nullptr);
@@ -132,6 +133,11 @@ namespace SceneArgs
 #endif
     BoolVar AOEnabled(L"AO/Enabled", true);
     
+
+    const WCHAR* DownsamplingBilateralFilters[GpuKernels::DownsampleValueNormalDepthBilateralFilter::Count] = { L"Point Sampling", L"Depth Weighted", L"Depth Normal Weighted" };
+    EnumVar DownsamplingBilateralFilter(L"AO/RTAO/Down\\Upsampling/Downsampled Value Filter", GpuKernels::DownsampleValueNormalDepthBilateralFilter::FilterDepthNormalWeighted2x2, GpuKernels::DownsampleValueNormalDepthBilateralFilter::Count, DownsamplingBilateralFilters, OnRecreateRaytracingResources, nullptr);
+
+
     // RTAO
     // Adaptive Sampling.
     BoolVar QuarterResAO(L"AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
@@ -140,8 +146,9 @@ namespace SceneArgs
     NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
     BoolVar RTAOAdaptiveSamplingMinMaxSampling(L"AO/RTAO/Adaptive Sampling/Only min\\max sampling", false);
     NumVar RTAOAdaptiveSamplingScaleExponent(L"AO/RTAO/Adaptive Sampling/Sampling scale exponent", 0.7f, 0.0f, 10, 0.1f);
-    BoolVar RTAORandomFrameSeed(L"AO/RTAO/Random per-frame seed", true);
+    BoolVar RTAORandomFrameSeed(L"AO/RTAO/Random per-frame seed", false);
 
+    // ToDo cleanup RTAO... vs RTAO_..
     IntVar RTAOAdaptiveSamplingMinSamples(L"AO/RTAO/Adaptive Sampling/Min samples", 2, 1, AO_SPP_N * AO_SPP_N, 1);
     IntVar RTAO_KernelStepShift0(L"AO/RTAO/Kernel Step Shifts/0", 0, 0, 10, 1);
     IntVar RTAO_KernelStepShift1(L"AO/RTAO/Kernel Step Shifts/1", 0, 0, 10, 1);
@@ -1285,7 +1292,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 	m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9);
 	m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25);
     m_downsampleGBufferBilateralFilterKernel.Initialize(device, GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::FilterDepthAware2x2);
-    m_downsampleValueNormalDepthBilateralFilterKernel.Initialize(device, GpuKernels::DownsampleValueNormalDepthBilateralFilter::FilterDepthAware2x2);
+    m_downsampleValueNormalDepthBilateralFilterKernel.Initialize(device, static_cast<GpuKernels::DownsampleValueNormalDepthBilateralFilter::Type>(static_cast<UINT>(SceneArgs::DownsamplingBilateralFilter)));
     m_upsampleBilateralFilterKernel.Initialize(device, GpuKernels::UpsampleBilateralFilter::Filter2x2);
     m_multiScale_upsampleBilateralFilterAndCombineKernel.Initialize(device, GpuKernels::MultiScale_UpsampleBilateralFilterAndCombine::Filter2x2);
     
@@ -1948,7 +1955,9 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 		m_isRecreateRaytracingResourcesRequested = false;
 		m_deviceResources->WaitForGpu();
 
+        // ToDo split to recreate only whats needed?
 		OnCreateWindowSizeDependentResources();
+        CreateAuxilaryDeviceResources();
 	}
 
 	if (m_isRecreateAOSamplesRequested)
@@ -2474,15 +2483,20 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                 D3D12_RESOURCE_DESC desc = msResource.m_smoothedValue.resource.Get()->GetDesc();
                 UINT width = static_cast<UINT>(desc.Width);
                 UINT height = static_cast<UINT>(desc.Height);
-                m_downsampleValueNormalDepthBilateralFilterKernel.Execute(
-                    commandList,
-                    width,
-                    height,
-                    m_cbvSrvUavHeap->GetHeap(),
-                    msResource.m_smoothedValue.gpuDescriptorReadAccess,
-                    msResource.m_normalDepth.gpuDescriptorReadAccess,
-                    msResource.m_downsampledSmoothedValue.gpuDescriptorWriteAccess,
-                    msResource.m_downsampledNormalDepthValue.gpuDescriptorWriteAccess);
+
+                // Last denoised scale doesn't need to be downsampled as the denoised result itself is propagate upstream.
+                if (i < SceneArgs::RTAODenoisingMultiscaleLevels - 1)
+                {
+                    m_downsampleValueNormalDepthBilateralFilterKernel.Execute(
+                        commandList,
+                        width,
+                        height,
+                        m_cbvSrvUavHeap->GetHeap(),
+                        msResource.m_smoothedValue.gpuDescriptorReadAccess,
+                        msResource.m_normalDepth.gpuDescriptorReadAccess,
+                        msResource.m_downsampledSmoothedValue.gpuDescriptorWriteAccess,
+                        msResource.m_downsampledNormalDepthValue.gpuDescriptorWriteAccess);
+                }
 
                 // Transition the output resources to shader resource state.    // ToDo say SRV instead to match UAV wording
                 {
@@ -2752,6 +2766,7 @@ void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
 
     m_gpuTimeManager.Start(commandList, GpuTimers::DownsampleToBackbuffer);
 
+    // ToDo pass the filter to the kernel instead of using 3 different instances
 	switch (SceneArgs::AntialiasingMode)
 	{
 	case DownsampleFilter::BoxFilter2x2:

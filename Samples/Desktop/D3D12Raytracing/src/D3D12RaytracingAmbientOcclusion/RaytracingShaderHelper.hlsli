@@ -311,13 +311,14 @@ float3 i_octahedral_32(uint data, uint sh)
 
 /***************************************************************/
 // Normal encoding
+// ToDO comment
 // Ref: https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
 float2 OctWrap(float2 v)
 {
     return (1.0 - abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
 }
 
-float2 Encode(float3 n)
+float2 EncodeNormal(float3 n)
 {
     n /= (abs(n.x) + abs(n.y) + abs(n.z));
     n.xy = n.z >= 0.0 ? n.xy : OctWrap(n.xy);
@@ -325,7 +326,7 @@ float2 Encode(float3 n)
     return n.xy;
 }
 
-float3 Decode(float2 f)
+float3 DecodeNormal(float2 f)
 {
     f = f * 2.0 - 1.0;
 

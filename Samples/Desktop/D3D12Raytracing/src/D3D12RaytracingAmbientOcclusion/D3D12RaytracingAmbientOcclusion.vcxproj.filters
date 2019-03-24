@@ -317,13 +317,22 @@
     <FxCompile Include="util\DownsampleBilateralFilterCS.hlsli">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="util\DownsampleValueDepthNormal_DepthAwareBilateralFilter2x2CS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="util\DownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
     <FxCompile Include="util\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="util\DownsampleDepthAwareBilateralFilter2x2CS.hlsli">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="util\DownsampleValueDepthNormal_PointSamplingBilateralFilter2x2CS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="util\DownsampleValueDepthNormal_DepthWeightedBilateralFilter2x2CS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="util\DownsampleValueDepthNormal_DepthNormalWeightedBilateralFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
   </ItemGroup>

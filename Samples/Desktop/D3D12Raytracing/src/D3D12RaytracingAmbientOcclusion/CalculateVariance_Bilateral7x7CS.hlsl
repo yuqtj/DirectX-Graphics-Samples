@@ -9,7 +9,7 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-
+// ToDo cleanup
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
@@ -24,7 +24,11 @@ ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 void AddFilterContribution(inout float weightedValueSum, inout float weightedSquaredValueSum, inout float weightSum, inout UINT numWeights, in float value, in float depth, in float3 normal, float obliqueness, in uint row, in uint col, in uint2 DTid)
 {
     const float normalSigma = cb.normalSigma;
+#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
+    const float depthSigma = 0.5;
+#else
     const float depthSigma = cb.depthSigma;
+#endif
 
     int2 id = int2(DTid) + (int2(row - 3, col - 3) );
     if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
@@ -32,7 +36,7 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
         float iValue = g_inValues[id];
 #if COMPRES_NORMALS
         float4 normalBufValue = g_inNormal[id];
-        float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
+        float4 normal4 = float4(DecodeNormal(normalBufValue.xy), normalBufValue.z);
 #else
         float4 normal4 = g_inNormal[id];
 #endif 
@@ -62,8 +66,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
 {
 #if COMPRES_NORMALS
     float4 normalBufValue = g_inNormal[DTid];
-    float4 normal4 = float4(Decode(normalBufValue.xy), normalBufValue.z);
+    float4 normal4 = float4(DecodeNormal(normalBufValue.xy), normalBufValue.z);
+#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
+    float obliqueness = 1;    // ToDO
+#else
     float obliqueness = max(0.0001f, pow(normalBufValue.w, 10));
+#endif
 #else
     float4 normal4 = g_inNormal[DTid];
     float obliqueness = max(0.0001f, pow(normal4.w, 10));
@@ -187,7 +195,9 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
     float iValue = VCache[Cid.y][Cid.x];
     float iDepth = DCache[Cid.y][Cid.x];
     float3 iNormal = float3(NCacheX[Cid.y][Cid.x], NCacheY[Cid.y][Cid.x], NCacheZ[Cid.y][Cid.x]);
-
+#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
+    depthSigma = 0.5;
+#endif
     float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma)) : 1.f;
     float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1.f;
     float w = w_n * w_d;
@@ -203,7 +213,7 @@ void LoadToSharedMemory(int2 pixel, int2 smemIndex)
 {
     VCache[smemIndex.y][smemIndex.x] = g_inValues[pixel];
     float4 normalBufValue = g_inNormal[pixel];
-    float3 normal = Decode(normalBufValue.xy);
+    float3 normal = DecodeNormal(normalBufValue.xy);
     DCache[smemIndex.y][smemIndex.x] = normalBufValue.z;
     NCacheX[smemIndex.y][smemIndex.x] = normal.x;
     NCacheY[smemIndex.y][smemIndex.x] = normal.y;
@@ -338,7 +348,9 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
 {
     const float normalSigma = cb.normalSigma;
     const float depthSigma = cb.depthSigma;
-
+#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
+    depthSigma = 0.5;
+#endif
     int2 NCid = Cid + offset; // Neighbor cache ID.
     if (NCid.x < CalculateVariance_Bilateral::ThreadGroup::Width + 4 && NCid.y < CalculateVariance_Bilateral::ThreadGroup::Height + 4)
     {
@@ -393,7 +405,7 @@ void LoadToSharedMemory(int2 pixel, int2 smemIndex)
 {
     VCache[smemIndex.y][smemIndex.x] = g_inValues[pixel];
     float4 normalBufValue = g_inNormal[pixel];
-    float3 normal = Decode(normalBufValue.xy);
+    float3 normal = DecodeNormal(normalBufValue.xy);
     DCache[smemIndex.y][smemIndex.x] = normalBufValue.z;
     NCacheX[smemIndex.y][smemIndex.x] = normal.x;
     NCacheY[smemIndex.y][smemIndex.x] = normal.y;

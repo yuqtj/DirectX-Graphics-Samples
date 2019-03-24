@@ -20,7 +20,9 @@
 #include "CompiledShaders\DownsampleGaussian9TapFilterCS.hlsl.h"
 #include "CompiledShaders\DownsampleGaussian25TapFilterCS.hlsl.h"
 #include "CompiledShaders\DownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS.hlsl.h"
-#include "CompiledShaders\DownsampleValueDepthNormal_DepthAwareBilateralFilter2x2CS.hlsl.h"
+#include "CompiledShaders\DownsampleValueDepthNormal_DepthWeightedBilateralFilter2x2CS.hlsl.h"
+#include "CompiledShaders\DownsampleValueDepthNormal_PointSamplingBilateralFilter2x2CS.hlsl.h"
+#include "CompiledShaders\DownsampleValueDepthNormal_DepthNormalWeightedBilateralFilter2x2CS.hlsl.h"
 #include "CompiledShaders\UpsampleBilateralFilter2x2CS.hlsl.h"
 #include "CompiledShaders\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl.h"
 #include "CompiledShaders\GaussianFilter3x3CS.hlsl.h"
@@ -578,8 +580,14 @@ namespace GpuKernels
             descComputePSO.pRootSignature = m_rootSignature.Get();
             switch (type)
             {
-            case FilterDepthAware2x2:
-                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pDownsampleValueDepthNormal_DepthAwareBilateralFilter2x2CS), ARRAYSIZE(g_pDownsampleValueDepthNormal_DepthAwareBilateralFilter2x2CS));
+            case FilterPointSampling2x2:
+                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pDownsampleValueDepthNormal_PointSamplingBilateralFilter2x2CS), ARRAYSIZE(g_pDownsampleValueDepthNormal_PointSamplingBilateralFilter2x2CS));
+                break;
+            case FilterDepthWeighted2x2:
+                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pDownsampleValueDepthNormal_DepthWeightedBilateralFilter2x2CS), ARRAYSIZE(g_pDownsampleValueDepthNormal_DepthWeightedBilateralFilter2x2CS));
+                break;
+            case FilterDepthNormalWeighted2x2:
+                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pDownsampleValueDepthNormal_DepthNormalWeightedBilateralFilter2x2CS), ARRAYSIZE(g_pDownsampleValueDepthNormal_DepthNormalWeightedBilateralFilter2x2CS));
                 break;
             }
 
