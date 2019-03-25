@@ -119,11 +119,11 @@ void main(uint2 DTid : SV_DispatchThreadID )
         }
         else if (g_CB.compositionType == CompositionType::RTAOHitDistance)
         {
-            float3 minDistanceColor = float3(170, 220, 200) / 255;
-            float3 maxDistanceColor = float3(15, 18, 153) / 255;
+            float3 minDistanceColor = float3(15, 18, 153) / 255;
+            float3 maxDistanceColor = float3(170, 220, 200) / 255;
             float hitDistance = g_texRayHitDistance[DTid].x;
             float hitCoef = hitDistance / g_CB.RTAO_MaxRayHitDistance;
-            color = float4(lerp(minDistanceColor, maxDistanceColor, hitCoef), 1);
+            color = hitCoef >= 0.0f ? float4(lerp(minDistanceColor, maxDistanceColor, hitCoef), 1) : float4(1, 1, 1, 1);
         }
         else if (g_CB.compositionType == CompositionType::NormalsOnly)
         {

@@ -175,7 +175,7 @@ namespace SceneArgs
     BoolVar UseSpatialVariance(L"Render/AO/RTAO/Denoising/Use spatial variance", true);
     BoolVar ApproximateSpatialVariance(L"Render/AO/RTAO/Denoising/Approximate spatial variance", false);
     BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale denoising", true);
-    IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale levels", 3, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
+    IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale levels", 2, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"Render/AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
@@ -3392,7 +3392,6 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
     // Engine tuning.
     {
         wstringstream wLabel;
-        wLabel << L"\n\n";
         EngineTuning::Display(&wLabel);
         labels.push_back(wLabel.str());
     }
@@ -3611,93 +3610,98 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     m_deviceResources->Prepare();
 
     EngineProfiling::BeginFrame(commandList);
-    ScopedTimer _prof(L"Frame", commandList);
+    {
+        ScopedTimer _prof(L"Frame", commandList);
 
 #if RUNTIME_AS_UPDATES
-    // Update acceleration structures.
-    if (m_isASrebuildRequested && SceneArgs::EnableGeometryAndASBuildsAndUpdates)
-    {
-        UpdateAccelerationStructures(m_isASrebuildRequested);
-        m_isASrebuildRequested = false;
-    }
+        // Update acceleration structures.
+        if (m_isASrebuildRequested && SceneArgs::EnableGeometryAndASBuildsAndUpdates)
+        {
+            UpdateAccelerationStructures(m_isASrebuildRequested);
+            m_isASrebuildRequested = false;
+        }
 #endif
 
-    // Render.
-	RenderPass_GenerateGBuffers();
+        // Render.
+        RenderPass_GenerateGBuffers();
 
-    // AO. 
-    if (SceneArgs::AOMode == SceneArgs::AOType::RTAO)
-    {
-        if (SceneArgs::RTAOAdaptiveSampling)
+        // AO. 
+        if (SceneArgs::AOMode == SceneArgs::AOType::RTAO)
         {
-            CalculateAdaptiveSamplingCounts();
-        }
-        RenderPass_CalculateAmbientOcclusion();
+            ScopedTimer _prof(L"RTAO", commandList);
+
+            if (SceneArgs::RTAOAdaptiveSampling)
+            {
+                CalculateAdaptiveSamplingCounts();
+            }
+            RenderPass_CalculateAmbientOcclusion();
 
 #if BLUR_AO
 #if ATROUS_DENOISER
 
 #if 0
-        ApplyAtrousWaveletTransformFilter();
-#else
-        if (SceneArgs::RTAODenoisingUseMultiscale)
-        {
-            ApplyMultiScaleAtrousWaveletTransformFilter();
-        }
-        else
-        {
             ApplyAtrousWaveletTransformFilter();
-        }
+#else
+            if (SceneArgs::RTAODenoisingUseMultiscale)
+            {
+                ApplyMultiScaleAtrousWaveletTransformFilter();
+            }
+            else
+            {
+                ApplyAtrousWaveletTransformFilter();
+            }
 #endif
 #else
-        ToDo - fix up resources
-            RenderPass_BlurAmbientOcclusion();
+            ToDo - fix up resources
+                RenderPass_BlurAmbientOcclusion();
 #endif
 #endif
-        if (SceneArgs::QuarterResAO)
-        {
-            UpsampleAOBilateral();
+            if (SceneArgs::QuarterResAO)
+            {
+                UpsampleAOBilateral();
+            }
+            else // ToDo move this to ApplyAtrousWaveletTransformFilter?
+            {
+                // Transition AO Smoothed resource to SRV.
+                //commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+            }
         }
-        else // ToDo move this to ApplyAtrousWaveletTransformFilter?
+        else // SSAO
         {
-            // Transition AO Smoothed resource to SRV.
-            //commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+            ScopedTimer _prof(L"SSAO", commandList);
+            // Copy dynamic buffers to GPU.
+            {
+                auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+                m_SSAOCB.CopyStagingToGpu(frameIndex);
+            }
+
+            m_SSAO.ChangeScreenScale(1.f);
+            m_SSAO.Run(m_SSAOCB.GetResource());
         }
-    }
-    else // SSAO
-    {
-        // Copy dynamic buffers to GPU.
+
+        RenderPass_CalculateVisibility();
+
+        D3D12_GPU_DESCRIPTOR_HANDLE AOSRV = SceneArgs::AOMode == SceneArgs::AOType::RTAO ? m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess : SSAOgpuDescriptorReadAccess;
+
+        // ToDo cleanup
+        if (SceneArgs::AOMode == SceneArgs::AOType::RTAO && SceneArgs::RTAODenoisingUseMultiscale && !SceneArgs::QuarterResAO)
         {
-            auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-            m_SSAOCB.CopyStagingToGpu(frameIndex);
+            AOSRV = m_multiScaleDenoisingResources[0].m_value.gpuDescriptorReadAccess;
         }
 
-        m_SSAO.ChangeScreenScale(1.f);
-        m_SSAO.Run(m_SSAOCB.GetResource());
-    }
+        RenderPass_ComposeRenderPassesCS(AOSRV);
 
-    RenderPass_CalculateVisibility();
-
-    D3D12_GPU_DESCRIPTOR_HANDLE AOSRV = SceneArgs::AOMode == SceneArgs::AOType::RTAO ? m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess : SSAOgpuDescriptorReadAccess;
-
-    // ToDo cleanup
-    if (SceneArgs::AOMode == SceneArgs::AOType::RTAO && SceneArgs::RTAODenoisingUseMultiscale && !SceneArgs::QuarterResAO)
-    {
-        AOSRV = m_multiScaleDenoisingResources[0].m_value.gpuDescriptorReadAccess;
-    }
-
-	RenderPass_ComposeRenderPassesCS(AOSRV);
-	
-	if (m_GBufferWidth != m_width || m_GBufferHeight != m_height)
-	{
-		DownsampleRaytracingOutput();
-	}
+        if (m_GBufferWidth != m_width || m_GBufferHeight != m_height)
+        {
+            DownsampleRaytracingOutput();
+        }
 
 #if RENDER_RNG_SAMPLE_VISUALIZATION
-    RenderRNGVisualizations();
+        RenderRNGVisualizations();
 #endif
-	// UILayer will transition backbuffer to a present state.
-    CopyRaytracingOutputToBackbuffer(m_enableUI ? D3D12_RESOURCE_STATE_RENDER_TARGET : D3D12_RESOURCE_STATE_PRESENT);
+        // UILayer will transition backbuffer to a present state.
+        CopyRaytracingOutputToBackbuffer(m_enableUI ? D3D12_RESOURCE_STATE_RENDER_TARGET : D3D12_RESOURCE_STATE_PRESENT);
+    }
 
  
     // End frame.

@@ -72,7 +72,6 @@ GpuTimeManager& GpuTimeManager::instance()
 
 void GpuTimeManager::RestoreDevice(ID3D12Device* device, ID3D12CommandQueue* commandQueue, UINT maxFrameCount, UINT MaxNumTimers)
 {
-    m_NumAllotedTimers = 0;
     m_maxframeCount = maxFrameCount;
     m_MaxNumTimers = MaxNumTimers;
     m_MaxNumTimerSlots = m_MaxNumTimers * 2;

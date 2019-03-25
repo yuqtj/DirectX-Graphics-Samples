@@ -33,7 +33,7 @@ namespace
 
     inline float UpdateRunningAverage(float avg, float value)
     {
-        return lerp(value, avg, 0.05f);
+        return avg >= 0.0001f ? lerp(avg, value, 0.05f) : value;
     }
 
     inline void DebugWarnings(uint32_t timerid, uint64_t start, uint64_t end)

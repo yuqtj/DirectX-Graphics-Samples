@@ -179,6 +179,7 @@ public:
     void StopTiming(ID3D12GraphicsCommandList* CommandList)
     {
         m_CpuTimer.Stop();
+        m_CpuTimer.Update();
         if (CommandList == nullptr)
             return;
 
@@ -207,8 +208,8 @@ public:
     static void PopProfilingMarker(ID3D12GraphicsCommandList* CommandList);
     static void Update(void);
 
-    float GetAverageCpuTimeMS(void) const { return m_GpuTimer.GetAverageMS(); }
-    float GetAverageGpuTimeMS(void) const { return m_CpuTimer.GetAverageMS(); }
+    float GetAverageCpuTimeMS(void) const { return m_CpuTimer.GetAverageMS(); }
+    float GetAverageGpuTimeMS(void) const { return m_GpuTimer.GetAverageMS(); }
 
 
     static void Display(wstringstream& Text, UINT indent)
@@ -217,10 +218,15 @@ public:
     }
 
     static const NestedTimingTree& Root() { return sm_RootScope; }
+
+    const vector<NestedTimingTree*>& Children() const { return m_Children; }
+    const wstring& Name() const { return m_Name; }
+    static CPUTimer& FrameCpuTimer() { return sm_FrameCpuTimer; }
+    static CPUTimer& FrameToFrameCpuTimer() { return sm_FrameToFrameCpuTimer; }
+    static GpuTimer& FrameGpuTimer() { return sm_FrameGpuTimer; }
 private:
 
     void DisplayNode(wstringstream& Text, UINT indent);
-    void StoreToGraph(void);
     void DeleteChildren(void)
     {
         for (auto node : m_Children)
@@ -240,16 +246,23 @@ private:
     static NestedTimingTree sm_RootScope;
     static NestedTimingTree* sm_CurrentNode;
     static NestedTimingTree* sm_SelectedScope;
-
+    static CPUTimer sm_FrameToFrameCpuTimer;
+    static CPUTimer sm_FrameCpuTimer;
+    static GpuTimer sm_FrameGpuTimer;
 };
 
 NestedTimingTree NestedTimingTree::sm_RootScope(L"");
 NestedTimingTree* NestedTimingTree::sm_CurrentNode = &NestedTimingTree::sm_RootScope;
 NestedTimingTree* NestedTimingTree::sm_SelectedScope = &NestedTimingTree::sm_RootScope;
+CPUTimer NestedTimingTree::sm_FrameToFrameCpuTimer;
+CPUTimer NestedTimingTree::sm_FrameCpuTimer;
+GpuTimer NestedTimingTree::sm_FrameGpuTimer;
+
 namespace EngineProfiling
 {
     BoolVar DrawFrameRate(L"Display Frame Rate", true);
     BoolVar DrawProfiler(L"Display Profiler", false);
+    BoolVar DrawCpuTime(L"Display CPU Times", false);
 
     void Update(void)
     {
@@ -262,11 +275,28 @@ namespace EngineProfiling
     
     void BeginFrame(ID3D12GraphicsCommandList* CommandList)
     {
+        // ToDo cleanup
+        static bool isFirstFrame = true;
+        if (!isFirstFrame)
+        {
+            NestedTimingTree::FrameToFrameCpuTimer().Stop();
+            NestedTimingTree::FrameToFrameCpuTimer().Update();
+        }
+        isFirstFrame = false;
+        NestedTimingTree::FrameToFrameCpuTimer().Start();
+        NestedTimingTree::FrameCpuTimer().Start();
+        
+
         GpuTimeManager::instance().BeginFrame(CommandList);
+
+        NestedTimingTree::FrameGpuTimer().Start(CommandList);
     }
 
     void EndFrame(ID3D12GraphicsCommandList* CommandList)
     {
+        NestedTimingTree::FrameCpuTimer().Stop();
+        NestedTimingTree::FrameCpuTimer().Update();
+        NestedTimingTree::FrameGpuTimer().Stop(CommandList);
         GpuTimeManager::instance().EndFrame(CommandList);
     }
 
@@ -300,19 +330,23 @@ namespace EngineProfiling
         if (!DrawFrameRate)
             return;
 
-        float cpuTime = NestedTimingTree::Root().GetAverageCpuTimeMS();
-        float gpuTime = NestedTimingTree::Root().GetAverageGpuTimeMS();
-        float frameRate = 1e3f / cpuTime;
+
+        float cpuTime = NestedTimingTree::FrameCpuTimer().GetAverageMS();
+        float cpuFrameToFrameTime = NestedTimingTree::FrameToFrameCpuTimer().GetAverageMS();
+        float gpuTime = NestedTimingTree::FrameGpuTimer().GetAverageMS();
+        float frameRate = 1e3f / cpuFrameToFrameTime;
 
         streamsize prevPrecision = Text.precision(3);
-        //streamsize prevWidth = Text.width(7);
-        Text << Indent(indent)
-             << L"CPU " << cpuTime << L"ms, "
-             << L"GPU " << gpuTime << L"ms, ";
+        Text << Indent(indent);
+        if (DrawCpuTime)
+        {
+            Text << L"CPU " << cpuTime << L"ms, ";
+        }
+        Text << L"GPU " << gpuTime << L"ms, ";
+
         Text.width(3);
         Text << (uint32_t)(frameRate + 0.5f) << L" FPS\n";
 
-       // Text.width(prevWidth);
         Text.precision(prevPrecision);
     }
 
@@ -323,7 +357,12 @@ namespace EngineProfiling
             NestedTimingTree::Update();
 
             Text << Indent(indent) << L"Engine Profiling (use arrow keys) "
-                 << L"           CPU [ms]    GPU [ms]\n";
+                << L"           ";
+            if (DrawCpuTime)
+            {
+                Text << L"CPU[ms]    ";
+            }
+            Text << L"GPU[ms]\n";
 
             NestedTimingTree::Display(Text, indent);
         }
@@ -382,7 +421,7 @@ void NestedTimingTree::DisplayNode(wstringstream& Text, UINT indent)
     if (this == &sm_RootScope)
     {
         m_IsExpanded = true;
-        sm_RootScope.FirstChild()->m_IsExpanded = true;
+        //sm_RootScope.FirstChild()->m_IsExpanded = true;
     }
     else
     {
@@ -397,22 +436,28 @@ void NestedTimingTree::DisplayNode(wstringstream& Text, UINT indent)
         else
             Text << L"+  ";
 
-        Text << m_Name.c_str();
+        Text << m_Name.c_str() << L" ";
 
         streamsize prevPrecision = Text.precision(3);
         streamsize prevWidth = Text.width(6);
-        Text << m_CpuTimer.GetAverageMS() << L" "
-             << m_GpuTimer.GetAverageMS() << L"   ";
+
+        if (EngineProfiling::DrawCpuTime)
+        {
+            Text << m_CpuTimer.GetAverageMS() << L" ";    
+        }
+        Text << m_GpuTimer.GetAverageMS() << L"   ";
         Text.width(prevWidth);
         Text.precision(prevPrecision);
 
         Text << L"\n";
+
+        indent += 2;
     }
 
     if (!m_IsExpanded)
         return;
 
     for (auto node : m_Children)
-        node->DisplayNode(Text, indent + 2);
+        node->DisplayNode(Text, indent);
 }
 
