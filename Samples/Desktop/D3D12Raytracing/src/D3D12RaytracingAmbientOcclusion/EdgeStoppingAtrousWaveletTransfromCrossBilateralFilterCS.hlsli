@@ -107,7 +107,7 @@ void AddFilterContribution(
         float fEpsilon = depth * 0.0012f;     // ToDo finalize the value
         // ToDo explain 1 -
         // Make the 0 start at 1 == depthDelta/depthTolerance
-        float minObliqueness = 0.02; // Avoid weighting by depth at very sharp angles.
+        float minObliqueness = 0.02; // Avoid weighting by depth at very sharp angles. Depend on weighting by normals.
         float e_d = obliqueness > minObliqueness ? min(1 - abs(depth - iDepth) / (depthSigma * length(ddxy * pixelOffset) + fEpsilon), 0) : 0;
         
 #else
