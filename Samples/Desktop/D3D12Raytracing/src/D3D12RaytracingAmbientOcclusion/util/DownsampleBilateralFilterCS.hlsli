@@ -81,6 +81,7 @@ float BilateralInterpolation_DepthAware(
     float4 SampleDistances,
     float4 SampleValues)
 {
+    // ToDo use depth weights from atrous filter?
     float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
     float4 weights = depthWeights;
 
@@ -150,7 +151,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     // ToDo comment on not interpolating actualNormal
     g_outNormalAndDepth[DTid] = encodedNormalsAndDepths[outDepthIndex];
-    g_outPartialDistanceDerivatives[DTid] = g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
+
+    // Since we're reducing the resolution by 2, multiple the partial derivatives by 2. Either that or the multiplier should be applied when calculating weights.
+    // ToDo it would be cleaner to apply that multiplier at weights calculation. Or recompute the partial derivatives on downsample?
+    g_outPartialDistanceDerivatives[DTid] = 2 * g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
 
 #ifdef BILATERAL_DOWNSAMPLE_VALUE_POINT_SAMPLING
     g_outValue[DTid] = values[outDepthIndex];

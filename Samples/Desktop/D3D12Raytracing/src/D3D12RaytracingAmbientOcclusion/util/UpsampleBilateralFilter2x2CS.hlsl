@@ -74,12 +74,13 @@ float BilateralUpsample(float ActualDistance, float3 ActualNormal, float4 Sample
 
     if (g_CB.useNormalWeights)
     {
+        const uint normalExponent = 32;
         normalWeights =  
             float4(
-                pow(saturate(dot(ActualNormal, SampleNormals[0])), 32),
-                pow(saturate(dot(ActualNormal, SampleNormals[1])), 32),
-                pow(saturate(dot(ActualNormal, SampleNormals[2])), 32),
-                pow(saturate(dot(ActualNormal, SampleNormals[3])), 32));
+                pow(saturate(dot(ActualNormal, SampleNormals[0])), normalExponent),
+                pow(saturate(dot(ActualNormal, SampleNormals[1])), normalExponent),
+                pow(saturate(dot(ActualNormal, SampleNormals[2])), normalExponent),
+                pow(saturate(dot(ActualNormal, SampleNormals[3])), normalExponent));
     }
 
        

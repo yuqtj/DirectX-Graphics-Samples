@@ -80,5 +80,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
     g_outNormal[DTid] = encodedNormals[outDepthIndex];
     g_outHitPosition[DTid] = g_inHitPosition[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
     g_outGeometryHit[DTid] = g_inGeometryHit[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
-    g_outPartialDistanceDerivatives[DTid] = g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
+
+    // Since we're reducing the resolution by 2, multiple the partial derivatives by 2. Either that or the multiplier should be applied when calculating weights.
+    // ToDo it would be cleaner to apply that multiplier at weights calculation. Or recompute the partial derivatives on downsample?
+    g_outPartialDistanceDerivatives[DTid] = 2 * g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
 }

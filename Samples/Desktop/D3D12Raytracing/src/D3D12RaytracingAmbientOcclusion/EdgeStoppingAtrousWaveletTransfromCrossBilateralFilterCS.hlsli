@@ -104,8 +104,12 @@ void AddFilterContribution(
 
 #define USE_PARTIAL_DERIVATIVES 1
 #if USE_PARTIAL_DERIVATIVES
-        float fEpsilon = depth * 0.001f;// depth * 0.005f;     // ToDo finalize the value
-        float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) / (depthSigma * length(ddxy * pixelOffset) + fEpsilon) : 0;
+        float fEpsilon = depth * 0.0012f;     // ToDo finalize the value
+        // ToDo explain 1 -
+        // Make the 0 start at 1 == depthDelta/depthTolerance
+        float minObliqueness = 0.02; // Avoid weighting by depth at very sharp angles.
+        float e_d = obliqueness > minObliqueness ? min(1 - abs(depth - iDepth) / (depthSigma * length(ddxy * pixelOffset) + fEpsilon), 0) : 0;
+        
 #else
         float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;
 #endif
@@ -147,7 +151,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 #if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
     float obliqueness = normalBufValue.w;    // ToDO review
 #else
-    float obliqueness = max(0.0001f, pow(normalBufValue.w, 10));    // ToDO review
+    float obliqueness = normalBufValue.w;// max(0.0001f, pow(normalBufValue.w, 10));    // ToDO review
 #endif
 #else
     float4 normal4 = g_inNormal[DTid];

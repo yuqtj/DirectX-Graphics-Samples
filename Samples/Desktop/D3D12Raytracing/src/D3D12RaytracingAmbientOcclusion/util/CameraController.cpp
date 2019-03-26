@@ -22,8 +22,8 @@ CameraController::CameraController(Camera& camera) : m_camera(camera)
 	m_MoveSpeed = 5.0f;
 	m_StrafeSpeed = 5.0f;
 #if ONLY_SQUID_SCENE_BLAS
-	m_MoveSpeed *= 10;
-	m_StrafeSpeed *= 10;
+	m_MoveSpeed *= 50;
+	m_StrafeSpeed *= 50;
 #endif
 	m_MouseSensitivityX = 1.0f;
     m_MouseSensitivityY = -1.0f;

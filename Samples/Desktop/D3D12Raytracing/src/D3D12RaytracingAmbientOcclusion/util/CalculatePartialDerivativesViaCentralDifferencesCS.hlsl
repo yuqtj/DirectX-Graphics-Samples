@@ -21,6 +21,7 @@ ConstantBuffer<CalculatePartialDerivativesConstantBuffer> g_CB : register(b0);
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
+    // ToDo consider backward/forward differences.
     // Calculates central differences: (f(x+1, y) - f(x-1, y), f(x, y+1) - f(x, y-1))
     //    x    [top]     x
     // [left]   DTiD   [right]
@@ -32,5 +33,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint2 left = clamp(DTid.xy + uint2(-1, 0), 0, g_CB.textureDim - 1);
     uint2 right = clamp(DTid.xy + uint2(1, 0), 0, g_CB.textureDim - 1);
 
-    g_outValue[DTid] = float2(g_inValue[right] - g_inValue[left], g_inValue[bottom] - g_inValue[top]);
+    // Scale down to [1,1] pixel to pixel distance.
+    g_outValue[DTid] = (1.f / 2) * float2(g_inValue[right] - g_inValue[left], g_inValue[bottom] - g_inValue[top]);
 }

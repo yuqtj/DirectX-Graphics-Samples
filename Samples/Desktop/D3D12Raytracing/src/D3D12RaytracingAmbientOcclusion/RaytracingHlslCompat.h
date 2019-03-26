@@ -100,11 +100,11 @@
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
 #define AO_RAY_T_MAX 22
-#define SCENE_SCALE 100     
+#define SCENE_SCALE 300     
 #else
 #define DISTANCE_FALLOFF 0
 #define AO_RAY_T_MAX 150
-#define SCENE_SCALE 700
+#define SCENE_SCALE 2000
 #endif
 #define CAMERA_Y_SCALE 1
 #define FLAT_FACE_NORMALS 0
