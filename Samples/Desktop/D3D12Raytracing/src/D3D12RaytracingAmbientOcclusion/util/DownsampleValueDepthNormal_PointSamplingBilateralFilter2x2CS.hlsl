@@ -11,7 +11,5 @@
 
 
 #define BILATERAL_DOWNSAMPLE_VALUE_POINT_SAMPLING
-#define BILATERAL_DOWNSAMPLE_CHECKERBOARD_MIN_MAX_DEPTH
-
 #include "DownsampleBilateralFilterCS.hlsli"
 

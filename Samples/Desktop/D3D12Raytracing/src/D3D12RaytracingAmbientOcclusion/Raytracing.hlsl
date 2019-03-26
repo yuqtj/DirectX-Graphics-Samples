@@ -18,7 +18,7 @@
 #include "RandomNumberGenerator.hlsli"
 #include "SSAO/GlobalSharedHlslCompat.h" // ToDo remove
 
-#define HitDistanceOnMiss -1
+#define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS
 
 // ToDo split to Raytracing for GBUffer and AO?
 

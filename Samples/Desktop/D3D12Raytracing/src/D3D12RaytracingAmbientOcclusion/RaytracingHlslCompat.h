@@ -94,14 +94,17 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 1
+#define PBRT_SCENE 0
 #define FACE_CULLING !PBRT_SCENE
+
 #if PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
 #define AO_RAY_T_MAX 22
+#define SCENE_SCALE 100     
 #else
 #define DISTANCE_FALLOFF 0
-#define AO_RAY_T_MAX 35
+#define AO_RAY_T_MAX 150
+#define SCENE_SCALE 700
 #endif
 #define CAMERA_Y_SCALE 1
 #define FLAT_FACE_NORMALS 0
@@ -167,7 +170,6 @@ namespace DownsampleGaussianFilter {
 	}
 }
 
-// ToDo combine and reuse a default 8x8 ?
 namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter {
     namespace ThreadGroup {
         enum Enum { Width = 8, Height = 8 };
@@ -175,6 +177,13 @@ namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter {
 }
 
 namespace DownsampleValueNormalDepthBilateralFilter {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 8 };
+    }
+}
+
+// ToDo combine and reuse a default 8x8 ?
+namespace DefaultComputeShaderParams {
     namespace ThreadGroup {
         enum Enum { Width = 8, Height = 8 };
     }
@@ -310,7 +319,7 @@ struct RNGConstantBuffer
 struct AtrousWaveletTransformFilterConstantBuffer
 {
     // ToDo pad?
-    XMINT2 textureDim;
+    XMUINT2 textureDim;
     UINT kernelStepShift;
     UINT scatterOutput;
 
@@ -422,6 +431,20 @@ struct GaussianFilterConstantBuffer
 {
     XMUINT2 textureDim;
     XMFLOAT2 invTextureDim;
+};
+
+struct CalculatePartialDerivativesConstantBuffer
+{
+    XMUINT2 textureDim;
+    float padding[2];
+};
+
+struct DownAndUpsampleFilterConstantBuffer
+{
+    BOOL useNormalWeights;
+    BOOL useDepthWeights;
+    BOOL useBilinearWeights;
+    BOOL useDynamicDepthThreshold;
 };
 
 // Attributes per primitive type.

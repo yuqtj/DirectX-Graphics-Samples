@@ -131,6 +131,9 @@ private:
 	const UINT c_SupersamplingScale = 2;    // ToDo UI parameter
 	UINT								m_numRayGeometryHits[ReduceSumCalculations::Count];
 
+
+    GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
+
 	ComPtr<ID3D12RootSignature>         m_rootSignature;
 	ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
 
@@ -209,11 +212,13 @@ private:
     {
         RWGpuResource m_value;
         RWGpuResource m_normalDepth;
+        RWGpuResource m_partialDistanceDerivatives;
 
         RWGpuResource m_smoothedValue;              // ToDo rename smoothed to denoised
 
         RWGpuResource m_downsampledSmoothedValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
         RWGpuResource m_downsampledNormalDepthValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
+        RWGpuResource m_downsampledPartialDistanceDerivatives;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
 
         RWGpuResource m_varianceResource;
         RWGpuResource m_smoothedVarianceResource;
@@ -289,14 +294,13 @@ private:
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
     void ApplyAtrousWaveletTransformFilter();
-    void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
+    void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter();
     void CalculateAdaptiveSamplingCounts();
 
 	void DownsampleRaytracingOutput();
     void DownsampleGBufferBilateral();
     // ToDo standardize const& vs *
-    void DownsampleGBufferAndAoBilateral();
     void UpsampleAOBilateral();
 
     void CreateConstantBuffers();

@@ -192,6 +192,7 @@ namespace GBufferResource {
         Distance,       // Length along ray of hit.
         Depth,          // Non-linear depth of the hit.
         SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate
+        PartialDepthDerivatives,
 		Count
 	};
 }

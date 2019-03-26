@@ -341,6 +341,9 @@
     <FxCompile Include="util\DownsampleValueDepthNormal_DepthNormalWeightedBilateralFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
+    <FxCompile Include="util\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">

@@ -22,6 +22,9 @@ Texture2D<float> g_inHiResValue : register(t3);
 Texture2D<float4> g_inHiResNormalDepth : register(t4);
 RWTexture2D<float> g_outValue : register(u0);
 
+
+ConstantBuffer<DownAndUpsampleFilterConstantBuffer> g_CB : register(b0);
+
 // ToDo consider 3x3 tap upsample instead 2x2
 
 // ToDo remove outNormal if not written to.
@@ -36,13 +39,13 @@ float BilateralUpsample(float ActualDistance, float4 SampleDistances, float4 Sam
 {
     // ToDo handle out of bounds values?
     // ToDo test using nearest-depth if not all 4 are within depth dist threshold
-    float4 weights = float4(9, 3, 3, 1) / (abs(ActualDistance - SampleDistances) + 1e-6 * ActualDistance);
+    float4 weights = float4(9, 3, 3, 1) / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
     return dot(weights, SampleValues) / dot(weights, 1);
 }
 
 float BilateralUpsample(float ActualDistance, float3 ActualNormal, float4 SampleDistances, float3 SampleNormals[4], float4 BilinearWeights, float4 SampleValues)
 {
-    float4 depthWeights = 1.0 / (abs(ActualDistance - SampleDistances) + 1e-6 * ActualDistance);
+    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
 
     float4 normalWeights = float4(
         pow(saturate(dot(ActualNormal, SampleNormals[0])), 32),
@@ -53,6 +56,10 @@ float BilateralUpsample(float ActualDistance, float3 ActualNormal, float4 Sample
 
     // Ensure a non-zero weight in case none of the normals match.
     normalWeights += 0.001f;
+
+ //   BilinearWeights = g_CB.useBilinearWeights ? BilinearWeights : 1;
+ //   depthWeights = g_CB.useDepthWeights ? depthWeights : 1;
+ //   normalWeights = g_CB.useNormalWeights ? normalWeights : 1;
 
     float4 weights = normalWeights * depthWeights * BilinearWeights;
 
@@ -156,6 +163,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 #else
         float outValue = hiResValues[i] + BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues);
 #endif
+        // ToDo revise
         g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = actualDistance < DISTANCE_ON_MISS ? outValue : hiResValues[i];
     }
 

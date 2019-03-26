@@ -13,10 +13,13 @@
 #include "..\RaytracingHlslCompat.h"
 #include "..\RaytracingShaderHelper.hlsli"
 
+// ToDo fix black jaggies on the bottom row in downsampled normal 
 Texture2D<float> g_inValue : register(t0);
 Texture2D<float4> g_inNormalAndDepth : register(t1);
+Texture2D<float2> g_inPartialDistanceDerivatives : register(t2);  // update file name to include ddxy
 RWTexture2D<float> g_outValue : register(u0);
 RWTexture2D<float4> g_outNormalAndDepth : register(u1);
+RWTexture2D<float2> g_outPartialDistanceDerivatives : register(u2);   // ToDo rename hits to Geometryits everywhere
 
 // Ref: https://developer.amd.com/wordpress/media/2012/10/ShopfMixedResolutionRendering.pdf
 // ToDo comment
@@ -28,7 +31,7 @@ float BilateralInterpolation_DepthNormalBilinearAware(
     float4 BilinearWeights,
     float4 SampleValues)
 {
-    float4 depthWeights = 1.0 / (abs(ActualDistance - SampleDistances) + 1e-6 * ActualDistance);
+    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
     float4 normalWeights = float4(
         pow(dot(ActualNormal, SampleNormals[0]), 32),
         pow(dot(ActualNormal, SampleNormals[1]), 32),
@@ -47,7 +50,7 @@ float BilateralInterpolation_DepthNormalAware(
     float3 SampleNormals[4],
     float4 SampleValues)
 {
-    float4 depthWeights = 1.0 / (abs(ActualDistance - SampleDistances) + 1e-6 * ActualDistance);
+    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
     float4 normalWeights = float4(
         pow(saturate(dot(ActualNormal, SampleNormals[0])), 32),
         pow(saturate(dot(ActualNormal, SampleNormals[1])), 32),
@@ -66,7 +69,7 @@ float BilateralInterpolation_DepthBilinearAware(
     float4 BilinearWeights,
     float4 SampleValues)
 {
-    float4 depthWeights = 1.0 / (abs(ActualDistance - SampleDistances) + 1e-6 * ActualDistance);
+    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
     float4 weights = depthWeights * BilinearWeights;
 
     return dot(weights, SampleValues) / dot(weights, 1);
@@ -78,60 +81,37 @@ float BilateralInterpolation_DepthAware(
     float4 SampleDistances,
     float4 SampleValues)
 {
-    float4 depthWeights = 1.0 / (abs(ActualDistance - SampleDistances) + 1e-6 * ActualDistance);
+    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
     float4 weights = depthWeights;
 
     return dot(weights, SampleValues) / dot(weights, 1);
 }
 
 // ToDo strip Bilateral from the name?
-// Computes downsampling weights for 2x2 depth input
-void GetWeightsForDownsampleDepthBilateral2x2(out float outWeights[4], out UINT outDepthIndex, in float depths[4], in uint2 DTid)
+// Returns a selected depth index when bilateral downsapling.
+void GetDepthIndexFromDownsampleDepthBilateral2x2(out UINT outDepthIndex, in float depths[4], in uint2 DTid)
 {
-    // ToDo consider normals
-
-    // ToDo comment on not good idea to blend depths. select one.
-#ifdef BILATERAL_DOWNSAMPLE_TOP_LEFT_QUAD_SAMPLE_DEPTH
-
-    float lowResDepth = depths[0],;
-
-#elif defined(BILATERAL_DOWNSAMPLE_MIN_DEPTH)
-
-    float lowResDepth = min(min(min(depths[0], depths[1]), depths[2]), depths[3]);
-
-#elif defined(BILATERAL_DOWNSAMPLE_CHECKERBOARD_MIN_MAX_DEPTH)
-
-    // Choose a sample to maximize depth correlation for bilateral upsampling, do checkerboard min/max selection.
+    // Choose a alternate min max depth sample in a checkerboard 2x2 pattern to improve depth correlations for bilateral 2x2 upsampling.
     // Ref: http://c0de517e.blogspot.com/2016/02/downsampled-effects-with-depth-aware.html
     bool checkerboardTakeMin = ((DTid.x + DTid.y) & 1) == 0;
 
-    float lowResDepth = checkerboardTakeMin
-                        ?   min(min(min(depths[0], depths[1]), depths[2]), depths[3])
-                        :   max(max(max(depths[0], depths[1]), depths[2]), depths[3]);
+    // Invalidate out-of-bounds 0 depths when taking the min depth.
+    float4 vDepths = float4(depths[0], depths[1], depths[2], depths[3]);
+    vDepths = checkerboardTakeMin
+        ? vDepths > 0.001f ? vDepths : DISTANCE_ON_MISS
+        : vDepths;
 
-#endif
+    float lowResDepth = checkerboardTakeMin
+                        ?   min(min(min(vDepths.x, vDepths.y), vDepths.z), vDepths.w)
+                        :   max(max(max(vDepths.x, vDepths.y), vDepths.z), vDepths.w);
 
     // Find the corresponding sample index to the the selected sample depth.
-    float4 vDepths = float4(depths[0], depths[1], depths[2], depths[3]);
     float4 depthDelta = abs(lowResDepth - vDepths);
 
     outDepthIndex = depthDelta[0] < depthDelta[1] ? 0 : 1;
     outDepthIndex = depthDelta[2] < depthDelta[outDepthIndex] ? 2 : outDepthIndex;
     outDepthIndex = depthDelta[3] < depthDelta[outDepthIndex] ? 3 : outDepthIndex;
-
-    outWeights[0] = outWeights[1] = outWeights[2] = outWeights[3] = 0;
-    outWeights[outDepthIndex] = 1;
 }
-
-// ToDo move to common helper
-float Blend(float weights[4], float values[4])
-{
-    return  weights[0] * values[0]
-        +   weights[1] * values[1]
-        +   weights[2] * values[2]
-        +   weights[3] * values[3];
-}
-
 
 void LoadDepthAndNormal(in uint2 texIndex, out float4 encodedNormalAndDepth, out float depth, out float3 normal)
 {
@@ -165,12 +145,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
         g_inValue[topLeftSrcIndex + srcIndexOffsets[3]]);
 
     // ToDo min max depth
-    float outWeigths[4];
     UINT outDepthIndex;
-    GetWeightsForDownsampleDepthBilateral2x2(outWeigths, outDepthIndex, depths, DTid);
+    GetDepthIndexFromDownsampleDepthBilateral2x2(outDepthIndex, depths, DTid);
 
     // ToDo comment on not interpolating actualNormal
     g_outNormalAndDepth[DTid] = encodedNormalsAndDepths[outDepthIndex];
+    g_outPartialDistanceDerivatives[DTid] = g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
 
 #ifdef BILATERAL_DOWNSAMPLE_VALUE_POINT_SAMPLING
     g_outValue[DTid] = values[outDepthIndex];

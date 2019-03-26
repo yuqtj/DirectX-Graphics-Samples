@@ -140,9 +140,11 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputGeometryHitResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle);
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -172,8 +174,10 @@ namespace GpuKernels
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalDepthResourceHandle);
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -192,7 +196,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, Type type);
+        void Initialize(ID3D12Device* device, Type type, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList* commandList,
             UINT width,
@@ -201,11 +205,17 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+            UINT perFrameInstanceId = 0,
+            bool useBilinearWeights = true,
+            bool useDepthWeights = true,
+            bool useNormalWeights = true,
+            bool useDynamicDepthThreshold = true);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        ConstantBuffer<DownAndUpsampleFilterConstantBuffer> m_CB;
     };
 
     // ToDo rename
@@ -340,6 +350,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputSmoothedVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,   // ToDo standardize depth vs distance
             RWGpuResource* outputResourceHandle,
             float valueSigma,
             float depthSigma,
@@ -362,6 +373,31 @@ namespace GpuKernels
         UINT                                m_maxFilterPasses = 0;
     };
 
+
+    // ToDo use template / inheritance
+    class CalculatePartialDerivatives
+    {
+    public:
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            ID3D12DescriptorHeap* descriptorHeap,
+            UINT width,
+            UINT height,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+            UINT perFrameInstanceId = 0);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
+    };
 
     class CalculateVariance
     {
