@@ -21,18 +21,31 @@ ConstantBuffer<CalculatePartialDerivativesConstantBuffer> g_CB : register(b0);
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
-    // ToDo consider backward/forward differences.
-    // Calculates central differences: (f(x+1, y) - f(x-1, y), f(x, y+1) - f(x, y-1))
     //    x    [top]     x
     // [left]   DTiD   [right]
     //    x   [bottom]   x
-
-    // Clamp to valid texture indices.
     uint2 top = clamp(DTid.xy + uint2(0, -1), 0, g_CB.textureDim - 1);
     uint2 bottom = clamp(DTid.xy + uint2(0, 1), 0, g_CB.textureDim - 1);
     uint2 left = clamp(DTid.xy + uint2(-1, 0), 0, g_CB.textureDim - 1);
     uint2 right = clamp(DTid.xy + uint2(1, 0), 0, g_CB.textureDim - 1);
 
+    // ToDo update the file name
+#if 1  
+    // Calculates partial derivatives as the min of absolute backward and forward differences. 
+    // The min is taken to handle edges when calculating partial distance derivatives.
+    // The min avoids the distance derivative slope being to that of another surface behind/in front of it on surface edges.
+    float centerValue = g_inValue[DTid.xy];
+    float2 backwardDifferences = centerValue - float2(g_inValue[left], g_inValue[top]);
+    float2 forwardDifferences = float2(g_inValue[right], g_inValue[bottom]) - centerValue;
+
+    // ToDO pick both dimensions from one or the other?
+    // ToDo retain pos/negative sides?
+    g_outValue[DTid] = min(abs(backwardDifferences), abs(forwardDifferences));
+
+#else
+    // Calculates central differences: (f(x+1, y) - f(x-1, y), f(x, y+1) - f(x, y-1))
+
     // Scale down to [1,1] pixel to pixel distance.
     g_outValue[DTid] = (1.f / 2) * float2(g_inValue[right] - g_inValue[left], g_inValue[bottom] - g_inValue[top]);
+#endif
 }

@@ -20,10 +20,10 @@ Texture2D<float> g_inLowResValue2 : register(t1);
 Texture2D<float4> g_inLowResNormalDepth : register(t2);
 Texture2D<float> g_inHiResValue : register(t3);
 Texture2D<float4> g_inHiResNormalDepth : register(t4);
+Texture2D<float2> g_inHiResPartialDistanceDerivative : register(t5);
 RWTexture2D<float> g_outValue : register(u0);
 
-
-ConstantBuffer<DownAndUpsampleFilterConstantBuffer> g_CB : register(b0);
+// ToDo Test and use conditional weights as in Upsample..hlsl?
 
 // ToDo consider 3x3 tap upsample instead 2x2
 
@@ -43,23 +43,27 @@ float BilateralUpsample(float ActualDistance, float4 SampleDistances, float4 Sam
     return dot(weights, SampleValues) / dot(weights, 1);
 }
 
-float BilateralUpsample(float ActualDistance, float3 ActualNormal, float4 SampleDistances, float3 SampleNormals[4], float4 BilinearWeights, float4 SampleValues)
+float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float4 BilinearWeights, in float4 SampleValues, in uint2 hiResPixelIndex)
 {
-    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
+    // Depth weights.
+    // Use ddxy as depth threshold.
+    float2 ddxy = abs(g_inHiResPartialDistanceDerivative[hiResPixelIndex]);  // ToDo move to caller
+    float maxPixelDistance = 2; // Scale to compensate for the fact that the downsampled depth value may come from up to two pixels away in the high-res texture scale.
+    float depthThreshold = maxPixelDistance * max(ddxy.x, ddxy.y);
+    float fEpsilon = 1e-6 * ActualDistance;
+    float4 depthWeights = min(depthThreshold / (abs(SampleDistances - ActualDistance) + fEpsilon), 1);
 
-    float4 normalWeights = float4(
-        pow(saturate(dot(ActualNormal, SampleNormals[0])), 32),
-        pow(saturate(dot(ActualNormal, SampleNormals[1])), 32),
-        pow(saturate(dot(ActualNormal, SampleNormals[2])), 32),
-        pow(saturate(dot(ActualNormal, SampleNormals[3])), 32)
-        );
+    // Normal weights.
+    const uint normalExponent = 32;
+    float4 normalWeights =
+        float4(
+            pow(saturate(dot(ActualNormal, SampleNormals[0])), normalExponent),
+            pow(saturate(dot(ActualNormal, SampleNormals[1])), normalExponent),
+            pow(saturate(dot(ActualNormal, SampleNormals[2])), normalExponent),
+            pow(saturate(dot(ActualNormal, SampleNormals[3])), normalExponent));
 
     // Ensure a non-zero weight in case none of the normals match.
     normalWeights += 0.001f;
-
- //   BilinearWeights = g_CB.useBilinearWeights ? BilinearWeights : 1;
- //   depthWeights = g_CB.useDepthWeights ? depthWeights : 1;
- //   normalWeights = g_CB.useNormalWeights ? normalWeights : 1;
 
     float4 weights = normalWeights * depthWeights * BilinearWeights;
 
@@ -156,15 +160,16 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         float actualDistance = hiResDepths[i];
         float3 actualNormal = hiResNormals[i];
+        uint2 hiResPixelIndex = topLeftHiResIndex + srcIndexOffsets[i];
 
         // ToDo this should follow the Delbracio2012, but it computes incorrect values, i.e. 1 where it should be less. Upsampling issue?
 #if WORKAROUND_FOR_VALUES_OVERFLOW_ON_MULTISCALE_COMBINE
-        float outValue = 0.5f * (hiResValues[i] + BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues));
+        float outValue = 0.5f * (hiResValues[i] + BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues, ));
 #else
-        float outValue = hiResValues[i] + BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues);
+        float outValue = hiResValues[i] + BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues, hiResPixelIndex);
 #endif
         // ToDo revise
-        g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = actualDistance < DISTANCE_ON_MISS ? outValue : hiResValues[i];
+        g_outValue[hiResPixelIndex] = actualDistance < DISTANCE_ON_MISS ? outValue : hiResValues[i];
     }
 
 #else

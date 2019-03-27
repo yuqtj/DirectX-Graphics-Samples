@@ -154,7 +154,7 @@ namespace GpuKernels
     class DownsampleValueNormalDepthBilateralFilter
     {
     public:
-        enum Type {
+        enum Type { // ToDo remove?
             FilterPointSampling2x2 = 0,
             FilterDepthWeighted2x2,
             FilterDepthNormalWeighted2x2,
@@ -205,6 +205,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDistanceDerivativeResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
             UINT perFrameInstanceId = 0,
             bool useBilinearWeights = true,
@@ -242,6 +243,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDistanceDerivativeResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
 
     private:

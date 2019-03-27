@@ -16,6 +16,7 @@
 Texture2D<float> g_inValue : register(t0);
 Texture2D<float4> g_inLowResNormalDepth : register(t1);
 Texture2D<float4> g_inHiResNormalDepth : register(t2);
+Texture2D<float2> g_inHiResPartialDistanceDerivative : register(t3);
 RWTexture2D<float> g_outValue : register(u0);
 
 // ToDo standardize cb vs g_CB
@@ -25,20 +26,6 @@ ConstantBuffer<DownAndUpsampleFilterConstantBuffer> g_CB : register(b0);
 
 // ToDo remove outNormal if not written to.
 //RWTexture2D<float4> g_texOutNormal : register(u1);
-
-// We essentially want 5 weights:  4 for each low-res pixel and 1 to blend in when none of the 4 really
-// match.  The filter strength is 1 / DeltaZTolerance.  So a tolerance of 0.01 would yield a strength of 100.
-// Note that a perfect match of low to high depths would yield a weight of 10^6, completely superceding any
-// noise filtering.  The noise filter is intended to soften the effects of shimmering when the high-res depth
-// buffer has a lot of small holes in it causing the low-res depth buffer to inaccurately represent it.
-float BilateralUpsample(float ActualDistance, float4 SampleDistances, float4 SampleValues)
-{
-    // ToDo handle out of bounds values?
-    // ToDo test using nearest-depth if not all 4 are within depth dist threshold
-    float4 weights = float4(9, 3, 3, 1) / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
-    return dot(weights, SampleValues) / dot(weights, 1);
-}
-
 
 void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texIndex, out float depth, out float3 normal)
 {
@@ -52,24 +39,28 @@ void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texInde
 #endif
 }
 
-float BilateralUpsample(float ActualDistance, float3 ActualNormal, float4 SampleDistances, float3 SampleNormals[4], float4 BilinearWeights, float4 SampleValues)
+// ToDo comment
+float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float4 BilinearWeights, in float4 SampleValues, in uint2 hiResPixelIndex)
 {
     float4 depthWeights = 1;
     float4 normalWeights = 1;
 
     if (g_CB.useDepthWeights)
     {
-        float depthThreshold = 1.f;
-        float fScale = 1.f / depthThreshold;
+        float depthThreshold = 1.f;     // ToDo standardize depth vs distance
         float fEpsilon = 1e-6 * ActualDistance;
-
 
         if (g_CB.useDynamicDepthThreshold)
         {
+            float2 ddxy = abs(g_inHiResPartialDistanceDerivative[hiResPixelIndex]);  // ToDo move to caller
+            float maxPixelDistance = 2; // Scale to compensate for the fact that the downsampled depth value may come from up to two pixels away in the high-res texture scale.
 
+            // ToDo consider ddxy per dimension or have a 1D max(Ddxy) resource?
+            depthThreshold = maxPixelDistance * max(ddxy.x, ddxy.y);
         }
 
-        depthWeights = 1.0 / (fScale * abs(SampleDistances - ActualDistance) + fEpsilon);
+        float fScale = 1.f / depthThreshold;
+        depthWeights = min(1.0 / (fScale * abs(SampleDistances - ActualDistance) + fEpsilon), 1);
     }
 
     if (g_CB.useNormalWeights)
@@ -90,6 +81,13 @@ float BilateralUpsample(float ActualDistance, float3 ActualNormal, float4 Sample
     BilinearWeights = g_CB.useBilinearWeights ? BilinearWeights : 1;
 
     float4 weights = normalWeights * depthWeights * BilinearWeights;
+
+    if (g_CB.useDynamicDepthThreshold)
+    {
+
+       // weights = lerp(normalWeights, depthWeights,)
+    }
+
 
     float totalWeight = dot(weights, 1);
     weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0;
@@ -143,7 +141,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float actualDistance = hiResDepths[i];
         float3 actualNormal = hiResNormals[i];
 
-        float outValue = BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues);
+        float outValue = BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues, topLeftHiResIndex + srcIndexOffsets[i]);
         // ToDo revise
         g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = actualDistance < DISTANCE_ON_MISS ? outValue : vLowResValues[i];
     }

@@ -101,7 +101,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -142,12 +142,12 @@ namespace SceneArgs
     BoolVar DownAndUpsamplingUseBilinearWeights(L"Render/AO/RTAO/Down\\Upsampling/Bilinear weighted", true);
     BoolVar DownAndUpsamplingUseDepthWeights(L"Render/AO/RTAO/Down\\Upsampling/Depth weighted", true);
     BoolVar DownAndUpsamplingUseNormalWeights(L"Render/AO/RTAO/Down\\Upsampling/Normal weighted", true);
-    BoolVar DownAndUpsamplingUseDynamicDepthThreshold(L"Render/AO/RTAO/Down\\Upsampling/Dynamic depth threshold", true);
+    BoolVar DownAndUpsamplingUseDynamicDepthThreshold(L"Render/AO/RTAO/Down\\Upsampling/Dynamic depth threshold", true);        // ToDO rename to adaptive
 
 
     // RTAO
     // Adaptive Sampling.
-    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
+    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
     BoolVar RTAOAdaptiveSampling(L"Render/AO/RTAO/Adaptive Sampling/Enabled", true);
     BoolVar RTAOUseNormalMaps(L"Render/AO/RTAO/Normal maps", false);
     NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"Render/AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
@@ -172,10 +172,10 @@ namespace SceneArgs
 #endif
     BoolVar RTAOApproximateInterreflections(L"Render/AO/RTAO/Approximate Interreflections/Enabled", true);
     NumVar RTAODiffuseReflectanceScale(L"Render/AO/RTAO/Approximate Interreflections/Diffuse Reflectance Scale", 0.5f, 0.0f, 1.0f, 0.1f);
-    NumVar  minimumAmbientIllumination(L"Render/AO/RTAO/Minimum Ambient Illumination", 0.1f, 0.0f, 1.0f, 0.01f);
+    NumVar  minimumAmbientIllumination(L"Render/AO/RTAO/Minimum Ambient Illumination", 0.07f, 0.0f, 1.0f, 0.01f);
     BoolVar RTAOIsExponentialFalloffEnabled(L"Render/AO/RTAO/Exponential Falloff", true);
-    NumVar RTAO_ExponentialFalloffDecayConstant(L"Render/AO/RTAO/Exponential Falloff Decay Constant", 1.25f, 0.0f, 20.f, 0.25f);
-    NumVar RTAO_ExponentialFalloffMinOcclusionCutoff(L"Render/AO/RTAO/Exponential Falloff Min Occlusion Cutoff", 0.5f, 0.0f, 1.f, 0.05f);       // Finetune document perf.
+    NumVar RTAO_ExponentialFalloffDecayConstant(L"Render/AO/RTAO/Exponential Falloff Decay Constant", 2.f, 0.0f, 20.f, 0.25f);
+    NumVar RTAO_ExponentialFalloffMinOcclusionCutoff(L"Render/AO/RTAO/Exponential Falloff Min Occlusion Cutoff", 0.4f, 0.0f, 1.f, 0.05f);       // ToDo Finetune document perf.
 
     // ToDo standardixe AO RTAO prefix
 
@@ -185,7 +185,7 @@ namespace SceneArgs
     BoolVar UseSpatialVariance(L"Render/AO/RTAO/Denoising/Use spatial variance", true);
     BoolVar ApproximateSpatialVariance(L"Render/AO/RTAO/Denoising/Approximate spatial variance", false);
     BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale denoising", true);
-    IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale levels", 2, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
+    IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale levels", 1, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"Render/AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
@@ -194,7 +194,7 @@ namespace SceneArgs
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 6, 0.0f, 30.0f, 0.1f);
 
     // ToDo why large depth sigma is needed?
-    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1.3, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
+    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1.3f, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
 
     NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising/Normal Sigma", 64, 0, 256, 4);
     
@@ -2585,6 +2585,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                 msResource.m_downsampledNormalDepthValue.gpuDescriptorReadAccess,
                 msResource.m_smoothedValue.gpuDescriptorReadAccess,
                 msResource.m_normalDepth.gpuDescriptorReadAccess,
+                msResource.m_partialDistanceDerivatives.gpuDescriptorReadAccess,
                 msResource.m_value.gpuDescriptorWriteAccess);
 
             // Transition the output resource to shader resource state.
@@ -3057,6 +3058,7 @@ void D3D12RaytracingAmbientOcclusion::UpsampleAOBilateral()
         inputLowResAOresource->gpuDescriptorReadAccess,
         m_GBufferLowResResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
+        m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
         m_AOResources[AOResource::Smoothed].gpuDescriptorWriteAccess,
         0,
         SceneArgs::DownAndUpsamplingUseBilinearWeights,

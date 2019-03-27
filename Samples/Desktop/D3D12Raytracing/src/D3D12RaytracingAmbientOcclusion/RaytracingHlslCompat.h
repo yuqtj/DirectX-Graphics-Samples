@@ -62,7 +62,7 @@
 #define SSAO_MAX_OCCLUSION_RAYS (SSAO_MAX_SAMPLES * SSAO_MAX_SAMPLES)
 // ~SSAO
 
-#define DISTANCE_ON_MISS 65504  // ~FLT_MAX within 16 bit format
+#define DISTANCE_ON_MISS 65504  // ~FLT_MAX within 16 bit format // ToDo explain
 
 // ToDo 16bit per component normals?
 #define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 1
@@ -94,7 +94,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 0
+#define PBRT_SCENE 1
 #define FACE_CULLING !PBRT_SCENE
 
 #if PBRT_SCENE

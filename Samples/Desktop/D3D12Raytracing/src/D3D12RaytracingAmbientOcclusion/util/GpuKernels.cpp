@@ -663,6 +663,7 @@ namespace GpuKernels
                     Input,
                     InputLowResNormal,
                     InputHiResNormal,
+                    InputHiResPartialDistanceDerivative,
                     ConstantBuffer,
                     Count
                 };
@@ -677,17 +678,19 @@ namespace GpuKernels
         {
             using namespace RootSignature::UpsampleBilateralFilter;
 
-            CD3DX12_DESCRIPTOR_RANGE ranges[4]; // Perfomance TIP: Order from most frequent to least frequent.
+            CD3DX12_DESCRIPTOR_RANGE ranges[5]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input normal low res texture
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 input normal high res texture
-            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 input partial distance derivative texture
+            ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
             rootParameters[Slot::InputLowResNormal].InitAsDescriptorTable(1, &ranges[1]);
             rootParameters[Slot::InputHiResNormal].InitAsDescriptorTable(1, &ranges[2]);
-            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[3]);
+            rootParameters[Slot::InputHiResPartialDistanceDerivative].InitAsDescriptorTable(1, &ranges[3]);
+            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[4]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -726,6 +729,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDistanceDerivativeResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
         UINT perFrameInstanceId,
         bool useBilinearWeights,
@@ -740,6 +744,7 @@ namespace GpuKernels
         m_CB->useBilinearWeights = useBilinearWeights;
         m_CB->useDepthWeights = useDepthWeights;
         m_CB->useNormalWeights = useNormalWeights;
+        m_CB->useDynamicDepthThreshold = useDynamicDepthThreshold;
         m_CB.CopyStagingToGpu(perFrameInstanceId);
 
 
@@ -756,6 +761,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputLowResNormal, inputLowResNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputHiResNormal, inputHiResNormalResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputHiResPartialDistanceDerivative, inputHiResPartialDistanceDerivativeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
             commandList->SetPipelineState(m_pipelineStateObject.Get());
@@ -783,6 +789,7 @@ namespace GpuKernels
                     InputLowResNormal,
                     InputHiResValue,
                     InputHiResNormal,
+                    InputHiResPartialDistanceDerivative,
                     Count
                 };
             }
@@ -796,13 +803,14 @@ namespace GpuKernels
         {
             using namespace RootSignature::MultiScale_UpsampleBilateralFilterAndCombine;
 
-            CD3DX12_DESCRIPTOR_RANGE ranges[6]; // Perfomance TIP: Order from most frequent to least frequent.
+            CD3DX12_DESCRIPTOR_RANGE ranges[7]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input low res value 1
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input low res value 2
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 input low res normal
             ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 input hi res value
             ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 input hi res normal
-            ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+            ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input hi res partial distance derivatives
+            ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::InputLowResValue1].InitAsDescriptorTable(1, &ranges[0]);
@@ -810,7 +818,8 @@ namespace GpuKernels
             rootParameters[Slot::InputLowResNormal].InitAsDescriptorTable(1, &ranges[2]);
             rootParameters[Slot::InputHiResValue].InitAsDescriptorTable(1, &ranges[3]);
             rootParameters[Slot::InputHiResNormal].InitAsDescriptorTable(1, &ranges[4]);
-            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[5]);
+            rootParameters[Slot::InputHiResPartialDistanceDerivative].InitAsDescriptorTable(1, &ranges[5]);
+            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[6]);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: MultiScale_UpsampleBilateralFilterAndCombine");
@@ -844,6 +853,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDistanceDerivativeResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
     {
         using namespace RootSignature::MultiScale_UpsampleBilateralFilterAndCombine;
@@ -864,6 +874,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputLowResNormal, inputLowResNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputHiResValue, inputHiResValueResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputHiResNormal, inputHiResNormalResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputHiResPartialDistanceDerivative, inputHiResPartialDistanceDerivativeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
