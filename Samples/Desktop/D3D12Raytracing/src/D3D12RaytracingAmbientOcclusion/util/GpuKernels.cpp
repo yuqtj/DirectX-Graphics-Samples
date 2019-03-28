@@ -1113,6 +1113,7 @@ namespace GpuKernels
 #if !WORKAROUND_ATROUS_VARYING_OUTPUTS
                     FilterWeightSumOutput,
 #endif
+                    // ToDo standardize naming in RootSigs
                     Input,
                     Normals,
                     Depths,
@@ -1135,7 +1136,7 @@ namespace GpuKernels
             using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
 
             // ToDo reorganize slots and descriptors
-            CD3DX12_DESCRIPTOR_RANGE ranges[11];
+            CD3DX12_DESCRIPTOR_RANGE ranges[12];
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // input normals
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // input depths

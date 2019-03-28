@@ -300,8 +300,18 @@ private:
 
 	void DownsampleRaytracingOutput();
     void DownsampleGBufferBilateral();
+
+    void UpsampleResourcesForRenderComposePass();
     // ToDo standardize const& vs *
-    void UpsampleAOBilateral();
+    void BilateralUpsample(
+        UINT hiResWidth,
+        UINT hiResHeight,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValueResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDepthDerivativesResourceHandle,
+        RWGpuResource* outputHiResValueResource,
+        LPCWCHAR passName);
 
     void CreateConstantBuffers();
     void CreateSamplesRNG();

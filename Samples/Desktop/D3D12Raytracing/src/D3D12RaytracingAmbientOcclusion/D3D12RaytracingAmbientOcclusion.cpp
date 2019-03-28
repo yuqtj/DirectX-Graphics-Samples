@@ -101,7 +101,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -116,7 +116,7 @@ namespace SceneArgs
     // ToDO standardize capitalization
 
     const WCHAR* CompositionModes[CompositionType::Count] = { L"Phong Lighting", L"Render/AO", L"Render/AO Sampling Importance Map", L"Render/AO Average Hit Distance", L"Normal Map", L"Depth Buffer" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionHighResSamplingPixels, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
 
@@ -184,8 +184,9 @@ namespace SceneArgs
     EnumVar VarianceFilterMode(L"Render/AO/RTAO/Denoising/Variance filter", GpuKernels::CalculateVariance::FilterType::Bilateral5x5, GpuKernels::CalculateVariance::FilterType::Count, VarianceFilterModes);
     BoolVar UseSpatialVariance(L"Render/AO/RTAO/Denoising/Use spatial variance", true);
     BoolVar ApproximateSpatialVariance(L"Render/AO/RTAO/Denoising/Approximate spatial variance", false);
-    BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale denoising", true);
-    IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale levels", 1, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
+    BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale/Enabled", true);
+    IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale/Levels", 1, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
+    BoolVar RTAODenoisingMultiscaleDenoisedAsInput(L"Render/AO/RTAO/Denoising/Multi-scale/Denoised as input", true);
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"Render/AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
@@ -1194,18 +1195,18 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         // ToDo pack some resources.
 
         // ToDo cleanup raytracing resolution - twice for coefficient.
-        CreateRenderTargetResource(device, texFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"Render/AO Coefficient");
+        CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"Render/AO Coefficient");
 #if ATROUS_DENOISER
         CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Smoothed");
 #else
         CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Smoothed");
 #endif
         // ToDo 8 bit hit count?
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"Render/AO Hit Count");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"Render/AO Hit Count");
 
         // ToDo use lower bit float?
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::FilterWeightSum], initialResourceState, L"Render/AO Filter Weight Sum");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::FilterWeightSum], initialResourceState, L"Render/AO Filter Weight Sum");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
     }
 
     // ToDo merge low/full-res or only create one at a time?
@@ -2330,9 +2331,13 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             SceneArgs::UseSpatialVariance,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
+
+    // Transition the output resource to SRV.
+    {
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOLowResResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+    }
 };
 
-#define MULTI_SCALE_PROPATE_DENOISED_VALUE 1
 
 // Apply multi scale denoising to denoise low frequencies.
 // Ref: Delbracio et al. 2014, Boosting Monte Carlo Rendering by Ray Histogram Fusion
@@ -2456,11 +2461,16 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
 
             // ToDo skip some downsampling above due to following?
             // Denoise value resource on the 1st iteration and then propagate down the levels the downsampled denoised resource.
-#if MULTI_SCALE_PROPATE_DENOISED_VALUE
-            RWGpuResource* valueResource = i == 0 ? &msResource.m_value : &m_multiScaleDenoisingResources[i - 1].m_downsampledSmoothedValue;
-#else
-            RWGpuResource* valueResource = &msResource.m_value;
-#endif
+            RWGpuResource* valueResource;
+            if (SceneArgs::RTAODenoisingMultiscaleDenoisedAsInput)
+            {
+                valueResource = i == 0 ? &msResource.m_value : &m_multiScaleDenoisingResources[i - 1].m_downsampledSmoothedValue;
+            }
+            else
+            {
+                valueResource = &msResource.m_value;
+            }
+
             ApplyAtrousWaveletTransformFilter(
                 *valueResource,
                 msResource.m_normalDepth,
@@ -3019,47 +3029,93 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBufferBilateral()
     }
 };
 
-// ToDo standardize naming AO vs AmbientOcclusion
-void D3D12RaytracingAmbientOcclusion::UpsampleAOBilateral()
+// Upsample quarter resources
+void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
 {
     auto commandList = m_deviceResources->GetCommandList();
+    RWGpuResource* inputLowResValueResource = nullptr;
+    RWGpuResource* outputHiResValueResource = nullptr;
+    wstring passName;
 
-    ScopedTimer _prof(L"UpsampleAO", commandList);
-
-    RWGpuResource* inputLowResAOresource;
-    if (SceneArgs::RTAODenoisingUseMultiscale)
+    switch (SceneArgs::CompositionMode)
     {
-        inputLowResAOresource = &m_multiScaleDenoisingResources[0].m_value;
+    case CompositionType::PhongLighting:
+    case CompositionType::AmbientOcclusionOnly:
+    {
+        passName = L"Upsample AO";
+        outputHiResValueResource = &m_AOResources[AOResource::Smoothed];
+        if (SceneArgs::RTAODenoisingUseMultiscale)
+        {
+            inputLowResValueResource = &m_multiScaleDenoisingResources[0].m_value;
+        }
+        else
+        {
+            inputLowResValueResource = &m_AOLowResResources[AOResource::Smoothed];
+        }
+        break;
+    }
+    case CompositionType::AmbientOcclusionHighResSamplingPixels:
+    {
+        // ToDo rename all to importance map
+        passName = L"Upsample AO sampling importance map";
+        inputLowResValueResource = &m_AOLowResResources[AOResource::FilterWeightSum];
+        outputHiResValueResource = &m_AOResources[AOResource::FilterWeightSum];
+        break;
+    }
+    case CompositionType::RTAOHitDistance:
+    {
+        passName = L"Upsample AO ray hit distance";
+        inputLowResValueResource = &m_AOLowResResources[AOResource::RayHitDistance];
+        outputHiResValueResource = &m_AOResources[AOResource::RayHitDistance];
+        break;
+    }
+    }
 
-        // Transition the output resource to UAV.
+    if (inputLowResValueResource)
+    {
+        BilateralUpsample(
+            m_GBufferWidth,
+            m_GBufferHeight,
+            inputLowResValueResource->gpuDescriptorReadAccess,
+            m_GBufferLowResResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
+            m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
+            m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
+            outputHiResValueResource,
+            passName.c_str());
+    }
+}
+
+// ToDo standardize naming AO vs AmbientOcclusion
+void D3D12RaytracingAmbientOcclusion::BilateralUpsample(
+    UINT hiResWidth,
+    UINT hiResHeight,
+    const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValueResourceHandle,
+    const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalDepthResourceHandle,
+    const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalDepthResourceHandle,
+    const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDepthDerivativesResourceHandle,
+    RWGpuResource* outputHiResValueResource,
+    LPCWCHAR passName)
+{
+    auto commandList = m_deviceResources->GetCommandList();
+    ScopedTimer _prof(passName, commandList);
+
+    // Transition the output resource to UAV.
+    {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), before, after));
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(outputHiResValueResource->resource.Get(), before, after));
     }
-    else
-    {
-        inputLowResAOresource = &m_AOLowResResources[AOResource::Smoothed];
-        
-        // Transition inpuut LowRes AO Smoothed resource to SRV and output AO Smoothed resource to UAV.
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AOLowResResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-
-    }
-    auto desc = inputLowResAOresource->resource.Get()->GetDesc();
 
     m_upsampleBilateralFilterKernel.Execute(
         commandList,
-        m_GBufferWidth,
-        m_GBufferHeight,
+        hiResWidth,
+        hiResHeight,
         m_cbvSrvUavHeap->GetHeap(),
-        inputLowResAOresource->gpuDescriptorReadAccess,
-        m_GBufferLowResResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
-        m_AOResources[AOResource::Smoothed].gpuDescriptorWriteAccess,
+        inputLowResValueResourceHandle,
+        inputLowResNormalDepthResourceHandle,
+        inputHiResNormalDepthResourceHandle,
+        inputHiResPartialDepthDerivativesResourceHandle,
+        outputHiResValueResource->gpuDescriptorWriteAccess,
         0,
         SceneArgs::DownAndUpsamplingUseBilinearWeights,
         SceneArgs::DownAndUpsamplingUseDepthWeights,
@@ -3067,11 +3123,14 @@ void D3D12RaytracingAmbientOcclusion::UpsampleAOBilateral()
         SceneArgs::DownAndUpsamplingUseDynamicDepthThreshold
     );
 
-    // Transition AO Smoothed resource to SRV
+    // Transition the output resource to SRV.
     {
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(outputHiResValueResource->resource.Get(), before, after));
     }
 };
+
 
 // ToDo - rename to hardshadows?
 void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
@@ -3271,7 +3330,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
         m_csComposeRenderPassesCB.CopyStagingToGpu(frameIndex);
 	}
 
-    RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
 
 	// Set pipeline state.
 	{
@@ -3294,8 +3352,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 		commandList->SetComputeRootDescriptorTable(Slot::Visibility, m_VisibilityResource.gpuDescriptorReadAccess);
 		commandList->SetComputeRootShaderResourceView(Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
 		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
-        commandList->SetComputeRootDescriptorTable(Slot::FilterWeightSum, AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
-        commandList->SetComputeRootDescriptorTable(Slot::AORayHitDistance, AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess);   
+        commandList->SetComputeRootDescriptorTable(Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
+        commandList->SetComputeRootDescriptorTable(Slot::AORayHitDistance, m_AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess);
 	}
 
 	// Dispatch.
@@ -3676,7 +3734,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #endif
             if (SceneArgs::QuarterResAO)
             {
-                UpsampleAOBilateral();
+                UpsampleResourcesForRenderComposePass();
             }
             else // ToDo move this to ApplyAtrousWaveletTransformFilter?
             {
