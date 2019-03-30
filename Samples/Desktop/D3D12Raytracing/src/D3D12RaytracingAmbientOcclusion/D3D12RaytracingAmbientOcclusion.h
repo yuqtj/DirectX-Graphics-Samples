@@ -299,7 +299,7 @@ private:
     void CalculateAdaptiveSamplingCounts();
 
 	void DownsampleRaytracingOutput();
-    void DownsampleGBufferBilateral();
+    void DownsampleGBuffer();
 
     void UpsampleResourcesForRenderComposePass();
     // ToDo standardize const& vs *

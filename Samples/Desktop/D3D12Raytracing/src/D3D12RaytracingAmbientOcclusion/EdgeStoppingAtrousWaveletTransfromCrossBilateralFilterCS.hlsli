@@ -31,6 +31,33 @@ RWTexture2D<float> g_outFilterWeightSum : register(u2);
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> g_CB: register(b0);
 
 
+float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obliqueness)
+{
+    float depthTreshold;
+
+    float fEpsilon = g_CB.depthSigma * 1e-5f;// depth * 1e-6f;// *0.001;// 0.0024;// 12f;     // ToDo finalize the value
+    // ToDo rename to perspective correction
+    if (g_CB.depthTresholdUsingTrigonometryFunctions)
+    {
+        float fovAngleY = FOVY;   // ToDO pass from the app
+        float2 resolution = g_CB.textureDim;
+
+        // adjust the depth threshold based on slope angle.
+        float pixelOffsetLen = length(pixelOffset);
+        float unitDistanceDelta = length(pixelOffset * ddxy) / pixelOffsetLen;
+        float slopeAngle = asin(obliqueness);// atan(1 / unitDistanceDelta);
+        float pixelAngle = pixelOffsetLen * (fovAngleY / resolution.y) * PI / 180;
+        depthTreshold = distance * (((sin(slopeAngle) / sin(slopeAngle - pixelAngle)) - 1) + fEpsilon);
+    }
+    else
+    {
+        depthTreshold = length(pixelOffset * ddxy) + fEpsilon;
+    }
+
+    return depthTreshold;
+
+}
+
 void AddFilterContribution(
     inout float weightedValueSum, 
     inout float weightedVarianceSum, 
@@ -104,11 +131,15 @@ void AddFilterContribution(
 
 #define USE_PARTIAL_DERIVATIVES 1
 #if USE_PARTIAL_DERIVATIVES
-        float fEpsilon = depth * 0.0012f;     // ToDo finalize the value
         // ToDo explain 1 -
         // Make the 0 start at 1 == depthDelta/depthTolerance
-        float minObliqueness = 0.02; // Avoid weighting by depth at very sharp angles. Depend on weighting by normals.
-        float e_d = obliqueness > minObliqueness ? min(1 - abs(depth - iDepth) / (depthSigma * length(ddxy * pixelOffset) + fEpsilon), 0) : 0;
+        // ToDo finalize obliqueness
+        // ToDo obliqueness is incorrect for reflected rays
+        float minObliqueness = depthSigma;//  0.02; // Avoid weighting by depth at very sharp angles. Depend on weighting by normals.
+        float depthThreshold = DepthThreshold(depth, ddxy, pixelOffset, obliqueness);
+        float e_d = depthSigma > 0.01f  ? min(1 - abs(depth - iDepth) / (1 * depthThreshold), 0) : 0;
+        //fload e_d = depth abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance
+        //float e_d = depthSigma > 0.01f ? min(1 - abs(depth - iDepth) / (depthSigma * length(ddxy * pixelOffset) + fEpsilon), 0) : 0;
         
 #else
         float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;

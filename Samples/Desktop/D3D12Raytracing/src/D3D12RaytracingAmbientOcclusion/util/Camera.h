@@ -16,9 +16,9 @@ namespace GameCore
 	class Camera
 	{
 	public:
-		float ZMin = 0.01f;
-		float ZMax = 1000.f;
-		float fov = 45;
+		float ZMin = NEAR_PLANE;
+		float ZMax = FAR_PLANE;
+		float fov = FOVY;
 
 		Camera();
 		~Camera();

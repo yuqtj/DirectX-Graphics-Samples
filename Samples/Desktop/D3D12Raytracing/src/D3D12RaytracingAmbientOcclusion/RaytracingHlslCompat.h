@@ -12,6 +12,8 @@
 #ifndef RAYTRACINGHLSLCOMPAT_H
 #define RAYTRACINGHLSLCOMPAT_H
 
+#include "SSAO//GlobalSharedHlslCompat.h"
+
 // Workarounds - ToDo remove/document
 #define REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO 0
 #define REPRO_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF 0
@@ -94,7 +96,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 0
+#define PBRT_SCENE 1
 #define FACE_CULLING !PBRT_SCENE
 
 #if PBRT_SCENE
@@ -288,6 +290,8 @@ struct GBufferRayPayload
 	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
     Ray rx;    // Auxilary camera ray offset by one pixel in x dimension in screen space.
     Ray ry;    // Auxilary camera ray offset by one pixel in y dimension in screen space.
+    float obliqueness; // obliqueness of the hit surface ~ sin(incidentAngle)
+    float tHit;
 };
 
 struct ShadowRayPayload
@@ -332,13 +336,18 @@ struct AtrousWaveletTransformFilterConstantBuffer
     BOOL outputFilteredValue;
     BOOL outputFilteredVariance;
     BOOL outputFilterWeigthSum;
+
+    BOOL depthTresholdUsingTrigonometryFunctions;
+    XMUINT3 padding;
 };
 
 
 // ToDo split CB?
 struct SceneConstantBuffer
 {
+    // ToDo rename to world to view matrix and drop (0,0,0) note.
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
+    XMMATRIX viewProjection;    // ToDo remove // world to projection matrix with Camera at (0,0,0).
     XMVECTOR cameraPosition;
 	XMVECTOR lightPosition;
 

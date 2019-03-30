@@ -12,6 +12,8 @@
 #ifndef RAYTRACING_HLSL
 #define RAYTRACING_HLSL
 
+// Remove /Zpr and use column-major? It might be slightly faster
+
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
@@ -180,7 +182,7 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRay
 
 // Trace a camera ray into the scene.
 // rx, ry - auxilary rays offset in screen space by one pixel in x, y directions.
-GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT currentRayRecursionDepth)
+GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT currentRayRecursionDepth, float tMin = NEAR_PLANE, float tMax = FAR_PLANE)
 {
 	// Set the ray's extents.
 	RayDesc rayDesc;
@@ -190,10 +192,10 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 	// Set TMin to a zero value to avoid aliasing artifacts along contact areas.
 	// Note: make sure to enable face culling so as to avoid surface face fighting.
 	// ToDo Tmin - this should be offset along normal.
-	rayDesc.TMin = 0.001;
-	rayDesc.TMax = 10000;
+	rayDesc.TMin = tMin;
+	rayDesc.TMax = tMax;
 #if ALLOW_MIRRORS
-	GBufferRayPayload rayPayload = { currentRayRecursionDepth + 1, false, (uint2)0, (float3)0, (float3)0, rx, ry };
+	GBufferRayPayload rayPayload = { currentRayRecursionDepth + 1, false, (uint2)0, (float3)0, (float3)0, rx, ry, 0, 0 };
 #else
 	GBufferRayPayload rayPayload = { false, (uint2)0, (float3)0, (float3)0, rx, ry };
 #endif
@@ -471,52 +473,55 @@ void MyRayGenShader_GBuffer()
 #if  REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // CB value is incorrect on rayPayload.hit boundaries causing blocky artifacts when within if (hit) block
     if (rayPayload.hit)
     {
-        float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
+        float3 raySegment = rayPayload.hitPosition - g_sceneCB.cameraPosition.xyz;
 #else
 
-    float3 raySegment = g_sceneCB.cameraPosition.xyz - rayPayload.hitPosition;
+    // ToDo dedupe
+    //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - g_sceneCB.cameraPosition.xyz, 1);
     if (rayPayload.hit)
     {
+        // Calculate depth value.
+        //float4 homogeneousScreenSpaceHitPosition = mul(viewSpaceHitPosition, g_sceneCB.viewProjection);
+        //float4 screenSpaceHitPosition = homogeneousScreenSpaceHitPosition / homogeneousScreenSpaceHitPosition.w;
+
+
 #endif
-#if GBUFFER_RAYLENGTH_ALONG_CENTER_CAMERA_EYE_RAY
-        Ray forwardCameraRay = GenerateForwardCameraRay(g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
-        rayLength = dot(raySegment, forwardCameraRay.direction);
-#else
-        rayLength = length(raySegment);
-#endif
-        float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
-        obliqueness = forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
+       // float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
+       // obliqueness = -forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
 #if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
-        obliqueness = -dot(rayPayload.surfaceNormal, rayPayload.hitPosition);
+        //obliqueness = -dot(rayPayload.surfaceNormal, rayPayload.hitPosition);
 #endif
+        rayLength = rayPayload.tHit;
+        obliqueness = rayPayload.obliqueness;
     }
 
-#if COMPRES_NORMALS
 
+#if COMPRES_NORMALS
     // compress normal
-    // ToDo review precision of 16bit format - particularly rayLength (renormalize ray length?)
-    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(EncodeNormal(rayPayload.surfaceNormal), rayLength, obliqueness);
+    float linearDepth = (rayLength - g_sceneCB.Zmin) / (g_sceneCB.Zmax - g_sceneCB.Zmin);
+
+#if 1
+    float nonLinearDepth = rayPayload.hit ?
+        (FAR_PLANE + NEAR_PLANE - 2.0 * NEAR_PLANE * FAR_PLANE / linearDepth) / (FAR_PLANE - NEAR_PLANE)
+        : 1;
+    nonLinearDepth = (nonLinearDepth + 1.0) / 2.0;
+    //linearDepth = rayLength = nonLinearDepth;
+#endif
+
+    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(EncodeNormal(rayPayload.surfaceNormal), linearDepth, obliqueness);
 #else
     #if PACK_NORMAL_AND_DEPTH
         obliqueness = rayLength;
     #endif
     g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
 #endif
-    g_rtGBufferDistance[DispatchRaysIndex().xy] = rayLength;
+    g_rtGBufferDistance[DispatchRaysIndex().xy] = linearDepth;
 
-    // ToDo revise
+    // ToDo revise + check https://stackoverflow.com/questions/6652253/getting-the-true-z-value-from-the-depth-buffer
     // Convert distance to nonLinearDepth.
     {
-#if 1
-        float nonLinearDepth =  rayPayload.hit ? 
-                                    (FAR_PLANE + NEAR_PLANE - 2.0 * NEAR_PLANE * FAR_PLANE / rayLength) / (FAR_PLANE - NEAR_PLANE)
-                                :   1;
-        nonLinearDepth = (nonLinearDepth + 1.0) / 2.0;
-#else
-        float nonLinearDepth = rayPayload.hit ? rayLength : 1;
 
-#endif
-        g_rtGBufferDepth[DispatchRaysIndex().xy] = nonLinearDepth;
+        g_rtGBufferDepth[DispatchRaysIndex().xy] = rayLength;// nonLinearDepth;
     }
     g_rtGBufferNormalRGB[DispatchRaysIndex().xy] = rayPayload.hit ? float4(rayPayload.surfaceNormal, 0) : float4(0,0,0,0);
 }
@@ -722,6 +727,8 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #endif
     }
 
+    rayPayload.obliqueness = dot(normal, -WorldRayDirection());
+
 #if 0
     float3 hitPosition = HitAttribute(vertices, attr);
     
@@ -789,7 +796,8 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         Ray ray = { hitPosition, reflect(WorldRayDirection(), normal) };
 #endif
 
-        rayPayload = TraceGBufferRay(ray, rx, ry, rayPayload.rayRecursionDepth);
+        rayPayload = TraceGBufferRay(ray, rx, ry, rayPayload.rayRecursionDepth, NEAR_PLANE, FAR_PLANE - RayTCurrent());
+        rayPayload.tHit += RayTCurrent();
 	}
     else
 #endif
@@ -807,6 +815,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         rayPayload.materialInfo = EncodeMaterial16b(materialID, diffuse);
         rayPayload.hitPosition = hitPosition;
         rayPayload.surfaceNormal = normal;
+        rayPayload.tHit = RayTCurrent();
     }
 }
 

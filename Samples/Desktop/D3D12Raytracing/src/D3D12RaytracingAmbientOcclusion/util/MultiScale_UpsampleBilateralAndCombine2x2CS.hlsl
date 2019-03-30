@@ -43,13 +43,30 @@ float BilateralUpsample(float ActualDistance, float4 SampleDistances, float4 Sam
     return dot(weights, SampleValues) / dot(weights, 1);
 }
 
+float DepthThreshold(float distance, float2 ddxy)
+{
+    float maxPixelDistance = 2; // Scale to compensate for the fact that the downsampled depth value may come from up to two pixels away in the high-res texture scale.
+    float ddx = maxPixelDistance * max(ddxy.x, ddxy.y);
+
+#if 1
+    // adjust the depth threshold based on slope angle.
+    float slopeAngle = atan(ddx);
+    float fovAngleY = 45;   // ToDO pass from the app
+    float2 resolution = float2(960, 540);
+    float pixelAngle = (fovAngleY / resolution.y) * PI / 180;
+    return distance * ((sin(PI - slopeAngle) / sin(slopeAngle - pixelAngle)) - 1);
+#else
+    return ddx;
+#endif
+
+}
+
 float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float4 BilinearWeights, in float4 SampleValues, in uint2 hiResPixelIndex)
 {
     // Depth weights.
     // Use ddxy as depth threshold.
     float2 ddxy = abs(g_inHiResPartialDistanceDerivative[hiResPixelIndex]);  // ToDo move to caller
-    float maxPixelDistance = 2; // Scale to compensate for the fact that the downsampled depth value may come from up to two pixels away in the high-res texture scale.
-    float depthThreshold = maxPixelDistance * max(ddxy.x, ddxy.y);
+    float depthThreshold = DepthThreshold(ActualDistance, ddxy);
     float fEpsilon = 1e-6 * ActualDistance;
     float4 depthWeights = min(depthThreshold / (abs(SampleDistances - ActualDistance) + fEpsilon), 1);
 

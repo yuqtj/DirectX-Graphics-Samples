@@ -147,7 +147,7 @@ namespace SceneArgs
 
     // RTAO
     // Adaptive Sampling.
-    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
+    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
     BoolVar RTAOAdaptiveSampling(L"Render/AO/RTAO/Adaptive Sampling/Enabled", true);
     BoolVar RTAOUseNormalMaps(L"Render/AO/RTAO/Normal maps", false);
     NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"Render/AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
@@ -187,6 +187,8 @@ namespace SceneArgs
     BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale/Enabled", true);
     IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale/Levels", 1, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
     BoolVar RTAODenoisingMultiscaleDenoisedAsInput(L"Render/AO/RTAO/Denoising/Multi-scale/Denoised as input", true);
+    BoolVar RTAODenoisingdepthTresholdUsingTrigonometryFunctions(L"Render/AO/RTAO/Denoising/depthTresholdUsingTrigonometryFunctions", true); // ToDo rename
+    
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"Render/AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
@@ -195,9 +197,9 @@ namespace SceneArgs
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 6, 0.0f, 30.0f, 0.1f);
 
     // ToDo why large depth sigma is needed?
-    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1.3f, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
+    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
 
-    NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising/Normal Sigma", 64, 0, 256, 4);
+    NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising/Normal Sigma", 0, 0, 256, 4);
     
 
     // ToDo dedupe
@@ -449,6 +451,8 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
         view = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_camera.At() - m_camera.Eye(), 1), m_camera.Up());
         XMMATRIX viewProj = view * proj;
         m_sceneCB->projectionToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj);
+        // ToDo switch to default column major in hlsl and do a transpose before passing matrices to HLSL.
+        m_sceneCB->viewProjection = viewProj;
         m_sceneCB->Zmin = m_camera.ZMin;
         m_sceneCB->Zmax = m_camera.ZMax;
     }
@@ -462,7 +466,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
 
         m_SSAO.OnCameraChanged(proj);
         m_SSAOCB->cameraPosition = m_camera.Eye();
-        // ToDo why transpose?
+        // ToDo why transpose? Because DirectXMath uses row-major and hlsl is column-major
         m_SSAOCB->worldView = XMMatrixTranspose(view);
         m_SSAOCB->worldViewProjection = XMMatrixTranspose(viewProj);
         m_SSAOCB->projectionToWorld = XMMatrixInverse(nullptr, viewProj);
@@ -1117,6 +1121,9 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 {
 	auto device = m_deviceResources->GetD3DDevice();
 
+    // ToDo move depth out of normal resource and switch normal to 16bit precision
+    DXGI_FORMAT normalFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;       // ToDo rename to coefficient or avoid using same variable for different types.
+
 	// ToDo tune formats
     // ToDo change this to non-PS resouce since we use CS?
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -1137,7 +1144,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Hit], initialResourceState, L"GBuffer Hit");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Material], initialResourceState, L"GBuffer Material");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer HitPosition");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormal], initialResourceState, L"GBuffer Normal");
+
+        CreateRenderTargetResource(device, normalFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormal], initialResourceState, L"GBuffer Normal");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Distance], initialResourceState, L"GBuffer Distance");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Depth], initialResourceState, L"GBuffer Depth");
         CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormalRGB], initialResourceState, L"GBuffer Normal RGB");
@@ -1161,7 +1169,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::Hit], initialResourceState, L"GBuffer LowRes Hit");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::Material], initialResourceState, L"GBuffer LowRes Material");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer LowRes HitPosition");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::SurfaceNormal], initialResourceState, L"GBuffer LowRes Normal");
+        CreateRenderTargetResource(device, normalFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::SurfaceNormal], initialResourceState, L"GBuffer LowRes Normal");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::Distance], initialResourceState, L"GBuffer LowRes Distance");
         // ToDo are below two used?
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::Depth], initialResourceState, L"GBuffer LowRes Depth");
@@ -1264,7 +1272,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         UINT width = CeilDivide(m_raytracingWidth, 1 << i);
         UINT height = CeilDivide(m_raytracingHeight, 1 << i);
         CreateRenderTargetResource(device, texFormat, width, height, m_cbvSrvUavHeap.get(), &msResource.m_value, initialResourceState, L"MultiScaleDenoisingResource Value");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_FLOAT, width, height, m_cbvSrvUavHeap.get(), &msResource.m_normalDepth, initialResourceState, L"MultiScaleDenoisingResource Normal and Depth");
+        CreateRenderTargetResource(device, normalFormat, width, height, m_cbvSrvUavHeap.get(), &msResource.m_normalDepth, initialResourceState, L"MultiScaleDenoisingResource Normal and Depth");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_FLOAT, width, height, m_cbvSrvUavHeap.get(), &msResource.m_partialDistanceDerivatives, initialResourceState, L"MultiScaleDenoisingResource Partial Distance Derivatives");
         CreateRenderTargetResource(device, texFormat, width, height, m_cbvSrvUavHeap.get(), &msResource.m_smoothedValue, initialResourceState, L"MultiScaleDenoisingResource Smoothed");
         CreateRenderTargetResource(device, texFormat, width, height, m_cbvSrvUavHeap.get(), &msResource.m_varianceResource, initialResourceState, L"MultiScaleDenoisingResource Variance");
@@ -1273,7 +1281,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         UINT downsampledWidth = CeilDivide(width, 2);
         UINT downsampledHeight = CeilDivide(height, 2);
         CreateRenderTargetResource(device, texFormat, downsampledWidth, downsampledHeight, m_cbvSrvUavHeap.get(), &msResource.m_downsampledSmoothedValue, initialResourceState, L"MultiScaleDenoisingResource Downsampled Smoothed");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_FLOAT, downsampledWidth, downsampledHeight, m_cbvSrvUavHeap.get(), &msResource.m_downsampledNormalDepthValue, initialResourceState, L"MultiScaleDenoisingResource Downsampled Normal and Depth");
+        CreateRenderTargetResource(device, normalFormat, downsampledWidth, downsampledHeight, m_cbvSrvUavHeap.get(), &msResource.m_downsampledNormalDepthValue, initialResourceState, L"MultiScaleDenoisingResource Downsampled Normal and Depth");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_FLOAT, downsampledWidth, downsampledHeight, m_cbvSrvUavHeap.get(), &msResource.m_downsampledPartialDistanceDerivatives, initialResourceState, L"MultiScaleDenoisingResource Downsampled Partial Distance Derivatives");
     }
 
@@ -2257,6 +2265,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
             SceneArgs::ApproximateSpatialVariance,
+            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
             m_calculateVarianceKernelInstancePerFrameInstanceId++);
 
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2329,6 +2338,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
+            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
 
@@ -2646,6 +2656,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
             SceneArgs::ApproximateSpatialVariance,
+            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
             m_calculateVarianceKernelInstancePerFrameInstanceId++);
 
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2718,6 +2729,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
+            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
 };
@@ -2768,6 +2780,7 @@ void D3D12RaytracingAmbientOcclusion::CalculateAdaptiveSamplingCounts()
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputPerPixelFilterWeightSum,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
+            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
 
@@ -2976,14 +2989,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 
     if (SceneArgs::QuarterResAO)
     {
-        DownsampleGBufferBilateral();
+        DownsampleGBuffer();
     }
 
 	PIXEndEvent(commandList);
 }
 
 
-void D3D12RaytracingAmbientOcclusion::DownsampleGBufferBilateral()
+void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
 {
     auto commandList = m_deviceResources->GetCommandList();
 
@@ -3418,7 +3431,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
         wLabel << fixed << L" - AO Blurring: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_BlurAO) << L"ms\n";
         wLabel << fixed << L" - Variance: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_Variance) << L"ms\n";
         wLabel << fixed << L" - Var Smoothing: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_VarianceSmoothing) << L"ms\n";
-        wLabel << fixed << L" - AO downsample: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::DownsampleGBufferBilateral) << L"ms\n";
+        wLabel << fixed << L" - AO downsample: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::DownsampleGBuffer) << L"ms\n";
         wLabel << fixed << L" - AO upsample: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::UpsampleAOBilateral) << L"ms\n";
 
 		float numVisibilityRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] / GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_Visibility);
@@ -3708,6 +3721,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
             if (SceneArgs::RTAOAdaptiveSampling)
             {
+                // ToDo move to within AO
                 CalculateAdaptiveSamplingCounts();
             }
             RenderPass_CalculateAmbientOcclusion();
