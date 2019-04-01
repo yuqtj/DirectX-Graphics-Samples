@@ -34,6 +34,7 @@ WorldBegin
 	# Shape "plymesh" "string filename" [ "models/Mesh034.ply" ]
 	# Shape "trianglemesh" "integer indices" [ 0 1 2 0 2 3 ] "point P" [ 0 -0.12 5000 -5000 -0.12 0 0 -0.12 -5000 5000 -0.12 0 ] "normal N" [ 0 1 0 0 1 0 0 1 -0 0 1 0 ] "float uv" [ 0 0 1 0 1 1 0 1 ]  
 	Shape "trianglemesh" "integer indices" [ 0 1 2 0 2 3 ] "point P" [ 0 -0.12 100 -100 -0.12 0 0 -0.12 -100 100 -0.12 0 ] "normal N" [ 0 1 0 0 1 0 0 1 -0 0 1 0 ] "float uv" [ 0 0 1 0 1 1 0 1 ] 
+	# Shape "trianglemesh" "integer indices" [ 0 1 2 0 2 3 ] "point P" [ 0 -0.12 10 -10 -0.12 0 0 -0.12 -10 10 -0.12 0 ] "normal N" [ 0 1 0 0 1 0 0 1 -0 0 1 0 ] "float uv" [ 0 0 1 0 1 1 0 1 ] 
 	NamedMaterial "InnerBody" 
 	Shape "plymesh" "string filename" [ "models/Mesh048.ply" ] 
 	NamedMaterial "Steel" 

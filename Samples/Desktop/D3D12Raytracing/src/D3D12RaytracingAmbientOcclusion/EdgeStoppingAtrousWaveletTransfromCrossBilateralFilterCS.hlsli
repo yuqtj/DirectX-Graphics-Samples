@@ -164,7 +164,9 @@ void AddFilterContribution(
         float minObliqueness = depthSigma;//  0.02; // Avoid weighting by depth at very sharp angles. Depend on weighting by normals.
         float depthThreshold = DepthThreshold(depth, ddxy, pixelOffset, obliqueness, depth - iDepth);
 
-        float fEpsilon = 1e-6 * depth * 4;// *max(0.1, 1 - obliqueness);
+        float fMinEpsilon = 512 * FLT_EPSILON; // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations.
+        float fMinDepthScaledEpsilon = 48 * 1e-6  * depth;  // Depth threshold to surpress differences that surfaces at larger depth from the camera.
+        float fEpsilon = fMinEpsilon + fMinDepthScaledEpsilon;
         float depthWeigth = min((depthSigma * depthThreshold + fEpsilon) / (abs(depth - iDepth)), 1);
         float w_d = depthWeigth;
         //float e_d = depthSigma > 0.01f  ? min(1 - abs(depth - iDepth) / (1 * depthThreshold), 0) : 0;
@@ -172,6 +174,7 @@ void AddFilterContribution(
         // ToD revize "1 - "
         float e_d = depthSigma > 0.01f ? min(1 - abs(depth - iDepth) / (depthSigma * depthThreshold + fEpsilon), 0) : 0;
         w_d = exp(e_d);
+
 #else
         float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;
 #endif

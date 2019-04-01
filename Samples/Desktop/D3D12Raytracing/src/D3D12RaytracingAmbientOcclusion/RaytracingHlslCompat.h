@@ -297,6 +297,10 @@ struct GBufferRayPayload
     Ray ry;    // Auxilary camera ray offset by one pixel in y dimension in screen space.
     float obliqueness; // obliqueness of the hit surface ~ sin(incidentAngle)
     float tHit;
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+    float rxTHit;
+    float ryTHit;
+#endif
 };
 
 struct ShadowRayPayload

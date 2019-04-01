@@ -198,7 +198,11 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 	rayDesc.TMin = tMin;
 	rayDesc.TMax = tMax;
 #if ALLOW_MIRRORS
-	GBufferRayPayload rayPayload = { currentRayRecursionDepth + 1, false, (uint2)0, (float3)0, (float3)0, rx, ry, 0, 0 };
+	GBufferRayPayload rayPayload = { currentRayRecursionDepth + 1, false, (uint2)0, (float3)0, (float3)0, rx, ry, 0, 0
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+        , 0, 0
+#endif
+    };
 #else
 	GBufferRayPayload rayPayload = { false, (uint2)0, (float3)0, (float3)0, rx, ry };
 #endif
@@ -532,7 +536,7 @@ void MyRayGenShader_GBuffer()
 #if COMPRES_NORMALS
     // compress normal
     // ToDo normalize depth to [0,1] as floating point has higher precision around 0.
-#if 1
+#if 0
      float linearDistance = (rayLength - g_sceneCB.Zmin) / (g_sceneCB.Zmax - g_sceneCB.Zmin);
 #else
     float linearDistance = rayLength;// (rayLength - g_sceneCB.Zmin) / (g_sceneCB.Zmax - g_sceneCB.Zmin);
@@ -541,6 +545,12 @@ void MyRayGenShader_GBuffer()
     float3 cameraDirection = GenerateForwardCameraRayDirection(g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
     float linearDepth = linearDistance * dot(ray.direction, cameraDirection);
 
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+    float rxLinearDepth = rayPayload.rxTHit * dot(rx.direction, cameraDirection);
+    float ryLinearDepth = rayPayload.ryTHit * dot(ry.direction, cameraDirection);
+    float2 ddxy = abs(float2(rxLinearDepth, ryLinearDepth) - linearDepth);
+    g_rtPartialDepthDerivatives[DispatchRaysIndex().xy] = ddxy;
+#endif
 #if 1
     float nonLinearDepth = rayPayload.hit ?
         (FAR_PLANE + NEAR_PLANE - 2.0 * NEAR_PLANE * FAR_PLANE / linearDepth) / (FAR_PLANE - NEAR_PLANE)
@@ -858,10 +868,10 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         rayPayload.surfaceNormal = normal;
         rayPayload.tHit = RayTCurrent();
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-        rayPayload.ddxy = px - hitposition;
-        py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
-
-        g_rtPartialDepthDerivatives[]
+        float3 rxRaySegment = px - rayPayload.rx.origin;
+        float3 ryRaySegment = py - rayPayload.ry.origin;
+        rayPayload.rxTHit += length(rxRaySegment);
+        rayPayload.ryTHit += length(ryRaySegment);
 #endif
     }
 }
