@@ -152,7 +152,7 @@ float2 HitAttribute(float2 vertexAttribute[3], BuiltInTriangleIntersectionAttrib
 
 
 // ToDo merge with GenerateCameraRay?
-inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
+inline float3 GenerateForwardCameraRayDirection(in float4x4 projectionToWorldWithCameraEyeAtOrigin)
 {
 	float2 screenPos = float2(0, 0);
 	
@@ -160,13 +160,40 @@ inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projec
 	float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
 	//world.xyz /= world.w;
 
-	Ray ray;
-	ray.origin = cameraPosition;
-	// Since the camera's eye was at 0,0,0 in projectionToWorldWithCameraEyeAtOrigin 
-	// the world.xyz is the direction.
-	ray.direction = normalize(world.xyz);
+	return normalize(world.xyz);   // ToDo is this normalization needed?
+}
 
-	return ray;
+inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
+{
+    float2 screenPos = float2(0, 0);
+
+    // Unproject the pixel coordinate into a world positon.
+    float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
+    //world.xyz /= world.w;
+
+    Ray ray;
+    ray.origin = cameraPosition;
+    // Since the camera's eye was at 0,0,0 in projectionToWorldWithCameraEyeAtOrigin 
+    // the world.xyz is the direction.
+    ray.direction = normalize(world.xyz);
+
+    return ray;
+}
+
+// Calculate a world position from a screen position on near plane;
+float3 ScreenPosToWorldPos(uint2 index, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
+{
+    float2 xy = index + 0.5f; // center in the middle of the pixel.
+    float2 screenPos = xy / DispatchRaysDimensions().xy * 2.0 - 1.0;
+
+    // Invert Y for DirectX-style coordinates.
+    screenPos.y = -screenPos.y;
+
+    // Unproject the pixel coordinate into a world positon.
+    float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
+    //world.xyz /= world.w;
+
+    return world.xyz;
 }
 
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
@@ -181,7 +208,7 @@ inline Ray GenerateCameraRay(uint2 index, in float3 cameraPosition, in float4x4 
 
     // Unproject the pixel coordinate into a world positon.
     float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
-    //world.xyz /= world.w;
+    //world.xyz /= world.w; // ToDo remove
 
     Ray ray;
     ray.origin = cameraPosition;
@@ -543,6 +570,7 @@ void CalculateUVDerivatives(
 }
 
 // Retrieves auxilary camera rays offset by one pixel in x and y directions in screen space. 
+// ToDo pass indices like in primary camera ray fnc?
 void GetAuxilaryCameraRays(in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin, out Ray rx, out Ray ry)
 {
     rx = GenerateCameraRay(DispatchRaysIndex().xy + uint2(1, 0), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);

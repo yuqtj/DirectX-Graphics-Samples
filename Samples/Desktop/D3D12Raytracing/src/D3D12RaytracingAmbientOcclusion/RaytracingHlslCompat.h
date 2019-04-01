@@ -54,6 +54,8 @@
 #define ADD_INVERTED_FACE 0
 #define CORRECT_NORMALS 0
 
+#define CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN 0
+
 //#define SAMPLER_FILTER D3D12_FILTER_MIN_MAG_MIP_LINEAR
 #define SAMPLER_FILTER D3D12_FILTER_ANISOTROPIC  // TODo blurry at various angles
 
@@ -65,6 +67,9 @@
 // ~SSAO
 
 #define DISTANCE_ON_MISS 65504  // ~FLT_MAX within 16 bit format // ToDo explain
+
+#define PRINT_OUT_CAMERA_CONFIG 1
+#define DEBUG_CAMERA_POS 1
 
 // ToDo 16bit per component normals?
 #define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 1
@@ -337,7 +342,7 @@ struct AtrousWaveletTransformFilterConstantBuffer
     BOOL outputFilteredVariance;
     BOOL outputFilterWeigthSum;
 
-    BOOL depthTresholdUsingTrigonometryFunctions;
+    BOOL pespectiveCorrectDepthInterpolation;
     XMUINT3 padding;
 };
 
@@ -350,6 +355,11 @@ struct SceneConstantBuffer
     XMMATRIX viewProjection;    // ToDo remove // world to projection matrix with Camera at (0,0,0).
     XMVECTOR cameraPosition;
 	XMVECTOR lightPosition;
+    
+    // ToDo remove
+    XMVECTOR cameraAt;
+    XMVECTOR cameraUp;
+    XMVECTOR cameraRight;
 
     float reflectance;
     float elapsedTime;                 // Elapsed application time.

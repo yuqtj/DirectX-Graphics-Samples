@@ -10,6 +10,7 @@
 //*********************************************************
 
 #define HLSL
+
 #include "..\RaytracingHlslCompat.h"
 #include "..\RaytracingShaderHelper.hlsli"
 
@@ -29,14 +30,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint2 left = clamp(DTid.xy + uint2(-1, 0), 0, g_CB.textureDim - 1);
     uint2 right = clamp(DTid.xy + uint2(1, 0), 0, g_CB.textureDim - 1);
 
-    // ToDo update the file name
-#if 1  
+    // ToDo Pick 1 and update the file name
+#if 1
     // Calculates partial derivatives as the min of absolute backward and forward differences. 
     // The min is taken to handle edges when calculating partial distance derivatives.
     // The min avoids the distance derivative slope being to that of another surface behind/in front of it on surface edges.
-    float centerValue = g_inValue[DTid.xy];
-    float2 backwardDifferences = centerValue - float2(g_inValue[left], g_inValue[top]);
-    float2 forwardDifferences = float2(g_inValue[right], g_inValue[bottom]) - centerValue;
+    float centerValue = g_inValue[DTid.xy];                                                 // deltaY
+    float2 backwardDifferences = centerValue - float2(g_inValue[left], g_inValue[top]);    //-0.000011252239
+    float2 forwardDifferences = float2(g_inValue[right], g_inValue[bottom]) - centerValue;// -0.000012516976
 
     // ToDO pick both dimensions from one or the other?
     // ToDo retain pos/negative sides?

@@ -47,7 +47,6 @@ namespace Scene
 			XMVECTOR forward = XMVector4Normalize(camera.position.at - camera.position.eye);
 			camera.position.up = XMVector3Normalize(XMVector3Cross(forward, right));
 #endif
-
 			camera.boundaries.min = -XMVectorSplatInfinity();
 			camera.boundaries.max = XMVectorSplatInfinity();
 		}
@@ -72,6 +71,18 @@ namespace Scene
 #else
 			camera.boundaries.min = { -430, 2.2f, -428, 1 };
 			camera.boundaries.max = { 408, 358, 416, 1 };
+#endif
+
+#if DEBUG_CAMERA_POS
+#if 0
+            camera.position.eye = { -17.177f, 7.27362f, -12.6377f, 1 };
+            camera.position.at = { -16.748f, 7.02274f, -11.7697f, 1 };
+            camera.position.up = { 0.155454f, 0.933811f, 0.322219f, 0 };
+#else
+            camera.position.eye = { -27.2654f, 8.0924f, -9.16976f, 1 };
+            camera.position.at = { -26.4939f, 7.89591f, -8.56419f, 1 };
+            camera.position.up = { 0.237911f, 0.952311f, 0.191048f, 0 };
+#endif
 #endif
 		}
 	}

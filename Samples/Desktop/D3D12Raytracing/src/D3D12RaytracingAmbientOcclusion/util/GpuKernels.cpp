@@ -1251,7 +1251,7 @@ namespace GpuKernels
         Mode filterMode,
         bool reverseFilterPassOrder,
         bool useCalculatedVariance,
-        bool depthTresholdUsingTrigonometryFunctions,
+        bool pespectiveCorrectDepthInterpolation,
         UINT perFrameInstanceId)
     {
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
@@ -1312,7 +1312,7 @@ namespace GpuKernels
             CB->outputFilteredVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
             CB->outputFilteredValue = filterMode == OutputFilteredValue;
             CB->outputFilterWeigthSum = filterMode == OutputPerPixelFilterWeightSum;
-            CB->depthTresholdUsingTrigonometryFunctions = depthTresholdUsingTrigonometryFunctions;
+            CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation;
 
             CB->textureDim = resourceDim;
             
@@ -1581,7 +1581,7 @@ namespace GpuKernels
         float depthSigma,
         float normalSigma,
         bool useApproximateVariance,
-        bool depthTresholdUsingTrigonometryFunctions,
+        bool pespectiveCorrectDepthInterpolation,
         UINT perFrameInstanceId)
     {
         using namespace RootSignature::CalculateVariance;
@@ -1608,7 +1608,7 @@ namespace GpuKernels
         m_CB->normalSigma = normalSigma;
         m_CB->textureDim = XMUINT2(width, height);
         m_CB->useApproximateVariance = useApproximateVariance;
-        m_CB->depthTresholdUsingTrigonometryFunctions = depthTresholdUsingTrigonometryFunctions;
+        m_CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation;
         m_CB.CopyStagingToGpu(perFrameInstanceId);
         commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
 

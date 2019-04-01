@@ -26,18 +26,18 @@ Texture2D<float2> g_inPartialDistanceDerivatives : register(t7);   // ToDo remov
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
 #if !WORKAROUND_ATROUS_VARYING_OUTPUTS 
-RWTexture2D<float> g_outFilterWeightSum : register(u2);
+RWTexture2D<float> g_outFilterWeigthSum : register(u2);
 #endif
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> g_CB: register(b0);
 
 
-float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obliqueness)
+float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obliqueness, float depthDelta)
 {
-    float depthTreshold;
+    float depthThreshold;
 
-    float fEpsilon = g_CB.depthSigma * 1e-5f;// depth * 1e-6f;// *0.001;// 0.0024;// 12f;     // ToDo finalize the value
+    float fEpsilon = (1.001-distance) * g_CB.depthSigma * 1e-4f;// depth * 1e-6f;// *0.001;// 0.0024;// 12f;     // ToDo finalize the value
     // ToDo rename to perspective correction
-    if (g_CB.depthTresholdUsingTrigonometryFunctions)
+    if (0 && g_CB.pespectiveCorrectDepthInterpolation)
     {
         float fovAngleY = FOVY;   // ToDO pass from the app
         float2 resolution = g_CB.textureDim;
@@ -47,14 +47,40 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
         float unitDistanceDelta = length(pixelOffset * ddxy) / pixelOffsetLen;
         float slopeAngle = asin(obliqueness);// atan(1 / unitDistanceDelta);
         float pixelAngle = pixelOffsetLen * (fovAngleY / resolution.y) * PI / 180;
-        depthTreshold = distance * (((sin(slopeAngle) / sin(slopeAngle - pixelAngle)) - 1) + fEpsilon);
+        depthThreshold = distance * (((sin(slopeAngle) / sin(slopeAngle - pixelAngle)) - 1) + fEpsilon);
     }
     else
     {
-        depthTreshold = length(pixelOffset * ddxy) + fEpsilon;
-    }
+        depthThreshold = length(pixelOffset * ddxy) + fEpsilon;
 
-    return depthTreshold;
+
+#if 1
+        fEpsilon = 1e-6 * distance * g_CB.normalSigma;// *max(0.1, 1 - obliqueness);
+
+
+        // Pespective correction for the non-linear interpolation
+        if (g_CB.pespectiveCorrectDepthInterpolation)
+        {
+            // Calculate depth with perspective correction
+            // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
+            // Given depth buffer interpolation for finding z at offset q along z0 to z1
+            //      z =  1 / (1 / z0 * (1 - q) + 1 / z1 * q)
+            // and z1 = z0 + ddxy, where z1 is at a unit pixel offset [1, 1]
+            // z can be calculated via ddxy as
+            //
+            //      z = (z0 + ddxy) / (1 + (1-q) / z0 * ddxy) 
+         
+            float z0 = distance;
+            float2 zxy = (z0 + ddxy) / (1 + ((1 - pixelOffset) / z0) * ddxy);
+            depthThreshold = dot(1, abs(zxy - z0));
+        }
+        else
+        {
+            depthThreshold = dot(1, abs(pixelOffset * ddxy));
+        }
+#endif
+    }
+    return depthThreshold;
 
 }
 
@@ -136,11 +162,16 @@ void AddFilterContribution(
         // ToDo finalize obliqueness
         // ToDo obliqueness is incorrect for reflected rays
         float minObliqueness = depthSigma;//  0.02; // Avoid weighting by depth at very sharp angles. Depend on weighting by normals.
-        float depthThreshold = DepthThreshold(depth, ddxy, pixelOffset, obliqueness);
-        float e_d = depthSigma > 0.01f  ? min(1 - abs(depth - iDepth) / (1 * depthThreshold), 0) : 0;
+        float depthThreshold = DepthThreshold(depth, ddxy, pixelOffset, obliqueness, depth - iDepth);
+
+        float fEpsilon = 1e-6 * depth * 4;// *max(0.1, 1 - obliqueness);
+        float depthWeigth = min((depthSigma * depthThreshold + fEpsilon) / (abs(depth - iDepth)), 1);
+        float w_d = depthWeigth;
+        //float e_d = depthSigma > 0.01f  ? min(1 - abs(depth - iDepth) / (1 * depthThreshold), 0) : 0;
         //fload e_d = depth abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance
-        //float e_d = depthSigma > 0.01f ? min(1 - abs(depth - iDepth) / (depthSigma * length(ddxy * pixelOffset) + fEpsilon), 0) : 0;
-        
+        // ToD revize "1 - "
+        float e_d = depthSigma > 0.01f ? min(1 - abs(depth - iDepth) / (depthSigma * depthThreshold + fEpsilon), 0) : 0;
+        w_d = exp(e_d);
 #else
         float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;
 #endif
@@ -148,7 +179,12 @@ void AddFilterContribution(
         float w_h = FilterKernel::Kernel[row][col];
 
         // ToDo apply exp combination where applicable 
-        float w_xd = exp(e_x + e_d);        // exp(x) * exp(y) == exp(x + y)
+        // ToDo combine
+        //float w_xd = exp(e_x + e_d);        // exp(x) * exp(y) == exp(x + y)
+        float w_x = exp(e_x);
+        //float w_d = exp(e_d);
+        float w_xd = w_x * w_d;
+
         float w = w_h * w_n * w_xd;
 
         if (g_CB.outputFilteredValue)
@@ -161,7 +197,7 @@ void AddFilterContribution(
         // ToDo standardize g_CB naming
         if (g_CB.outputFilteredVariance)
         {
-            weightedVarianceSum += w * w * iVariance;   // ToDo rename to sqWeight...
+            weightedVarianceSum += w * w * iVariance;   // ToDo rename to sqWeigth...
         }
     }
 }
@@ -237,7 +273,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
     // ToDo why the resource doesnt get picked up in PIX if its written to under condition?
     if (g_CB.outputFilterWeigthSum)
     {
-        g_outFilterWeightSum[DTid] = weightSum;
+        g_outFilterWeigthSum[DTid] = weightSum;
     }
 
     // ToDo separate output filtered value and weight sum into two shaders?

@@ -109,6 +109,7 @@ namespace GlobalRootSignature {
             GBufferDepth,   // ToDo move to the above slot for GBufferResources ?
             GbufferNormalRGB,
             AORayHitDistance,
+            PartialDepthDerivatives,
             Count
         };
     }

@@ -151,7 +151,7 @@ namespace SceneArgs
     BoolVar RTAOAdaptiveSampling(L"Render/AO/RTAO/Adaptive Sampling/Enabled", true);
     BoolVar RTAOUseNormalMaps(L"Render/AO/RTAO/Normal maps", false);
     NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"Render/AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
-    BoolVar RTAOAdaptiveSamplingMinMaxSampling(L"Render/AO/RTAO/Adaptive Sampling/Only min\\max sampling", false);
+    BoolVar RTAOAdaptiveSamplingMinMaxSampling(L"Render/AO/RTAO/Adaptive Sampling/Only min\\max sampling", true);
     NumVar RTAOAdaptiveSamplingScaleExponent(L"Render/AO/RTAO/Adaptive Sampling/Sampling scale exponent", 0.3f, 0.0f, 10, 0.1f);
     BoolVar RTAORandomFrameSeed(L"Render/AO/RTAO/Random per-frame seed", false);
 
@@ -187,7 +187,7 @@ namespace SceneArgs
     BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale/Enabled", true);
     IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale/Levels", 1, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
     BoolVar RTAODenoisingMultiscaleDenoisedAsInput(L"Render/AO/RTAO/Denoising/Multi-scale/Denoised as input", true);
-    BoolVar RTAODenoisingdepthTresholdUsingTrigonometryFunctions(L"Render/AO/RTAO/Denoising/depthTresholdUsingTrigonometryFunctions", true); // ToDo rename
+    BoolVar RTAODenoisingdepthThresholdUsingTrigonometryFunctions(L"Render/AO/RTAO/Denoising/Pespective Correct Depth Interpolation", true); // ToDo rename
     
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
@@ -197,9 +197,10 @@ namespace SceneArgs
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 6, 0.0f, 30.0f, 0.1f);
 
     // ToDo why large depth sigma is needed?
-    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
+    // ToDo the values don't scale to QuarterRes - see ImportaceMap viz
+    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1.5, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
 
-    NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising/Normal Sigma", 0, 0, 256, 4);
+    NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising/Normal Sigma", 64, 0, 256, 4);
     
 
     // ToDo dedupe
@@ -242,6 +243,7 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 	// Work
 #if 1
     PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
+    // ToDo move plane from car2 to house
 	PBRTParser::PBRTParser().Parse("Assets\\car2\\scene.pbrt", m_pbrtScene);
 	PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);		// ToDo model is mirrored
 	PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene);
@@ -258,11 +260,12 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 	//PBRTParser::PBRTParser().Parse("Assets\\kitchen\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
 #endif
 
-	m_camera.Set(
-		Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Position),
-		Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_LookAt),
-		Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Up));
-	m_camera.fov = 2 * m_pbrtScene.m_Camera.m_FieldOfView;
+    // ToDo
+	//m_camera.Set(
+	//	Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Position),
+	//	Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_LookAt),
+	//	Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Up));
+	//m_camera.fov = 2 * m_pbrtScene.m_Camera.m_FieldOfView;   
 	UINT numGeometries = static_cast<UINT>(m_pbrtScene.m_Meshes.size());
 
 	auto& geometries = m_geometries[GeometryType::PBRT];
@@ -455,6 +458,10 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
         m_sceneCB->viewProjection = viewProj;
         m_sceneCB->Zmin = m_camera.ZMin;
         m_sceneCB->Zmax = m_camera.ZMax;
+
+        m_sceneCB->cameraAt = m_camera.At();
+        m_sceneCB->cameraUp = m_camera.Up();
+        m_sceneCB->cameraRight = XMVector3Normalize(XMVector3Cross(m_camera.Up(), m_camera.At() - m_camera.Eye()));
     }
 
     // SSAO.
@@ -931,7 +938,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 		using namespace GlobalRootSignature;
 
         // ToDo reorder
-        CD3DX12_DESCRIPTOR_RANGE ranges[10]; // Perfomance TIP: Order from most frequent to least frequent.
+        CD3DX12_DESCRIPTOR_RANGE ranges[11]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output textures
 		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 5);  // 5 output GBuffer textures
 		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input GBuffer textures
@@ -942,7 +949,9 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 14);  // 1 output normal texture
         ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 13);  // 1 input filter weight sum texture
         ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 15);  // 1 output ray hit distance texture
-
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+        ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 16);  // 1 output partial depth derivative texture
+#endif
 
         CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
         rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
@@ -954,7 +963,10 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         rootParameters[Slot::GBufferDepth].InitAsDescriptorTable(1, &ranges[6]);
         rootParameters[Slot::GbufferNormalRGB].InitAsDescriptorTable(1, &ranges[7]);
         rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[8]);
-        rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[9]);
+        rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[9]); 
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+        rootParameters[Slot::PartialDepthDerivatives].InitAsDescriptorTable(1, &ranges[10]);
+#endif
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
         rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
@@ -2265,7 +2277,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
             SceneArgs::ApproximateSpatialVariance,
-            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
             m_calculateVarianceKernelInstancePerFrameInstanceId++);
 
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2338,7 +2350,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
-            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
 
@@ -2656,7 +2668,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
             SceneArgs::ApproximateSpatialVariance,
-            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
             m_calculateVarianceKernelInstancePerFrameInstanceId++);
 
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2729,7 +2741,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
-            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
 };
@@ -2780,7 +2792,7 @@ void D3D12RaytracingAmbientOcclusion::CalculateAdaptiveSamplingCounts()
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputPerPixelFilterWeightSum,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
-            SceneArgs::RTAODenoisingdepthTresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
 
@@ -2945,8 +2957,11 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	// Bind output RTs.
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferDepth, m_GBufferResources[GBufferResource::Depth].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GbufferNormalRGB, m_GBufferResources[GBufferResource::SurfaceNormalRGB].gpuDescriptorWriteAccess);
-	
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GbufferNormalRGB, m_GBufferResources[GBufferResource::SurfaceNormalRGB].gpuDescriptorWriteAccess); 
+    
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::PartialDepthDerivatives, m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
+#endif	
 	// Dispatch Rays.
     DispatchRays(m_rayGenShaderTables[RayGenShaderType::GBuffer].Get());
 
@@ -2962,6 +2977,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Distance].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Depth].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormalRGB].resource.Get(), before, after),
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
+#endif
 		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
@@ -2972,6 +2990,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
         CalculateRayHitCount(ReduceSumCalculations::CameraRayHits);
     }
 
+#if !CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
     // Calculate partial derivatives.
     {
         ScopedTimer _prof(L"Calculate Partial Depth Derivatives", commandList);
@@ -2986,7 +3005,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 
         commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
     }
-
+#endif
     if (SceneArgs::QuarterResAO)
     {
         DownsampleGBuffer();

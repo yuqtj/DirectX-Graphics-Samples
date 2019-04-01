@@ -362,7 +362,7 @@ namespace GpuKernels
             Mode filterMode = OutputFilteredValue,
             bool reverseFilterPassOrder = false,
             bool useCalculatedVariance = true,
-            bool depthTresholdUsingTrigonometryFunctions = false,
+            bool pespectiveCorrectDepthInterpolation = false,
             UINT perFrameInstanceId = 0);
 
     private:
@@ -430,7 +430,7 @@ namespace GpuKernels
             float depthSigma,
             float normalSigma,
             bool useApproximateVariance = true,
-            bool depthTresholdUsingTrigonometryFunctions = false,
+            bool pespectiveCorrectDepthInterpolation = false,
             UINT perFrameInstanceId = 0);
 
     private:

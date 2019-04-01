@@ -677,6 +677,8 @@
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
+      <DisableOptimizations Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </DisableOptimizations>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

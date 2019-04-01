@@ -56,13 +56,16 @@ TextureCube<float4> g_texEnvironmentMap : register(t12);
 Texture2D<float> g_filterWeightSum : register(t13);
 
 // ToDo remove AOcoefficient and use AO hits instead?
+//todo remove rt?
 RWTexture2D<float> g_rtAOcoefficient : register(u10);
 RWTexture2D<uint> g_rtAORayHits : register(u11);
 RWTexture2D<float> g_rtVisibilityCoefficient : register(u12);
 RWTexture2D<float> g_rtGBufferDepth : register(u13);
 RWTexture2D<float4> g_rtGBufferNormalRGB : register(u14);   // for SSAO. ToDo cleanup
 RWTexture2D<float> g_rtAORayHitDistance : register(u15);
-
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
+#endif
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
@@ -435,6 +438,35 @@ void MyRayGenShader_Visibility()
 	g_rtVisibilityCoefficient[DispatchRaysIndex().xy] = inShadow ? 0 : 1;
 }
 
+// ToDo remove
+inline Ray GenerateCameraRayViaInterpolation(uint2 index, in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin, float2 jitter = float2(0, 0))
+{
+#if 1
+    float2 xy = index + 0.5f; // center in the middle of the pixel.
+    xy += jitter;
+    float2 screenPos = xy / DispatchRaysDimensions().xy * 2.0 - 1.0;
+
+    // Invert Y for DirectX-style coordinates.
+    screenPos.y = -screenPos.y;
+
+    // ToDo remove CB ref
+    Ray ray;
+    ray.origin = cameraPosition;
+    ray.direction = normalize(g_sceneCB.cameraAt.xyz - cameraPosition) + screenPos.x * g_sceneCB.cameraRight.xyz + screenPos.y * g_sceneCB.cameraUp.xyz;
+
+#else
+    float3 pos00 = ScreenPosToWorldPos(uint2(0, 0), projectionToWorldWithCameraEyeAtOrigin);
+    float3 pos10 = ScreenPosToWorldPos(uint2(1, 0), projectionToWorldWithCameraEyeAtOrigin);
+    float3 pos01 = ScreenPosToWorldPos(uint2(0, 1), projectionToWorldWithCameraEyeAtOrigin);
+
+    Ray ray;
+    ray.origin = cameraPosition;
+    ray.direction = normalize(pos00 + index.x * (pos10 - pos00) + index.y * (pos01 - pos00));
+#endif
+    return ray;
+}
+
+
 [shader("raygeneration")]
 void MyRayGenShader_GBuffer()
 {
@@ -450,6 +482,7 @@ void MyRayGenShader_GBuffer()
 
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
 	Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
+    //Ray ray = GenerateCameraRayViaInterpolation(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
 
     Ray rx, ry;
     GetAuxilaryCameraRays(g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, rx, ry);
@@ -498,7 +531,15 @@ void MyRayGenShader_GBuffer()
 
 #if COMPRES_NORMALS
     // compress normal
-    float linearDepth = (rayLength - g_sceneCB.Zmin) / (g_sceneCB.Zmax - g_sceneCB.Zmin);
+    // ToDo normalize depth to [0,1] as floating point has higher precision around 0.
+#if 1
+     float linearDistance = (rayLength - g_sceneCB.Zmin) / (g_sceneCB.Zmax - g_sceneCB.Zmin);
+#else
+    float linearDistance = rayLength;// (rayLength - g_sceneCB.Zmin) / (g_sceneCB.Zmax - g_sceneCB.Zmin);
+#endif
+    // Calculate z-depth
+    float3 cameraDirection = GenerateForwardCameraRayDirection(g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
+    float linearDepth = linearDistance * dot(ray.direction, cameraDirection);
 
 #if 1
     float nonLinearDepth = rayPayload.hit ?
@@ -742,7 +783,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     float3 px, py;
     px = RayPlaneIntersection(hitPosition, normal, rayPayload.rx.origin, rayPayload.rx.direction);
     py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
-    
+
     if (material.hasDiffuseTexture || 
         (g_sceneCB.RTAO_UseNormalMaps && material.hasNormalTexture))
     {
@@ -816,6 +857,12 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         rayPayload.hitPosition = hitPosition;
         rayPayload.surfaceNormal = normal;
         rayPayload.tHit = RayTCurrent();
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+        rayPayload.ddxy = px - hitposition;
+        py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
+
+        g_rtPartialDepthDerivatives[]
+#endif
     }
 }
 

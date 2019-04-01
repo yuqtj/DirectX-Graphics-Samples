@@ -117,6 +117,16 @@ void CameraController::Update(float deltaTime)
 		eye = XMVectorMin(eye, m_boundaryMax);
 		eye = XMVectorMax(eye, m_boundaryMin);
 		m_camera.Set(eye, eye + eyeToAt, m_camera.Up());
+
+#if PRINT_OUT_CAMERA_CONFIG
+        std::wstringstream wstr;
+
+        wstr << L"camera.position.eye = { " << XMVectorGetX(eye) << L"f, " << XMVectorGetY(eye) << L"f, " << XMVectorGetZ(eye) << L"f, 1};\n";
+        wstr << L"camera.position.at = { " << XMVectorGetX(m_camera.At()) << L"f, " << XMVectorGetY(m_camera.At()) << L"f, " << XMVectorGetZ(m_camera.At()) << L"f, 1};\n";
+        wstr << L"camera.position.up = { " << XMVectorGetX(m_camera.Up()) << L"f, " << XMVectorGetY(m_camera.Up()) << L"f, " << XMVectorGetZ(m_camera.Up()) << L"f, 0};\n";
+
+        OutputDebugStringW(wstr.str().c_str());
+#endif
 	}
 }
 

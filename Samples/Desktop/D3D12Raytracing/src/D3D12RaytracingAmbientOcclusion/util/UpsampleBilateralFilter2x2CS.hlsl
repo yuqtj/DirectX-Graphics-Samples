@@ -58,7 +58,7 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
             // ToDo consider ddxy per dimension or have a 1D max(Ddxy) resource?
             depthThreshold = maxPixelDistance * max(ddxy.x, ddxy.y);
         }
-
+        // ToDo correct weights to weigths in the whole project same for treshold and weigth
         float fScale = 1.f / depthThreshold;
         depthWeights = min(1.0 / (fScale * abs(SampleDistances - ActualDistance) + fEpsilon), 1);
     }
