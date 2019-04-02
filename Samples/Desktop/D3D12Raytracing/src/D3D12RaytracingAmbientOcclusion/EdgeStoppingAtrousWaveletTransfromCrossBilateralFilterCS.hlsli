@@ -95,15 +95,51 @@ void AddFilterContribution(
     in float obliqueness, 
     in float2 ddxy,
     in uint row, 
-    in uint col, 
+    in uint col,
+    in float minHitDistance,
     in uint2 DTid)
 {
     const float valueSigma = g_CB.valueSigma;
     const float normalSigma = g_CB.normalSigma;
     const float depthSigma = g_CB.depthSigma;
  
-    int2 pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) << g_CB.kernelStepShift;
-    int2 id = int2(DTid) + pixelOffset;
+    int2 pixelOffset;
+    float kernelWidth;
+
+    if (g_CB.useAdaptiveKernelSize)
+    {
+        // Calculate kernel width as a ratio of hitDistance / projected surface width per pixel
+        float perPixelViewAngle = (FOVY / 2160) * PI / 180;
+        // ToDo finetune min oblique parameter.
+        float projectedSurfaceScale = max(0.4, obliqueness); // Avoid having very low kernel widths at low oblique surfaces. This limits filtering and creates noticeable noise.
+        kernelWidth = minHitDistance * projectedSurfaceScale / (2 * depth * tan(perPixelViewAngle / 2)); // ToDo review math here.
+        kernelWidth = clamp(kernelWidth, 3, 65);
+
+        float nIterations = 5;
+
+        // Calculate pixel offset per iteration.
+        float maxKernelRadius = ceil((kernelWidth - 1) / 2);
+#if 1
+        // Lower the maxKernelRadius a notch not to overshoot on last iteration with ceil when calculating the pixel offset delta.
+        float stepBase = pow(maxKernelRadius - 0.1, 1 / (nIterations - 1));
+        float curPixelOffsetDelta = max(g_CB.kernelStepShift + 1, ceil(pow(stepBase, g_CB.kernelStepShift)));
+#else
+        float pixelOffsetStep = max(1, maxKernelRadius / nIterations);
+        float curPixelOffsetDelta = floor((g_CB.kernelStepShift + 1) * pixelOffsetStep);
+#endif
+        if (curPixelOffsetDelta > maxKernelRadius)
+        {
+            return;
+        }
+        pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) * curPixelOffsetDelta;
+    }
+    else
+    {
+        pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) << g_CB.kernelStepShift;
+    }
+
+    int2 id = int2(DTid)+pixelOffset;
+
     if (id.x >= 0 && id.y >= 0 && id.x < g_CB.textureDim.x && id.y < g_CB.textureDim.y)
     {
         float iValue = 0.f;
@@ -261,13 +297,18 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         stdDeviation = sqrt(variance);
     }
 
+    float minHitDistance;
+    if (g_CB.useAdaptiveKernelSize)
+    {
+        minHitDistance = g_inHitDistance[DTid];
+    }
     // Add contributions from the neighborhood.
     [unroll]
     for (UINT r = 0; r < FilterKernel::Width; r++)
     [unroll]
     for (UINT c = 0; c < FilterKernel::Width; c++)
         if (r != FilterKernel::Radius || c != FilterKernel::Radius)
-             AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, obliqueness, ddxy, r, c, DTid);
+             AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, obliqueness, ddxy, r, c, minHitDistance, DTid);
 
 #if WORKAROUND_ATROUS_VARYING_OUTPUTS
     float outputValue = (g_CB.outputFilterWeigthSum) ? weightSum : weightedValueSum / weightSum;

@@ -14,7 +14,7 @@ using namespace DirectX;
 // ToDo move
 #define NEAR_PLANE 0.001f
 #define FAR_PLANE 1000.0f   // ToDo pass form the app
-#define FOVY 45
+#define FOVY 45.f
 #define ZSCALE (float(FAR_PLANE - NEAR_PLANE) / float(NEAR_PLANE))
 #define BACKGROUND XMFLOAT4(0.0f, 0.2f, 0.4f, 1.0f)
 

@@ -116,7 +116,7 @@ namespace SceneArgs
     // ToDO standardize capitalization
 
     const WCHAR* CompositionModes[CompositionType::Count] = { L"Phong Lighting", L"Render/AO", L"Render/AO Sampling Importance Map", L"Render/AO Average Hit Distance", L"Normal Map", L"Depth Buffer" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionHighResSamplingPixels, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
 
@@ -179,6 +179,7 @@ namespace SceneArgs
 
     // ToDo standardixe AO RTAO prefix
 
+    // ToDo add Weights On/OFF - 
     // RTAO Denoising
     const WCHAR* VarianceFilterModes[GpuKernels::CalculateVariance::FilterType::Count] = { L"Bilateral5x5", L"Bilateral7x7" };
     EnumVar VarianceFilterMode(L"Render/AO/RTAO/Denoising/Variance filter", GpuKernels::CalculateVariance::FilterType::Bilateral5x5, GpuKernels::CalculateVariance::FilterType::Count, VarianceFilterModes);
@@ -187,7 +188,7 @@ namespace SceneArgs
     BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale/Enabled", true);
     IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale/Levels", 1, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
     BoolVar RTAODenoisingMultiscaleDenoisedAsInput(L"Render/AO/RTAO/Denoising/Multi-scale/Denoised as input", true);
-    BoolVar RTAODenoisingdepthThresholdUsingTrigonometryFunctions(L"Render/AO/RTAO/Denoising/Pespective Correct Depth Interpolation", true); // ToDo test perf impact / visual quality gain at the end. Document.
+    BoolVar RTAODenoisingPerspectiveCorrectDepthInterpolation(L"Render/AO/RTAO/Denoising/Pespective Correct Depth Interpolation", true); // ToDo test perf impact / visual quality gain at the end. Document.
     
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
@@ -195,10 +196,11 @@ namespace SceneArgs
     IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 5, 1, 8, 1);
     BoolVar ReverseFilterOrder(L"Render/AO/RTAO/Denoising/Reverse filter order", false);
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 6, 0.0f, 30.0f, 0.1f);
+    BoolVar RTAODenoisingUseAdaptiveKernelSize(L"Render/AO/RTAO/Denoising/Adaptive Size Kernel", true);
 
     // ToDo why large depth sigma is needed?
     // ToDo the values don't scale to QuarterRes - see ImportaceMap viz
-    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1.2, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
+    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1.2f, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
 
     NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising/Normal Sigma", 64, 0, 256, 4);
     
@@ -2277,7 +2279,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
             SceneArgs::ApproximateSpatialVariance,
-            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingPerspectiveCorrectDepthInterpolation,
             m_calculateVarianceKernelInstancePerFrameInstanceId++);
 
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2350,7 +2352,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
-            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingPerspectiveCorrectDepthInterpolation,
+            SceneArgs::RTAODenoisingUseAdaptiveKernelSize,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
 
@@ -2668,7 +2671,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
             SceneArgs::ApproximateSpatialVariance,
-            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingPerspectiveCorrectDepthInterpolation,
             m_calculateVarianceKernelInstancePerFrameInstanceId++);
 
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -2741,7 +2744,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
-            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingPerspectiveCorrectDepthInterpolation,
+            SceneArgs::RTAODenoisingUseAdaptiveKernelSize,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
 };
@@ -2792,7 +2796,8 @@ void D3D12RaytracingAmbientOcclusion::CalculateAdaptiveSamplingCounts()
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputPerPixelFilterWeightSum,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
-            SceneArgs::RTAODenoisingdepthThresholdUsingTrigonometryFunctions,
+            SceneArgs::RTAODenoisingPerspectiveCorrectDepthInterpolation,
+            false,
             m_atrousWaveletTransformFilterPerFrameInstanceId++);
     }
 

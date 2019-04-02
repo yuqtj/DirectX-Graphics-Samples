@@ -363,6 +363,7 @@ namespace GpuKernels
             bool reverseFilterPassOrder = false,
             bool useCalculatedVariance = true,
             bool pespectiveCorrectDepthInterpolation = false,
+            bool useAdaptiveKernelSize = false, // ToDo revise defaults
             UINT perFrameInstanceId = 0);
 
     private:
@@ -436,7 +437,7 @@ namespace GpuKernels
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
-        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
+        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
     };
 
     // ToDo bundle  RTAO ones together?

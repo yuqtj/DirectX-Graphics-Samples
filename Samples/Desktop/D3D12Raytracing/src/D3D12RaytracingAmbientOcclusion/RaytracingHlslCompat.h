@@ -87,6 +87,8 @@
 #define COMPRES_NORMALS 1
 #define PACK_NORMAL_AND_DEPTH 1
 
+#define ADAPTIVE_KERNEL_SIZE 1
+
 #define BLUR_AO 1
 #define ATROUS_DENOISER 1
 #define ATROUS_DENOISER_MAX_PASSES 10
@@ -101,7 +103,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 1
+#define PBRT_SCENE 0
 #define FACE_CULLING !PBRT_SCENE
 
 #if PBRT_SCENE
@@ -347,7 +349,8 @@ struct AtrousWaveletTransformFilterConstantBuffer
     BOOL outputFilterWeigthSum;
 
     BOOL pespectiveCorrectDepthInterpolation;
-    XMUINT3 padding;
+    BOOL useAdaptiveKernelSize;
+    XMUINT2 padding;
 };
 
 

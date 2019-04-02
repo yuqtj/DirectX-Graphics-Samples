@@ -119,6 +119,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
         }
         else if (g_CB.compositionType == CompositionType::RTAOHitDistance)
         {
+            // ToDo why is minHitDistance 0 or very dark on outer edges?
             float3 minDistanceColor = float3(15, 18, 153) / 255;
             float3 maxDistanceColor = float3(170, 220, 200) / 255;
             float hitDistance = g_texRayHitDistance[DTid].x;

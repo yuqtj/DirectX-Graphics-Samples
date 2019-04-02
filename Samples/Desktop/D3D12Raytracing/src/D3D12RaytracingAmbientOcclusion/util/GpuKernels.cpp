@@ -1252,6 +1252,7 @@ namespace GpuKernels
         bool reverseFilterPassOrder,
         bool useCalculatedVariance,
         bool pespectiveCorrectDepthInterpolation,
+        bool useAdaptiveKernelSize,
         UINT perFrameInstanceId)
     {
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
@@ -1307,13 +1308,14 @@ namespace GpuKernels
 #else
             CB->kernelStepShift = _i;
 #endif
+            // Move vars not changing inside loop outside of it.
             CB->scatterOutput = _i == numFilterPasses - 1;
             CB->useCalculatedVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
             CB->outputFilteredVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
             CB->outputFilteredValue = filterMode == OutputFilteredValue;
             CB->outputFilterWeigthSum = filterMode == OutputPerPixelFilterWeightSum;
             CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation;
-
+            CB->useAdaptiveKernelSize = useAdaptiveKernelSize;
             CB->textureDim = resourceDim;
             
             CB.CopyStagingToGpu(perFrameInstanceId * m_maxFilterPasses + i);
@@ -1608,7 +1610,8 @@ namespace GpuKernels
         m_CB->normalSigma = normalSigma;
         m_CB->textureDim = XMUINT2(width, height);
         m_CB->useApproximateVariance = useApproximateVariance;
-        m_CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation;
+        m_CB->useAdaptiveKernelSize = false;    // ToDo remove
+        m_CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation; 
         m_CB.CopyStagingToGpu(perFrameInstanceId);
         commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
 
