@@ -103,7 +103,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 0
+#define PBRT_SCENE 1
 #define FACE_CULLING !PBRT_SCENE
 
 #if PBRT_SCENE
@@ -350,7 +350,13 @@ struct AtrousWaveletTransformFilterConstantBuffer
 
     BOOL pespectiveCorrectDepthInterpolation;
     BOOL useAdaptiveKernelSize;
-    XMUINT2 padding;
+    float minHitDistanceToKernelWidthScale;
+    UINT minKernelWidth;
+
+    UINT maxKernelWidth;
+    float varianceSigmaScaleOnSmallKernels;
+    bool usingBilateralDownsampledBuffers;
+    UINT padding;
 };
 
 
@@ -400,6 +406,10 @@ struct SceneConstantBuffer
     BOOL RTAO_UseNormalMaps;
     BOOL RTAO_AdaptiveSamplingMinMaxSampling;
     UINT RTAO_AdaptiveSamplingMinSamples;
+
+    float RTAO_TraceRayOffsetAlongNormal;
+    float RTAO_TraceRayOffsetAlongRayDirection;
+    float padding[2];
 };
  
 // Final render output composition modes.

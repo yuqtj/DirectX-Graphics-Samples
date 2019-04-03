@@ -1253,6 +1253,11 @@ namespace GpuKernels
         bool useCalculatedVariance,
         bool pespectiveCorrectDepthInterpolation,
         bool useAdaptiveKernelSize,
+        float minHitDistanceToKernelWidthScale,
+        UINT minKernelWidth,
+        UINT maxKernelWidth,
+        float varianceSigmaScaleOnSmallKernels,
+        bool usingBilateralDownsampledBuffers,
         UINT perFrameInstanceId)
     {
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
@@ -1316,6 +1321,11 @@ namespace GpuKernels
             CB->outputFilterWeigthSum = filterMode == OutputPerPixelFilterWeightSum;
             CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation;
             CB->useAdaptiveKernelSize = useAdaptiveKernelSize;
+            CB->minHitDistanceToKernelWidthScale = minHitDistanceToKernelWidthScale;
+            CB->minKernelWidth = minKernelWidth;
+            CB->maxKernelWidth = maxKernelWidth;
+            CB->varianceSigmaScaleOnSmallKernels = varianceSigmaScaleOnSmallKernels;
+            CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
             CB->textureDim = resourceDim;
             
             CB.CopyStagingToGpu(perFrameInstanceId * m_maxFilterPasses + i);

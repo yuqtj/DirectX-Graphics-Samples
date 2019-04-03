@@ -152,6 +152,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // ToDo comment on not interpolating actualNormal
     g_outNormalAndDepth[DTid] = encodedNormalsAndDepths[outDepthIndex];
 
+    // ToDo
     // Since we're reducing the resolution by 2, multiple the partial derivatives by 2. Either that or the multiplier should be applied when calculating weights.
     // ToDo it would be cleaner to apply that multiplier at weights calculation. Or recompute the partial derivatives on downsample?
 #if 1 // Pespective correction for the non-linear interpolation
@@ -159,7 +160,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float z0 = depths[outDepthIndex];
     float pixelOffset = 2;
     float2 zxy = (z0 + ddxy) / (1 + ((1 - pixelOffset) / z0) * ddxy);
-    g_outPartialDistanceDerivatives[DTid] = zxy - z0;
+    g_outPartialDistanceDerivatives[DTid] = abs(zxy - z0);
 #else
     g_outPartialDistanceDerivatives[DTid] = 2 * g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
 #endif

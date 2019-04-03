@@ -364,6 +364,11 @@ namespace GpuKernels
             bool useCalculatedVariance = true,
             bool pespectiveCorrectDepthInterpolation = false,
             bool useAdaptiveKernelSize = false, // ToDo revise defaults
+            float minHitDistanceToKernelWidthScale = 1.f,
+            UINT minKernelWidth = 5,
+            UINT maxKernelWidth = 101,
+            float varianceSigmaScaleOnSmallKernels = 2.f,
+            bool usingBilateralDownsampledBuffers = false,
             UINT perFrameInstanceId = 0);
 
     private:

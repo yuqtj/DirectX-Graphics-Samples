@@ -105,17 +105,22 @@ void AddFilterContribution(
  
     int2 pixelOffset;
     float kernelWidth;
-
+    float varianceScale = 1;
     if (g_CB.useAdaptiveKernelSize)
     {
         // Calculate kernel width as a ratio of hitDistance / projected surface width per pixel
-        float perPixelViewAngle = (FOVY / 2160) * PI / 180;
+        float perPixelViewAngle = (FOVY / g_CB.textureDim.y) * PI / 180;
         // ToDo finetune min oblique parameter.
         float projectedSurfaceScale = max(0.4, obliqueness); // Avoid having very low kernel widths at low oblique surfaces. This limits filtering and creates noticeable noise.
-        kernelWidth = minHitDistance * projectedSurfaceScale / (2 * depth * tan(perPixelViewAngle / 2)); // ToDo review math here.
-        kernelWidth = clamp(kernelWidth, 3, 65);
+        kernelWidth = g_CB.minHitDistanceToKernelWidthScale * minHitDistance * projectedSurfaceScale / (2 * depth * tan(perPixelViewAngle / 2)); // ToDo review math here.
+        
+        kernelWidth = clamp(kernelWidth, g_CB.minKernelWidth, g_CB.maxKernelWidth);
 
         float nIterations = 5;
+
+
+        // Blur more aggressively on smaller kernels.
+        varianceScale = lerp(g_CB.varianceSigmaScaleOnSmallKernels, 1, saturate((kernelWidth - g_CB.minKernelWidth) / 33));
 
         // Calculate pixel offset per iteration.
         float maxKernelRadius = ceil((kernelWidth - 1) / 2);
@@ -154,11 +159,11 @@ void AddFilterContribution(
             if (g_CB.useCalculatedVariance)
             {
                 const float errorOffset = 0.005f;
-                e_x = valueSigma > 0.01f ? -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset) : 0;
+                e_x = valueSigma > 0.01f ? -abs(value - iValue) / (varianceScale * valueSigma * stdDeviation + errorOffset) : 0;
             }
             else
             {
-                e_x = valueSigma > 0.01f ? g_CB.kernelStepShift > 0 ? exp(-abs(value - iValue) / (valueSigma * valueSigma)) : 0 : 0;
+                e_x = valueSigma > 0.01f ? g_CB.kernelStepShift > 0 ? exp(-abs(value - iValue) / (varianceScale * valueSigma * valueSigma)) : 0 : 0;
             }
         }
 
@@ -198,10 +203,18 @@ void AddFilterContribution(
         // ToDo finalize obliqueness
         // ToDo obliqueness is incorrect for reflected rays
         float minObliqueness = depthSigma;//  0.02; // Avoid weighting by depth at very sharp angles. Depend on weighting by normals.
-        float depthThreshold = DepthThreshold(depth, ddxy, pixelOffset, obliqueness, depth - iDepth);
+        float2 pixelOffsetForDepth = pixelOffset;
+        
+        // ToDo use actial pixel offsets from bilateral downsample?
+        // Account for sample offset in bilateral downsampled partial depth derivative buffer.
+        if (g_CB.usingBilateralDownsampledBuffers)
+        {
+            pixelOffsetForDepth = abs(pixelOffset) + float2(0.5, 0.5);
+        }
+        float depthThreshold = DepthThreshold(depth, ddxy, pixelOffsetForDepth, obliqueness, depth - iDepth);
 
         float fMinEpsilon = 512 * FLT_EPSILON; // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations.
-        float fMinDepthScaledEpsilon = 48 * 1e-6  * depth;  // Depth threshold to surpress differences that surfaces at larger depth from the camera.
+        float fMinDepthScaledEpsilon = 48 * 1e-6  * depth;  // Depth threshold to surpress differences that surface at larger depth from the camera.
         float fEpsilon = fMinEpsilon + fMinDepthScaledEpsilon;
         float depthWeigth = min((depthSigma * depthThreshold + fEpsilon) / (abs(depth - iDepth)), 1);
         float w_d = depthWeigth;

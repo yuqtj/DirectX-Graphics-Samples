@@ -292,7 +292,8 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in UINT n
 
         // ToDo hitPosition adjustment - fix crease artifacts
         // Todo fix noise on flat surface / box
-        Ray shadowRay = { hitPosition + 0.001f * surfaceNormal, normalize(rayDirection) };
+        // ToDo remove unnecessary normalize()
+        Ray shadowRay = { hitPosition + g_sceneCB.RTAO_TraceRayOffsetAlongNormal * surfaceNormal, normalize(rayDirection) };
 
 #else
     uint2 BTid = DispatchRaysIndex().xy & 3; // 4x4 BlockThreadID
@@ -355,9 +356,12 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in UINT n
     float occlusionCoef = saturate(occlussionCoefSum / numSamples);
     float ambientCoef = 1.f - occlusionCoef;
 #else
+
+        float RTAO_TraceRayOffsetAlongNormal;
+        float RTAO_TraceRayOffsetAlongRayDirection;
         const float tMax = g_sceneCB.RTAO_maxShadowRayHitTime;
         float tHit;
-        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
+        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, g_sceneCB.RTAO_TraceRayOffsetAlongRayDirection, tMax))
         {
             float occlusionCoef = 1;
             if (g_sceneCB.RTAO_IsExponentialFalloffEnabled)
