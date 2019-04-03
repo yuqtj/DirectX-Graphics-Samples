@@ -3529,6 +3529,15 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
         labels.push_back(wLabel.str());
     }
 #endif
+
+    // Header information
+    {
+        // ToDo make default resolutions round to 0
+        wstringstream wLabel;
+        wLabel << L"GBuffer resolution: " << m_GBufferWidth << "x" << m_GBufferHeight << L"\n";
+        wLabel << L"AO raytracing resolution: " << m_raytracingWidth << "x" << m_raytracingHeight << L"\n";
+        labels.push_back(wLabel.str());
+    }
     // Engine tuning.
     {
         wstringstream wLabel;
