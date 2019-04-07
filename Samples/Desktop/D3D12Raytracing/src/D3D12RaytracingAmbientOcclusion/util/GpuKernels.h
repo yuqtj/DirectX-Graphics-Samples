@@ -480,5 +480,34 @@ namespace GpuKernels
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
     };
+
+
+    class RTAO_TemporalCache_ReverseReproject
+    {
+    public:
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device* device, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList* commandList,
+            UINT width,
+            UINT height,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
+            UINT cacheAge,
+            float minSmoothingFactor,
+            UINT perFrameInstanceId = 0);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> m_CB;
+    };
+
 }
 

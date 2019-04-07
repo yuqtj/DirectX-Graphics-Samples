@@ -33,6 +33,7 @@
 #include "CompiledShaders\CalculateVariance_Bilateral5x5CS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_Bilateral7x7CS.hlsl.h"
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
+#include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
 
 using namespace std;
 
@@ -1634,4 +1635,99 @@ namespace GpuKernels
 
         PIXEndEvent(commandList);
     }
+
+    namespace RootSignature {
+        namespace RTAO_TemporalCache_ReverseReproject {
+            namespace Slot {
+                enum Enum {
+                    OutputCacheValue = 0,
+                    InputCacheValue,
+                    InputCurrentFrameValue,
+                    ConstantBuffer,
+                    Count
+                };
+            }
+        }
+    }
+
+    void RTAO_TemporalCache_ReverseReproject::Initialize(ID3D12Device* device, UINT numCallsPerFrame)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::RTAO_TemporalCache_ReverseReproject;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[3]; // Perfomance TIP: Order from most frequent to least frequent.
+            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input temporal cache value
+            ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input current frame value
+            ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output temporal cache value
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::InputCacheValue].InitAsDescriptorTable(1, &ranges[0]);
+            rootParameters[Slot::InputCurrentFrameValue].InitAsDescriptorTable(1, &ranges[1]);
+            rootParameters[Slot::OutputCacheValue].InitAsDescriptorTable(1, &ranges[2]);
+            rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: RTAO_TemporalCache_ReverseReproject");
+        }
+
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+
+            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pRTAO_TemporalCache_ReverseReprojectCS), ARRAYSIZE(g_pRTAO_TemporalCache_ReverseReprojectCS));
+
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: RTAO_TemporalCache_ReverseReproject");
+        }
+
+        // Create shader resources
+        {
+            m_CB.Create(device, numCallsPerFrame, L"Constant Buffer: RTAO_TemporalCache_ReverseReproject");
+        }
+    }
+
+    // ToDo desc
+    void RTAO_TemporalCache_ReverseReproject::Execute(
+        ID3D12GraphicsCommandList* commandList,
+        UINT width,
+        UINT height,
+        ID3D12DescriptorHeap* descriptorHeap,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
+        UINT cacheAge,
+        float minSmoothingFactor,
+        UINT perFrameInstanceId)
+    {
+        using namespace RootSignature::RTAO_TemporalCache_ReverseReproject;
+        using namespace DefaultComputeShaderParams;
+
+        assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
+
+        PIXBeginEvent(commandList, 0, L"RTAO_TemporalCache_ReverseReproject");
+
+        m_CB->invCacheFrameAge = 1.f / (cacheAge + 1);
+        m_CB->minSmoothingFactor = minSmoothingFactor;
+        m_CB.CopyStagingToGpu(perFrameInstanceId);
+
+        // Set pipeline state.
+        {
+            commandList->SetDescriptorHeaps(1, &descriptorHeap);
+            commandList->SetComputeRootSignature(m_rootSignature.Get());
+            commandList->SetComputeRootDescriptorTable(Slot::InputCacheValue, inputTemporalCacheValueResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameValue, inputCurrentFrameValueResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputCacheValue, outputTemporalCacheValueResourceHandle);
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
+            commandList->SetPipelineState(m_pipelineStateObject.Get());
+        }
+
+        // Dispatch.
+        XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
+        commandList->Dispatch(groupSize.x, groupSize.y, 1);
+
+        PIXEndEvent(commandList);
+    }
+
 }

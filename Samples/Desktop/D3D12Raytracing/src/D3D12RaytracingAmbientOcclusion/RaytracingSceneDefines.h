@@ -191,7 +191,7 @@ namespace GBufferResource {
 		HitPosition,	// 3D position of hit.
 		SurfaceNormal,	// 3D normal at a hit and dot(normal, rayDir) in W,
         Distance,       // Length along ray of hit.
-        Depth,          // Non-linear depth of the hit.
+        Depth,          // Non-linear depth of the hit. // ToDo remove
         SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate
         PartialDepthDerivatives,
 		Count
@@ -208,6 +208,14 @@ namespace AOResource {
 		Count
 	};
 }
+
+namespace TemporalCache {
+    enum Enum {
+        AO = 0,
+        Count
+    };
+}
+
 
 namespace Scene {
 	namespace Type {

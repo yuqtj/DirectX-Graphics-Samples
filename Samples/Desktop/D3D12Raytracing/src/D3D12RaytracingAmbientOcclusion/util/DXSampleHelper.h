@@ -1034,8 +1034,100 @@ inline void CreateGeometry(
 	}
 }
 
+inline void CopyResource(
+    ID3D12GraphicsCommandList* commandList,
+    ID3D12Resource* srcResource,
+    ID3D12Resource* destResource,
+    D3D12_RESOURCE_STATES inSrcResourceState,
+    D3D12_RESOURCE_STATES inDestResourceState,
+    D3D12_RESOURCE_STATES outSrcResourceState,
+    D3D12_RESOURCE_STATES outDestResourceState)
+{
+    D3D12_RESOURCE_BARRIER preCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(srcResource, inSrcResourceState, D3D12_RESOURCE_STATE_COPY_SOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(destResource, inDestResourceState, D3D12_RESOURCE_STATE_COPY_DEST)
+    };
+    commandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
 
-// Calculates a normalize tangent vector for a triangle given vertices' positions p* and their uv* coordinates.
+    commandList->CopyResource(destResource, srcResource);
+
+    D3D12_RESOURCE_BARRIER postCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(srcResource, D3D12_RESOURCE_STATE_COPY_SOURCE, outSrcResourceState),
+        CD3DX12_RESOURCE_BARRIER::Transition(destResource, D3D12_RESOURCE_STATE_COPY_DEST, outDestResourceState)
+    };
+
+    commandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
+}
+
+inline void CopyResource(
+    ID3D12GraphicsCommandList* commandList,
+    ID3D12Resource* srcResource,
+    ID3D12Resource* destResource,
+    D3D12_RESOURCE_STATES inSrcResourceState,
+    D3D12_RESOURCE_STATES inDestResourceState)
+{
+    CopyResource(
+        commandList,
+        srcResource,
+        destResource,
+        inSrcResourceState,
+        inDestResourceState,
+        inSrcResourceState,
+        inDestResourceState);
+}
+
+inline void CopyTextureRegion(
+    ID3D12GraphicsCommandList* commandList,
+    ID3D12Resource* srcResource,
+    ID3D12Resource* destResource,
+    const D3D12_BOX *srcBox,
+    D3D12_RESOURCE_STATES inSrcResourceState,
+    D3D12_RESOURCE_STATES inDestResourceState,
+    D3D12_RESOURCE_STATES outSrcResourceState,
+    D3D12_RESOURCE_STATES outDestResourceState)
+{
+    D3D12_RESOURCE_BARRIER preCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(srcResource, inSrcResourceState, D3D12_RESOURCE_STATE_COPY_SOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(destResource, inDestResourceState, D3D12_RESOURCE_STATE_COPY_DEST)
+    };
+    commandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
+
+    CD3DX12_TEXTURE_COPY_LOCATION copySrc(srcResource);
+    CD3DX12_TEXTURE_COPY_LOCATION copyDest(destResource);
+
+    commandList->CopyTextureRegion(&copyDest, 0, 0, 0, &copySrc, srcBox);
+
+    D3D12_RESOURCE_BARRIER postCopyBarriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(srcResource, D3D12_RESOURCE_STATE_COPY_SOURCE, outSrcResourceState),
+        CD3DX12_RESOURCE_BARRIER::Transition(destResource, D3D12_RESOURCE_STATE_COPY_DEST, outDestResourceState)
+    };
+
+    commandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
+}
+
+
+inline void CopyTextureRegion(
+    ID3D12GraphicsCommandList* commandList,
+    ID3D12Resource* src,
+    ID3D12Resource* dest,
+    const D3D12_BOX *srcBox,
+    D3D12_RESOURCE_STATES inSrcResourceState,
+    D3D12_RESOURCE_STATES inDestResourceState)
+{
+    CopyTextureRegion(
+        commandList,
+        src,
+        dest,
+        srcBox,
+        inSrcResourceState,
+        inDestResourceState,
+        inSrcResourceState,
+        inDestResourceState);
+}
+
+
+// ToDo move?
+// Calculates a normalized tangent vector for a triangle given vertices' positions p* and their uv* coordinates.
 inline XMFLOAT3 CalculateTangent(const XMFLOAT3& p0, const XMFLOAT3& p1, const XMFLOAT3& p2, const XMFLOAT2& uv0, const XMFLOAT2& uv1, const XMFLOAT2& uv2)
 {
     // A tangent can be computed by solving the following equations

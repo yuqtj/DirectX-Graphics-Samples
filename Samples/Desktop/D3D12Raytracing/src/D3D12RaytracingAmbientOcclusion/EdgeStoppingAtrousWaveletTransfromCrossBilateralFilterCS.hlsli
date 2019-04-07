@@ -58,10 +58,13 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
         fEpsilon = 1e-6 * distance * g_CB.normalSigma;// *max(0.1, 1 - obliqueness);
 
 
+        // Todo rename ddxy to dxdy?
+
+        // ToDo rename to: Perspective correct interpolation
         // Pespective correction for the non-linear interpolation
         if (g_CB.pespectiveCorrectDepthInterpolation)
         {
-            // Calculate depth with perspective correction
+            // Calculate depth via interpolation with perspective correction
             // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
             // Given depth buffer interpolation for finding z at offset q along z0 to z1
             //      z =  1 / (1 / z0 * (1 - q) + 1 / z1 * q)
@@ -81,7 +84,6 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
 #endif
     }
     return depthThreshold;
-
 }
 
 void AddFilterContribution(

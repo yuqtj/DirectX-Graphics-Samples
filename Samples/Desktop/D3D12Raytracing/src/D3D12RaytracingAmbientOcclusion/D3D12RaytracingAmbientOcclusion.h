@@ -121,7 +121,8 @@ private:
     UINT                                m_gaussianSmoothingKernelPerFrameInstanceId;
 
 	// ToDo combine kernels to an array
-	GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
+    GpuKernels::RTAO_TemporalCache_ReverseReproject m_temporalCacheReverseReprojectKernel;
+    GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
     GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter m_downsampleGBufferBilateralFilterKernel; //ToDo rename?
@@ -198,6 +199,11 @@ private:
 	RWGpuResource m_AOResources[AOResource::Count];
     RWGpuResource m_AOLowResResources[AOResource::Count];   // ToDo remove unused
 	RWGpuResource m_VisibilityResource;
+
+
+    RWGpuResource m_temporalCache[2][TemporalCache::Count]; // ~array[Read/Write ping pong resource][Resources].
+    UINT          m_temporalCacheReadResourceIndex = 0;
+    UINT          m_temporalCacheFrameAge = 0;
 
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;
@@ -297,6 +303,7 @@ private:
     void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter();
     void CalculateAdaptiveSamplingCounts();
+    void RenderPass_TemporalCacheReverseProjection();
 
 	void DownsampleRaytracingOutput();
     void DownsampleGBuffer();

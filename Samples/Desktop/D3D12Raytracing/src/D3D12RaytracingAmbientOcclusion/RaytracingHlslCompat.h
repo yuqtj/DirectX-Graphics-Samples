@@ -33,7 +33,7 @@
 #define WORKAROUND_ATROUS_VARYING_OUTPUTS 1
 
 #define RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS 1
-#define AO_SPP_N 3
+#define AO_SPP_N 1
 #define USE_ENVIRONMENT_MAP 1
 #define DEBUG_AS 0
 
@@ -69,7 +69,7 @@
 #define DISTANCE_ON_MISS 65504  // ~FLT_MAX within 16 bit format // ToDo explain
 
 #define PRINT_OUT_CAMERA_CONFIG 1
-#define DEBUG_CAMERA_POS 1
+#define DEBUG_CAMERA_POS 0
 
 // ToDo 16bit per component normals?
 #define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 1
@@ -468,6 +468,14 @@ struct GaussianFilterConstantBuffer
     XMUINT2 textureDim;
     XMFLOAT2 invTextureDim;
 };
+
+struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
+{
+    float invCacheFrameAge;         // Inverse number of frames since the cache has been reset.
+    float minSmoothingFactor;       
+    float padding[2];
+};
+
 
 struct CalculatePartialDerivativesConstantBuffer
 {
