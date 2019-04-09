@@ -486,6 +486,10 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     // ToDo pix missinterprets the format
     XMFLOAT2 textureDim;
     XMFLOAT2 invTextureDim; // ToDo test what impact passing inv tex dim makes
+    
+    // ToDo moving this 4Bs above XMFLOATs causes issues
+    float depthTolerance;
+    float padding[3];
 };
 
 

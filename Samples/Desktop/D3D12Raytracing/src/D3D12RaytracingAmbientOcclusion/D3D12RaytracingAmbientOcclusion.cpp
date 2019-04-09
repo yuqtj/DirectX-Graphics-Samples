@@ -162,6 +162,7 @@ namespace SceneArgs
     // Temporal Cache.
     BoolVar RTAO_TemporalCache_CacheRawAOValue(L"Render/AO/RTAO/Temporal Cache/Cache Raw AO Value", true);
     NumVar RTAO_TemporalCache_MinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Min Smoothing Factor", 0.03f, 0, 1.f, 0.01f);
+    NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.01f, 0, 1.f, 0.001f);
     
     // ToDo cleanup RTAO... vs RTAO_..
     IntVar RTAOAdaptiveSamplingMinSamples(L"Render/AO/RTAO/Adaptive Sampling/Min samples", 1, 1, AO_SPP_N * AO_SPP_N, 1);
@@ -3847,7 +3848,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         invProj,
         reverseProjectionTransform,
         m_camera.ZMin,
-        m_camera.ZMax);
+        m_camera.ZMax,
+        SceneArgs::RTAO_TemporalCache_DepthTolerance);
 
 #if 0
     // Transition output resource to SRV state.        

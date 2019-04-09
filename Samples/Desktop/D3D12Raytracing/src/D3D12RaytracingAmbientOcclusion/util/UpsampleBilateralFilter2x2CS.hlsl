@@ -92,7 +92,7 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
     float totalWeight = dot(weights, 1);
     weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0;
 
-    return dot(weights, SampleValues) / dot(weights, 1);
+    return dot(weights, SampleValues) / dot(weights, 1);    // ToDo add epsilon to division?
 }
 
 [numthreads(UpsampleBilateralFilter::ThreadGroup::Width, UpsampleBilateralFilter::ThreadGroup::Height, 1)]

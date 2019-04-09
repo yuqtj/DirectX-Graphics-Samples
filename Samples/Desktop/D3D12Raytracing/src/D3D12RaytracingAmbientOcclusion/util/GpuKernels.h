@@ -508,6 +508,7 @@ namespace GpuKernels
             const XMMATRIX& reverseProjectionTransform,
             float zMin,
             float zFar,
+            float depthTolerance,
             UINT perFrameInstanceId = 0);
 
     private:
