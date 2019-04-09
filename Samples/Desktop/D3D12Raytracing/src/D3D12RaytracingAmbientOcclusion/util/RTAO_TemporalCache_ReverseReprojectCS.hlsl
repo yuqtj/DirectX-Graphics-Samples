@@ -155,7 +155,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     bool isNotOutOfBounds = cacheFrameTexturePos.x > 0 && cacheFrameTexturePos.y > 0 && cacheFrameTexturePos.x < 1 && cacheFrameTexturePos.y < 1;
     bool isWithinDepthTolerance = abs(cacheLinearDepth - linearDepth) / linearDepth < 0.1;
     
-    bool isCacheValueValid = 1;// isNotOutOfBounds;// && isWithinDepthTolerance;
+    bool isCacheValueValid = isNotOutOfBounds;// && isWithinDepthTolerance;
 
     float value = g_texInputCurrentFrameValue[DTid];
     float mergedValue;

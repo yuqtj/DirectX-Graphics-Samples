@@ -433,7 +433,7 @@ namespace GpuKernels
 		PIXEndEvent(commandList);
 	}
 
-
+    // ToDo dedupe
     namespace RootSignature {
         namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter {
             namespace Slot {
@@ -443,11 +443,13 @@ namespace GpuKernels
                     OutputPosition,
                     OutputGeometryHit,
                     OutputPartialDistanceDerivative,
+                    OutputDepth,
                     Input,
                     InputNormal,
                     InputPosition,
                     InputGeometryHit,
                     InputPartialDistanceDerivative,
+                    InputDepth,
                     Count
                 };
             }
@@ -462,7 +464,7 @@ namespace GpuKernels
             using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
 
             // ToDo review access frequency or remove performance tip
-            CD3DX12_DESCRIPTOR_RANGE ranges[10]; // Perfomance TIP: Order from most frequent to least frequent.
+            CD3DX12_DESCRIPTOR_RANGE ranges[12]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input normal texture
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 input position texture
@@ -473,6 +475,8 @@ namespace GpuKernels
             ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // 1 output position texture
             ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);  // 1 output geometry hit texture
             ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);  // 1 output partial distance derivative
+            ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input depth
+            ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 5);  // 1 output depth
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
@@ -485,6 +489,8 @@ namespace GpuKernels
             rootParameters[Slot::OutputPosition].InitAsDescriptorTable(1, &ranges[7]);
             rootParameters[Slot::OutputGeometryHit].InitAsDescriptorTable(1, &ranges[8]);
             rootParameters[Slot::OutputPartialDistanceDerivative].InitAsDescriptorTable(1, &ranges[9]);
+            rootParameters[Slot::InputDepth].InitAsDescriptorTable(1, &ranges[10]);
+            rootParameters[Slot::OutputDepth].InitAsDescriptorTable(1, &ranges[11]);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
@@ -517,10 +523,12 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputGeometryHitResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle)
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputDepthResourceHandle)
     {
         using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
         using namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
@@ -535,10 +543,12 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputPosition, inputPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputGeometryHit, inputGeometryHitResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputPartialDistanceDerivative, inputPartialDistanceDerivativesResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputDepth, inputDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputNormal, outputNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPosition, outputPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputGeometryHit, outputGeometryHitResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPartialDistanceDerivative, outputPartialDistanceDerivativesResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputDepth, outputDepthResourceHandle);
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
 
