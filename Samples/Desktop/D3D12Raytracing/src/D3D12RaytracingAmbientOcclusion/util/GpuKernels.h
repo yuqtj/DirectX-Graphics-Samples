@@ -497,10 +497,17 @@ namespace GpuKernels
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputCachedValueResourceHandle,
             UINT cacheAge,
             float minSmoothingFactor,
+            const XMMATRIX& invView,
+            const XMMATRIX& invProj,
+            const XMMATRIX& reverseProjectionTransform,
+            float zMin,
+            float zFar,
             UINT perFrameInstanceId = 0);
 
     private:

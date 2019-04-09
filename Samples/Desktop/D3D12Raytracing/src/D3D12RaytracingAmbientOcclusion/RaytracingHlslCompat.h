@@ -69,7 +69,9 @@
 #define DISTANCE_ON_MISS 65504  // ~FLT_MAX within 16 bit format // ToDo explain
 
 #define PRINT_OUT_CAMERA_CONFIG 1
-#define DEBUG_CAMERA_POS 0
+#define DEBUG_CAMERA_POS 1
+
+#define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
 
 // ToDo 16bit per component normals?
 #define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 1
@@ -376,7 +378,7 @@ struct SceneConstantBuffer
 
     float reflectance;
     float elapsedTime;                 // Elapsed application time.
-	float Zmin;
+	float Zmin;     // ToDo rename to zNear
 	float Zmax;
     
     UINT seed;
@@ -471,9 +473,19 @@ struct GaussianFilterConstantBuffer
 
 struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
 {
+    // ToDo can we get by with one matrix?
+    XMMATRIX invProj;
+    XMMATRIX invView;
+    XMMATRIX reverseProjectionTransform;
+
     float invCacheFrameAge;         // Inverse number of frames since the cache has been reset.
     float minSmoothingFactor;       
-    float padding[2];
+    float zNear; // ToDo take these from transform matrix directly?
+    float zFar;
+
+    // ToDo pix missinterprets the format
+    XMFLOAT2 textureDim;
+    XMFLOAT2 invTextureDim; // ToDo test what impact passing inv tex dim makes
 };
 
 

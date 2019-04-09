@@ -535,8 +535,8 @@ void MyRayGenShader_GBuffer()
     // compress normal
     // ToDo normalize depth to [0,1] as floating point has higher precision around 0.
     // ToDo need to normalize hit distance as well
-#if 0
-     float linearDistance = (rayLength - g_sceneCB.Zmin) / (g_sceneCB.Zmax - g_sceneCB.Zmin);
+#if USE_NORMALIZED_Z
+     float linearDistance = NormalizeToRange(rayLength, g_sceneCB.Zmin, g_sceneCB.Zmax);
 #else
     float linearDistance = rayLength;// (rayLength - g_sceneCB.Zmin) / (g_sceneCB.Zmax - g_sceneCB.Zmin);
 #endif
@@ -571,7 +571,7 @@ void MyRayGenShader_GBuffer()
     // Convert distance to nonLinearDepth.
     {
 
-        g_rtGBufferDepth[DispatchRaysIndex().xy] = rayLength;// nonLinearDepth;
+        g_rtGBufferDepth[DispatchRaysIndex().xy] = linearDepth;// nonLinearDepth;
     }
     g_rtGBufferNormalRGB[DispatchRaysIndex().xy] = rayPayload.hit ? float4(rayPayload.surfaceNormal, 0) : float4(0,0,0,0);
 }
@@ -635,7 +635,10 @@ void MyRayGenShader_AO()
 
     if (g_sceneCB.useShadowRayHitTime)
     {
-        g_rtAORayHitDistance[DispatchRaysIndex().xy] = minHitDistance;
+#if USE_NORMALIZED_Z
+        minHitDistance *= 1 / (g_sceneCB.Zmax - g_sceneCB.Zmin); // ToDo pass by CB? 
+#endif
+      g_rtAORayHitDistance[DispatchRaysIndex().xy] = minHitDistance;
     }
 }
 

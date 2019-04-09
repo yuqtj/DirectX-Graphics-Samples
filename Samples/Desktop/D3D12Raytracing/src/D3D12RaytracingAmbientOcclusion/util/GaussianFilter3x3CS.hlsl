@@ -25,6 +25,7 @@ static const float weights[3][3] =
     { 0.077847, 0.123317, 0.077847 },
 };
 
+// ToDo cleanup
 #define APPROXIMATE_GAUSSIAN_3X3_VIA_HW_FILTERING 1
 
 #if APPROXIMATE_GAUSSIAN_3X3_VIA_HW_FILTERING

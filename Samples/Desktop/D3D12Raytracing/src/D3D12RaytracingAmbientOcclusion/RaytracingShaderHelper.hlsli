@@ -196,6 +196,22 @@ float3 ScreenPosToWorldPos(uint2 index, in float4x4 projectionToWorldWithCameraE
     return world.xyz;
 }
 
+float LogToViewDepth(float logDepth, float zNear, float zFar)
+{
+    return zNear * zFar / (zFar - logDepth * (zFar - zNear));
+}
+
+float ViewToLogDepth(float viewDepth, float zNear, float zFar)
+{
+    // ToDo pass A, B from cb instead.
+    return zFar / (zFar - zNear) - zNear * zFar / ((zFar - zNear) * viewDepth);
+}
+
+inline float NormalizeToRange(in float value, in float min, in float max)
+{
+    return (value - min) / (max - min);
+}
+
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
 inline Ray GenerateCameraRay(uint2 index, in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin, float2 jitter = float2(0, 0))
 {

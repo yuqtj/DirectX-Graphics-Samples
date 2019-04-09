@@ -147,7 +147,7 @@ namespace SceneArgs
 
     // RTAO
     // Adaptive Sampling.
-    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
+    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
     BoolVar RTAOAdaptiveSampling(L"Render/AO/RTAO/Adaptive Sampling/Enabled", true);
     BoolVar RTAOUseNormalMaps(L"Render/AO/RTAO/Normal maps", false);
     NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"Render/AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
@@ -207,7 +207,7 @@ namespace SceneArgs
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"Render/AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
-    IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 3, 1, 8, 1);
+    IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 4, 1, 8, 1);
     BoolVar ReverseFilterOrder(L"Render/AO/RTAO/Denoising/Reverse filter order", false);
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 6, 0.0f, 30.0f, 0.1f);
 
@@ -1274,6 +1274,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
     }
 
+    // ToDo pass formats via params shared across AO, GBuffer, TC
 
     // Full-res Temporal Cache resources.
     {
@@ -1290,7 +1291,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             }
 
             // ToDo cleanup raytracing resolution - twice for coefficient.
-            CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::AO], initialResourceState, L"Temporal Cache: AO + Depth");
+            CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::AO], initialResourceState, L"Temporal Cache: AO");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::Depth], initialResourceState, L"Temporal Cache: Depth");
         }
      }
 
@@ -2061,6 +2063,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 
 	if (!m_isCameraFrozen)
 	{
+        m_prevFrameCamera = m_camera;
 		m_cameraController->Update(elapsedTime);
 
         // ToDo
@@ -3778,11 +3781,47 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
 
     ScopedTimer _prof(L"Temporal Cache Reverse Reprojection", commandList);
 
+    RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
     RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
     RWGpuResource* valueResource = SceneArgs::RTAO_TemporalCache_CacheRawAOValue ? &AOResources[AOResource::Coefficient] : nullptr;
 
     UINT TC_readID = m_temporalCacheReadResourceIndex;
     UINT TC_writeID = (m_temporalCacheReadResourceIndex + 1) % 2;
+
+
+    // Calculate reverse projection transform T to the previous frame's screen space coordinates.
+    //  xy(t-1) = xy(t) * T     // ToDo check mul order
+    // The reverse projection transform consists:
+    //  1) reverse projecting from current's frame screen space coordinates to world space coordinates
+    //  2) projecting from world space coordinates to previous frame's screen space coordinates
+    //
+    //  T = inverse(P(t)) * inverse(V(t)) * V(t-1) * P(t-1) 
+    //      where P is a projection transform and V is a view transform. 
+    // Ref: ToDo
+    XMMATRIX view, proj, prevView, prevProj;
+
+    m_camera.GetProj(&proj, m_raytracingWidth, m_raytracingHeight);
+    m_prevFrameCamera.GetProj(&prevProj, m_raytracingWidth, m_raytracingHeight);
+    
+    // ToDO can we remove this or document.
+    // Calculate view matrix as if the camera was at (0,0,0) to avoid 
+    // precision issues when camera position is too far from (0,0,0).
+    // GenerateCameraRay takes this into consideration in the raytracing shader.
+    view = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_camera.At() - m_camera.Eye(), 1), m_camera.Up());
+    prevView = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_prevFrameCamera.At() - m_prevFrameCamera.Eye(), 1), m_prevFrameCamera.Up());
+    XMMATRIX cameraTranslation = XMMatrixTranslationFromVector(m_camera.Eye() - m_prevFrameCamera.Eye());
+
+    XMMATRIX viewProj = view * proj;
+    XMMATRIX prevViewProj = prevView * prevProj;
+    XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
+    
+#if 1
+    XMMATRIX reverseProjectionTransform = invViewProj * cameraTranslation * prevView * prevProj;
+#else
+    XMMATRIX reverseProjectionTransform = cameraTranslation * prevView * prevProj;
+#endif
+    XMMATRIX invProj = XMMatrixInverse(nullptr, proj);
+    XMMATRIX invView = XMMatrixInverse(nullptr, view);
 
     // Transition output resource to UAV state.        
     {
@@ -3797,10 +3836,18 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_raytracingHeight,
         m_cbvSrvUavHeap->GetHeap(),
         valueResource->gpuDescriptorReadAccess,
+        GBufferResources[GBufferResource::Depth].gpuDescriptorReadAccess,
         m_temporalCache[TC_readID][TemporalCache::AO].gpuDescriptorReadAccess,
+        m_temporalCache[0][TemporalCache::Depth].gpuDescriptorReadAccess,      // ToDo dedupe depth from the array
+
         m_temporalCache[TC_writeID][TemporalCache::AO].gpuDescriptorWriteAccess,
         m_temporalCacheFrameAge,
-        SceneArgs::RTAO_TemporalCache_MinSmoothingFactor);
+        SceneArgs::RTAO_TemporalCache_MinSmoothingFactor,
+        invView,
+        invProj,
+        reverseProjectionTransform,
+        m_camera.ZMin,
+        m_camera.ZMax);
 
 #if 0
     // Transition output resource to SRV state.        
@@ -3820,6 +3867,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 #endif
+
+    // Cache current frame's depth.
+    CopyResource(
+        commandList,
+        GBufferResources[GBufferResource::Depth].resource.Get(),
+        m_temporalCache[0][TemporalCache::Depth].resource.Get(),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
 
 // Render the scene.
