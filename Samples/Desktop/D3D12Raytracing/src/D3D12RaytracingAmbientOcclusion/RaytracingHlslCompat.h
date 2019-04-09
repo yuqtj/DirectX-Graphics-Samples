@@ -418,6 +418,7 @@ struct SceneConstantBuffer
 enum CompositionType {
     PhongLighting = 0,
     AmbientOcclusionOnly,
+    AmbientOcclusionOnly_RawOneFrame,
     AmbientOcclusionHighResSamplingPixels,
     RTAOHitDistance,    // ToDo standardize naming
     NormalsOnly,
@@ -489,7 +490,8 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     
     // ToDo moving this 4Bs above XMFLOATs causes issues
     float depthTolerance;
-    float padding[3];
+    BOOL useDepthWeights;
+    float padding[2];
 };
 
 

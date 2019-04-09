@@ -1717,6 +1717,7 @@ namespace GpuKernels
         float zNear,
         float zFar,
         float depthTolerance,
+        bool useDepthWeigths,
         UINT perFrameInstanceId)
     {
         using namespace RootSignature::RTAO_TemporalCache_ReverseReproject;
@@ -1733,6 +1734,7 @@ namespace GpuKernels
         m_CB->minSmoothingFactor = minSmoothingFactor;
         m_CB->zNear = zNear;
         m_CB->zFar = zFar;
+        m_CB->useDepthWeights = useDepthWeigths;
         m_CB->depthTolerance = depthTolerance;
         m_CB->textureDim = XMFLOAT2(static_cast<float>(width), static_cast<float>(height));
         m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);

@@ -84,7 +84,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float t = distance;
             color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF * t*t*t));
         }
-        else if (g_CB.compositionType == CompositionType::AmbientOcclusionOnly)
+        else if (g_CB.compositionType == CompositionType::AmbientOcclusionOnly || g_CB.compositionType == CompositionType::AmbientOcclusionOnly_RawOneFrame)
         {
             color = ambientCoef;
             float4 albedo = float4(1, 1, 1, 1);// float4(0.75f, 0.75f, 0.75f, 1.0f);

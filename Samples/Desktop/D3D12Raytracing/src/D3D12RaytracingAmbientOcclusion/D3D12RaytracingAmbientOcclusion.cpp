@@ -115,7 +115,7 @@ namespace SceneArgs
     // ToDo Modularize parameters?
     // ToDO standardize capitalization
 
-    const WCHAR* CompositionModes[CompositionType::Count] = { L"Phong Lighting", L"Render/AO", L"Render/AO Sampling Importance Map", L"Render/AO Average Hit Distance", L"Normal Map", L"Depth Buffer" };
+    const WCHAR* CompositionModes[CompositionType::Count] = { L"Phong Lighting", L"Render/AO", L"Raw one-frame AO", L"Render/AO Sampling Importance Map", L"Render/AO Average Hit Distance", L"Normal Map", L"Depth Buffer" };
     EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
@@ -160,9 +160,11 @@ namespace SceneArgs
 
 
     // Temporal Cache.
+    // ToDo rename cache to accumulation?
     BoolVar RTAO_TemporalCache_CacheRawAOValue(L"Render/AO/RTAO/Temporal Cache/Cache Raw AO Value", true);
-    NumVar RTAO_TemporalCache_MinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Min Smoothing Factor", 0.03f, 0, 1.f, 0.01f);
-    NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.01f, 0, 1.f, 0.001f);
+    NumVar RTAO_TemporalCache_MinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Min Smoothing Factor", 0.1f, 0, 1.f, 0.01f);
+    NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.1f, 0, 1.f, 0.001f);
+    BoolVar RTAO_TemporalCache_UseDepthWeights(L"Render/AO/RTAO/Temporal Cache/Scale by depth distance", false);
     
     // ToDo cleanup RTAO... vs RTAO_..
     IntVar RTAOAdaptiveSamplingMinSamples(L"Render/AO/RTAO/Adaptive Sampling/Min samples", 1, 1, AO_SPP_N * AO_SPP_N, 1);
@@ -3143,11 +3145,22 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
 
     switch (SceneArgs::CompositionMode)
     {
+        // ToDo Cleanup
     case CompositionType::PhongLighting:
     case CompositionType::AmbientOcclusionOnly:
+    case CompositionType::AmbientOcclusionOnly_RawOneFrame:
     {
         passName = L"Upsample AO";
-        outputHiResValueResource = &m_AOResources[AOResource::Smoothed];
+        AOResource::Enum AOResouceIndex;
+        if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_RawOneFrame)
+        {
+            AOResouceIndex = AOResource::Coefficient;
+        }
+        else
+        {
+            AOResouceIndex = AOResource::Smoothed;
+        }
+        outputHiResValueResource = &m_AOResources[AOResouceIndex];
         if (SceneArgs::RTAODenoisingUseMultiscale)
         {
             inputLowResValueResource = &m_multiScaleDenoisingResources[0].m_value;
@@ -3565,6 +3578,8 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
     }
 #endif
 
+    // ToDo fix Window Tab and UI showing the same FPS.
+
     // Header information
     {
         // ToDo make default resolutions round to 0
@@ -3789,6 +3804,11 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
     UINT TC_readID = m_temporalCacheReadResourceIndex;
     UINT TC_writeID = (m_temporalCacheReadResourceIndex + 1) % 2;
 
+    // ToDo remove
+    if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_RawOneFrame)
+    {
+        m_temporalCacheFrameAge = 0;
+    }
 
     // Calculate reverse projection transform T to the previous frame's screen space coordinates.
     //  xy(t-1) = xy(t) * T     // ToDo check mul order
@@ -3849,7 +3869,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         reverseProjectionTransform,
         m_camera.ZMin,
         m_camera.ZMax,
-        SceneArgs::RTAO_TemporalCache_DepthTolerance);
+        SceneArgs::RTAO_TemporalCache_DepthTolerance,
+        SceneArgs::RTAO_TemporalCache_UseDepthWeights);
 
 #if 0
     // Transition output resource to SRV state.        
@@ -3859,7 +3880,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::AO].resource.Get(), before, after));
     }
 #else
-
     // ToDo use the out resource directly.
     CopyTextureRegion(
         commandList,
@@ -3979,6 +3999,11 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
         if (SceneArgs::AOMode == SceneArgs::AOType::RTAO && SceneArgs::RTAODenoisingUseMultiscale && !SceneArgs::QuarterResAO)
         {
             AOSRV = m_multiScaleDenoisingResources[0].m_value.gpuDescriptorReadAccess;
+        }
+
+        if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_RawOneFrame)
+        {
+            AOSRV = m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess;
         }
         //UINT TC_writeID = (m_temporalCacheReadResourceIndex + 1) % 2;
         //AOSRV = m_temporalCache[TC_writeID][TemporalCache::AO].gpuDescriptorReadAccess;

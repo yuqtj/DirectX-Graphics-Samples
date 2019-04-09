@@ -490,6 +490,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
+        // ToDo set default parameters
         void Initialize(ID3D12Device* device, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList* commandList,
@@ -509,6 +510,7 @@ namespace GpuKernels
             float zMin,
             float zFar,
             float depthTolerance,
+            bool useDepthWeights,
             UINT perFrameInstanceId = 0);
 
     private:
