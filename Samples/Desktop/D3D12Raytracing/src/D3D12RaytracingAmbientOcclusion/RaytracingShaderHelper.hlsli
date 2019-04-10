@@ -57,6 +57,11 @@ uint2 EncodeMaterial16b(uint materialID, float3 diffuse)
     return result;
 }
 
+uint IsWithinBounds(in uint2 index, in uint2 dimensions)
+{
+    return index.x >= 0 && index.y >= 0 && index.x < dimensions.x && index.y < dimensions.y;
+}
+
 void DecodeMaterial16b(in uint2 material, out uint materialID, out float3 diffuse)
 {
     materialID = material.x & 0xffff;

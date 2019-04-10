@@ -84,7 +84,6 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
 
     if (g_CB.useDynamicDepthThreshold)
     {
-
        // weights = lerp(normalWeights, depthWeights,)
     }
 
@@ -107,19 +106,23 @@ void main(uint2 DTid : SV_DispatchThreadID)
 #if 1
     float  hiResDepths[4];
     float3 hiResNormals[4];
-    for (int i = 0; i < 4; i++)
     {
-        if (g_CB.useDepthWeights || g_CB.useNormalWeights)
-            LoadDepthAndNormal(g_inHiResNormalDepth, topLeftHiResIndex + srcIndexOffsets[i], hiResDepths[i], hiResNormals[i]);
+        for (int i = 0; i < 4; i++)
+        {
+            if (g_CB.useDepthWeights || g_CB.useNormalWeights)
+                LoadDepthAndNormal(g_inHiResNormalDepth, topLeftHiResIndex + srcIndexOffsets[i], hiResDepths[i], hiResNormals[i]);
+        }
     }
     float4 vHiResDepths = float4(hiResDepths[0], hiResDepths[1], hiResDepths[2], hiResDepths[3]);
 
     float  lowResDepths[4];
     float3 lowResNormals[4];
-    for (int i = 0; i < 4; i++)
     {
-        if (g_CB.useDepthWeights || g_CB.useNormalWeights)
-            LoadDepthAndNormal(g_inLowResNormalDepth, topLeftLowResIndex + srcIndexOffsets[i], lowResDepths[i], lowResNormals[i]);
+        for (int i = 0; i < 4; i++)
+        {
+            if (g_CB.useDepthWeights || g_CB.useNormalWeights)
+                LoadDepthAndNormal(g_inLowResNormalDepth, topLeftLowResIndex + srcIndexOffsets[i], lowResDepths[i], lowResNormals[i]);
+        }
     }
     float4 vLowResDepths = float4(lowResDepths[0], lowResDepths[1], lowResDepths[2], lowResDepths[3]);
 
@@ -136,14 +139,16 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float4(1, 3, 3, 9)
     };
 
-    for (int i = 0; i < 4; i++)
     {
-        float actualDistance = hiResDepths[i];
-        float3 actualNormal = hiResNormals[i];
+        for (int i = 0; i < 4; i++)
+        {
+            float actualDistance = hiResDepths[i];
+            float3 actualNormal = hiResNormals[i];
 
-        float outValue = BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues, topLeftHiResIndex + srcIndexOffsets[i]);
-        // ToDo revise
-        g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = actualDistance < DISTANCE_ON_MISS ? outValue : vLowResValues[i];
+            float outValue = BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues, topLeftHiResIndex + srcIndexOffsets[i]);
+            // ToDo revise
+            g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = actualDistance < DISTANCE_ON_MISS ? outValue : vLowResValues[i];
+        }
     }
 #else
 

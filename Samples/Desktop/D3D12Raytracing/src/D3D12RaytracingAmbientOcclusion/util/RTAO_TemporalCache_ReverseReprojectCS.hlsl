@@ -86,7 +86,8 @@ float4 GetClipSpacePosition(in uint2 DTid, in float linearDepth)
 #endif
 
 
-float4 BilateralResampleWeights(in float ActualDistance, in float4 SampleDistances, in float2 offset)
+
+float4 BilateralResampleWeights(in float ActualDistance, in float4 SampleDistances, in float2 offset, in uint2 indices[4])
 {
 #if 0
   // ToDo remove - blurs more/incorrectly
@@ -97,7 +98,14 @@ float4 BilateralResampleWeights(in float ActualDistance, in float4 SampleDistanc
     float minDepthDiff = min(min(min(depthDiffs.x, depthDiffs.y), depthDiffs.z), depthDiffs.w);
     depthWeights = min(depthWeightsMask * (minDepthDiff + 1e-6) / (depthDiffs + 1e-6), 1);
 #endif
-    float4 depthMask = abs(SampleDistances - ActualDistance) / ActualDistance < cb.depthTolerance;
+    uint4 isWithinBounds = uint4(
+        IsWithinBounds(indices[0], cb.textureDim),
+        IsWithinBounds(indices[1], cb.textureDim),
+        IsWithinBounds(indices[2], cb.textureDim),
+        IsWithinBounds(indices[3], cb.textureDim));
+
+    float4 depthMask = isWithinBounds &&
+                       abs(SampleDistances - ActualDistance) / ActualDistance < cb.depthTolerance;
   
     float4 bilinearWeights = float4(
         (1 - offset.x) * (1 - offset.y),
@@ -109,7 +117,10 @@ float4 BilateralResampleWeights(in float ActualDistance, in float4 SampleDistanc
 
     weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
 
-    return weights / (dot(weights, 1) + FLT_EPSILON);
+    float weightSum = dot(weights, 1);
+
+    float minWeightSum = 1e-3f;
+    return weightSum >= minWeightSum ? weights / (dot(weights, 1) + FLT_EPSILON) : 0;
 }
 
 
@@ -135,45 +146,40 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float2 cachePixelOffset = cacheFrameTexturePos * cb.textureDim - topLeftCacheFrameIndex - 0.5;
 
     const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
+
+    uint2 indices[4] = {
+        topLeftCacheFrameIndex + srcIndexOffsets[0],
+        topLeftCacheFrameIndex + srcIndexOffsets[1],
+        topLeftCacheFrameIndex + srcIndexOffsets[2],
+        topLeftCacheFrameIndex + srcIndexOffsets[3] };
     // ToDo conditional loads if really needed?
     // ToDo use gather
     float4 vCacheDepths = float4(
-        g_texInputCachedDepth[topLeftCacheFrameIndex + srcIndexOffsets[0]],
-        g_texInputCachedDepth[topLeftCacheFrameIndex + srcIndexOffsets[1]],
-        g_texInputCachedDepth[topLeftCacheFrameIndex + srcIndexOffsets[2]],
-        g_texInputCachedDepth[topLeftCacheFrameIndex + srcIndexOffsets[3]]);
+        g_texInputCachedDepth[indices[0]],
+        g_texInputCachedDepth[indices[1]],
+        g_texInputCachedDepth[indices[2]],
+        g_texInputCachedDepth[indices[3]]);
 
 
     float4 vCacheValues = float4(
-        g_texInputCachedValue[topLeftCacheFrameIndex + srcIndexOffsets[0]],
-        g_texInputCachedValue[topLeftCacheFrameIndex + srcIndexOffsets[1]],
-        g_texInputCachedValue[topLeftCacheFrameIndex + srcIndexOffsets[2]],
-        g_texInputCachedValue[topLeftCacheFrameIndex + srcIndexOffsets[3]]);
+        g_texInputCachedValue[indices[0]],
+        g_texInputCachedValue[indices[1]],
+        g_texInputCachedValue[indices[2]],
+        g_texInputCachedValue[indices[3]]);
     
-
-    // ToDo should some tests be inclusive?
-    bool isNotOutOfBounds = cacheFrameTexturePos.x > 0 && cacheFrameTexturePos.y > 0 && cacheFrameTexturePos.x < 1 && cacheFrameTexturePos.y < 1;
-    bool isWithinDepthTolerance = abs(cacheLinearDepth - linearDepth) / linearDepth < 0.1;
-    
-    bool isCacheValueValid = isNotOutOfBounds;// && isWithinDepthTolerance;
 
     float value = g_texInputCurrentFrameValue[DTid];
     float mergedValue;
-    
+   
+    float4 weights = BilateralResampleWeights(linearDepth, vCacheDepths, cachePixelOffset, indices);
+    float weightSum = dot(1, weights);
+
+    bool isCacheValueValid = weightSum > FLT_EPSILON;
     if (isCacheValueValid)
     {
-        float4 weights = BilateralResampleWeights(linearDepth, vCacheDepths, cachePixelOffset);
-        float weightSum = dot(1, weights);
-        if (weightSum > 0)
-        {
-            float cachedValue = dot(weights, vCacheValues);
-            float a = max(cb.invCacheFrameAge, cb.minSmoothingFactor);
-            mergedValue = lerp(cachedValue, value, a);
-        }
-        else
-        {
-            mergedValue = value;
-        }
+        float cachedValue = dot(weights, vCacheValues);
+        float a = max(cb.invCacheFrameAge, cb.minSmoothingFactor);
+        mergedValue = lerp(cachedValue, value, a);
     }
     else
     {
@@ -181,5 +187,5 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
    
     g_texOutputCachedValue[DTid] =  mergedValue;
-    //g_texOutputCachedValue[DTid] = cacheFrameTexturePos.x;
+    //g_texOutputCachedValue[DTid] = cacheClipSpacePos.x;
 }

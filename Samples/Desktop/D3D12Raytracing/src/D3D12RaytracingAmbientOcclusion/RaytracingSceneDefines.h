@@ -109,7 +109,9 @@ namespace GlobalRootSignature {
             GBufferDepth,   // ToDo move to the above slot for GBufferResources ?
             GbufferNormalRGB,
             AORayHitDistance,
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
             PartialDepthDerivatives,
+#endif
             Count
         };
     }

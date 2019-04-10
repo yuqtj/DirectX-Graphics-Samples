@@ -956,34 +956,35 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 		using namespace GlobalRootSignature;
 
         // ToDo reorder
-        CD3DX12_DESCRIPTOR_RANGE ranges[11]; // Perfomance TIP: Order from most frequent to least frequent.
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output textures
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 5);  // 5 output GBuffer textures
-		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input GBuffer textures
-		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 10);  // 2 output AO textures
-		ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 12);  // 1 output visibility texture
-        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12);  // 1 input environment map texture
-        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 13);  // 1 output depth texture
-        ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 14);  // 1 output normal texture
-        ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 13);  // 1 input filter weight sum texture
-        ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 15);  // 1 output ray hit distance texture
+        // ToDo use slot index in ranges everywhere
+        CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
+        ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output textures
+        ranges[Slot::GBufferResources].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 5);  // 5 output GBuffer textures
+        ranges[Slot::AOResourcesOut].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 10);  // 2 output AO textures
+        ranges[Slot::VisibilityResource].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 12);  // 1 output visibility texture
+        ranges[Slot::GBufferDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 13);  // 1 output depth texture
+        ranges[Slot::GbufferNormalRGB].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 14);  // 1 output normal texture
+        ranges[Slot::AORayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 15);  // 1 output ray hit distance texture
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-        ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 16);  // 1 output partial depth derivative texture
+        ranges[Slot::PartialDepthDerivatives].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 16);  // 1 output partial depth derivative texture
 #endif
+        ranges[Slot::GBufferResourcesIn].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input GBuffer textures
+        ranges[Slot::EnvironmentMap].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12);  // 1 input environment map texture
+        ranges[Slot::FilterWeightSum].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 13);  // 1 input filter weight sum texture
 
         CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-        rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
-		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
-		rootParameters[Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[2]);
-		rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[3]);
-		rootParameters[Slot::VisibilityResource].InitAsDescriptorTable(1, &ranges[4]);
-        rootParameters[Slot::EnvironmentMap].InitAsDescriptorTable(1, &ranges[5]);
-        rootParameters[Slot::GBufferDepth].InitAsDescriptorTable(1, &ranges[6]);
-        rootParameters[Slot::GbufferNormalRGB].InitAsDescriptorTable(1, &ranges[7]);
-        rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[8]);
-        rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[9]); 
+        rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
+		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[Slot::GBufferResources]);
+		rootParameters[Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[Slot::GBufferResourcesIn]);
+		rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[Slot::AOResourcesOut]);
+		rootParameters[Slot::VisibilityResource].InitAsDescriptorTable(1, &ranges[Slot::VisibilityResource]);
+        rootParameters[Slot::EnvironmentMap].InitAsDescriptorTable(1, &ranges[Slot::EnvironmentMap]);
+        rootParameters[Slot::GBufferDepth].InitAsDescriptorTable(1, &ranges[Slot::GBufferDepth]);
+        rootParameters[Slot::GbufferNormalRGB].InitAsDescriptorTable(1, &ranges[Slot::GbufferNormalRGB]);
+        rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[Slot::FilterWeightSum]);
+        rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::AORayHitDistance]);
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-        rootParameters[Slot::PartialDepthDerivatives].InitAsDescriptorTable(1, &ranges[10]);
+        rootParameters[Slot::PartialDepthDerivatives].InitAsDescriptorTable(1, &ranges[Slot::PartialDepthDerivatives]);
 #endif
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
@@ -2064,11 +2065,12 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 		m_isCameraFrozen = !m_isCameraFrozen;
 	}
 
+    m_cameraChangedIndex--;
+    m_hasCameraChanged = false;
 	if (!m_isCameraFrozen)
 	{
         m_prevFrameCamera = m_camera;
-		m_cameraController->Update(elapsedTime);
-
+        m_hasCameraChanged = m_cameraController->Update(elapsedTime);
         // ToDo
         // if (CameraChanged)
         //m_bClearTemporalCache = true;
@@ -2079,6 +2081,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     // Rotate the camera around Y axis.
     if (m_animateCamera)
     {
+        m_hasCameraChanged = true;
 		// ToDo
         float secondsToRotateAround = 48.0f;
         float angleToRotateBy = 360.0f * (elapsedTime / secondsToRotateAround);
@@ -2091,6 +2094,13 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 		up = XMVector3TransformNormal(up, rotate);
 		m_camera.Set(eye, at, up);
     }
+
+    if (m_hasCameraChanged)
+    {
+        m_cameraChangedIndex = 5;
+        OutputDebugString(L"CameraChanged\n");
+    }
+
 	UpdateCameraMatrices();
 
     // Rotate the second light around Y axis.
@@ -3840,25 +3850,56 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
     prevView = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_prevFrameCamera.At() - m_prevFrameCamera.Eye(), 1), m_prevFrameCamera.Up());
     XMMATRIX cameraTranslation = XMMatrixTranslationFromVector(m_camera.Eye() - m_prevFrameCamera.Eye());
 
+    XMMATRIX invView = XMMatrixInverse(nullptr, view);
+    XMMATRIX invProj = XMMatrixInverse(nullptr, proj);
+
     XMMATRIX viewProj = view * proj;
     XMMATRIX prevViewProj = prevView * prevProj;
     XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
     
 #if 1
+   // XMMATRIX reverseProjectionTransform = invViewProj * cameraTranslation * prevView * prevProj;
     XMMATRIX reverseProjectionTransform = invViewProj * cameraTranslation * prevView * prevProj;
 #else
     XMMATRIX reverseProjectionTransform = cameraTranslation * prevView * prevProj;
 #endif
-    XMMATRIX invProj = XMMatrixInverse(nullptr, proj);
-    XMMATRIX invView = XMMatrixInverse(nullptr, view);
+
+#if PRINT_OUT_TC_MATRICES
+    auto MatrixToStr = [&](wstring* out, XMMATRIX& matrix, const WCHAR* name)
+    {
+        XMFLOAT4X4 fMatrix;
+        XMStoreFloat4x4(&fMatrix, matrix);
+
+        wstringstream wstream;
+        wstream << L"Matrix:" << name << L"\n";
+        for (UINT r = 0; r < 4; r++)
+        {
+            wstream << L" { ";
+            for (UINT c = 0; c < 4; c++)
+            {
+                wstream << fMatrix(r, c);
+                wstream << (c < 3 ? L", " : L"");
+            }
+            wstream << L" }\n";
+        }
+        *out += wstream.str();
+    };
+
+    wstring dbgText;
+    dbgText = L"\n=============================\n";
+    MatrixToStr(&dbgText, reverseProjectionTransform, L"ReverseProjectionTransform");
+    MatrixToStr(&dbgText, invViewProj, L"invViewProj");
+    MatrixToStr(&dbgText, viewProj, L"viewProj");
+    dbgText += L"=============================\n";
+    OutputDebugStringW(dbgText.c_str());
+#endif
 
     // Transition output resource to UAV state.        
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::AO].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::Depth].resource.Get(), before, after)
+            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::AO].resource.Get(), before, after)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -3899,14 +3940,17 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         valueResource->resource.Get(),
         &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 #endif
 
     // Cache current frame's depth.
-    CopyResource(
+    CopyTextureRegion(
         commandList,
         GBufferResources[GBufferResource::Depth].resource.Get(),
         m_temporalCache[0][TemporalCache::Depth].resource.Get(),
+        &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
@@ -3914,7 +3958,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
 // Render the scene.
 void D3D12RaytracingAmbientOcclusion::OnRender()
 {
-    if (!m_deviceResources->IsWindowVisible())
+    if (!m_deviceResources->IsWindowVisible() || m_cameraChangedIndex <= 0)
     {
         return;
     }

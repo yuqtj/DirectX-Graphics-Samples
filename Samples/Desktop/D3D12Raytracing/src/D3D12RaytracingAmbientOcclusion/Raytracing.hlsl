@@ -40,7 +40,6 @@ RWTexture2D<float4> g_renderTarget : register(u0);			// ToDo remove
 // ToDo prune redundant
 // ToDo move this to local ray gen root sig
 RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
-
 // {MaterialId, 16b 2D texCoords}
 RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}. // ToDo compact to 8b?
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);

@@ -68,7 +68,7 @@
 
 #define DISTANCE_ON_MISS 65504  // ~FLT_MAX within 16 bit format // ToDo explain
 
-#define PRINT_OUT_CAMERA_CONFIG 1
+#define PRINT_OUT_TC_MATRICES 0
 #define DEBUG_CAMERA_POS 1
 
 #define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
@@ -485,7 +485,7 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     float zFar;
 
     // ToDo pix missinterprets the format
-    XMFLOAT2 textureDim;
+    XMUINT2 textureDim;
     XMFLOAT2 invTextureDim; // ToDo test what impact passing inv tex dim makes
     
     // ToDo moving this 4Bs above XMFLOATs causes issues

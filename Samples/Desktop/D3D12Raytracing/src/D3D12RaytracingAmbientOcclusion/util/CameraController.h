@@ -18,7 +18,7 @@ namespace GameCore
     public:
         CameraController(Camera& camera);
 
-        void Update(float dt);
+        bool Update(float dt);
 
         void SlowMovement(bool enable) { m_FineMovement = enable; }
         void SlowRotation(bool enable) { m_FineRotation = enable; }

@@ -48,8 +48,11 @@ void CameraController::SetBoundaries(const XMVECTOR& _min, XMVECTOR& _max)
 	m_boundaryMax = _max;
 }
 
-void CameraController::Update(float deltaTime)
+// Returns true if camera was modified.
+bool CameraController::Update(float deltaTime)
 {
+    Camera prevCameraState = m_camera;
+
 	float timeScale = deltaTime;
 
     if (GameInput::IsFirstPressed(GameInput::kLThumbClick) || GameInput::IsFirstPressed(GameInput::kKey_lshift))
@@ -128,6 +131,8 @@ void CameraController::Update(float deltaTime)
         OutputDebugStringW(wstr.str().c_str());
 #endif
 	}
+
+    return memcmp(&prevCameraState, &m_camera, sizeof(m_camera)) != 0;
 }
 
 void CameraController::ApplyMomentum(float& oldValue, float& newValue, float deltaTime)

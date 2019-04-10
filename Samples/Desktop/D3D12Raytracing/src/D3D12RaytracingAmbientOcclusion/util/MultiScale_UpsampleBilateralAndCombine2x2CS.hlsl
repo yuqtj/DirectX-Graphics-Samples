@@ -118,18 +118,22 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float4 hiResEncodedNormalsAndDepths[4];
     float  hiResDepths[4];
     float3 hiResNormals[4];
-    for (int i = 0; i < 4; i++)
     {
-        LoadDepthAndNormal(g_inHiResNormalDepth, topLeftHiResIndex + srcIndexOffsets[i], hiResEncodedNormalsAndDepths[i], hiResDepths[i], hiResNormals[i]);
+        for (int i = 0; i < 4; i++)
+        {
+            LoadDepthAndNormal(g_inHiResNormalDepth, topLeftHiResIndex + srcIndexOffsets[i], hiResEncodedNormalsAndDepths[i], hiResDepths[i], hiResNormals[i]);
+        }
     }
     float4 vHiResDepths = float4(hiResDepths[0], hiResDepths[1], hiResDepths[2], hiResDepths[3]);
 
     float4 lowResEncodedNormalsAndDepths[4];
     float  lowResDepths[4];
     float3 lowResNormals[4];
-    for (int i = 0; i < 4; i++)
     {
-        LoadDepthAndNormal(g_inLowResNormalDepth, topLeftLowResIndex + srcIndexOffsets[i], lowResEncodedNormalsAndDepths[i], lowResDepths[i], lowResNormals[i]);
+        for (int i = 0; i < 4; i++)
+        {
+            LoadDepthAndNormal(g_inLowResNormalDepth, topLeftLowResIndex + srcIndexOffsets[i], lowResEncodedNormalsAndDepths[i], lowResDepths[i], lowResNormals[i]);
+        }
     }
     float4 vLowResDepths = float4(lowResDepths[0], lowResDepths[1], lowResDepths[2], lowResDepths[3]);
 
@@ -137,31 +141,39 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // ToDo perf with gather()?
     // ToDo consider moving depth to x in normal if it makes a difference.
     float lowResValues1[4];
-    for (int i = 0; i < 4; i++)
     {
-        lowResValues1[i] = g_inLowResValue1[topLeftLowResIndex + srcIndexOffsets[i]];
+        for (int i = 0; i < 4; i++)
+        {
+            lowResValues1[i] = g_inLowResValue1[topLeftLowResIndex + srcIndexOffsets[i]];
+        }
     }
 
     float lowResValues2[4];
-    for (int i = 0; i < 4; i++)
     {
-        lowResValues2[i] = g_inLowResValue2[topLeftLowResIndex + srcIndexOffsets[i]];
+        for (int i = 0; i < 4; i++)
+        {
+            lowResValues2[i] = g_inLowResValue2[topLeftLowResIndex + srcIndexOffsets[i]];
+        }
     }
 
     float hiResValues[4];
-    for (int i = 0; i < 4; i++)
     {
-        hiResValues[i] = g_inHiResValue[topLeftHiResIndex + srcIndexOffsets[i]];
+        for (int i = 0; i < 4; i++)
+        {
+            hiResValues[i] = g_inHiResValue[topLeftHiResIndex + srcIndexOffsets[i]];
+        }
     }
 #define WORKAROUND_FOR_VALUES_OVERFLOW_ON_MULTISCALE_COMBINE 0  // ToDo remove
     float lowResValues[4];
-    for (int i = 0; i < 4; i++)
     {
+        for (int i = 0; i < 4; i++)
+        {
 #if WORKAROUND_FOR_VALUES_OVERFLOW_ON_MULTISCALE_COMBINE
-        lowResValues[i] = lowResValues2[i];
+            lowResValues[i] = lowResValues2[i];
 #else
-        lowResValues[i] = -lowResValues1[i] + lowResValues2[i];
+            lowResValues[i] = -lowResValues1[i] + lowResValues2[i];
 #endif
+        }
     }
     float4 vLowResValues = float4(lowResValues[0], lowResValues[1], lowResValues[2], lowResValues[3]);
 

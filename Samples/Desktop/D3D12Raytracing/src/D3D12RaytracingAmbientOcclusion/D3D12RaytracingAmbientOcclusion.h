@@ -257,6 +257,8 @@ private:
 	bool m_animateLight;
 	bool m_animateScene;
 	bool m_isCameraFrozen;
+    int m_cameraChangedIndex = 0;
+    bool m_hasCameraChanged = true;
 	GameCore::Camera m_camera;
     GameCore::Camera m_prevFrameCamera;
 	std::unique_ptr<GameCore::CameraController> m_cameraController;
