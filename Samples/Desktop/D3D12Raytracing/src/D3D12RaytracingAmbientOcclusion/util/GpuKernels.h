@@ -501,10 +501,12 @@ namespace GpuKernels
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedDepthResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputCachedValueResourceHandle,
-            UINT cacheAge,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
+            UINT cacheFrameAge,
             float minSmoothingFactor,
             const XMMATRIX& invView,
             const XMMATRIX& invProj,
@@ -513,6 +515,7 @@ namespace GpuKernels
             float zFar,
             float depthTolerance,
             bool useDepthWeights,
+            bool useNormalWeigths,
             UINT perFrameInstanceId = 0);
 
     private:

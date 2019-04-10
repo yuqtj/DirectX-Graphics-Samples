@@ -491,7 +491,8 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     // ToDo moving this 4Bs above XMFLOATs causes issues
     float depthTolerance;
     BOOL useDepthWeights;
-    float padding[2];
+    BOOL useNormalWeights;
+    float padding;
 };
 
 

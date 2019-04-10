@@ -194,7 +194,7 @@ namespace GBufferResource {
 		SurfaceNormal,	// 3D normal at a hit and dot(normal, rayDir) in W,
         Distance,       // Length along ray of hit. // ToDo update (depth?)
         Depth,          // Non-linear depth of the hit. // ToDo remove
-        SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate
+        SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate remove Surface prefix
         PartialDepthDerivatives,
 		Count
 	};
@@ -215,6 +215,7 @@ namespace TemporalCache {
     enum Enum {
         AO = 0,
         Depth,
+        Normal,
         Count
     };
 }

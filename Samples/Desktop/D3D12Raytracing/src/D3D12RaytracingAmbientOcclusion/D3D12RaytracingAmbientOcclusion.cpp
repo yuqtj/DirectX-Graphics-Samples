@@ -164,7 +164,8 @@ namespace SceneArgs
     BoolVar RTAO_TemporalCache_CacheRawAOValue(L"Render/AO/RTAO/Temporal Cache/Cache Raw AO Value", true);
     NumVar RTAO_TemporalCache_MinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Min Smoothing Factor", 0.1f, 0, 1.f, 0.01f);
     NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.1f, 0, 1.f, 0.001f);
-    BoolVar RTAO_TemporalCache_UseDepthWeights(L"Render/AO/RTAO/Temporal Cache/Scale by depth distance", false);
+    BoolVar RTAO_TemporalCache_UseDepthWeights(L"Render/AO/RTAO/Temporal Cache/Use depth weights", true);    // ToDo remove
+    BoolVar RTAO_TemporalCache_UseNormalWeights(L"Render/AO/RTAO/Temporal Cache/Use normal weights", true);
     
     // ToDo cleanup RTAO... vs RTAO_..
     IntVar RTAOAdaptiveSamplingMinSamples(L"Render/AO/RTAO/Adaptive Sampling/Min samples", 1, 1, AO_SPP_N * AO_SPP_N, 1);
@@ -1297,6 +1298,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             // ToDo cleanup raytracing resolution - twice for coefficient.
             CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::AO], initialResourceState, L"Temporal Cache: AO");
             CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::Depth], initialResourceState, L"Temporal Cache: Depth");
+            CreateRenderTargetResource(device, normalFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::Normal], initialResourceState, L"Temporal Cache: Normal");
         }
      }
 
@@ -3911,9 +3913,10 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_cbvSrvUavHeap->GetHeap(),
         valueResource->gpuDescriptorReadAccess,
         GBufferResources[GBufferResource::Depth].gpuDescriptorReadAccess,
+        GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
         m_temporalCache[TC_readID][TemporalCache::AO].gpuDescriptorReadAccess,
         m_temporalCache[0][TemporalCache::Depth].gpuDescriptorReadAccess,      // ToDo dedupe depth from the array
-
+        m_temporalCache[0][TemporalCache::Normal].gpuDescriptorReadAccess,     
         m_temporalCache[TC_writeID][TemporalCache::AO].gpuDescriptorWriteAccess,
         m_temporalCacheFrameAge,
         SceneArgs::RTAO_TemporalCache_MinSmoothingFactor,
@@ -3923,7 +3926,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_camera.ZMin,
         m_camera.ZMax,
         SceneArgs::RTAO_TemporalCache_DepthTolerance,
-        SceneArgs::RTAO_TemporalCache_UseDepthWeights);
+        SceneArgs::RTAO_TemporalCache_UseDepthWeights,
+        SceneArgs::RTAO_TemporalCache_UseNormalWeights);
 
 #if 0
     // Transition output resource to SRV state.        
@@ -3945,11 +3949,20 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 #endif
 
-    // Cache current frame's depth.
+    // Cache current frame's depth buffer.
     CopyTextureRegion(
         commandList,
         GBufferResources[GBufferResource::Depth].resource.Get(),
         m_temporalCache[0][TemporalCache::Depth].resource.Get(),
+        &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+    // Cache current frame's normal buffer.
+    CopyTextureRegion(
+        commandList,
+        GBufferResources[GBufferResource::SurfaceNormal].resource.Get(),
+        m_temporalCache[0][TemporalCache::Normal].resource.Get(),
         &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
