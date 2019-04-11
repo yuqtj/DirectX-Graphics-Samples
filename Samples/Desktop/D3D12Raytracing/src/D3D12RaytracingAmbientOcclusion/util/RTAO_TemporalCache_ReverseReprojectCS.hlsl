@@ -256,6 +256,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
    
     g_texOutputCachedValue[DTid] =  mergedValue;
-    g_texOutputCacheFrameAge[DTid] = frameAge + 1;
+    g_texOutputCacheFrameAge[DTid] = min(frameAge + 1, 255);
     //g_texOutputCachedValue[DTid] = cacheClipSpacePos.x;
 }
