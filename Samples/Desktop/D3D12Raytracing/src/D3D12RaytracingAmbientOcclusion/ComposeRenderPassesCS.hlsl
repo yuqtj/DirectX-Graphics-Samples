@@ -96,7 +96,14 @@ void main(uint2 DTid : SV_DispatchThreadID )
 
             if (g_CB.compositionType == AmbientOcclusionAndDisocclusionMap)
             {
-                color = g_texTemporalCacheDisocclusionMap[DTid].x == 1 ? float4(1, 0, 0, 0) : color;
+                uint frameAge = g_texTemporalCacheDisocclusionMap[DTid].x;
+                color = frameAge == 1 ? float4(1, 0, 0, 1) : color;
+
+
+                float normalizedFrameAge = min(1.f, frameAge / 64.f);
+                float3 minFrameAgeColor = float3(153, 18, 15) / 255;
+                float3 maxFrameAgeColor = float3(170, 220, 200) / 255;
+                color = float4(lerp(minFrameAgeColor, maxFrameAgeColor, normalizedFrameAge), 1);
             }
         }
         else if (g_CB.compositionType == CompositionType::AmbientOcclusionHighResSamplingPixels)
