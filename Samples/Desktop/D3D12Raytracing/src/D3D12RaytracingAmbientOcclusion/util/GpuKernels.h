@@ -506,6 +506,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputDiscocclusionMapResourceHandle,
             UINT cacheFrameAge,
             float minSmoothingFactor,
             const XMMATRIX& invView,

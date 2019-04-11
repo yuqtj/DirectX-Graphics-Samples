@@ -420,9 +420,11 @@ enum CompositionType {
     AmbientOcclusionOnly,
     AmbientOcclusionOnly_RawOneFrame,
     AmbientOcclusionHighResSamplingPixels,
+    AmbientOcclusionAndDisocclusionMap, // ToDo quarter res support
     RTAOHitDistance,    // ToDo standardize naming
     NormalsOnly,
     DepthOnly,
+    DisocclusionMap,
     Count
 };
 

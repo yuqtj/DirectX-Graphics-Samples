@@ -115,7 +115,16 @@ namespace SceneArgs
     // ToDo Modularize parameters?
     // ToDO standardize capitalization
 
-    const WCHAR* CompositionModes[CompositionType::Count] = { L"Phong Lighting", L"Render/AO", L"Raw one-frame AO", L"Render/AO Sampling Importance Map", L"Render/AO Average Hit Distance", L"Normal Map", L"Depth Buffer" };
+    const WCHAR* CompositionModes[CompositionType::Count] = { 
+        L"Phong Lighting", 
+        L"Render/AO", 
+        L"Raw one-frame AO", 
+        L"Render/AO Sampling Importance Map",
+        L"AO and Disocclusion Map",
+        L"Render/AO Minimum Hit Distance", 
+        L"Normal Map", 
+        L"Depth Buffer", 
+        L"Disocclusion Map" };
     EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
@@ -147,7 +156,7 @@ namespace SceneArgs
 
     // RTAO
     // Adaptive Sampling.
-    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
+    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
     BoolVar RTAOAdaptiveSampling(L"Render/AO/RTAO/Adaptive Sampling/Enabled", true);
     BoolVar RTAOUseNormalMaps(L"Render/AO/RTAO/Normal maps", false);
     NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"Render/AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
@@ -166,7 +175,10 @@ namespace SceneArgs
     NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.1f, 0, 1.f, 0.001f);
     BoolVar RTAO_TemporalCache_UseDepthWeights(L"Render/AO/RTAO/Temporal Cache/Use depth weights", true);    // ToDo remove
     BoolVar RTAO_TemporalCache_UseNormalWeights(L"Render/AO/RTAO/Temporal Cache/Use normal weights", true);
-    
+
+    BoolVar TAO_LazyRender(L"TAO/Lazy render", false);
+    IntVar RTAO_LazyRenderNumFrames(L"TAO/Lazy render frames", 3, 0, 20, 1);
+
     // ToDo cleanup RTAO... vs RTAO_..
     IntVar RTAOAdaptiveSamplingMinSamples(L"Render/AO/RTAO/Adaptive Sampling/Min samples", 1, 1, AO_SPP_N * AO_SPP_N, 1);
     IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 0, 0, 10, 1);
@@ -807,13 +819,15 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 	{
 		using namespace CSRootSignature::ComposeRenderPassesCS;
 
-		CD3DX12_DESCRIPTOR_RANGE ranges[6]; // Perfomance TIP: Order from most frequent to least frequent.
+		CD3DX12_DESCRIPTOR_RANGE ranges[7]; // Perfomance TIP: Order from most frequent to least frequent.
 		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
 		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);  // 5 input GBuffer textures
 		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input AO texture
 		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // 1 input Visibility texture
         ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // 1 input filterWeightSum texture
         ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // 1 input AO ray hit distance texture
+        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // 1 input disocclusion map texture
+        
 
 		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
 		rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
@@ -822,6 +836,7 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 		rootParameters[Slot::Visibility].InitAsDescriptorTable(1, &ranges[3]);
         rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[4]);
         rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[5]);
+        rootParameters[Slot::DisocclusionMap].InitAsDescriptorTable(1, &ranges[6]);
 		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(7);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
@@ -1299,6 +1314,9 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::AO], initialResourceState, L"Temporal Cache: AO");
             CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::Depth], initialResourceState, L"Temporal Cache: Depth");
             CreateRenderTargetResource(device, normalFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::Normal], initialResourceState, L"Temporal Cache: Normal");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::DisocclusionMap], initialResourceState, L"Temporal Cache: Disocclusion Map");
+
+            
         }
      }
 
@@ -2099,7 +2117,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 
     if (m_hasCameraChanged)
     {
-        m_cameraChangedIndex = 5;
+        m_cameraChangedIndex = SceneArgs::RTAO_LazyRenderNumFrames;
         OutputDebugString(L"CameraChanged\n");
     }
 
@@ -3493,6 +3511,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
         commandList->SetComputeRootDescriptorTable(Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
         commandList->SetComputeRootDescriptorTable(Slot::AORayHitDistance, m_AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess);
+        commandList->SetComputeRootDescriptorTable(Slot::DisocclusionMap, m_temporalCache[0][TemporalCache::DisocclusionMap].gpuDescriptorReadAccess);
 	}
 
 	// Dispatch.
@@ -3901,7 +3920,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::AO].resource.Get(), before, after)
+            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::AO].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[0][TemporalCache::DisocclusionMap].resource.Get(), before, after)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -3916,8 +3936,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
         m_temporalCache[TC_readID][TemporalCache::AO].gpuDescriptorReadAccess,
         m_temporalCache[0][TemporalCache::Depth].gpuDescriptorReadAccess,      // ToDo dedupe depth from the array
-        m_temporalCache[0][TemporalCache::Normal].gpuDescriptorReadAccess,     
+        m_temporalCache[0][TemporalCache::Normal].gpuDescriptorReadAccess,
         m_temporalCache[TC_writeID][TemporalCache::AO].gpuDescriptorWriteAccess,
+        m_temporalCache[0][TemporalCache::DisocclusionMap].gpuDescriptorWriteAccess,
         m_temporalCacheFrameAge,
         SceneArgs::RTAO_TemporalCache_MinSmoothingFactor,
         invView,
@@ -3929,14 +3950,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         SceneArgs::RTAO_TemporalCache_UseDepthWeights,
         SceneArgs::RTAO_TemporalCache_UseNormalWeights);
 
-#if 0
+
     // Transition output resource to SRV state.        
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::AO].resource.Get(), before, after));
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[0][TemporalCache::DisocclusionMap].resource.Get(), before, after));
     }
-#else
+
     // ToDo use the out resource directly.
     CopyTextureRegion(
         commandList,
@@ -3947,7 +3968,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-#endif
 
     // Cache current frame's depth buffer.
     CopyTextureRegion(
@@ -3971,10 +3991,16 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
 // Render the scene.
 void D3D12RaytracingAmbientOcclusion::OnRender()
 {
-    if (!m_deviceResources->IsWindowVisible() || m_cameraChangedIndex <= 0)
+    if (!m_deviceResources->IsWindowVisible())
     {
         return;
     }
+    if (SceneArgs::TAO_LazyRender && m_cameraChangedIndex <= 0)
+    {
+        return;
+    }
+
+
 
     auto commandList = m_deviceResources->GetCommandList();
 

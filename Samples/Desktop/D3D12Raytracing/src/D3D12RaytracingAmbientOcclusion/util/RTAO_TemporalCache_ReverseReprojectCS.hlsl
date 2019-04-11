@@ -24,6 +24,7 @@ Texture2D<float4> g_texInputCurrentFrameNormal : register(t5);
 
 
 RWTexture2D<float> g_texOutputCachedValue : register(u0);
+RWTexture2D<uint> g_texOutputDisocclusionMap : register(u1);
 ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> cb : register(b0);
 
 SamplerState LinearSampler : register(s0);
@@ -115,12 +116,13 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
     if (cb.useNormalWeights)
     {
         const uint normalExponent = 32;
+        const float minNormalWeight = 1e-3f;
         normalWeights =
             float4(
                 pow(saturate(dot(ActualNormal, SampleNormals[0])), normalExponent),
                 pow(saturate(dot(ActualNormal, SampleNormals[1])), normalExponent),
                 pow(saturate(dot(ActualNormal, SampleNormals[2])), normalExponent),
-                pow(saturate(dot(ActualNormal, SampleNormals[3])), normalExponent));
+                pow(saturate(dot(ActualNormal, SampleNormals[3])), normalExponent) >= minNormalWeight);
     }
 
     float4 bilinearWeights = float4(
@@ -218,17 +220,21 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightSum = dot(1, weights);
 
     bool isCacheValueValid = weightSum > FLT_EPSILON;
+    uint isDisoccluded;
     if (isCacheValueValid)
     {
+        isDisoccluded = false;
         float cachedValue = dot(weights, vCacheValues);
         float a = max(cb.invCacheFrameAge, cb.minSmoothingFactor);
         mergedValue = lerp(cachedValue, value, a);
     }
     else
     {
+        isDisoccluded = true;
         mergedValue = value;
     }
    
     g_texOutputCachedValue[DTid] =  mergedValue;
+    g_texOutputDisocclusionMap[DTid] = isDisoccluded ? 1 : 0;
     //g_texOutputCachedValue[DTid] = cacheClipSpacePos.x;
 }

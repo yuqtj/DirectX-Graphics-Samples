@@ -27,6 +27,7 @@ Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
 Texture2D<float> g_texFilterWeightSum : register(t8);
 Texture2D<float> g_texRayHitDistance : register(t9);
+Texture2D<uint> g_texTemporalCacheDisocclusionMap : register(t10);
 
 SamplerState LinearWrapSampler : register(s0);
 
@@ -63,6 +64,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
 		float visibilityCoefficient = g_texVisibility[DTid];
         float ambientCoef = g_CB.enableAO ? g_texAO[DTid] : 1;
 
+        // ToDo use switch?
         // Calculate final color.
         if (g_CB.compositionType == CompositionType::PhongLighting)
         {
@@ -84,11 +86,18 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float t = distance;
             color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF * t*t*t));
         }
-        else if (g_CB.compositionType == CompositionType::AmbientOcclusionOnly || g_CB.compositionType == CompositionType::AmbientOcclusionOnly_RawOneFrame)
+        else if (g_CB.compositionType == CompositionType::AmbientOcclusionOnly ||
+                 g_CB.compositionType == CompositionType::AmbientOcclusionOnly_RawOneFrame ||
+                 g_CB.compositionType == AmbientOcclusionAndDisocclusionMap)
         {
             color = ambientCoef;
             float4 albedo = float4(1, 1, 1, 1);// float4(0.75f, 0.75f, 0.75f, 1.0f);
             color *= albedo;
+
+            if (g_CB.compositionType == AmbientOcclusionAndDisocclusionMap)
+            {
+                color = g_texTemporalCacheDisocclusionMap[DTid].x == 1 ? float4(1, 0, 0, 0) : color;
+            }
         }
         else if (g_CB.compositionType == CompositionType::AmbientOcclusionHighResSamplingPixels)
         {
@@ -133,6 +142,10 @@ void main(uint2 DTid : SV_DispatchThreadID )
         else if (g_CB.compositionType == CompositionType::DepthOnly)
         {
             color = float4(0, 0, 0, 1); // ToDo
+        }
+        else if (g_CB.compositionType == CompositionType::DisocclusionMap)
+        {
+            color = g_texTemporalCacheDisocclusionMap[DTid].x == 1 ? float4(1, 0, 0, 0) : float4(1, 1, 1, 1);
         }
 	}
 	else

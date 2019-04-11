@@ -1653,6 +1653,7 @@ namespace GpuKernels
             namespace Slot {
                 enum Enum {
                     OutputCachedValue = 0,
+                    OutputDisocclusionMap,
                     InputCachedValue,
                     InputCurrentFrameValue,
                     InputCachedDepth,
@@ -1680,6 +1681,7 @@ namespace GpuKernels
             ranges[Slot::InputCachedNormal].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);        // 1 input cached normal
             ranges[Slot::InputCurrentFrameNormal].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input current frame normal
             ranges[Slot::OutputCachedValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);        // 1 output temporal cache value
+            ranges[Slot::OutputDisocclusionMap].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);        // 1 output temporal cache disocclusion map
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::InputCachedValue].InitAsDescriptorTable(1, &ranges[Slot::InputCachedValue]);
@@ -1689,6 +1691,7 @@ namespace GpuKernels
             rootParameters[Slot::InputCachedNormal].InitAsDescriptorTable(1, &ranges[Slot::InputCachedNormal]);
             rootParameters[Slot::InputCurrentFrameNormal].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameNormal]);
             rootParameters[Slot::OutputCachedValue].InitAsDescriptorTable(1, &ranges[Slot::OutputCachedValue]);
+            rootParameters[Slot::OutputDisocclusionMap].InitAsDescriptorTable(1, &ranges[Slot::OutputDisocclusionMap]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER);
@@ -1727,6 +1730,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedNormalResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputDiscocclusionMapResourceHandle,
         UINT cacheFrameAge, // ToDo replace with per pixel age
         float minSmoothingFactor,
         const XMMATRIX& invView,
@@ -1771,6 +1775,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputCachedNormal, inputCachedNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameNormal, inputCurrentFrameNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputCachedValue, outputTemporalCacheValueResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputDisocclusionMap, outputDiscocclusionMapResourceHandle);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
