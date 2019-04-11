@@ -18,16 +18,21 @@ Texture2D<float> g_texInputCachedValue : register(t0);
 Texture2D<float> g_texInputCurrentFrameValue : register(t1);
 Texture2D<float> g_texInputCachedDepth : register(t2);
 Texture2D<float> g_texInputCurrentFrameDepth : register(t3);
-
 Texture2D<float4> g_texInputCachedNormal : register(t4);
 Texture2D<float4> g_texInputCurrentFrameNormal : register(t5);
-
+Texture2D<uint> g_texInputCacheFrameAge : register(t6);
 
 RWTexture2D<float> g_texOutputCachedValue : register(u0);
-RWTexture2D<uint> g_texOutputDisocclusionMap : register(u1);
+RWTexture2D<uint> g_texOutputCacheFrameAge : register(u1);
+
 ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> cb : register(b0);
 
 SamplerState LinearSampler : register(s0);
+
+
+// ToDo
+// - Fix heavy disocclusion on min/magnifaction. Use bilateraly downsampled mip maps?
+//   - this happens only when starting to move not on smooth move.
 
 #if 0
 // Retrieves pixel's position in world space.
@@ -116,7 +121,7 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
     if (cb.useNormalWeights)
     {
         const uint normalExponent = 32;
-        const float minNormalWeight = 1e-3f;
+        const float minNormalWeight = 1e-3f; // ToDo pass as parameter
         normalWeights =
             float4(
                 pow(saturate(dot(ActualNormal, SampleNormals[0])), normalExponent),
@@ -131,13 +136,14 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         (1 - offset.x) * offset.y,
         offset.x * offset.y);
 
+    // ToDo can we prevent diffusion across plane?
     float4 weights = bilinearWeights * depthMask * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
 
     weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
 
     float weightSum = dot(weights, 1);
 
-    float minWeightSum = 1e-3f;
+    float minWeightSum = 1e-3f; 
     return weightSum >= minWeightSum ? weights / (dot(weights, 1) + FLT_EPSILON) : 0;
 }
 
@@ -211,6 +217,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
         g_texInputCachedValue[indices[1]],
         g_texInputCachedValue[indices[2]],
         g_texInputCachedValue[indices[3]]);
+
+    uint4 vCacheFrameAge = uint4(
+        g_texInputCacheFrameAge[indices[0]],
+        g_texInputCacheFrameAge[indices[1]],
+        g_texInputCacheFrameAge[indices[2]],
+        g_texInputCacheFrameAge[indices[3]]);
+
+    
     
 
     float value = g_texInputCurrentFrameValue[DTid];
@@ -221,20 +235,27 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     bool isCacheValueValid = weightSum > FLT_EPSILON;
     uint isDisoccluded;
+    uint frameAge;
     if (isCacheValueValid)
     {
         isDisoccluded = false;
         float cachedValue = dot(weights, vCacheValues);
-        float a = max(cb.invCacheFrameAge, cb.minSmoothingFactor);
+        
+        float cacheFrameAge = dot(weights, vCacheFrameAge);       
+        frameAge = uint(cacheFrameAge + 0.5f);              // HLSL rounds down when converting float to uint, bump up the value by 0.5 before rounding.
+        float invFrameAge = 1.f / (frameAge + 1);
+
+        float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
         mergedValue = lerp(cachedValue, value, a);
     }
     else
     {
         isDisoccluded = true;
         mergedValue = value;
+        frameAge = 0;
     }
    
     g_texOutputCachedValue[DTid] =  mergedValue;
-    g_texOutputDisocclusionMap[DTid] = isDisoccluded ? 1 : 0;
+    g_texOutputCacheFrameAge[DTid] = frameAge + 1;
     //g_texOutputCachedValue[DTid] = cacheClipSpacePos.x;
 }

@@ -480,8 +480,8 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     XMMATRIX invProj;
     XMMATRIX invView;
     XMMATRIX reverseProjectionTransform;
-
-    float invCacheFrameAge;         // Inverse number of frames since the cache has been reset.
+    
+    BOOL  forceUseMinSmoothingFactor;  // ToDo remove?
     float minSmoothingFactor;       
     float zNear; // ToDo take these from transform matrix directly?
     float zFar;

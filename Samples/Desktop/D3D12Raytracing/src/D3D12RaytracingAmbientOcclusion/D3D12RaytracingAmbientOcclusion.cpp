@@ -175,7 +175,8 @@ namespace SceneArgs
     NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.1f, 0, 1.f, 0.001f);
     BoolVar RTAO_TemporalCache_UseDepthWeights(L"Render/AO/RTAO/Temporal Cache/Use depth weights", true);    // ToDo remove
     BoolVar RTAO_TemporalCache_UseNormalWeights(L"Render/AO/RTAO/Temporal Cache/Use normal weights", true);
-
+    BoolVar RTAO_TemporalCache_ForceUseMinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Force min smoothing factor", false);
+    
     BoolVar TAO_LazyRender(L"TAO/Lazy render", false);
     IntVar RTAO_LazyRenderNumFrames(L"TAO/Lazy render frames", 3, 0, 20, 1);
 
@@ -836,7 +837,7 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 		rootParameters[Slot::Visibility].InitAsDescriptorTable(1, &ranges[3]);
         rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[4]);
         rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[5]);
-        rootParameters[Slot::DisocclusionMap].InitAsDescriptorTable(1, &ranges[6]);
+        rootParameters[Slot::FrameAge].InitAsDescriptorTable(1, &ranges[6]);
 		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(7);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
@@ -1314,7 +1315,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::AO], initialResourceState, L"Temporal Cache: AO");
             CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::Depth], initialResourceState, L"Temporal Cache: Depth");
             CreateRenderTargetResource(device, normalFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::Normal], initialResourceState, L"Temporal Cache: Normal");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::DisocclusionMap], initialResourceState, L"Temporal Cache: Disocclusion Map");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::FrameAge], initialResourceState, L"Temporal Cache: Disocclusion Map");
 
             
         }
@@ -2033,8 +2034,6 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
     case 'A':
         m_animateScene = !m_animateScene;
         break;
-    case 'R':
-        m_temporalCacheFrameAge = 0;
     default:
         break;
     }
@@ -3511,7 +3510,10 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
         commandList->SetComputeRootDescriptorTable(Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
         commandList->SetComputeRootDescriptorTable(Slot::AORayHitDistance, m_AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess);
-        commandList->SetComputeRootDescriptorTable(Slot::DisocclusionMap, m_temporalCache[0][TemporalCache::DisocclusionMap].gpuDescriptorReadAccess);
+
+
+        UINT TC_readID = (m_temporalCacheReadResourceIndex + 1) % 2;
+        commandList->SetComputeRootDescriptorTable(Slot::FrameAge, m_temporalCache[TC_readID][TemporalCache::FrameAge].gpuDescriptorReadAccess);
 	}
 
 	// Dispatch.
@@ -3846,7 +3848,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
     // ToDo remove
     if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_RawOneFrame)
     {
-        m_temporalCacheFrameAge = 0;
+        // ToDo
+        //m_temporalCacheFrameAge = 0;
     }
 
     // Calculate reverse projection transform T to the previous frame's screen space coordinates.
@@ -3921,7 +3924,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::AO].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[0][TemporalCache::DisocclusionMap].resource.Get(), before, after)
+            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::FrameAge].resource.Get(), before, after)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -3937,9 +3940,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_temporalCache[TC_readID][TemporalCache::AO].gpuDescriptorReadAccess,
         m_temporalCache[0][TemporalCache::Depth].gpuDescriptorReadAccess,      // ToDo dedupe depth from the array
         m_temporalCache[0][TemporalCache::Normal].gpuDescriptorReadAccess,
+        m_temporalCache[TC_readID][TemporalCache::FrameAge].gpuDescriptorReadAccess,
         m_temporalCache[TC_writeID][TemporalCache::AO].gpuDescriptorWriteAccess,
-        m_temporalCache[0][TemporalCache::DisocclusionMap].gpuDescriptorWriteAccess,
-        m_temporalCacheFrameAge,
+        m_temporalCache[TC_writeID][TemporalCache::FrameAge].gpuDescriptorWriteAccess,
         SceneArgs::RTAO_TemporalCache_MinSmoothingFactor,
         invView,
         invProj,
@@ -3948,14 +3951,15 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_camera.ZMax,
         SceneArgs::RTAO_TemporalCache_DepthTolerance,
         SceneArgs::RTAO_TemporalCache_UseDepthWeights,
-        SceneArgs::RTAO_TemporalCache_UseNormalWeights);
+        SceneArgs::RTAO_TemporalCache_UseNormalWeights,
+        SceneArgs::RTAO_TemporalCache_ForceUseMinSmoothingFactor);
 
 
     // Transition output resource to SRV state.        
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[0][TemporalCache::DisocclusionMap].resource.Get(), before, after));
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::FrameAge].resource.Get(), before, after));
     }
 
     // ToDo use the out resource directly.
@@ -4132,7 +4136,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT);
 
     // ToDo move
-    m_temporalCacheFrameAge = min(m_temporalCacheFrameAge + 1, 999999u);
     m_temporalCacheReadResourceIndex = (m_temporalCacheReadResourceIndex + 1) % 2;
 }
 

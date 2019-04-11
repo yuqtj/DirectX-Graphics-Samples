@@ -57,7 +57,7 @@ namespace ComputeShader {
 					ConstantBuffer,
                     FilterWeightSum,
                     AORayHitDistance,
-                    DisocclusionMap,
+                    FrameAge,
 					Count
 				};
 			}
@@ -217,7 +217,7 @@ namespace TemporalCache {
         AO = 0,
         Depth,
         Normal,
-        DisocclusionMap,
+        FrameAge,
         Count
     };
 }

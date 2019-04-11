@@ -204,7 +204,6 @@ private:
     // ToDo dedupe resources. Does dpeth need to have 2 instances?
     RWGpuResource m_temporalCache[2][TemporalCache::Count]; // ~array[Read/Write ping pong resource][Resources].
     UINT          m_temporalCacheReadResourceIndex = 0;
-    UINT          m_temporalCacheFrameAge = 0;
 
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;

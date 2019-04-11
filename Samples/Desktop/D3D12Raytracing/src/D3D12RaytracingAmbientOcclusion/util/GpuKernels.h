@@ -502,12 +502,12 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedDepthResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheFrameAgeResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputDiscocclusionMapResourceHandle,
-            UINT cacheFrameAge,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheFrameAgeResourceHandle,
             float minSmoothingFactor,
             const XMMATRIX& invView,
             const XMMATRIX& invProj,
@@ -517,6 +517,7 @@ namespace GpuKernels
             float depthTolerance,
             bool useDepthWeights,
             bool useNormalWeigths,
+            bool forceUseMinSmoothingFactor,
             UINT perFrameInstanceId = 0);
 
     private:
