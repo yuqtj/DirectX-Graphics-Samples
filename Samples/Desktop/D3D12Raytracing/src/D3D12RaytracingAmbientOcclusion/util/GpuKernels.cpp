@@ -30,8 +30,7 @@
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
-#include "CompiledShaders\CalculateVariance_Bilateral5x5CS.hlsl.h"
-#include "CompiledShaders\CalculateVariance_Bilateral7x7CS.hlsl.h"
+#include "CompiledShaders\CalculateVariance_BilateralFilterCS.hlsl.h"
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
 #include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
 
@@ -1567,22 +1566,10 @@ namespace GpuKernels
         {
             D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
             descComputePSO.pRootSignature = m_rootSignature.Get();
+            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_BilateralFilterCS), ARRAYSIZE(g_pCalculateVariance_BilateralFilterCS));
 
-            for (UINT i = 0; i < FilterType::Count; i++)
-            {
-                switch (i)
-                {
-                case Bilateral5x5:
-                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_Bilateral5x5CS), ARRAYSIZE(g_pCalculateVariance_Bilateral5x5CS));
-                    break;
-                case Bilateral7x7:
-                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_Bilateral7x7CS), ARRAYSIZE(g_pCalculateVariance_Bilateral7x7CS));
-                    break;
-                }
-
-                ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
-                m_pipelineStateObjects[i]->SetName(L"Pipeline state object: CalculateVariance");
-            }
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: CalculateVariance");
         }
 
         // Create shader resources.
@@ -1596,13 +1583,13 @@ namespace GpuKernels
     void CalculateVariance::Execute(
         ID3D12GraphicsCommandList* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
-        FilterType filterType,
         UINT width,
         UINT height,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,  // ToDo standardize Normal vs Normals
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+        UINT kernelWidth,
         float depthSigma,
         float normalSigma,
         bool useApproximateVariance,
@@ -1612,7 +1599,9 @@ namespace GpuKernels
         using namespace RootSignature::CalculateVariance;
         using namespace CalculateVariance_Bilateral;
 
+        // ToDo replace asserts with runtime fails?
         assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
+        assert(kernelWidth & 1 == 1 && L"KernelWidth must be an odd number so that width == radius + 1 + radius");
 
         // ToDo move out or rename
         PIXBeginEvent(commandList, 0, L"CalculateVariance_Bilateral5x5");
@@ -1621,7 +1610,7 @@ namespace GpuKernels
         {
             commandList->SetDescriptorHeaps(1, &descriptorHeap);
             commandList->SetComputeRootSignature(m_rootSignature.Get());
-            commandList->SetPipelineState(m_pipelineStateObjects[filterType].Get());
+            commandList->SetPipelineState(m_pipelineStateObject.Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Normals, inputNormalsResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Depths, inputDepthsResourceHandle);
@@ -1635,6 +1624,7 @@ namespace GpuKernels
         m_CB->useApproximateVariance = useApproximateVariance;
         m_CB->useAdaptiveKernelSize = false;    // ToDo remove
         m_CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation; 
+        m_CB->kernelWidth = kernelWidth;
         m_CB.CopyStagingToGpu(perFrameInstanceId);
         commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
 

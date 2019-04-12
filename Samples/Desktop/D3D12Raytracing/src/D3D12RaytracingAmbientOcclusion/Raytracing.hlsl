@@ -53,6 +53,7 @@ Texture2D<float4> g_texGBufferNormal : register(t8);
 Texture2D<float4> g_texGBufferDistance : register(t9);
 TextureCube<float4> g_texEnvironmentMap : register(t12);
 Texture2D<float> g_filterWeightSum : register(t13);
+Texture2D<uint> g_texInputAOFrameAge : register(t14);
 
 // ToDo remove AOcoefficient and use AO hits instead?
 //todo remove rt?
@@ -224,7 +225,7 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 
 // ToDo comment
 // MinHitDistance - minimum hit distance of all AO ray hits.
-float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in UINT numSamples, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1))
+float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 DTid, in UINT numSamples, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1))
 {
     numShadowRayHits = 0;
     minHitDistance = g_sceneCB.RTAO_maxTheoreticalShadowRayHitTime;
@@ -253,6 +254,10 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in UINT n
     uint sampleJump = (pixeIDPerSet + RNG::Random(RNGState, 0, numPixelsPerSet - 1)) % numPixelsPerSet;
     sampleJump *= g_sceneCB.numSamplesToUse;
 
+#if AO_PROGRESSIVE_SAMPLING
+    sampleJump += numSamples * g_texInputAOFrameAge[DTid];
+#endif
+
     for (uint i = 0; i < numSamples; i++)
     {
         // Load a pregenerated random sample from the sample set.
@@ -265,7 +270,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in UINT n
 
 	uint RNGState = RNG::SeedThread(seed);
 	uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
-	uint sampleJump = 0; RNG::Random(RNGState, 0, g_sceneCB.numSamples - 1);
+	uint sampleJump = 0; //RNG::Random(RNGState, 0, g_sceneCB.numSamples - 1);
 
     for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
     {
@@ -404,11 +409,11 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in UINT n
 }
 
 
-float CalculateAO(in float3 hitPosition, UINT numSamples, in float3 surfaceNormal)
+float CalculateAO(in float3 hitPosition, in uint2 DTid, UINT numSamples, in float3 surfaceNormal)
 {
 	uint numShadowRayHits;
     float minHitDistance;
-	return CalculateAO(numShadowRayHits, minHitDistance, numSamples, hitPosition, surfaceNormal);
+	return CalculateAO(numShadowRayHits, minHitDistance, DTid, numSamples, hitPosition, surfaceNormal);
 }
 
 //***************************************************************************
@@ -623,7 +628,7 @@ void MyRayGenShader_AO()
                 numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
             }
         }
-		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, numSamples, hitPosition, surfaceNormal, surfaceAlbedo);
+		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, DTid, numSamples, hitPosition, surfaceNormal, surfaceAlbedo);
 	}
 
 	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
@@ -659,7 +664,7 @@ void MyRayGenShaderQuarterRes_AO()
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
         // ToDo Standardize naming AO vs AmbientOcclusion ?
-		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, g_sceneCB.numSamplesToUse, hitPosition, surfaceNormal);
+		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, DTid, g_sceneCB.numSamplesToUse, hitPosition, surfaceNormal);
 	}
 
 	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
@@ -705,7 +710,7 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
     // PERFORMANCE TIP: it is recommended to avoid values carry over across TraceRay() calls. 
     // Therefore, in cases like retrieving HitWorldPosition(), it is recomputed every time.
 #if AO_ONLY
-	float ambientCoef = CalculateAO(HitWorldPosition(), g_sceneCB.numSamplesToUse, triangleNormal);
+	float ambientCoef = CalculateAO(HitWorldPosition(), 0, g_sceneCB.numSamplesToUse, triangleNormal);
 	float4 color = ambientCoef * float4(0.75, 0.75, 0.75, 0.75);
 #else
     // Shadow component.
@@ -717,7 +722,7 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
   //  bool shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, rayPayload.recursionDepth);
 	
     // Calculate final color.
-	float ambientCoef = CalculateAO(HitWorldPosition(), g_sceneCB.numSamplesToUse, triangleNormal);
+	float ambientCoef = CalculateAO(HitWorldPosition(), 0, g_sceneCB.numSamplesToUse, triangleNormal);
 	float4 color = float4(1, 0, 0, 0); //ToDo
     //float3 phongColor = CalculatePhongLighting(triangleNormal, shadowRayHit, ambient, l_materialCB.diffuse, l_materialCB.specular, l_materialCB.specularPower);
 	//float4 color =  float4(phongColor, 1);

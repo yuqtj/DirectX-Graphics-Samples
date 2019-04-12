@@ -530,7 +530,7 @@ void DeviceResources::Prepare(D3D12_RESOURCE_STATES beforeState)
 }
 
 // Present the contents of the swap chain to the screen.
-void DeviceResources::Present(D3D12_RESOURCE_STATES beforeState)
+void DeviceResources::Present(D3D12_RESOURCE_STATES beforeState, UINT syncInterval)
 {
     if (beforeState != D3D12_RESOURCE_STATE_PRESENT)
     {
@@ -546,14 +546,14 @@ void DeviceResources::Present(D3D12_RESOURCE_STATES beforeState)
     {
         // Recommended to always use tearing if supported when using a sync interval of 0.
         // Note this will fail if in true 'fullscreen' mode.
-        hr = m_swapChain->Present(0, DXGI_PRESENT_ALLOW_TEARING);
+        hr = m_swapChain->Present(syncInterval != UINT_MAX ? syncInterval : 0, DXGI_PRESENT_ALLOW_TEARING);
     }
     else
     {
         // The first argument instructs DXGI to block until VSync, putting the application
         // to sleep until the next VSync. This ensures we don't waste any cycles rendering
         // frames that will never be displayed to the screen.
-        hr = m_swapChain->Present(1, 0);
+        hr = m_swapChain->Present(syncInterval != UINT_MAX ? syncInterval : 1, 0);
     }
 
     // If the device was reset we must completely reinitialize the renderer.

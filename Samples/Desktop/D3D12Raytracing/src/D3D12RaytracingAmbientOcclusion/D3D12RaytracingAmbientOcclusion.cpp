@@ -206,8 +206,7 @@ namespace SceneArgs
 
     // ToDo add Weights On/OFF - 
     // RTAO Denoising
-    const WCHAR* VarianceFilterModes[GpuKernels::CalculateVariance::FilterType::Count] = { L"Bilateral5x5", L"Bilateral7x7" };
-    EnumVar VarianceFilterMode(L"Render/AO/RTAO/Denoising/Variance filter", GpuKernels::CalculateVariance::FilterType::Bilateral5x5, GpuKernels::CalculateVariance::FilterType::Count, VarianceFilterModes);
+    IntVar RTAOVarianceFilterKernelWdith(L"Render/AO/RTAO/Denoising/Variance filter/Kernel width", 7, 1, 11, 2);
     BoolVar UseSpatialVariance(L"Render/AO/RTAO/Denoising/Use spatial variance", true);
     BoolVar ApproximateSpatialVariance(L"Render/AO/RTAO/Denoising/Approximate spatial variance", false);
     BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale/Enabled", true);
@@ -439,9 +438,13 @@ void D3D12RaytracingAmbientOcclusion::OnInit()
         DXGI_FORMAT_UNKNOWN,
         FrameCount,
         D3D_FEATURE_LEVEL_11_0,
+#if ENABLE_VSYNC
+        0,
+#else
         // Sample shows handling of use cases with tearing support, which is OS dependent and has been supported since TH2.
         // Since the DXR requires October 2018 update, we don't need to handle non-tearing cases.
         DeviceResources::c_RequireTearingSupport,
+#endif
         m_adapterIDoverride
         );
     m_deviceResources->RegisterDeviceNotify(this);
@@ -982,12 +985,14 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         ranges[Slot::GBufferDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 13);  // 1 output depth texture
         ranges[Slot::GbufferNormalRGB].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 14);  // 1 output normal texture
         ranges[Slot::AORayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 15);  // 1 output ray hit distance texture
+        
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
         ranges[Slot::PartialDepthDerivatives].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 16);  // 1 output partial depth derivative texture
 #endif
         ranges[Slot::GBufferResourcesIn].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input GBuffer textures
         ranges[Slot::EnvironmentMap].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12);  // 1 input environment map texture
         ranges[Slot::FilterWeightSum].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 13);  // 1 input filter weight sum texture
+        ranges[Slot::AOFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 14);  // 1 input AO frame age
 
         CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
         rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
@@ -1000,6 +1005,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         rootParameters[Slot::GbufferNormalRGB].InitAsDescriptorTable(1, &ranges[Slot::GbufferNormalRGB]);
         rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[Slot::FilterWeightSum]);
         rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::AORayHitDistance]);
+        rootParameters[Slot::AOFrameAge].InitAsDescriptorTable(1, &ranges[Slot::AOFrameAge]);
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
         rootParameters[Slot::PartialDepthDerivatives].InitAsDescriptorTable(1, &ranges[Slot::PartialDepthDerivatives]);
 #endif
@@ -1168,9 +1174,14 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingOutputResource()
 
 // ToDo move remove
 #if FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT
+This has issue with small variance geting rounded to 0...
 DXGI_FORMAT texFormat = DXGI_FORMAT_R8_UNORM;       // ToDo rename to coefficient or avoid using same variable for different types.
 UINT texFormatByteSize = 1;
+#elif FLOAT_TEXTURE_AS_R16_FLOAT_2BYTE_FORMAT
+DXGI_FORMAT texFormat = DXGI_FORMAT_R16_FLOAT;       // ToDo rename to coefficient or avoid using same variable for different types.
+UINT texFormatByteSize = 1;
 #else
+this has issues with variance going negative
 DXGI_FORMAT texFormat = DXGI_FORMAT_R32_FLOAT;
 UINT texFormatByteSize = 4;
 #endif
@@ -1811,7 +1822,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 		m_vBottomLevelAS[0].Initialize(device, buildFlags, SquidRoomAssets::StandardIndexFormat, SquidRoomAssets::StandardIndexStride, SquidRoomAssets::StandardVertexStride, m_geometryInstances[geometryType]);
 		m_numTrianglesInTheScene = m_numTriangles[geometryType];
 		
-		m_vBottomLevelAS[0].SetInstanceContributionToHitGroupIndex(0);	// ToDo fix hack
+		m_vBottomLevelAS[0].SetInstanceContributionToHitGroupIndex(0);
 		maxScratchResourceSize = max(m_vBottomLevelAS[0].RequiredScratchSize(), maxScratchResourceSize);
 		m_ASmemoryFootprint += m_vBottomLevelAS[0].RequiredResultDataSizeInBytes();
 
@@ -2352,13 +2363,13 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
         m_calculateVarianceKernel.Execute(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
-            static_cast<GpuKernels::CalculateVariance::FilterType>(static_cast<UINT>(SceneArgs::VarianceFilterMode)),
             m_raytracingWidth,
             m_raytracingHeight,
             AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
             m_varianceResource.gpuDescriptorWriteAccess,
+            SceneArgs::RTAOVarianceFilterKernelWdith,
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
             SceneArgs::ApproximateSpatialVariance,
@@ -2749,13 +2760,13 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
         m_calculateVarianceKernel.Execute(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
-            static_cast<GpuKernels::CalculateVariance::FilterType>(static_cast<UINT>(SceneArgs::VarianceFilterMode)),
             width,
             height,
             inValueResource.gpuDescriptorReadAccess,
             inNormalDepthResource.gpuDescriptorReadAccess,
             inDepthResource.gpuDescriptorReadAccess,
             varianceResource->gpuDescriptorWriteAccess,
+            SceneArgs::RTAOVarianceFilterKernelWdith,
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
             SceneArgs::ApproximateSpatialVariance,
@@ -3352,6 +3363,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
 	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));   // ToDo let AO have its own CB.
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::FilterWeightSum, AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
+
+    UINT TC_readID = m_temporalCacheReadResourceIndex;
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOFrameAge, m_temporalCache[TC_readID][TemporalCache::FrameAge].gpuDescriptorReadAccess);
 
 	// Bind output RT.
 	// ToDo remove output and rename AOout
@@ -4133,8 +4147,11 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
         m_uiLayer->Render(m_deviceResources->GetCurrentFrameIndex());
     }
     
-    m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT);
-
+#if ENABLE_VSYNC
+    m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 1);
+#else
+    m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
+#endif
     // ToDo move
     m_temporalCacheReadResourceIndex = (m_temporalCacheReadResourceIndex + 1) % 2;
 }

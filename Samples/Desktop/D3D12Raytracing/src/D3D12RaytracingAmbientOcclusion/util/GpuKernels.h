@@ -413,12 +413,6 @@ namespace GpuKernels
     class CalculateVariance
     {
     public:
-        enum FilterType {
-            Bilateral5x5 = 0,
-            Bilateral7x7,
-            Count
-        };
-
         void Release()
         {
             assert(0 && L"ToDo");
@@ -428,13 +422,13 @@ namespace GpuKernels
         void Execute(
             ID3D12GraphicsCommandList* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
-            FilterType type,
             UINT width,
             UINT height,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+            UINT kernelWidth,
             float depthSigma,
             float normalSigma,
             bool useApproximateVariance = true,
@@ -443,7 +437,7 @@ namespace GpuKernels
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
-        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
     };
 

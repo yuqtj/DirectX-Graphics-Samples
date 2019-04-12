@@ -69,7 +69,7 @@ namespace DX
 
 		void ResetCommandAllocatorAndCommandlist();
         void Prepare(D3D12_RESOURCE_STATES beforeState = D3D12_RESOURCE_STATE_PRESENT);
-        void Present(D3D12_RESOURCE_STATES beforeState = D3D12_RESOURCE_STATE_RENDER_TARGET);
+        void Present(D3D12_RESOURCE_STATES beforeState = D3D12_RESOURCE_STATE_RENDER_TARGET, UINT syncInterval = UINT_MAX);
         void ExecuteCommandList(bool force = false);
         void WaitForGpu() noexcept;
 

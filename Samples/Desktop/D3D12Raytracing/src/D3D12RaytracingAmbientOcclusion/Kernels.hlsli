@@ -12,6 +12,7 @@
 #define HLSL
 
 
+// ToDo
 // Note: [3/12/2019] DXC fails to compile with both /Od /Zi specified when a global symbol is defined under a namespace. Workaround: remove /Od.
 
 namespace FilterKernel
@@ -62,5 +63,8 @@ namespace FilterKernel
         { Kernel1D[3] * Kernel1D[0], Kernel1D[3] * Kernel1D[1], Kernel1D[3] * Kernel1D[2], Kernel1D[3] * Kernel1D[3], Kernel1D[3] * Kernel1D[4] },
         { Kernel1D[4] * Kernel1D[0], Kernel1D[4] * Kernel1D[1], Kernel1D[4] * Kernel1D[2], Kernel1D[4] * Kernel1D[3], Kernel1D[4] * Kernel1D[4] },
     };
+#elif defined(BOX_KERNEL_7X7)
+    static const unsigned int Radius = 3;
+    static const unsigned int Width = 1 + 2 * Radius;
 #endif
 }

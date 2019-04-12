@@ -278,14 +278,8 @@
     <FxCompile Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="CalculateVariance_Bilateral5x5CS.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="util\GaussianFilter3x3CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
-    <FxCompile Include="CalculateVariance_Bilateral7x7CS.hlsl">
-      <Filter>Assets\Shaders</Filter>
     </FxCompile>
     <FxCompile Include="util\DownsampleDepthAwareFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
@@ -346,6 +340,9 @@
     </FxCompile>
     <FxCompile Include="util\RTAO_TemporalCache_ReverseReprojectCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="CalculateVariance_BilateralFilterCS.hlsl">
+      <Filter>Assets\Shaders</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

@@ -74,7 +74,8 @@
 #define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
 
 // ToDo 16bit per component normals?
-#define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 1
+#define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 0    // ToDo
+#define FLOAT_TEXTURE_AS_R16_FLOAT_2BYTE_FORMAT 1
 #define OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL 0
 #define GBUFFER_RAYLENGTH_ALONG_CENTER_CAMERA_EYE_RAY 0 // Incompatible with reflected/refracted rays
 #define GBUFFER_AO_NORMAL_VISUALIZATION 0
@@ -90,6 +91,10 @@
 #define PACK_NORMAL_AND_DEPTH 1
 
 #define ADAPTIVE_KERNEL_SIZE 1
+
+#define AO_PROGRESSIVE_SAMPLING 0
+
+#define ENABLE_VSYNC 0
 
 #define BLUR_AO 1
 #define ATROUS_DENOISER 1
@@ -332,6 +337,7 @@ struct RNGConstantBuffer
     XMUINT2 grid;      // Grid resolution
 };
 
+// ToDo remove obsolete params in cbs
 
 struct AtrousWaveletTransformFilterConstantBuffer
 {
@@ -359,6 +365,9 @@ struct AtrousWaveletTransformFilterConstantBuffer
     float varianceSigmaScaleOnSmallKernels;
     bool usingBilateralDownsampledBuffers;
     UINT padding;
+
+    UINT kernelWidth;
+    UINT padding2[3];
 };
 
 
@@ -516,7 +525,8 @@ struct DownAndUpsampleFilterConstantBuffer
 struct PrimitiveConstantBuffer
 {
 	UINT     materialID;
-    XMUINT3   padding;
+    UINT     BLASindex;
+    XMUINT2   padding;
 };
 
 struct PrimitiveMaterialBuffer
@@ -535,6 +545,7 @@ struct PrimitiveMaterialBuffer
 // Attributes per primitive instance.
 struct PrimitiveInstanceConstantBuffer
 {
+    // ToDo should this be padded?
     UINT instanceIndex;  
     UINT primitiveType; // Procedural primitive type
 };

@@ -21,7 +21,7 @@ RWTexture2D<float> g_outVariance : register(u0);
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
 
-void AddFilterContribution(inout float weightedValueSum, inout float weightedSquaredValueSum, inout float weightSum, inout UINT numWeights, in float value, in float depth, in float3 normal, float obliqueness, in uint row, in uint col, in uint2 DTid)
+void AddFilterContribution(inout float weightedValueSum, inout float weightedSquaredValueSum, inout float weightSum, inout UINT numWeights, in float value, in float depth, in float3 normal, float obliqueness, in uint kernelRadius, in uint row, in uint col, in uint2 DTid)
 {
     const float normalSigma = cb.normalSigma;
 #if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
@@ -30,7 +30,7 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
     const float depthSigma = cb.depthSigma;
 #endif
 
-    int2 id = int2(DTid) + (int2(row - 3, col - 3) );
+    int2 id = int2(DTid) + (int2(row - kernelRadius, col - kernelRadius) );
     if (id.x >= 0 && id.y >= 0 && id.x < cb.textureDim.x && id.y < cb.textureDim.y)
     {
         float iValue = g_inValues[id];
@@ -45,7 +45,7 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
 #if PACK_NORMAL_AND_DEPTH
         float iDepth = normal4.w;
 #else
-        float  iDepth =  g_inDepth[id];
+        float  iDepth = g_inDepth[id];
 #endif
 
         float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma)) : 1.f;
@@ -91,66 +91,26 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightedSquaredValueSum = value * value;
     float weightSum = 1.f;  // ToDo check for missing value
 
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 0, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 0, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 0, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 0, 3, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 0, 4, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 0, 5, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 0, 6, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 1, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 1, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 1, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 1, 3, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 1, 4, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 1, 5, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 1, 6, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 2, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 2, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 2, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 2, 3, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 2, 4, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 2, 5, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 2, 6, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 3, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 3, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 3, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 3, 4, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 3, 5, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 3, 6, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 4, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 4, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 4, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 4, 3, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 4, 4, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 4, 5, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 4, 6, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 5, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 5, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 5, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 5, 3, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 5, 4, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 5, 5, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 5, 6, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 6, 0, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 6, 1, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 6, 2, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 6, 3, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 6, 4, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 6, 5, DTid);
-    AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, 6, 6, DTid);
+    const uint kernelRadius = cb.kernelWidth >> 1;
 
-    float variance;
-    if (numWeights > 1)
+   // [unroll]
+    for (UINT r = 0; r < cb.kernelWidth; r++)
+       // [unroll]
+        for (UINT c = 0; c < cb.kernelWidth; c++)
+            if (r != kernelRadius || c != kernelRadius)
+                 AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, kernelRadius, r, c, DTid);
+
+    float variance = 0;
+    if (numWeights > 1 && weightSum > FLT_EPSILON)
     {
-        float invWeightSum = weightSum > 0.0001f ? 1 / weightSum : 0.f;
+        float invWeightSum = 1 / weightSum;
         float mean = invWeightSum * weightedValueSum;
+        // ToDo comment why N/N-1
         variance = (numWeights / float(numWeights - 1)) * (invWeightSum * weightedSquaredValueSum - mean * mean);
+
+        variance = max(0, variance);    // Ensure variance doesn't go negative due to imprecision.
     }
-    else
-    {
-        variance = 0;
-    }
+
     g_outVariance[DTid] = variance;
 }
 #elif 1

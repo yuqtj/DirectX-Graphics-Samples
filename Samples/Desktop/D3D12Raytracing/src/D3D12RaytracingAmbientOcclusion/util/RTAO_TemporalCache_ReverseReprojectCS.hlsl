@@ -247,8 +247,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
         mergedValue = lerp(cachedValue, value, a);
+        
+        // ToDo If no valid samples found:
+        //  - use largest motion vector from 3x3
+        //  - try 3x3 area
+        //  - default to average?
     }
-    else
+    else // ToDo initialize values to this instead of branch?
     {
         isDisoccluded = true;
         mergedValue = value;
