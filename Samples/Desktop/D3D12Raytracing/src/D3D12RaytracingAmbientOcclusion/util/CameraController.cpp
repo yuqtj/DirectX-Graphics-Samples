@@ -22,7 +22,7 @@ CameraController::CameraController(Camera& camera) : m_camera(camera)
 	m_MoveSpeed = 5.0f;
 	m_StrafeSpeed = 5.0f;
 #if ONLY_SQUID_SCENE_BLAS
-	m_MoveSpeed *= 50;
+	m_MoveSpeed *= 20;
 	m_StrafeSpeed *= 50;
 #endif
 	m_MouseSensitivityX = 1.0f;
@@ -54,6 +54,9 @@ bool CameraController::Update(float deltaTime)
     Camera prevCameraState = m_camera;
 
 	float timeScale = deltaTime;
+#if MOVE_ONCE_ON_STRAFE
+    timeScale = 0.016f;
+#endif
 
     if (GameInput::IsFirstPressed(GameInput::kLThumbClick) || GameInput::IsFirstPressed(GameInput::kKey_lshift))
         m_FineMovement = !m_FineMovement;
@@ -83,6 +86,9 @@ bool CameraController::Update(float deltaTime)
         (GameInput::IsPressed(GameInput::kKey_e) ? 1.f: 0.0f) +
         (GameInput::IsPressed(GameInput::kKey_q) ? -1.f: 0.0f)
       );
+#if MOVE_ONCE_ON_STRAFE
+    strafe *= GameInput::IsFirstPressed(GameInput::kKey_a) || GameInput::IsFirstPressed(GameInput::kKey_d) ? 1 : 0;
+#endif
 
     if (m_Momentum)
     {
@@ -102,7 +108,7 @@ bool CameraController::Update(float deltaTime)
  	else if (GameInput::IsPressed(GameInput::kMouse1))
 	{
 		yaw += -1 * GameInput::GetAnalogInput(GameInput::kAnalogMouseX) * m_MouseSensitivityX;
-		pitch += -1 * GameInput::GetAnalogInput(GameInput::kAnalogMouseY) * m_MouseSensitivityY;
+    	pitch += -1 * GameInput::GetAnalogInput(GameInput::kAnalogMouseY) * m_MouseSensitivityY;
 	}
 	// ToDo camera moves too fast sometimes going foward/back (when moving mouse as well?)
 #if CAMERA_PRESERVE_UP_ORIENTATION
@@ -132,6 +138,7 @@ bool CameraController::Update(float deltaTime)
 #endif
 	}
 
+    // ToDO remove?
     return memcmp(&prevCameraState, &m_camera, sizeof(m_camera)) != 0;
 }
 

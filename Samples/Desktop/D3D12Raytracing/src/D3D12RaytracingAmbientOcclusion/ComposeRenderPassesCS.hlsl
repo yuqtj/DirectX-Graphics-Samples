@@ -100,7 +100,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
                 color = frameAge == 1 ? float4(1, 0, 0, 1) : color;
 
 
-                float normalizedFrameAge = min(1.f, frameAge / 64.f);
+                float normalizedFrameAge = min(1.f, frameAge / 32.f);
                 float3 minFrameAgeColor = float3(153, 18, 15) / 255;
                 float3 maxFrameAgeColor = float3(170, 220, 200) / 255;
                 color = float4(lerp(minFrameAgeColor, maxFrameAgeColor, normalizedFrameAge), 1);

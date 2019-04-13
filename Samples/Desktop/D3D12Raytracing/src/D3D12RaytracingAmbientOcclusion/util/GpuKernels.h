@@ -63,11 +63,7 @@ namespace GpuKernels
 			assert(0 && L"ToDo");
 		}
 
-		void Initialize(ID3D12Device* device);
-		void CreateInputResourceSizeDependentResources(
-			ID3D12Device* device,
-			UINT width,
-			UINT height);
+		void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
 		void Execute(
 			ID3D12GraphicsCommandList* commandList,
 			UINT width,
@@ -82,6 +78,7 @@ namespace GpuKernels
 		std::vector<RWGpuResource>			m_csReduceSumOutputs;
 		std::vector<ComPtr<ID3D12Resource>>	m_readbackResources;
 		ConstantBuffer<DownsampleFilterConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
 	};
 
 
@@ -99,11 +96,7 @@ namespace GpuKernels
 			assert(0 && L"ToDo");
 		}
 
-		void Initialize(ID3D12Device* device, Type type);
-		void CreateInputResourceSizeDependentResources(
-			ID3D12Device* device,
-			UINT width,
-			UINT height);
+		void Initialize(ID3D12Device* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
 		void Execute(
 			ID3D12GraphicsCommandList* commandList,
 			UINT width,
@@ -116,6 +109,7 @@ namespace GpuKernels
 		ComPtr<ID3D12RootSignature>         m_rootSignature;
 		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
 		ConstantBuffer<DownsampleFilterConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
 	};
 
     // ToDo rename to GBuffer downsample
@@ -198,7 +192,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, Type type, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList* commandList,
             UINT width,
@@ -209,7 +203,6 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDistanceDerivativeResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
-            UINT perFrameInstanceId = 0,
             bool useBilinearWeights = true,
             bool useDepthWeights = true,
             bool useNormalWeights = true,
@@ -219,6 +212,7 @@ namespace GpuKernels
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
         ConstantBuffer<DownAndUpsampleFilterConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
     };
 
     // ToDo rename
@@ -266,7 +260,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList* commandList,
             UINT width,
@@ -274,13 +268,14 @@ namespace GpuKernels
             FilterType type,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
-            UINT perFrameInstanceId = 0);
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
+
         ConstantBuffer<GaussianFilterConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
     };
 
 
@@ -337,7 +332,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, UINT maxFilterPasses, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device* device, UINT maxFilterPasses, UINT frameCount, UINT numCallsPerFrame = 1);
         void CreateInputResourceSizeDependentResources(
             ID3D12Device* device,
             DX::DescriptorHeap* descriptorHeap,
@@ -370,8 +365,7 @@ namespace GpuKernels
             UINT minKernelWidth = 5,
             UINT maxKernelWidth = 101,
             float varianceSigmaScaleOnSmallKernels = 2.f,
-            bool usingBilateralDownsampledBuffers = false,
-            UINT perFrameInstanceId = 0);
+            bool usingBilateralDownsampledBuffers = false);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -381,6 +375,7 @@ namespace GpuKernels
         RWGpuResource			            m_filterWeightOutput;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CBfilterWeigth;
+        UINT                                m_CBinstanceID = 0;
         UINT                                m_maxFilterPasses = 0;
     };
 
@@ -394,20 +389,20 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
-            UINT perFrameInstanceId = 0);
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
     };
 
     class CalculateVariance
@@ -418,7 +413,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -427,57 +422,22 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
-            UINT kernelWidth,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputVarianceResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputMeanResourceHandle,
             float depthSigma,
             float normalSigma,
-            bool useApproximateVariance = true,
-            bool pespectiveCorrectDepthInterpolation = false,
-            UINT perFrameInstanceId = 0);
+            bool outputMean,
+            bool useDepthWeights,
+            bool useNormalWeights,
+            UINT kernelWidth);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
+        ConstantBuffer<CalculateVariance_BilateralFilterConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
+        UINT                                m_CBinstanceID = 0;
     };
-
-    // ToDo bundle  RTAO ones together?
-    class CalculateVariance2
-    {
-    public:
-        enum FilterType {
-            Bilateral5x5 = 0,
-            Bilateral7x7,
-            Count
-        };
-
-        void Release()
-        {
-            assert(0 && L"ToDo");
-        }
-
-        void Initialize(ID3D12Device* device);
-        void Execute(
-            ID3D12GraphicsCommandList* commandList,
-            ID3D12DescriptorHeap* descriptorHeap,
-            FilterType type,
-            UINT width,
-            UINT height,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
-            float depthSigma,
-            float normalSigma,
-            bool useApproximateVariance = true);
-
-    private:
-        ComPtr<ID3D12RootSignature>         m_rootSignature;
-        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
-        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
-    };
-
-
+       
     class RTAO_TemporalCache_ReverseReproject
     {
     public:
@@ -487,7 +447,7 @@ namespace GpuKernels
         }
 
         // ToDo set default parameters
-        void Initialize(ID3D12Device* device, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList* commandList,
             UINT width,
@@ -496,6 +456,8 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameVarianceResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalResourceHandle,
@@ -512,12 +474,14 @@ namespace GpuKernels
             bool useDepthWeights,
             bool useNormalWeigths,
             bool forceUseMinSmoothingFactor,
-            UINT perFrameInstanceId = 0);
+            bool clampCachedValues,
+            bool clampStdDevGamma);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
         ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
     };
 
 }

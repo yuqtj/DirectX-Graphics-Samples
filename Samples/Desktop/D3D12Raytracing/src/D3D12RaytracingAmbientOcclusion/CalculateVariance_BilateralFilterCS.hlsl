@@ -15,11 +15,13 @@
 #include "RaytracingShaderHelper.hlsli"
 
 Texture2D<float> g_inValues : register(t0);
-Texture2D<float4> g_inNormal : register(t1);
-Texture2D<float> g_inDepth : register(t2);
+Texture2D<float> g_inDepth : register(t1);  // ToDo use from normal tex directly
+Texture2D<float4> g_inNormal : register(t2);
 RWTexture2D<float> g_outVariance : register(u0);
-ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
+RWTexture2D<float> g_outMean : register(u1);
+ConstantBuffer<CalculateVariance_BilateralFilterConstantBuffer> cb: register(b0);
 
+// ToDo add support for dxdy and perspective correct interpolation?
 
 void AddFilterContribution(inout float weightedValueSum, inout float weightedSquaredValueSum, inout float weightSum, inout UINT numWeights, in float value, in float depth, in float3 normal, float obliqueness, in uint kernelRadius, in uint row, in uint col, in uint2 DTid)
 {
@@ -48,8 +50,9 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
         float  iDepth = g_inDepth[id];
 #endif
 
-        float w_d = depthSigma > 0.01f ? exp(-abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma)) : 1.f;
-        float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1.f;
+        // ToDO don't read from the texture if the value is not used.
+        float w_d = cb.useDepthWeights ? exp(-abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma)) : 1.f;
+        float w_n = cb.useNormalWeights ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1.f;
         float w = w_n * w_d;
 
         float weightedValue = w * iValue;
@@ -101,16 +104,22 @@ void main(uint2 DTid : SV_DispatchThreadID)
                  AddFilterContribution(weightedValueSum, weightedSquaredValueSum, weightSum, numWeights, value, depth, normal, obliqueness, kernelRadius, r, c, DTid);
 
     float variance = 0;
+    float mean = 0;
     if (numWeights > 1 && weightSum > FLT_EPSILON)
     {
         float invWeightSum = 1 / weightSum;
-        float mean = invWeightSum * weightedValueSum;
+        mean = invWeightSum * weightedValueSum;
         // ToDo comment why N/N-1
         variance = (numWeights / float(numWeights - 1)) * (invWeightSum * weightedSquaredValueSum - mean * mean);
 
         variance = max(0, variance);    // Ensure variance doesn't go negative due to imprecision.
-    }
 
+
+    }
+    if (cb.outputMean)
+    {
+        g_outMean[DTid] = mean;
+    }
     g_outVariance[DTid] = variance;
 }
 #elif 1

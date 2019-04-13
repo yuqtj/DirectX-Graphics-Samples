@@ -226,7 +226,7 @@ namespace GpuKernels
 
 		// Performance optimization.
 		// To avoid stalling CPU until GPU is done, grab the data from a finished frame FrameCount ago.
-		// This is fine for the informational purposes of using the value for UI display only.
+		// This is fine for informational purposes such as using the value for UI display.
 		UINT* mappedData = nullptr;
 		CD3DX12_RANGE readRange(readBackBaseOffset, readBackBaseOffset + m_resultSize);
 		ThrowIfFailed(m_readbackResources[invocationIndex]->Map(0, &readRange, reinterpret_cast<void**>(&mappedData)));
@@ -249,7 +249,7 @@ namespace GpuKernels
 		}
 	}
 
-	void DownsampleBoxFilter2x2::Initialize(ID3D12Device* device)
+	void DownsampleBoxFilter2x2::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
 	{
 		// Create root signature.
 		{
@@ -281,20 +281,11 @@ namespace GpuKernels
 			ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
 			m_pipelineStateObject->SetName(L"Pipeline state object: DownsampleBoxFilter2x2");
 		}
-	}
 
-	void DownsampleBoxFilter2x2::CreateInputResourceSizeDependentResources(
-		ID3D12Device* device,
-		UINT width,
-		UINT height)
-	{
-		// Create shader resources
-		{
-			m_CB.Create(device, 1, L"Constant Buffer: DownsampleBoxFilter2x2");
-			m_CB->inputTextureDimensions = XMUINT2(width, height);
-			m_CB->invertedInputTextureDimensions = XMFLOAT2(1.f/width, 1.f/height);
-			m_CB.CopyStagingToGpu();
-		}
+        // Create shader resources
+        {
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: DownsampleBoxFilter2x2");
+        }
 	}
 
 	// Downsamples input resource.
@@ -310,7 +301,12 @@ namespace GpuKernels
 		using namespace RootSignature::DownsampleBoxFilter2x2;
 		using namespace DownsampleBoxFilter2x2;
 
-		PIXBeginEvent(commandList, 0, L"DownsampleBoxFilter2x2");
+        PIXBeginEvent(commandList, 0, L"DownsampleBoxFilter2x2");
+
+        m_CB->inputTextureDimensions = XMUINT2(width, height);
+        m_CB->invertedInputTextureDimensions = XMFLOAT2(1.f / width, 1.f / height);
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
 
 		// Set pipeline state.
 		{
@@ -344,7 +340,7 @@ namespace GpuKernels
 		}
 	}
 
-	void DownsampleGaussianFilter::Initialize(ID3D12Device* device, Type type)
+	void DownsampleGaussianFilter::Initialize(ID3D12Device* device, Type type, UINT frameCount, UINT numCallsPerFrame)
 	{
 		// Create root signature.
 		{
@@ -382,20 +378,11 @@ namespace GpuKernels
 			ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
 			m_pipelineStateObject->SetName(L"Pipeline state object: DownsampleGaussianFilter");
 		}
-	}
 
-	void DownsampleGaussianFilter::CreateInputResourceSizeDependentResources(
-		ID3D12Device* device,
-		UINT width,
-		UINT height)
-	{
-		// Create shader resources
-		{
-			m_CB.Create(device, 1, L"Constant Buffer: DownsampleGaussianFilter");
-			m_CB->inputTextureDimensions = XMUINT2(width, height);
-			m_CB->invertedInputTextureDimensions = XMFLOAT2(1.f / width, 1.f / height);
-			m_CB.CopyStagingToGpu();
-		}
+        // Create shader resources
+        {
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: DownsampleGaussianFilter");
+        }
 	}
 
 	// Downsamples input resource.
@@ -412,6 +399,13 @@ namespace GpuKernels
 		using namespace DownsampleGaussianFilter;
 
 		PIXBeginEvent(commandList, 0, L"DownsampleGaussianFilter");
+
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+
+        m_CB->inputTextureDimensions = XMUINT2(width, height);
+        m_CB->invertedInputTextureDimensions = XMFLOAT2(1.f / width, 1.f / height);
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
 
 		// Set pipeline state.
 		{
@@ -684,7 +678,7 @@ namespace GpuKernels
     }
 
     // ToDo test downsample,upsample on odd resolution
-    void UpsampleBilateralFilter::Initialize(ID3D12Device* device, Type type, UINT numCallsPerFrame)
+    void UpsampleBilateralFilter::Initialize(ID3D12Device* device, Type type, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -726,7 +720,7 @@ namespace GpuKernels
 
         // Create shader resources
         {
-            m_CB.Create(device, numCallsPerFrame, L"Constant Buffer: GaussianFilter");
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: GaussianFilter");
         }
     }
 
@@ -743,7 +737,6 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDistanceDerivativeResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
-        UINT perFrameInstanceId,
         bool useBilinearWeights,
         bool useDepthWeights,
         bool useNormalWeights,
@@ -752,19 +745,19 @@ namespace GpuKernels
         using namespace RootSignature::UpsampleBilateralFilter;
         using namespace UpsampleBilateralFilter;
 
+        PIXBeginEvent(commandList, 0, L"UpsampleBilateralFilter");
 
         m_CB->useBilinearWeights = useBilinearWeights;
         m_CB->useDepthWeights = useDepthWeights;
         m_CB->useNormalWeights = useNormalWeights;
         m_CB->useDynamicDepthThreshold = useDynamicDepthThreshold;
-        m_CB.CopyStagingToGpu(perFrameInstanceId);
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
 
 
         // Each shader execution processes 2x2 hiRes pixels
         width = CeilDivide(width, 2);
         height = CeilDivide(height, 2);
-               
-        PIXBeginEvent(commandList, 0, L"UpsampleBilateralFilter");
 
         // Set pipeline state.
         {
@@ -775,7 +768,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputHiResNormal, inputHiResNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputHiResPartialDistanceDerivative, inputHiResPartialDistanceDerivativeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
-            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
 
@@ -915,7 +908,7 @@ namespace GpuKernels
         }
     }
 
-    void GaussianFilter::Initialize(ID3D12Device* device, UINT numCallsPerFrame)
+    void GaussianFilter::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -957,7 +950,7 @@ namespace GpuKernels
 
         // Create shader resources
         {
-            m_CB.Create(device, numCallsPerFrame, L"Constant Buffer: GaussianFilter");
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: GaussianFilter");
         }
     }
 
@@ -972,19 +965,17 @@ namespace GpuKernels
         FilterType type,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
-        UINT perFrameInstanceId)
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
     {
         using namespace RootSignature::GaussianFilter;
         using namespace GaussianFilter;
-
-        assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
 
         PIXBeginEvent(commandList, 0, L"GaussianFilter");
 
         m_CB->textureDim = XMUINT2(width, height);
         m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
-        m_CB.CopyStagingToGpu(perFrameInstanceId);
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
 
         // Set pipeline state.
         {
@@ -992,7 +983,7 @@ namespace GpuKernels
             commandList->SetComputeRootSignature(m_rootSignature.Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
-            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
             commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
         }
 
@@ -1141,7 +1132,7 @@ namespace GpuKernels
     }
 
     // ToDo move type to execute
-    void AtrousWaveletTransformCrossBilateralFilter::Initialize(ID3D12Device* device, UINT maxFilterPasses, UINT numCallsPerFrame)
+    void AtrousWaveletTransformCrossBilateralFilter::Initialize(ID3D12Device* device, UINT frameCount, UINT maxFilterPasses, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -1209,8 +1200,8 @@ namespace GpuKernels
         {
             m_maxFilterPasses = maxFilterPasses;
             UINT numInstancesPerFrame = maxFilterPasses * numCallsPerFrame;
-            m_CB.Create(device, numInstancesPerFrame, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter");
-            m_CBfilterWeigth.Create(device, numInstancesPerFrame, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter FilterWeightSum");
+            m_CB.Create(device, frameCount * numInstancesPerFrame, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter");
+            m_CBfilterWeigth.Create(device, frameCount * numInstancesPerFrame, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter FilterWeightSum");
         }
     }
 
@@ -1269,15 +1260,14 @@ namespace GpuKernels
         UINT minKernelWidth,
         UINT maxKernelWidth,
         float varianceSigmaScaleOnSmallKernels,
-        bool usingBilateralDownsampledBuffers,
-        UINT perFrameInstanceId)
+        bool usingBilateralDownsampledBuffers)
     {
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
         using namespace AtrousWaveletTransformFilterCS;
 
-        assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
-
         PIXBeginEvent(commandList, 0, L"AtrousWaveletTransformCrossBilateralFilter");
+
+        m_CBinstanceID = ((m_CBinstanceID + 1) * m_maxFilterPasses) % m_CB.NumInstances();
 
         // Set pipeline state.
         {
@@ -1340,7 +1330,7 @@ namespace GpuKernels
             CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
             CB->textureDim = resourceDim;
             
-            CB.CopyStagingToGpu(perFrameInstanceId * m_maxFilterPasses + i);
+            CB.CopyStagingToGpu(m_CBinstanceID + i);
         }
 
         //
@@ -1379,7 +1369,7 @@ namespace GpuKernels
             for (UINT i = 0; i < numFilterPasses; i++)
 #endif
             {
-                commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, CB.GpuVirtualAddress(perFrameInstanceId * m_maxFilterPasses + i));
+                commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, CB.GpuVirtualAddress(m_CBinstanceID + i));
                                 
                 // Dispatch.
                 commandList->Dispatch(groupSize.x, groupSize.y, 1);
@@ -1443,7 +1433,7 @@ namespace GpuKernels
     }
 
     // ToDo move type to execute
-    void CalculatePartialDerivatives::Initialize(ID3D12Device* device, UINT numCallsPerFrame)
+    void CalculatePartialDerivatives::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -1473,7 +1463,7 @@ namespace GpuKernels
 
         // Create shader resources.
         {
-            m_CB.Create(device, numCallsPerFrame, L"Constant Buffer: CalculatePartialDerivatives");
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: CalculatePartialDerivatives");
         }
     }
 
@@ -1485,13 +1475,10 @@ namespace GpuKernels
         UINT width,
         UINT height,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
-        UINT perFrameInstanceId)
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
     {
         using namespace RootSignature::CalculatePartialDerivatives;
         using namespace DefaultComputeShaderParams;
-
-        assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
 
         // ToDo move out or rename - there are scoped timers in the caller.
         PIXBeginEvent(commandList, 0, L"CalculatePartialDerivatives");
@@ -1508,8 +1495,9 @@ namespace GpuKernels
         // Update the Constant Buffer.
         {
             m_CB->textureDim = XMUINT2(width, height);
-            m_CB.CopyStagingToGpu(perFrameInstanceId);
-            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
+            m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+            m_CB.CopyStagingToGpu(m_CBinstanceID);
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
         }
 
         // Dispatch.
@@ -1527,10 +1515,11 @@ namespace GpuKernels
         namespace CalculateVariance {
             namespace Slot {
                 enum Enum {
-                    Output = 0,
+                    OutputVariance = 0,
+                    OutputMean,
                     Input,
-                    Normals,
-                    Depths,
+                    Depth,
+                    Normal,
                     ConstantBuffer,
                     Count
                 };
@@ -1539,23 +1528,25 @@ namespace GpuKernels
     }
 
     // ToDo move type to execute
-    void CalculateVariance::Initialize(ID3D12Device* device, UINT numCallsPerFrame)
+    void CalculateVariance::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
             using namespace RootSignature::CalculateVariance;
 
-            CD3DX12_DESCRIPTOR_RANGE ranges[5];
-            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
-            ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // input normals
-            ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // input depths
-            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output filtered values
+            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
+            ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
+            ranges[Slot::Depth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // input depth
+            ranges[Slot::Normal].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // input normal
+            ranges[Slot::OutputVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output variance 
+            ranges[Slot::OutputMean].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // output mean 
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-            rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
-            rootParameters[Slot::Normals].InitAsDescriptorTable(1, &ranges[1]);
-            rootParameters[Slot::Depths].InitAsDescriptorTable(1, &ranges[2]);
-            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[3]);
+            rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
+            rootParameters[Slot::Normal].InitAsDescriptorTable(1, &ranges[Slot::Normal]);
+            rootParameters[Slot::Depth].InitAsDescriptorTable(1, &ranges[Slot::Depth]);
+            rootParameters[Slot::OutputVariance].InitAsDescriptorTable(1, &ranges[Slot::OutputVariance]);
+            rootParameters[Slot::OutputMean].InitAsDescriptorTable(1, &ranges[Slot::OutputMean]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -1574,7 +1565,7 @@ namespace GpuKernels
 
         // Create shader resources.
         {
-            m_CB.Create(device, numCallsPerFrame, L"Constant Buffer: CalculateVariance");
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: CalculateVariance");
         }
     }
 
@@ -1588,23 +1579,24 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,  // ToDo standardize Normal vs Normals
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
-        UINT kernelWidth,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputVarianceResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputMeanResourceHandle,
         float depthSigma,
         float normalSigma,
-        bool useApproximateVariance,
-        bool pespectiveCorrectDepthInterpolation,
-        UINT perFrameInstanceId)
+        bool outputMean,
+        bool useDepthWeights,
+        bool useNormalWeights,
+        UINT kernelWidth)
     {
         using namespace RootSignature::CalculateVariance;
         using namespace CalculateVariance_Bilateral;
 
         // ToDo replace asserts with runtime fails?
-        assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
-        assert(kernelWidth & 1 == 1 && L"KernelWidth must be an odd number so that width == radius + 1 + radius");
+        assert((kernelWidth & 1) == 1 && L"KernelWidth must be an odd number so that width == radius + 1 + radius");
 
         // ToDo move out or rename
-        PIXBeginEvent(commandList, 0, L"CalculateVariance_Bilateral5x5");
+        // ToDo add spaces to names?
+        PIXBeginEvent(commandList, 0, L"CalculateVariance_Bilateral");
 
         // Set pipeline state.
         {
@@ -1612,21 +1604,26 @@ namespace GpuKernels
             commandList->SetComputeRootSignature(m_rootSignature.Get());
             commandList->SetPipelineState(m_pipelineStateObject.Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::Normals, inputNormalsResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::Depths, inputDepthsResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Normal, inputNormalsResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Depth, inputDepthsResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputVariance, outputVarianceResourceHandle);
+            if (outputMean)
+            {
+                commandList->SetComputeRootDescriptorTable(Slot::OutputMean, outputMeanResourceHandle);
+            }
         }
 
         // Update the Constant Buffer.
+        m_CB->textureDim = XMUINT2(width, height);
         m_CB->depthSigma = depthSigma;
         m_CB->normalSigma = normalSigma;
-        m_CB->textureDim = XMUINT2(width, height);
-        m_CB->useApproximateVariance = useApproximateVariance;
-        m_CB->useAdaptiveKernelSize = false;    // ToDo remove
-        m_CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation; 
+        m_CB->outputMean = outputMean;
+        m_CB->useDepthWeights = useDepthWeights;
+        m_CB->useNormalWeights = useNormalWeights;
         m_CB->kernelWidth = kernelWidth;
-        m_CB.CopyStagingToGpu(perFrameInstanceId);
-        commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
+        commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
 
 
         // Dispatch.
@@ -1651,6 +1648,8 @@ namespace GpuKernels
                     InputCachedNormal,
                     InputCurrentFrameNormal,
                     InputCacheFrameAge,
+                    InputCurrentFrameMean,
+                    InputCurrentFrameVariance,
                     ConstantBuffer,
                     Count
                 };
@@ -1658,7 +1657,7 @@ namespace GpuKernels
         }
     }
 
-    void RTAO_TemporalCache_ReverseReproject::Initialize(ID3D12Device* device, UINT numCallsPerFrame)
+    void RTAO_TemporalCache_ReverseReproject::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -1672,17 +1671,21 @@ namespace GpuKernels
             ranges[Slot::InputCachedNormal].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);        // 1 input cached normal
             ranges[Slot::InputCurrentFrameNormal].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input current frame normal
             ranges[Slot::InputCacheFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);       // 1 input cache frame age
+            ranges[Slot::InputCurrentFrameMean].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);// 1 input current frame mean
+            ranges[Slot::InputCurrentFrameVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);// 1 input current frame variance
             ranges[Slot::OutputCachedValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);        // 1 output temporal cache value
             ranges[Slot::OutputFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);           // 1 output temporal cache frame age
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-            rootParameters[Slot::InputCachedValue].InitAsDescriptorTable(1, &ranges[Slot::InputCachedValue]);
             rootParameters[Slot::InputCurrentFrameValue].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameValue]);
-            rootParameters[Slot::InputCachedDepth].InitAsDescriptorTable(1, &ranges[Slot::InputCachedDepth]);
+            rootParameters[Slot::InputCachedValue].InitAsDescriptorTable(1, &ranges[Slot::InputCachedValue]);
             rootParameters[Slot::InputCurrentFrameDepth].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameDepth]);
-            rootParameters[Slot::InputCachedNormal].InitAsDescriptorTable(1, &ranges[Slot::InputCachedNormal]);
+            rootParameters[Slot::InputCachedDepth].InitAsDescriptorTable(1, &ranges[Slot::InputCachedDepth]);
             rootParameters[Slot::InputCurrentFrameNormal].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameNormal]);
+            rootParameters[Slot::InputCachedNormal].InitAsDescriptorTable(1, &ranges[Slot::InputCachedNormal]);
             rootParameters[Slot::InputCacheFrameAge].InitAsDescriptorTable(1, &ranges[Slot::InputCacheFrameAge]);
+            rootParameters[Slot::InputCurrentFrameMean].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameMean]);
+            rootParameters[Slot::InputCurrentFrameVariance].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameVariance]);
             rootParameters[Slot::OutputCachedValue].InitAsDescriptorTable(1, &ranges[Slot::OutputCachedValue]);
             rootParameters[Slot::OutputFrameAge].InitAsDescriptorTable(1, &ranges[Slot::OutputFrameAge]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
@@ -1706,7 +1709,7 @@ namespace GpuKernels
 
         // Create shader resources
         {
-            m_CB.Create(device, numCallsPerFrame, L"Constant Buffer: RTAO_TemporalCache_ReverseReproject");
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: RTAO_TemporalCache_ReverseReproject");
         }
     }
 
@@ -1719,6 +1722,8 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameVarianceResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalResourceHandle,
@@ -1735,12 +1740,11 @@ namespace GpuKernels
         bool useDepthWeigths,
         bool useNormalWeigths,
         bool forceUseMinSmoothingFactor,
-        UINT perFrameInstanceId)
+        bool clampCachedValues,
+        bool clampStdDevGamma)
     {
         using namespace RootSignature::RTAO_TemporalCache_ReverseReproject;
         using namespace DefaultComputeShaderParams;
-
-        assert(perFrameInstanceId < m_CB.NumInstances() && L"Per frame invocation count overflow");
 
         PIXBeginEvent(commandList, 0, L"RTAO_TemporalCache_ReverseReproject");
 
@@ -1756,7 +1760,10 @@ namespace GpuKernels
         m_CB->depthTolerance = depthTolerance;
         m_CB->textureDim = XMUINT2(width, height);
         m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
-        m_CB.CopyStagingToGpu(perFrameInstanceId);
+        m_CB->clampCachedValues = clampCachedValues;
+        m_CB->stdDevGamma = clampStdDevGamma;
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
 
         // Set pipeline state.
         {
@@ -1769,9 +1776,11 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputCachedNormal, inputTemporalCacheNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameNormal, inputCurrentFrameNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCacheFrameAge, inputTemporalCacheFrameAgeResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameMean, inputCurrentFrameMeanResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameVariance, inputCurrentFrameVarianceResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputCachedValue, outputTemporalCacheValueResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputFrameAge, outputTemporalCacheFrameAgeResourceHandle);
-            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(perFrameInstanceId));
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
 

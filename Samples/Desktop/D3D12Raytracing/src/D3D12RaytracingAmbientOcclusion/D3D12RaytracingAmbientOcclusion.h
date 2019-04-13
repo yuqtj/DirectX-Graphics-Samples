@@ -110,15 +110,12 @@ private:
 
     GpuKernels::AtrousWaveletTransformCrossBilateralFilter m_atrousWaveletTransformFilter;
     const UINT                          MaxAtrousWaveletTransformFilterInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for calculating ImportanceMap
-    UINT                                m_atrousWaveletTransformFilterPerFrameInstanceId;
 
     GpuKernels::CalculateVariance       m_calculateVarianceKernel;
-    const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame = MaxAtrousWaveletTransformFilterInvocationsPerFrame;
-    UINT                                m_calculateVarianceKernelInstancePerFrameInstanceId;    // ToDo cleanup
+    const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame = MaxAtrousWaveletTransformFilterInvocationsPerFrame + 1; // +1 for TAO 
 
     GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
-    const UINT                          MaxGaussianSmoothingKernelInvocationsPerFrame = c_MaxDenoisingScaleLevels;
-    UINT                                m_gaussianSmoothingKernelPerFrameInstanceId;
+    const UINT                          MaxGaussianSmoothingKernelInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for TAO 
 
 	// ToDo combine kernels to an array
     GpuKernels::RTAO_TemporalCache_ReverseReproject m_temporalCacheReverseReprojectKernel;
@@ -207,6 +204,8 @@ private:
 
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;
+    RWGpuResource m_meanResource;
+    RWGpuResource m_smoothedMeanResource;
 
     // Multi-scale
     // ToDo Cleanup

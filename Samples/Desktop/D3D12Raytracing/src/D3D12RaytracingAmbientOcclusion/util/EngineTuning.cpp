@@ -309,6 +309,7 @@ wstring BoolVar::ToString(void) const
     return m_Flag ? L"on" : L"off";
 } 
 
+// ToDo rename/remove
 void BoolVar::SetValue(FILE* file, const wstring& setting)
 {	
     wstring pattern = L"\n L" + setting + L": %s";

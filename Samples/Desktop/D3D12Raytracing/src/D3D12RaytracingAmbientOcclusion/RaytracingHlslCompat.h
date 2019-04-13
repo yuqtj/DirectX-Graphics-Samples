@@ -37,6 +37,7 @@
 #define USE_ENVIRONMENT_MAP 1
 #define DEBUG_AS 0
 
+#define MOVE_ONCE_ON_STRAFE 0
 #define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
 
 #define ALLOW_MIRRORS 1
@@ -50,6 +51,7 @@
 
 #define CAMERA_PRESERVE_UP_ORIENTATION 1
 
+#define DISABLE_DENOISING 0
 #define DOUBLE_ALL_FACES 0
 #define ADD_INVERTED_FACE 0
 #define CORRECT_NORMALS 0
@@ -70,6 +72,7 @@
 
 #define PRINT_OUT_TC_MATRICES 0
 #define DEBUG_CAMERA_POS 1
+#define PRINT_OUT_CAMERA_CONFIG 0
 
 #define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
 
@@ -94,7 +97,7 @@
 
 #define AO_PROGRESSIVE_SAMPLING 0
 
-#define ENABLE_VSYNC 0
+#define ENABLE_VSYNC 1
 
 #define BLUR_AO 1
 #define ATROUS_DENOISER 1
@@ -370,6 +373,22 @@ struct AtrousWaveletTransformFilterConstantBuffer
     UINT padding2[3];
 };
 
+// ToDo remove obsolete params in cbs
+
+struct CalculateVariance_BilateralFilterConstantBuffer
+{
+    XMUINT2 textureDim;
+    float depthSigma;
+    float normalSigma;
+    float padding;
+
+    BOOL outputMean;
+    BOOL useDepthWeights;
+    BOOL useNormalWeights;
+    UINT kernelWidth;
+};
+
+
 
 // ToDo split CB?
 struct SceneConstantBuffer
@@ -504,6 +523,10 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     BOOL useDepthWeights;
     BOOL useNormalWeights;
     float padding;
+
+    BOOL clampCachedValues;
+    UINT stdDevGamma;
+    UINT padding2[2];
 };
 
 

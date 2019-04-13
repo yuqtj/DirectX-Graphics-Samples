@@ -75,6 +75,10 @@ namespace Scene
 
 #if DEBUG_CAMERA_POS
 #if 1
+            camera.position.eye = { -28.2961f, 1.7579f, 0.0533502f, 1 };
+            camera.position.at = { -27.5242f, 1.49657f, 0.633411f, 1 };
+            camera.position.up = { 0.291956f, 0.92989f, 0.223728f, 0 };
+#elif 1
             camera.position.eye = { -31.7151f, 7.36261f, -15.3756f, 1 };
             camera.position.at = { -31.1283f, 7.10824f, -14.6065f, 1 };
             camera.position.up = { 0.216289f, 0.932514f, 0.289179f, 0 };

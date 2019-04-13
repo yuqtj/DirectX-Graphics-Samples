@@ -21,6 +21,8 @@ Texture2D<float> g_texInputCurrentFrameDepth : register(t3);
 Texture2D<float4> g_texInputCachedNormal : register(t4);
 Texture2D<float4> g_texInputCurrentFrameNormal : register(t5);
 Texture2D<uint> g_texInputCacheFrameAge : register(t6);
+Texture2D<float> g_texInputCurrentFrameMean : register(t7);
+Texture2D<float> g_texInputCurrentFrameVariance : register(t8);
 
 RWTexture2D<float> g_texOutputCachedValue : register(u0);
 RWTexture2D<uint> g_texOutputCacheFrameAge : register(u1);
@@ -99,24 +101,29 @@ float4 GetClipSpacePosition(in uint2 DTid, in float linearDepth)
 
 float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float2 offset, in uint2 indices[4])
 {
+    float4 depthMask = 1;
+    if (cb.useDepthWeights)
+    {
 #if 0
-  // ToDo remove - blurs more/incorrectly
-    float4 depthDiffs = abs(SampleDistances - ActualDistance);
-    float4 depthWeightsMask = depthDiffs < cb.depthTolerance * ActualDistance;
+        // ToDo remove - blurs more/incorrectly
+        float4 depthDiffs = abs(SampleDistances - ActualDistance);
+        float4 depthWeightsMask = depthDiffs < cb.depthTolerance * ActualDistance;
 
-    // Weight the depths based of smallest difference.
-    float minDepthDiff = min(min(min(depthDiffs.x, depthDiffs.y), depthDiffs.z), depthDiffs.w);
-    depthWeights = min(depthWeightsMask * (minDepthDiff + 1e-6) / (depthDiffs + 1e-6), 1);
+        // Weight the depths based of smallest difference.
+        float minDepthDiff = min(min(min(depthDiffs.x, depthDiffs.y), depthDiffs.z), depthDiffs.w);
+        depthWeights = min(depthWeightsMask * (minDepthDiff + 1e-6) / (depthDiffs + 1e-6), 1);
 #endif
-    uint4 isWithinBounds = uint4(
-        IsWithinBounds(indices[0], cb.textureDim),
-        IsWithinBounds(indices[1], cb.textureDim),
-        IsWithinBounds(indices[2], cb.textureDim),
-        IsWithinBounds(indices[3], cb.textureDim));
+        uint4 isWithinBounds = uint4(
+            IsWithinBounds(indices[0], cb.textureDim),
+            IsWithinBounds(indices[1], cb.textureDim),
+            IsWithinBounds(indices[2], cb.textureDim),
+            IsWithinBounds(indices[3], cb.textureDim));
+        depthMask = isWithinBounds &&
+            abs(SampleDistances - ActualDistance) / ActualDistance < cb.depthTolerance;
 
-    float4 depthMask = isWithinBounds &&
-                       abs(SampleDistances - ActualDistance) / ActualDistance < cb.depthTolerance;
-  
+    }
+
+
     float4 normalWeights = 1;
     if (cb.useNormalWeights)
     {
@@ -136,6 +143,7 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         (1 - offset.x) * offset.y,
         offset.x * offset.y);
 
+    // ToDo use depth weights instead of mask?
     // ToDo can we prevent diffusion across plane?
     float4 weights = bilinearWeights * depthMask * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
 
@@ -172,8 +180,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float3 normal;
     float dummy;
     LoadDepthAndNormal(g_texInputCurrentFrameNormal, DTid, dummy, normal);
+    
 
     float4 clipSpacePos = GetClipSpacePosition(DTid, linearDepth);
+
 
     // Reverse project into previous frame
     float4 cacheClipSpacePos = mul(clipSpacePos, cb.reverseProjectionTransform);
@@ -233,19 +243,53 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float4 weights = BilateralResampleWeights(linearDepth, normal, vCacheDepths, cacheNormals, cachePixelOffset, indices);
     float weightSum = dot(1, weights);
 
+    // ToDo dedupe with GetClipSpacePosition()...
+    float2 xy = DTid + 0.5f;                            // Center in the middle of the pixel.
+    float2 currentFrameTexturePos = xy * cb.invTextureDim;
+
+    float aspectRatio = cb.textureDim.x / cb.textureDim.y;
+    float maxScreenSpaceReprojectionDistance = 0.01;// cb.minSmoothingFactor * 0.1f;
+    // ToDo scale this based on depth?
+    float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
+
     bool isCacheValueValid = weightSum > FLT_EPSILON;
+    //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
     uint isDisoccluded;
     uint frameAge;
+
+    uint maxFrameAge = 1 / 0.1 - 1;// minSmoothingFactor;
     if (isCacheValueValid)
     {
         isDisoccluded = false;
         float cachedValue = dot(weights, vCacheValues);
-        
-        float cacheFrameAge = dot(weights, vCacheFrameAge);       
-        frameAge = uint(cacheFrameAge + 0.5f);              // HLSL rounds down when converting float to uint, bump up the value by 0.5 before rounding.
-        float invFrameAge = 1.f / (frameAge + 1);
 
-        float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
+        float cacheFrameAge = dot(weights, vCacheFrameAge);
+        frameAge = uint(cacheFrameAge + 0.5f);              // HLSL rounds down when converting float to uint, bump up the value by 0.5 before rounding.
+
+        // Clamp value to mean +/- std.dev of local neighborhood to surpress ghosting on camera/object movements.
+        // This will prevent reusing values outside the expected range.
+        // Ref: Salvi2016, Temporal Super-sampling
+        float frameAgeClamp = 0;
+
+        if (cb.clampCachedValues)
+        {
+            float localMean = g_texInputCurrentFrameMean[DTid];
+            float localVariance = g_texInputCurrentFrameVariance[DTid];
+            float localStdDev = cb.stdDevGamma * sqrt(localVariance);
+            float prevCachedValue = cachedValue;
+            cachedValue = clamp(cachedValue, localMean - localStdDev, localMean + localStdDev); 
+            
+            // Scale the frame age based on how strongly the cached value got clamped.
+            // TODo frameAgeClamp = abs(cachedValue - prevCachedValue);
+
+        }
+        //frameAgeClamp = screenSpaceReprojectionDistanceAsWidthPercentage / maxScreenSpaceReprojectionDistance;
+        //uint maxFrame
+        //frameAge = lerp(frameAge, 0, frameAgeClamp);
+
+        float invFrameAge = 1.f / (frameAge + 1);
+        float minSmoothingFactor = cb.minSmoothingFactor;
+        float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, minSmoothingFactor);
         mergedValue = lerp(cachedValue, value, a);
         
         // ToDo If no valid samples found:
@@ -261,6 +305,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
    
     g_texOutputCachedValue[DTid] =  mergedValue;
-    g_texOutputCacheFrameAge[DTid] = min(frameAge + 1, 255);
+    g_texOutputCacheFrameAge[DTid] = min(frameAge + 1, maxFrameAge);
     //g_texOutputCachedValue[DTid] = cacheClipSpacePos.x;
 }
