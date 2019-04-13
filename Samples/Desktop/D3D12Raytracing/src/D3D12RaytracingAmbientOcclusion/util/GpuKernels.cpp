@@ -12,7 +12,7 @@
 // ToDo shaders are in root while this is in Util...
 // ToDo standardize naming
 #include "../stdafx.h"
-#include "PerformanceTimers.h"
+#include "EngineProfiling.h"
 #include "GpuKernels.h"
 #include "CompiledShaders\ReduceSumUintCS.hlsl.h"
 #include "CompiledShaders\ReduceSumFloatCS.hlsl.h"
@@ -154,7 +154,7 @@ namespace GpuKernels
 		using namespace RootSignature::ReduceSum;
 		
 		// ToDo move out or rename
-		PIXBeginEvent(commandList, 0, L"CalculateNumCameraRayHits");
+        ScopedTimer _prof(L"CalculateNumCameraRayHits", commandList);
 
 		// Set pipeline state.
 		{
@@ -232,8 +232,6 @@ namespace GpuKernels
 		ThrowIfFailed(m_readbackResources[invocationIndex]->Map(0, &readRange, reinterpret_cast<void**>(&mappedData)));
 		memcpy(resultSum, mappedData, m_resultSize);
 		m_readbackResources[invocationIndex]->Unmap(0, &CD3DX12_RANGE(0, 0));
-
-		PIXEndEvent(commandList);
 	}
 
 	namespace RootSignature {
@@ -301,7 +299,7 @@ namespace GpuKernels
 		using namespace RootSignature::DownsampleBoxFilter2x2;
 		using namespace DownsampleBoxFilter2x2;
 
-        PIXBeginEvent(commandList, 0, L"DownsampleBoxFilter2x2");
+        ScopedTimer _prof(L"DownsampleBoxFilter2x2", commandList);
 
         m_CB->inputTextureDimensions = XMUINT2(width, height);
         m_CB->invertedInputTextureDimensions = XMFLOAT2(1.f / width, 1.f / height);
@@ -323,8 +321,6 @@ namespace GpuKernels
 
 		// Dispatch.
 		commandList->Dispatch(groupSize.x, groupSize.y, 1);
-
-		PIXEndEvent(commandList);
 	}
 
 	namespace RootSignature {
@@ -398,7 +394,7 @@ namespace GpuKernels
 		using namespace RootSignature::DownsampleGaussianFilter;
 		using namespace DownsampleGaussianFilter;
 
-		PIXBeginEvent(commandList, 0, L"DownsampleGaussianFilter");
+        ScopedTimer _prof(L"DownsampleGaussianFilter", commandList);
 
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
 
@@ -422,8 +418,6 @@ namespace GpuKernels
 
 		// Dispatch.
 		commandList->Dispatch(groupSize.x, groupSize.y, 1);
-
-		PIXEndEvent(commandList);
 	}
 
     // ToDo dedupe
@@ -526,7 +520,7 @@ namespace GpuKernels
         using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
         using namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
 
-        PIXBeginEvent(commandList, 0, L"DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
+        ScopedTimer _prof(L"DownsampleNormalDepthHitPositionGeometryHitBilateralFilter", commandList);
 
         // Set pipeline state.
         {
@@ -550,8 +544,6 @@ namespace GpuKernels
 
         // Dispatch.
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
-
-        PIXEndEvent(commandList);
     }
 
 
@@ -637,7 +629,7 @@ namespace GpuKernels
         using namespace RootSignature::DownsampleValueNormalDepthBilateralFilter;
         using namespace DownsampleValueNormalDepthBilateralFilter;
 
-        PIXBeginEvent(commandList, 0, L"DownsampleValueNormalDepthBilateralFilter");
+        ScopedTimer _prof(L"DownsampleValueNormalDepthBilateralFilter", commandList);
 
         // Set pipeline state.
         {
@@ -657,8 +649,6 @@ namespace GpuKernels
 
         // Dispatch.
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
-
-        PIXEndEvent(commandList);
     }
 
     namespace RootSignature {
@@ -745,7 +735,7 @@ namespace GpuKernels
         using namespace RootSignature::UpsampleBilateralFilter;
         using namespace UpsampleBilateralFilter;
 
-        PIXBeginEvent(commandList, 0, L"UpsampleBilateralFilter");
+        ScopedTimer _prof(L"UpsampleBilateralFilter", commandList);
 
         m_CB->useBilinearWeights = useBilinearWeights;
         m_CB->useDepthWeights = useDepthWeights;
@@ -778,8 +768,6 @@ namespace GpuKernels
 
         // Dispatch.
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
-
-        PIXEndEvent(commandList);
     }
 
 
@@ -868,7 +856,7 @@ namespace GpuKernels
         width = CeilDivide(width, 2);
         height = CeilDivide(height, 2);
 
-        PIXBeginEvent(commandList, 0, L"MultiScale_UpsampleBilateralFilterAndCombine");
+        ScopedTimer _prof(L"MultiScale_UpsampleBilateralFilterAndCombine", commandList);
 
         // Set pipeline state.
         {
@@ -890,8 +878,6 @@ namespace GpuKernels
 
         // Dispatch.
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
-
-        PIXEndEvent(commandList);
     }
 
 
@@ -970,7 +956,7 @@ namespace GpuKernels
         using namespace RootSignature::GaussianFilter;
         using namespace GaussianFilter;
 
-        PIXBeginEvent(commandList, 0, L"GaussianFilter");
+        ScopedTimer _prof(L"GaussianFilter", commandList);
 
         m_CB->textureDim = XMUINT2(width, height);
         m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
@@ -990,8 +976,6 @@ namespace GpuKernels
         // Dispatch.
         XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
-
-        PIXEndEvent(commandList);
     }
 
 
@@ -1074,7 +1058,7 @@ namespace GpuKernels
         using namespace RootSignature::RootMeanSquareError;
         using namespace RootMeanSquareError;
 
-        PIXBeginEvent(commandList, 0, L"RootMeanSquareError");
+        ScopedTimer _prof(L"RootMeanSquareError", commandList);
 
         // Calcualte per-pixel mean square error.
         auto desc = m_perPixelMeanSquareError.resource->GetDesc();
@@ -1102,8 +1086,6 @@ namespace GpuKernels
 
         // Calculate root mean square error.
         *rootMeanSquareError = sqrtf(sumPerPixelMeanSquareError / (desc.Width * desc.Height));
-
-        PIXEndEvent(commandList);
     }
 
     // ToDo prune
@@ -1265,7 +1247,7 @@ namespace GpuKernels
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
         using namespace AtrousWaveletTransformFilterCS;
 
-        PIXBeginEvent(commandList, 0, L"AtrousWaveletTransformCrossBilateralFilter");
+        ScopedTimer _prof(L"AtrousWaveletTransformCrossBilateralFilter", commandList);
 
         m_CBinstanceID = ((m_CBinstanceID + 1) * m_maxFilterPasses) % m_CB.NumInstances();
 
@@ -1412,8 +1394,6 @@ namespace GpuKernels
                 commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
             }
         }
-
-        PIXEndEvent(commandList);
     }
 
 
@@ -1481,7 +1461,7 @@ namespace GpuKernels
         using namespace DefaultComputeShaderParams;
 
         // ToDo move out or rename - there are scoped timers in the caller.
-        PIXBeginEvent(commandList, 0, L"CalculatePartialDerivatives");
+        ScopedTimer _prof(L"CalculatePartialDerivatives", commandList);
 
         // Set pipeline state.
         {
@@ -1505,8 +1485,6 @@ namespace GpuKernels
             XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
             commandList->Dispatch(groupSize.x, groupSize.y, 1);
         }
-
-        PIXEndEvent(commandList);
     }
 
 
@@ -1596,7 +1574,7 @@ namespace GpuKernels
 
         // ToDo move out or rename
         // ToDo add spaces to names?
-        PIXBeginEvent(commandList, 0, L"CalculateVariance_Bilateral");
+        ScopedTimer _prof(L"CalculateVariance_Bilateral", commandList);
 
         // Set pipeline state.
         {
@@ -1631,8 +1609,6 @@ namespace GpuKernels
             XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
             commandList->Dispatch(groupSize.x, groupSize.y, 1);
         }
-
-        PIXEndEvent(commandList);
     }
 
     namespace RootSignature {
@@ -1746,7 +1722,7 @@ namespace GpuKernels
         using namespace RootSignature::RTAO_TemporalCache_ReverseReproject;
         using namespace DefaultComputeShaderParams;
 
-        PIXBeginEvent(commandList, 0, L"RTAO_TemporalCache_ReverseReproject");
+        ScopedTimer _prof(L"RTAO_TemporalCache_ReverseReproject", commandList);
 
         m_CB->invProj = XMMatrixTranspose(invProj);
         m_CB->invView = XMMatrixTranspose(invView);
@@ -1787,7 +1763,5 @@ namespace GpuKernels
         // Dispatch.
         XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
-
-        PIXEndEvent(commandList);
     }
 }

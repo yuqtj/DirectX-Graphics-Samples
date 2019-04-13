@@ -104,6 +104,7 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
     float4 depthMask = 1;
     if (cb.useDepthWeights)
     {
+        // ToDo improve depth test on zoom in. A lot of pixels get invalidated on the ground plane on close zoom in.
 #if 0
         // ToDo remove - blurs more/incorrectly
         float4 depthDiffs = abs(SampleDistances - ActualDistance);
