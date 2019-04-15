@@ -1617,6 +1617,8 @@ namespace GpuKernels
                 enum Enum {
                     OutputCachedValue = 0,
                     OutputFrameAge,
+                    OutputDebug1,
+                    OutputDebug2,
                     InputCachedValue,
                     InputCurrentFrameValue,
                     InputCachedDepth,
@@ -1626,6 +1628,7 @@ namespace GpuKernels
                     InputCacheFrameAge,
                     InputCurrentFrameMean,
                     InputCurrentFrameVariance,
+                    InputCurrentFrameLinearDepthDerivative,
                     ConstantBuffer,
                     Count
                 };
@@ -1647,10 +1650,13 @@ namespace GpuKernels
             ranges[Slot::InputCachedNormal].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);        // 1 input cached normal
             ranges[Slot::InputCurrentFrameNormal].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input current frame normal
             ranges[Slot::InputCacheFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);       // 1 input cache frame age
-            ranges[Slot::InputCurrentFrameMean].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);// 1 input current frame mean
+            ranges[Slot::InputCurrentFrameMean].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);    // 1 input current frame mean
             ranges[Slot::InputCurrentFrameVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);// 1 input current frame variance
+            ranges[Slot::InputCurrentFrameLinearDepthDerivative].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);// 1 input current frame linear depth derivative
             ranges[Slot::OutputCachedValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);        // 1 output temporal cache value
             ranges[Slot::OutputFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);           // 1 output temporal cache frame age
+            ranges[Slot::OutputDebug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);           // 1 output temporal cache frame age
+            ranges[Slot::OutputDebug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);           // 1 output temporal cache frame age
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::InputCurrentFrameValue].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameValue]);
@@ -1662,8 +1668,11 @@ namespace GpuKernels
             rootParameters[Slot::InputCacheFrameAge].InitAsDescriptorTable(1, &ranges[Slot::InputCacheFrameAge]);
             rootParameters[Slot::InputCurrentFrameMean].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameMean]);
             rootParameters[Slot::InputCurrentFrameVariance].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameVariance]);
+            rootParameters[Slot::InputCurrentFrameLinearDepthDerivative].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameLinearDepthDerivative]);
             rootParameters[Slot::OutputCachedValue].InitAsDescriptorTable(1, &ranges[Slot::OutputCachedValue]);
             rootParameters[Slot::OutputFrameAge].InitAsDescriptorTable(1, &ranges[Slot::OutputFrameAge]);
+            rootParameters[Slot::OutputDebug1].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug1]);
+            rootParameters[Slot::OutputDebug2].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug2]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER);
@@ -1700,6 +1709,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameVarianceResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameLinearDepthDerivativeResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalResourceHandle,
@@ -1709,7 +1719,9 @@ namespace GpuKernels
         float minSmoothingFactor,
         const XMMATRIX& invView,
         const XMMATRIX& invProj,
+        const XMMATRIX& invViewProjAndCameraTranslation,
         const XMMATRIX& reverseProjectionTransform,
+        const XMMATRIX& prevInvViewProj,
         float zNear,
         float zFar,
         float depthTolerance,
@@ -1717,7 +1729,15 @@ namespace GpuKernels
         bool useNormalWeigths,
         bool forceUseMinSmoothingFactor,
         bool clampCachedValues,
-        bool clampStdDevGamma)
+        bool clampStdDevGamma,
+        float floatEpsilonDepthTolerance,
+        float depthDistanceBasedDepthTolerance,
+        float depthSigma,
+        RWGpuResource debugResources[2],
+        const XMVECTOR& currentFrameCameraPosition,
+        const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
+        const XMVECTOR& prevToCurrentFrameCameraTranslation,
+        const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin)
     {
         using namespace RootSignature::RTAO_TemporalCache_ReverseReproject;
         using namespace DefaultComputeShaderParams;
@@ -1726,7 +1746,9 @@ namespace GpuKernels
 
         m_CB->invProj = XMMatrixTranspose(invProj);
         m_CB->invView = XMMatrixTranspose(invView);
+        m_CB->invViewProjAndCameraTranslation = XMMatrixTranspose(invViewProjAndCameraTranslation);
         m_CB->reverseProjectionTransform = XMMatrixTranspose(reverseProjectionTransform);
+        m_CB->prevInvViewProj = XMMatrixTranspose(invViewProjAndCameraTranslation);
         m_CB->minSmoothingFactor = minSmoothingFactor;
         m_CB->forceUseMinSmoothingFactor = forceUseMinSmoothingFactor;
         m_CB->zNear = zNear;
@@ -1738,6 +1760,13 @@ namespace GpuKernels
         m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
         m_CB->clampCachedValues = clampCachedValues;
         m_CB->stdDevGamma = clampStdDevGamma;
+        m_CB->floatEpsilonDepthTolerance = floatEpsilonDepthTolerance;
+        m_CB->depthDistanceBasedDepthTolerance = depthDistanceBasedDepthTolerance;
+        m_CB->depthSigma = depthSigma;
+        m_CB->cameraPosition = currentFrameCameraPosition;
+        m_CB->projectionToWorldWithCameraEyeAtOrigin = XMMatrixTranspose(projectionToWorldWithCameraEyeAtOrigin);
+        m_CB->prevToCurrentFrameCameraTranslation = prevToCurrentFrameCameraTranslation;
+        m_CB->prevProjectionToWorldWithCameraEyeAtOrigin = XMMatrixTranspose(prevProjectionToWorldWithCameraEyeAtOrigin);
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 
@@ -1753,9 +1782,12 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameNormal, inputCurrentFrameNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCacheFrameAge, inputTemporalCacheFrameAgeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameMean, inputCurrentFrameMeanResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameVariance, inputCurrentFrameVarianceResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameVariance, inputCurrentFrameVarianceResourceHandle); 
+            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameLinearDepthDerivative, inputCurrentFrameLinearDepthDerivativeResourceHandle); 
             commandList->SetComputeRootDescriptorTable(Slot::OutputCachedValue, outputTemporalCacheValueResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputFrameAge, outputTemporalCacheFrameAgeResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputDebug1, debugResources[0].gpuDescriptorWriteAccess);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputDebug2, debugResources[1].gpuDescriptorWriteAccess);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }

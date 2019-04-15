@@ -185,6 +185,7 @@ private:
 	StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;
 	StructuredBuffer<AlignedHemisphereSample3D> m_hemisphereSamplesGPUBuffer;
 
+    RWGpuResource m_debugOutput[2];
 
 	// Raytracing output
 	// ToDo use the struct

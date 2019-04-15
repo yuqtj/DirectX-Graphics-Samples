@@ -165,7 +165,7 @@ inline float3 GenerateForwardCameraRayDirection(in float4x4 projectionToWorldWit
 	float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
 	//world.xyz /= world.w;
 
-	return normalize(world.xyz);   // ToDo is this normalization needed?
+	return normalize(world.xyz);   // ToDo is this normalization needed? - yes but maybe it could be done via /zNear instead?
 }
 
 inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
@@ -186,7 +186,7 @@ inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projec
 }
 
 // Calculate a world position from a screen position on near plane;
-float3 ScreenPosToWorldPos(uint2 index, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
+float3 ScreenPosToWorldPos(in uint2 index, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
 {
     float2 xy = index + 0.5f; // center in the middle of the pixel.
     float2 screenPos = xy / DispatchRaysDimensions().xy * 2.0 - 1.0;
@@ -201,6 +201,21 @@ float3 ScreenPosToWorldPos(uint2 index, in float4x4 projectionToWorldWithCameraE
     return world.xyz;
 }
 
+// Calculate a world position from a screen position.
+float3 ScreenPosToWorldPos(in uint2 index, in float linearDepth, in uint2 screenDimensions, in float zNear, in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
+{
+    float2 xy = index + 0.5f;                               // center in the middle of the pixel.
+    float2 screenPos = xy / screenDimensions * 2.0 - 1.0;   // Convert to [-1,1]
+    screenPos.y = -screenPos.y;  // Invert Y for DirectX-style coordinates.
+        
+    // Unproject the pixel coordinate into a ray towards the pixel's world position on the near plane.
+    float4 rayDirection = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
+
+    return cameraPosition + linearDepth * rayDirection.xyz; // ToDo doesn't this need to be adjusted for zNear?
+}
+
+
+// ToDo rename to LogToLinearDepth?
 float LogToViewDepth(float logDepth, float zNear, float zFar)
 {
     return zNear * zFar / (zFar - logDepth * (zFar - zNear));
@@ -215,6 +230,21 @@ float ViewToLogDepth(float viewDepth, float zNear, float zFar)
 inline float NormalizeToRange(in float value, in float min, in float max)
 {
     return (value - min) / (max - min);
+}
+
+// Calculate depth via interpolation with perspective correction
+// Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
+// Given depth buffer interpolation for finding z at offset q along z0 to z1
+//      z =  1 / (1 / z0 * (1 - q) + 1 / z1 * q)
+// and z1 = z0 + ddxy, where z1 is at a unit pixel offset [1, 1]
+// z can be calculated via ddxy as
+//
+//      z = (z0 + ddxy) / (1 + (1-q) / z0 * ddxy) 
+float2 GetPerspectiveCorrectInterpolatedDdxy(in float z0, in float2 ddxy, in float2 pixelOffset)
+{
+    float2 z1 = (z0 + ddxy) / (1 + ((1 - pixelOffset) / z0) * ddxy);
+    return z1 - z0;
+
 }
 
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.

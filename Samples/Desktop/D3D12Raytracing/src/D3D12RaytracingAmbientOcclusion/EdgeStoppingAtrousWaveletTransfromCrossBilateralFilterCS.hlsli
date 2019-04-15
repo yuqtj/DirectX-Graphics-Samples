@@ -55,11 +55,8 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
 
 
 #if 1
-        fEpsilon = 1e-6 * distance * g_CB.normalSigma;// *max(0.1, 1 - obliqueness);
-
-
         // Todo rename ddxy to dxdy?
-
+        // ToDo use a common helper
         // ToDo rename to: Perspective correct interpolation
         // Pespective correction for the non-linear interpolation
         if (g_CB.pespectiveCorrectDepthInterpolation)
@@ -218,13 +215,15 @@ void AddFilterContribution(
         float fMinEpsilon = 512 * FLT_EPSILON; // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations.
         float fMinDepthScaledEpsilon = 48 * 1e-6  * depth;  // Depth threshold to surpress differences that surface at larger depth from the camera.
         float fEpsilon = fMinEpsilon + fMinDepthScaledEpsilon;
-        float depthWeigth = min((depthSigma * depthThreshold + fEpsilon) / (abs(depth - iDepth)), 1);
-        float w_d = depthWeigth;
+        // ToDo revvise divEpsilon
+        float divEpsilon = 1e-6f;
+        float depthWeigth = min((depthSigma * depthThreshold + fEpsilon) / (abs(depth - iDepth) + divEpsilon), 1);
+        //float w_d = depthWeigth;
         //float e_d = depthSigma > 0.01f  ? min(1 - abs(depth - iDepth) / (1 * depthThreshold), 0) : 0;
         //fload e_d = depth abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance
-        // ToD revize "1 - "
+        // ToD revise "1 - "
         float e_d = depthSigma > 0.01f ? min(1 - abs(depth - iDepth) / (depthSigma * depthThreshold + fEpsilon), 0) : 0;
-        w_d = exp(e_d);
+        float w_d = exp(e_d);
 
 #else
         float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;

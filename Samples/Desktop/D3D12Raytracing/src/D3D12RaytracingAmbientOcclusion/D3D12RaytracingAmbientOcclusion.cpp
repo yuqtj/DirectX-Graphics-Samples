@@ -125,7 +125,7 @@ namespace SceneArgs
         L"Normal Map", 
         L"Depth Buffer", 
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionAndDisocclusionMap, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
 
@@ -147,11 +147,11 @@ namespace SceneArgs
     // ToDo standardize capitalization
     // ToDo naming down/ up
     const WCHAR* DownsamplingBilateralFilters[GpuKernels::DownsampleValueNormalDepthBilateralFilter::Count] = { L"Point Sampling", L"Depth Weighted", L"Depth Normal Weighted" };
-    EnumVar DownsamplingBilateralFilter(L"Render/AO/RTAO/Down\\Upsampling/Downsampled Value Filter", GpuKernels::DownsampleValueNormalDepthBilateralFilter::FilterDepthNormalWeighted2x2, GpuKernels::DownsampleValueNormalDepthBilateralFilter::Count, DownsamplingBilateralFilters, OnRecreateRaytracingResources, nullptr);
-    BoolVar DownAndUpsamplingUseBilinearWeights(L"Render/AO/RTAO/Down\\Upsampling/Bilinear weighted", true);
-    BoolVar DownAndUpsamplingUseDepthWeights(L"Render/AO/RTAO/Down\\Upsampling/Depth weighted", true);
-    BoolVar DownAndUpsamplingUseNormalWeights(L"Render/AO/RTAO/Down\\Upsampling/Normal weighted", true);
-    BoolVar DownAndUpsamplingUseDynamicDepthThreshold(L"Render/AO/RTAO/Down\\Upsampling/Dynamic depth threshold", true);        // ToDO rename to adaptive
+    EnumVar DownsamplingBilateralFilter(L"Render/AO/RTAO/Down/Upsampling/Downsampled Value Filter", GpuKernels::DownsampleValueNormalDepthBilateralFilter::FilterDepthNormalWeighted2x2, GpuKernels::DownsampleValueNormalDepthBilateralFilter::Count, DownsamplingBilateralFilters, OnRecreateRaytracingResources, nullptr);
+    BoolVar DownAndUpsamplingUseBilinearWeights(L"Render/AO/RTAO/Down/Upsampling/Bilinear weighted", true);
+    BoolVar DownAndUpsamplingUseDepthWeights(L"Render/AO/RTAO/Down/Upsampling/Depth weighted", true);
+    BoolVar DownAndUpsamplingUseNormalWeights(L"Render/AO/RTAO/Down/Upsampling/Normal weighted", true);
+    BoolVar DownAndUpsamplingUseDynamicDepthThreshold(L"Render/AO/RTAO/Down/Upsampling/Dynamic depth threshold", true);        // ToDO rename to adaptive
 
 
     // RTAO
@@ -173,13 +173,16 @@ namespace SceneArgs
     BoolVar RTAO_UseTemporalCache(L"Render/AO/RTAO/Temporal Cache/Enabled", true);
     BoolVar RTAO_TemporalCache_CacheRawAOValue(L"Render/AO/RTAO/Temporal Cache/Cache Raw AO Value", true);
     NumVar RTAO_TemporalCache_MinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Min Smoothing Factor", 0.1f, 0, 1.f, 0.01f);
-    NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.1f, 0, 1.f, 0.001f);
+    NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.05f, 0, 1.f, 0.001f);
     BoolVar RTAO_TemporalCache_UseDepthWeights(L"Render/AO/RTAO/Temporal Cache/Use depth weights", true);    // ToDo remove
     BoolVar RTAO_TemporalCache_UseNormalWeights(L"Render/AO/RTAO/Temporal Cache/Use normal weights", true);
     BoolVar RTAO_TemporalCache_ForceUseMinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Force min smoothing factor", false);
     IntVar RTAO_TemporalCache_VarianceFilterKernelWidth(L"Render/AO/RTAO/Temporal Cache/Variance filter/Kernel width", 7, 3, 11, 2);    // ToDo find lowest good enough width
     BoolVar RTAO_TemporalCache_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", false);
     NumVar RTAO_TemporalCache_ClampCachedValues_StdDevGamma(L"Render/AO/RTAO/Temporal Cache/Clamping/Std.dev gamma", 1.0f, 0.1f, 3.f, 0.1f);
+    NumVar RTAO_TemporalCache_ClampCachedValues_AbsoluteDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Absolute depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
+    NumVar RTAO_TemporalCache_ClampCachedValues_DepthBasedDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Depth based depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
+    NumVar RTAO_TemporalCache_ClampCachedValues_DepthSigma(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Depth sigma", 0.9f, 0.0f, 10.f, 0.1f);   // Setting it lower than 0.9 makes cache values to swim...
 
     BoolVar TAO_LazyRender(L"TAO/Lazy render", false);
     IntVar RTAO_LazyRenderNumFrames(L"TAO/Lazy render frames", 1, 0, 20, 1);
@@ -1347,6 +1350,22 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         }
      }
 
+    // ToDo remove
+    // Debug resources
+    {
+        // Preallocate subsequent descriptor indices for both SRV and UAV groups.
+        m_debugOutput[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(ARRAYSIZE(m_debugOutput), m_debugOutput[0].uavDescriptorHeapIndex);
+        m_debugOutput[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(ARRAYSIZE(m_debugOutput), m_debugOutput[0].srvDescriptorHeapIndex);
+        for (UINT i = 0; i < ARRAYSIZE(m_debugOutput); i++)
+        {
+            m_debugOutput[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            m_debugOutput[i].uavDescriptorHeapIndex = m_debugOutput[0].uavDescriptorHeapIndex + i;
+            m_debugOutput[i].srvDescriptorHeapIndex = m_debugOutput[0].srvDescriptorHeapIndex + i;
+            CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_debugOutput[i], initialResourceState, L"Debug");
+        }
+    }
+
+
     // ToDo move
     // ToDo render shadows at raytracing dim?
 	m_VisibilityResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -2396,6 +2415,17 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
 
     ScopedTimer _prof(L"DenoiseAO", commandList);
 
+    // Transition all output resources to UAV state.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after),
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+    }
+
     // Calculate local variance.
     {
         ScopedTimer _prof(L"CalculateVariance", commandList);
@@ -2438,8 +2468,6 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
     // Transition Variance resource to shader resource state.
     // Also prepare smoothed AO resource for the next pass and transition it to UAV.
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
             CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
@@ -2496,7 +2524,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
 
     // Transition the output resource to SRV.
     {
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOLowResResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
     }
 };
 
@@ -3998,6 +4026,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
     view = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_camera.At() - m_camera.Eye(), 1), m_camera.Up());
     prevView = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_prevFrameCamera.At() - m_prevFrameCamera.Eye(), 1), m_prevFrameCamera.Up());
     XMMATRIX cameraTranslation = XMMatrixTranslationFromVector(m_camera.Eye() - m_prevFrameCamera.Eye());
+    XMVECTOR prevToCurrentFrameCameraTranslation = m_camera.Eye() - m_prevFrameCamera.Eye();
+
+
 
     XMMATRIX invView = XMMatrixInverse(nullptr, view);
     XMMATRIX invProj = XMMatrixInverse(nullptr, proj);
@@ -4005,13 +4036,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
     XMMATRIX viewProj = view * proj;
     XMMATRIX prevViewProj = prevView * prevProj;
     XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
-    
+    XMMATRIX prevInvViewProj = XMMatrixInverse(nullptr, prevViewProj);
 
     // ToDo move
     m_prevFrameCamera = m_camera;
 #if 1
+    XMMATRIX invViewProjAndCameraTranslation = invViewProj * cameraTranslation;
    // XMMATRIX reverseProjectionTransform = invViewProj * cameraTranslation * prevView * prevProj;
-    XMMATRIX reverseProjectionTransform = invViewProj * cameraTranslation * prevView * prevProj;
+    XMMATRIX reverseProjectionTransform = invViewProjAndCameraTranslation * prevView * prevProj;
 #else
     XMMATRIX reverseProjectionTransform = cameraTranslation * prevView * prevProj;
 #endif
@@ -4052,7 +4084,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::AO].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::FrameAge].resource.Get(), before, after)
+            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::FrameAge].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_debugOutput[0].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_debugOutput[1].resource.Get(), before, after)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -4067,6 +4101,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
         m_smoothedVarianceResource.gpuDescriptorReadAccess,
         m_smoothedMeanResource.gpuDescriptorReadAccess,
+        GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
         m_temporalCache[TC_readID][TemporalCache::AO].gpuDescriptorReadAccess,
         m_temporalCache[0][TemporalCache::Depth].gpuDescriptorReadAccess,      // ToDo dedupe depth from the array
         m_temporalCache[0][TemporalCache::Normal].gpuDescriptorReadAccess,
@@ -4076,7 +4111,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         SceneArgs::RTAO_TemporalCache_MinSmoothingFactor,
         invView,
         invProj,
+        invViewProjAndCameraTranslation,
         reverseProjectionTransform,
+        prevInvViewProj,
         m_camera.ZMin,
         m_camera.ZMax,
         SceneArgs::RTAO_TemporalCache_DepthTolerance,
@@ -4084,14 +4121,26 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         SceneArgs::RTAO_TemporalCache_UseNormalWeights,
         SceneArgs::RTAO_TemporalCache_ForceUseMinSmoothingFactor,
         SceneArgs::RTAO_TemporalCache_ClampCachedValues_UseClamping,
-        SceneArgs::RTAO_TemporalCache_ClampCachedValues_StdDevGamma);
-
+        SceneArgs::RTAO_TemporalCache_ClampCachedValues_StdDevGamma,
+        SceneArgs::RTAO_TemporalCache_ClampCachedValues_AbsoluteDepthTolerance,
+        SceneArgs::RTAO_TemporalCache_ClampCachedValues_DepthBasedDepthTolerance,
+        SceneArgs::RTAO_TemporalCache_ClampCachedValues_DepthSigma,
+        m_debugOutput,
+        m_camera.Eye(),
+        invViewProj,
+        prevToCurrentFrameCameraTranslation,
+        prevInvViewProj);
 
     // Transition output resource to SRV state.        
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::FrameAge].resource.Get(), before, after));
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::FrameAge].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_debugOutput[0].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_debugOutput[1].resource.Get(), before, after)
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
     // ToDo disable all processing

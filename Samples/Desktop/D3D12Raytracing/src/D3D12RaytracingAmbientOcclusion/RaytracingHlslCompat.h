@@ -37,7 +37,7 @@
 #define USE_ENVIRONMENT_MAP 1
 #define DEBUG_AS 0
 
-#define MOVE_ONCE_ON_STRAFE 0
+#define MOVE_ONCE_ON_STRAFE 1
 #define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
 
 #define ALLOW_MIRRORS 1
@@ -113,7 +113,7 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 1
+#define PBRT_SCENE 0
 #define FACE_CULLING !PBRT_SCENE
 
 #if PBRT_SCENE
@@ -508,6 +508,12 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     XMMATRIX invProj;
     XMMATRIX invView;
     XMMATRIX reverseProjectionTransform;
+    XMMATRIX invViewProjAndCameraTranslation;
+    XMMATRIX prevInvViewProj;
+    XMVECTOR cameraPosition;
+    XMMATRIX projectionToWorldWithCameraEyeAtOrigin;
+    XMVECTOR prevToCurrentFrameCameraTranslation;   // ToDo include this in one of the projection matrices?
+    XMMATRIX prevProjectionToWorldWithCameraEyeAtOrigin;
     
     BOOL  forceUseMinSmoothingFactor;  // ToDo remove?
     float minSmoothingFactor;       
@@ -522,13 +528,13 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     float depthTolerance;
     BOOL useDepthWeights;
     BOOL useNormalWeights;
-    float padding;
-
     BOOL clampCachedValues;
-    UINT stdDevGamma;
-    UINT padding2[2];
-};
 
+    UINT stdDevGamma;
+    float floatEpsilonDepthTolerance;
+    float depthDistanceBasedDepthTolerance;
+    float depthSigma;
+};
 
 struct CalculatePartialDerivativesConstantBuffer
 {

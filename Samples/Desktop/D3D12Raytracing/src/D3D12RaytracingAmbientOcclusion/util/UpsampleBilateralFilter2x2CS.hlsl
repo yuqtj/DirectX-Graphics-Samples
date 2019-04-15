@@ -40,6 +40,7 @@ void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texInde
 }
 
 // ToDo comment
+// ToDo reuse same in all resampling and atrous filter?
 float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float4 BilinearWeights, in float4 SampleValues, in uint2 hiResPixelIndex)
 {
     float4 depthWeights = 1;
@@ -56,6 +57,7 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
             float maxPixelDistance = 2; // Scale to compensate for the fact that the downsampled depth value may come from up to two pixels away in the high-res texture scale.
 
             // ToDo consider ddxy per dimension or have a 1D max(Ddxy) resource?
+            // ToDo perspective correction?
             depthThreshold = maxPixelDistance * max(ddxy.x, ddxy.y);
         }
         // ToDo correct weights to weigths in the whole project same for treshold and weigth

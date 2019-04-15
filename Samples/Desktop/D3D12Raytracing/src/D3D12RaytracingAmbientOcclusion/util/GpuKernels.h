@@ -458,6 +458,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameLinearDepthDerivativeResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalResourceHandle,
@@ -467,7 +468,9 @@ namespace GpuKernels
             float minSmoothingFactor,
             const XMMATRIX& invView,
             const XMMATRIX& invProj,
+            const XMMATRIX& invViewProjAndCameraTranslation,
             const XMMATRIX& reverseProjectionTransform,
+            const XMMATRIX& prevInvViewProj,
             float zMin,
             float zFar,
             float depthTolerance,
@@ -475,7 +478,15 @@ namespace GpuKernels
             bool useNormalWeigths,
             bool forceUseMinSmoothingFactor,
             bool clampCachedValues,
-            bool clampStdDevGamma);
+            bool clampStdDevGamma,
+            float floatEpsilonDepthTolerance,
+            float depthDistanceBasedDepthTolerance,
+            float depthSigma,
+            RWGpuResource debugResources[2],
+            const XMVECTOR& currentFrameCameraPosition,
+            const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
+            const XMVECTOR& prevToCurrentFrameCameraTranslation,
+            const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
