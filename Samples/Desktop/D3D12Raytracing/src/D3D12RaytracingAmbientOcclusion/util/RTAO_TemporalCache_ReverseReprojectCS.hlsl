@@ -321,6 +321,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
         g_texInputCachedDepth[cacheIndices[2]],
         g_texInputCachedDepth[cacheIndices[3]]);
 
+    // Calculate linear depth in the cache frame.
+    // We avoid converting depth between linear and log as log depth loses a lot of precision very quickly as depth increases.
     float3 viewPos = ScreenPosToWorldPos(DTid, linearDepth, cb.textureDim, cb.zNear, float3(0,0,0), cb.projectionToWorldWithCameraEyeAtOrigin);
 
     // Add the camera translation change 
