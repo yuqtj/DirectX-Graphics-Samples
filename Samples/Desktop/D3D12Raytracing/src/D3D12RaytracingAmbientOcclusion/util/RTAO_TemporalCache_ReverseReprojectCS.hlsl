@@ -418,7 +418,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint isDisoccluded;
     uint frameAge;
 
-    uint maxFrameAge = 1 / 0.1 - 1;// minSmoothingFactor;
+    uint maxFrameAge = 1 / cb.minSmoothingFactor - 1;// minSmoothingFactor;
     if (isCacheValueValid)
     {
         isDisoccluded = false;
@@ -449,8 +449,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         //frameAge = lerp(frameAge, 0, frameAgeClamp);
 
         float invFrameAge = 1.f / (frameAge + 1);
-        float minSmoothingFactor = 0.1f;// cb.minSmoothingFactor;
-        float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, minSmoothingFactor);
+        float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
         mergedValue = lerp(cachedValue, value, a);
         
         // ToDo If no valid samples found:

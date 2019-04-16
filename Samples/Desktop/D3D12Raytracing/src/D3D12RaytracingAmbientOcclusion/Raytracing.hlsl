@@ -476,18 +476,8 @@ inline Ray GenerateCameraRayViaInterpolation(uint2 index, in float3 cameraPositi
 [shader("raygeneration")]
 void MyRayGenShader_GBuffer()
 {
-	// ToDo remove
-#if CAMERA_JITTER
-	uint seed = DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x;// +g_sceneCB.seed;
-	uint RNGState = RNG::SeedThread(seed);
-	float2 cameraJitter = 2 * (float2(RNG::Random01(RNGState), RNG::Random01(RNGState)) - 0.5f);
-	cameraJitter *= 0.5f;
-#else
-	float2 cameraJitter = float2(0, 0);
-#endif
-
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
-	Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
+	Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, g_sceneCB.cameraJitter);
     //Ray ray = GenerateCameraRayViaInterpolation(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
 
     Ray rx, ry;

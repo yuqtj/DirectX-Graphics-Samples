@@ -169,10 +169,10 @@ namespace SceneArgs
 
 
     // Temporal Cache.
-    // ToDo rename cache to accumulation?
+    // ToDo rename cache to accumulation/supersampling?
     BoolVar RTAO_UseTemporalCache(L"Render/AO/RTAO/Temporal Cache/Enabled", true);
     BoolVar RTAO_TemporalCache_CacheRawAOValue(L"Render/AO/RTAO/Temporal Cache/Cache Raw AO Value", true);
-    NumVar RTAO_TemporalCache_MinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Min Smoothing Factor", 0.1f, 0, 1.f, 0.01f);
+    NumVar RTAO_TemporalCache_MinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Min Smoothing Factor", 0.03f, 0, 1.f, 0.01f);
     NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.05f, 0, 1.f, 0.001f);
     BoolVar RTAO_TemporalCache_UseDepthWeights(L"Render/AO/RTAO/Temporal Cache/Use depth weights", true);    // ToDo remove
     BoolVar RTAO_TemporalCache_UseNormalWeights(L"Render/AO/RTAO/Temporal Cache/Use normal weights", true);
@@ -3053,6 +3053,10 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     m_sceneCB->numPixelsPerDimPerSet = SceneArgs::AOSampleSetDistributedAcrossPixels;
 #if CAMERA_JITTER
 
+#if 1
+    uniform_real_distribution<float> jitterDistribution(-0.5f, 0.5f);
+    m_sceneCB->cameraJitter = XMFLOAT2(jitterDistribution(m_generatorURNG), jitterDistribution(m_generatorURNG));
+#else
 	// ToDo remove?
 	static UINT seed = 0;
 	static UINT counter = 0;
@@ -3063,6 +3067,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	case 2: m_sceneCB->cameraJitter = XMFLOAT2(-0.25f, 0.25f); break;
 	case 3: m_sceneCB->cameraJitter = XMFLOAT2(0.25f, 0.25f); break;
 	};
+#endif
 #endif
 
     // ToDo move
