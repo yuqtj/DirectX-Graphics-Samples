@@ -24,11 +24,11 @@ inline constexpr UINT GetNumGrps(const UINT size, const UINT numThreads)
 
 // Allocate texture2D and upload data to the GPU.
 inline void AllocateTexture2D(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     void *pData,
     ID3D12Resource **ppResource,
     ID3D12Resource **ppUploadResource,
-    ID3D12GraphicsCommandList* commandList,
+    ID3D12GraphicsCommandList5* commandList,
     UINT width,
     UINT height,
     UINT stride,
@@ -77,7 +77,7 @@ inline void AllocateTexture2D(
 }
 
 inline void AllocateTexture2DArr(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource **ppResource,
     UINT width,
     UINT height,
@@ -108,7 +108,7 @@ inline void AllocateTexture2DArr(
 
 // Allocate Buffer.
 inline void AllocateBuffer(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     UINT64 bufferSize,
     ID3D12Resource **ppResource,
     D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
@@ -132,7 +132,7 @@ inline void AllocateBuffer(
 
 // Create CBV.
 inline void CreateCBV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     UINT sizeInBytes,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle)
@@ -146,7 +146,7 @@ inline void CreateCBV(
 
 // Create rtv.
 inline void CreateRTV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     D3D12_RENDER_TARGET_VIEW_DESC* rtvDesc = nullptr)
@@ -156,7 +156,7 @@ inline void CreateRTV(
 
 // Create dsv.
 inline void CreateDSV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     D3D12_DEPTH_STENCIL_VIEW_DESC* dsvDesc = nullptr
@@ -167,7 +167,7 @@ inline void CreateDSV(
 
 // Create uav.
 inline void CreateUAV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     D3D12_UNORDERED_ACCESS_VIEW_DESC* uavDesc = nullptr,
@@ -183,7 +183,7 @@ inline void CreateUAV(
 
 // Create srv.
 inline void CreateSRV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     D3D12_SHADER_RESOURCE_VIEW_DESC* srvDesc = nullptr)
@@ -197,7 +197,7 @@ inline void CreateSRV(
 
 // Create SRV for a buffer.
 inline void CreateBufferSRV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     UINT firstElement,
@@ -221,7 +221,7 @@ inline void CreateBufferSRV(
 
 // Create SRV for a texture2D.
 inline void CreateTexture2DSRV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     DXGI_FORMAT format = DXGI_FORMAT_R32G32B32A32_FLOAT,
@@ -238,7 +238,7 @@ inline void CreateTexture2DSRV(
 };
 
 inline void CreateTexture2DUAV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     DXGI_FORMAT format = DXGI_FORMAT_R32G32B32A32_FLOAT,
@@ -254,7 +254,7 @@ inline void CreateTexture2DUAV(
 }
 
 inline void CreateTexture2DArrSRV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     UINT arraySize,
@@ -273,7 +273,7 @@ inline void CreateTexture2DArrSRV(
 }
 
 inline void CreateTexture2DArrUAV(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     ID3D12Resource* pResources,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     UINT arraySize,
@@ -290,7 +290,7 @@ inline void CreateTexture2DArrUAV(
 
 // Create sampler for a texture2D.
 inline void CreateTexture2DSampler(
-    ID3D12Device* pDevice,
+    ID3D12Device5* pDevice,
     D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle,
     D3D12_FILTER filter,
     D3D12_TEXTURE_ADDRESS_MODE addressU,
@@ -322,7 +322,7 @@ inline void CreateTexture2DSampler(
 
 // Create root signature.
 inline void SerializeAndCreateRootSignature(
-    ID3D12Device* device,
+    ID3D12Device5* device,
     D3D12_ROOT_SIGNATURE_DESC& desc,
     ComPtr<ID3D12RootSignature>& rootSig)
 {

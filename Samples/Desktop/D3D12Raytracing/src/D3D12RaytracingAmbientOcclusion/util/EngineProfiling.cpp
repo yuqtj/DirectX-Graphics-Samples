@@ -47,12 +47,12 @@ public:
         m_TimerIndex = GpuTimeManager::instance().NewTimer();
     }
 
-    void Start(ID3D12GraphicsCommandList* CommandList)
+    void Start(ID3D12GraphicsCommandList5* CommandList)
     {
         GpuTimeManager::instance().Start(CommandList, m_TimerIndex);
     }
 
-    void Stop(ID3D12GraphicsCommandList* CommandList)
+    void Stop(ID3D12GraphicsCommandList5* CommandList)
     {
         GpuTimeManager::instance().Stop(CommandList, m_TimerIndex);
     }
@@ -165,7 +165,7 @@ public:
         return nullptr;
     }
 
-    void StartTiming(ID3D12GraphicsCommandList* CommandList)
+    void StartTiming(ID3D12GraphicsCommandList5* CommandList)
     {
         m_CpuTimer.Start();
         if (CommandList == nullptr)
@@ -176,7 +176,7 @@ public:
         PIXBeginEvent(CommandList, 0, m_Name.c_str());
     }
 
-    void StopTiming(ID3D12GraphicsCommandList* CommandList)
+    void StopTiming(ID3D12GraphicsCommandList5* CommandList)
     {
         m_CpuTimer.Stop();
         m_CpuTimer.Update();
@@ -204,8 +204,8 @@ public:
         m_EndTick = 0;
     }
 
-    static void PushProfilingMarker(const wstring& name, ID3D12GraphicsCommandList* CommandList);
-    static void PopProfilingMarker(ID3D12GraphicsCommandList* CommandList);
+    static void PushProfilingMarker(const wstring& name, ID3D12GraphicsCommandList5* CommandList);
+    static void PopProfilingMarker(ID3D12GraphicsCommandList5* CommandList);
     static void Update(void);
 
     float GetAverageCpuTimeMS(void) const { return m_CpuTimer.GetAverageMS(); }
@@ -273,7 +273,7 @@ namespace EngineProfiling
         }
     }
     
-    void BeginFrame(ID3D12GraphicsCommandList* CommandList)
+    void BeginFrame(ID3D12GraphicsCommandList5* CommandList)
     {
         // ToDo cleanup
         static bool isFirstFrame = true;
@@ -292,7 +292,7 @@ namespace EngineProfiling
         NestedTimingTree::FrameGpuTimer().Start(CommandList);
     }
 
-    void EndFrame(ID3D12GraphicsCommandList* CommandList)
+    void EndFrame(ID3D12GraphicsCommandList5* CommandList)
     {
         NestedTimingTree::FrameCpuTimer().Stop();
         NestedTimingTree::FrameCpuTimer().Update();
@@ -300,7 +300,7 @@ namespace EngineProfiling
         GpuTimeManager::instance().EndFrame(CommandList);
     }
 
-    void RestoreDevice(ID3D12Device* Device, ID3D12CommandQueue* CommandQueue, UINT MaxFrameCount, UINT MaxNumTimers)
+    void RestoreDevice(ID3D12Device5* Device, ID3D12CommandQueue* CommandQueue, UINT MaxFrameCount, UINT MaxNumTimers)
     {
         GpuTimeManager::instance().RestoreDevice(Device, CommandQueue, MaxFrameCount, MaxNumTimers);
     }
@@ -310,12 +310,12 @@ namespace EngineProfiling
         GpuTimeManager::instance().ReleaseDevice();
     }
 
-    void BeginBlock(const wstring& name, ID3D12GraphicsCommandList* CommandList)
+    void BeginBlock(const wstring& name, ID3D12GraphicsCommandList5* CommandList)
     {
         NestedTimingTree::PushProfilingMarker(name, CommandList);
     }
 
-    void EndBlock(ID3D12GraphicsCommandList* CommandList)
+    void EndBlock(ID3D12GraphicsCommandList5* CommandList)
     {
         NestedTimingTree::PopProfilingMarker(CommandList);
     }
@@ -370,13 +370,13 @@ namespace EngineProfiling
 
 } // EngineProfiling
 
-void NestedTimingTree::PushProfilingMarker(const wstring& name, ID3D12GraphicsCommandList* CommandList)
+void NestedTimingTree::PushProfilingMarker(const wstring& name, ID3D12GraphicsCommandList5* CommandList)
 {
     sm_CurrentNode = sm_CurrentNode->GetChild(name);
     sm_CurrentNode->StartTiming(CommandList);
 }
 
-void NestedTimingTree::PopProfilingMarker(ID3D12GraphicsCommandList* CommandList)
+void NestedTimingTree::PopProfilingMarker(ID3D12GraphicsCommandList5* CommandList)
 {
     sm_CurrentNode->StopTiming(CommandList);
     sm_CurrentNode = sm_CurrentNode->m_Parent;

@@ -78,7 +78,7 @@ namespace DX
 			m_avgRefreshPeriodMs(0)
         {}
 
-        GPUTimer(ID3D12Device* device, ID3D12CommandQueue* commandQueue, UINT maxFrameCount, float averageRefreshPeriodMs) :
+        GPUTimer(ID3D12Device5* device, ID3D12CommandQueue* commandQueue, UINT maxFrameCount, float averageRefreshPeriodMs) :
             m_gpuFreqInv(1.f),
             m_avg{},
             m_timing{},
@@ -98,12 +98,12 @@ namespace DX
         ~GPUTimer() { ReleaseDevice(); }
 
         // Indicate beginning & end of frame
-        void BeginFrame(_In_ ID3D12GraphicsCommandList* commandList);
-        void EndFrame(_In_ ID3D12GraphicsCommandList* commandList);
+        void BeginFrame(_In_ ID3D12GraphicsCommandList5* commandList);
+        void EndFrame(_In_ ID3D12GraphicsCommandList5* commandList);
 
         // Start/stop a particular performance timer (don't start same index more than once in a single frame)
-        void Start(_In_ ID3D12GraphicsCommandList* commandList, uint32_t timerid = 0);
-        void Stop(_In_ ID3D12GraphicsCommandList* commandList, uint32_t timerid = 0);
+        void Start(_In_ ID3D12GraphicsCommandList5* commandList, uint32_t timerid = 0);
+        void Stop(_In_ ID3D12GraphicsCommandList5* commandList, uint32_t timerid = 0);
 		
 		void SetAvgRefreshPeriodMS(float avgRefreshPeriodMs) { m_avgRefreshPeriodMs = avgRefreshPeriodMs; }
 
@@ -122,7 +122,7 @@ namespace DX
         // Device management
         void ReleaseDevice();
 
-        void RestoreDevice(_In_ ID3D12Device* device, _In_ ID3D12CommandQueue* commandQueue, UINT maxFrameCount);
+        void RestoreDevice(_In_ ID3D12Device5* device, _In_ ID3D12CommandQueue* commandQueue, UINT maxFrameCount);
 
     private:
         static const size_t c_timerSlots = c_maxTimers * 2;

@@ -22,7 +22,7 @@ using namespace DirectX;
 
 // Load geometry from a file into buffers.
 void DXRTextWithPrimitives::LoadDensityMap(
-	ID3D12Device* device,
+	ID3D12Device5* device,
 	ID3D12CommandQueue* commandQueue,
 	LPCWSTR assetPath,
 )
@@ -40,8 +40,8 @@ void DXRTextWithPrimitives::LoadDensityMap(
 }
 
 void LoadScene(
-	ID3D12Device* device,
-	ID3D12GraphicsCommandList* commandList,
+	ID3D12Device5* device,
+	ID3D12GraphicsCommandList5* commandList,
 	ID3D12CommandQueue* commandQueue
 )
 {

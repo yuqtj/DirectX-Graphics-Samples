@@ -288,7 +288,7 @@ protected:
         }
     }
 
-    void Allocate(ID3D12Device* device, UINT bufferSize, LPCWSTR resourceName = nullptr)
+    void Allocate(ID3D12Device5* device, UINT bufferSize, LPCWSTR resourceName = nullptr)
     {
         auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
@@ -333,7 +333,7 @@ class ConstantBuffer : public GpuUploadBuffer
 public:
     ConstantBuffer() : m_alignedInstanceSize(0), m_numInstances(0), m_mappedConstantData(nullptr) {}
 
-    void Create(ID3D12Device* device, UINT numInstances = 1, LPCWSTR resourceName = nullptr)
+    void Create(ID3D12Device5* device, UINT numInstances = 1, LPCWSTR resourceName = nullptr)
     {
         m_numInstances = numInstances;
         m_alignedInstanceSize = Align(sizeof(T), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
@@ -379,7 +379,7 @@ public:
 
     StructuredBuffer() : m_mappedBuffers(nullptr), m_numInstances(0) {}
 
-    void Create(ID3D12Device* device, UINT numElements, UINT numInstances = 1, LPCWSTR resourceName = nullptr)
+    void Create(ID3D12Device5* device, UINT numElements, UINT numInstances = 1, LPCWSTR resourceName = nullptr)
     {
 		m_numInstances = numInstances;
         m_staging.resize(numElements);
@@ -418,7 +418,7 @@ namespace DX
         UINT m_descriptorSize;
 
     public:
-        DescriptorHeap(ID3D12Device* device, UINT numDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE type)
+        DescriptorHeap(ID3D12Device5* device, UINT numDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE type)
         {
             D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
             // Allocate a heap for descriptors:
@@ -525,7 +525,7 @@ struct RWGpuResource
 
 // ToDo Combine with CreateRT?
 inline void CreateTextureSRV(
-	ID3D12Device* device,
+	ID3D12Device5* device,
 	ID3D12Resource* resource,
 	DX::DescriptorHeap* descriptorHeap,
 	UINT* descriptorHeapIndex,
@@ -551,8 +551,8 @@ inline void CreateTextureSRV(
 // Loads a DDS texture and issues upload on the commandlist. 
 // The caller is expected to execute the commandList.
 inline void LoadDDSTexture(
-    ID3D12Device* device,
-    ID3D12GraphicsCommandList4* commandList,
+    ID3D12Device5* device,
+    ID3D12GraphicsCommandList5* commandList,
     const wchar_t* filename,
     DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
@@ -585,8 +585,8 @@ inline void LoadDDSTexture(
 }
 
 inline void LoadDDSTexture(
-    ID3D12Device* device,
-    ID3D12GraphicsCommandList4* commandList,
+    ID3D12Device5* device,
+    ID3D12GraphicsCommandList5* commandList,
     const wchar_t* filename,
     DX::DescriptorHeap* descriptorHeap,
     D3DTexture* tex,
@@ -598,8 +598,8 @@ inline void LoadDDSTexture(
 // Loads a WIC texture and issues upload on the commandlist. 
 // The caller is expected to execute the commandList.
 inline void LoadWICTexture(
-    ID3D12Device* device,
-    ID3D12GraphicsCommandList4* commandList,
+    ID3D12Device5* device,
+    ID3D12GraphicsCommandList5* commandList,
     const wchar_t* filename,
     DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
@@ -633,7 +633,7 @@ inline void LoadWICTexture(
 
 // Loads a WIC texture
 inline void LoadWICTexture(
-    ID3D12Device* device,
+    ID3D12Device5* device,
     ResourceUploadBatch* resourceUpload,
     const wchar_t* filename,
     DX::DescriptorHeap* descriptorHeap,
@@ -651,8 +651,8 @@ inline void LoadWICTexture(
 // Loads a texture and issues upload on the commandlist. 
 // The caller is expected to execute the commandList.
 inline void LoadTexture(
-    ID3D12Device* device,
-    ID3D12GraphicsCommandList4* commandList,
+    ID3D12Device5* device,
+    ID3D12GraphicsCommandList5* commandList,
     const wchar_t* filename,
     DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
@@ -674,7 +674,7 @@ inline void LoadTexture(
 
 
 inline void CreateRenderTargetResource(
-	ID3D12Device* device,
+	ID3D12Device5* device,
 	DXGI_FORMAT format,
 	UINT width,
 	UINT height,
@@ -712,7 +712,7 @@ inline void CreateRenderTargetResource(
 	}
 }
 
-inline void AllocateUAVBuffer(ID3D12Device* pDevice, UINT64 bufferSize, ID3D12Resource **ppResource, D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_COMMON, const wchar_t* resourceName = nullptr)
+inline void AllocateUAVBuffer(ID3D12Device5* pDevice, UINT64 bufferSize, ID3D12Resource **ppResource, D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_COMMON, const wchar_t* resourceName = nullptr)
 {
 	auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 	auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
@@ -731,7 +731,7 @@ inline void AllocateUAVBuffer(ID3D12Device* pDevice, UINT64 bufferSize, ID3D12Re
 
 // ToDo: standardize create/alloc resource calls
 inline void AllocateUAVBuffer(
-	ID3D12Device* device, 
+	ID3D12Device5* device, 
 	UINT numElements,	// ToDo use template?
 	UINT elementSize,
 	RWGpuResource* dest,
@@ -766,7 +766,7 @@ inline void AllocateUAVBuffer(
 }
 
 inline void AllocateReadBackBuffer(
-	ID3D12Device* device,
+	ID3D12Device5* device,
 	UINT64 bufferSize,
 	ID3D12Resource **dest, 
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_COMMON, 
@@ -798,7 +798,7 @@ inline UINT CeilLogWithBase(UINT value, UINT base)
 }
 
 inline void SerializeAndCreateRootSignature(
-	ID3D12Device* device,
+	ID3D12Device5* device,
 	D3D12_ROOT_SIGNATURE_DESC& desc, 
 	ComPtr<ID3D12RootSignature>* rootSignature, 
 	LPCWSTR resourceName = nullptr)
@@ -833,6 +833,7 @@ struct GeometryDescriptor
 	Buffer ib;
 };
 
+// ToDo rename to Geometry. 
 class GeometryInstance
 {
 public:
@@ -880,7 +881,7 @@ public:
 // Create a SRV for a buffer.
 inline void CreateBufferSRV(
 	ID3D12Resource* resource,
-	ID3D12Device* device,
+	ID3D12Device5* device,
 	UINT numElements,
 	UINT elementSize,
 	DX::DescriptorHeap* descriptorHeap,
@@ -915,7 +916,7 @@ inline void CreateBufferSRV(
 
 // Create a SRV for a buffer.
 inline void CreateBufferSRV(
-	ID3D12Device* device,
+	ID3D12Device5* device,
 	UINT numElements,
 	UINT elementSize,
 	DX::DescriptorHeap* descriptorHeap,
@@ -936,8 +937,8 @@ inline void CreateBufferSRV(
 // ToDo move?
 // Load geometry from a file into buffers.
 inline void CreateGeometry(
-	ID3D12Device* device,
-	ID3D12GraphicsCommandList* commandList,
+	ID3D12Device5* device,
+	ID3D12GraphicsCommandList5* commandList,
 	DX::DescriptorHeap* descriptorHeap,
 	const GeometryDescriptor& desc,
 	D3DGeometry* geometry
@@ -1035,7 +1036,7 @@ inline void CreateGeometry(
 }
 
 inline void CopyResource(
-    ID3D12GraphicsCommandList* commandList,
+    ID3D12GraphicsCommandList5* commandList,
     ID3D12Resource* srcResource,
     ID3D12Resource* destResource,
     D3D12_RESOURCE_STATES inSrcResourceState,
@@ -1060,7 +1061,7 @@ inline void CopyResource(
 }
 
 inline void CopyResource(
-    ID3D12GraphicsCommandList* commandList,
+    ID3D12GraphicsCommandList5* commandList,
     ID3D12Resource* srcResource,
     ID3D12Resource* destResource,
     D3D12_RESOURCE_STATES inSrcResourceState,
@@ -1077,7 +1078,7 @@ inline void CopyResource(
 }
 
 inline void CopyTextureRegion(
-    ID3D12GraphicsCommandList* commandList,
+    ID3D12GraphicsCommandList5* commandList,
     ID3D12Resource* srcResource,
     ID3D12Resource* destResource,
     const D3D12_BOX *srcBox,
@@ -1107,7 +1108,7 @@ inline void CopyTextureRegion(
 
 
 inline void CopyTextureRegion(
-    ID3D12GraphicsCommandList* commandList,
+    ID3D12GraphicsCommandList5* commandList,
     ID3D12Resource* src,
     ID3D12Resource* dest,
     const D3D12_BOX *srcBox,

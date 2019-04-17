@@ -15,7 +15,7 @@
 
 using namespace std;
 
-UILayer::UILayer(UINT frameCount, ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue) :
+UILayer::UILayer(UINT frameCount, ID3D12Device5* pDevice, ID3D12CommandQueue* pCommandQueue) :
     m_width(0.0f),
     m_height(0.0f)
 {
@@ -25,7 +25,7 @@ UILayer::UILayer(UINT frameCount, ID3D12Device* pDevice, ID3D12CommandQueue* pCo
     Initialize(pDevice, pCommandQueue);
 }
 
-void UILayer::Initialize(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue)
+void UILayer::Initialize(ID3D12Device5* pDevice, ID3D12CommandQueue* pCommandQueue)
 {
     UINT d3d11DeviceFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
     D2D1_FACTORY_OPTIONS d2dFactoryOptions = {};

@@ -125,7 +125,7 @@ namespace SceneArgs
         L"Normal Map", 
         L"Depth Buffer", 
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionAndDisocclusionMap, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
 
@@ -269,11 +269,11 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 	auto commandQueue = m_deviceResources->GetCommandQueue();
 	auto commandAllocator = m_deviceResources->GetCommandAllocator();
 
+    // ToDo remove?
 	auto Vec3ToXMFLOAT3 = [](SceneParser::Vector3 v)
 	{
 		return XMFLOAT3(v.x, v.y, v.z);
 	};
-
 
 	auto Vec3ToXMVECTOR = [](SceneParser::Vector3 v)
 	{
@@ -289,9 +289,9 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 #if 1
     PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
     // ToDo move plane from car2 to house
-	PBRTParser::PBRTParser().Parse("Assets\\car2\\scene.pbrt", m_pbrtScene);
-	PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);		// ToDo model is mirrored
-	PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\car2\\scene.pbrt", m_pbrtScene);
+	//PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);		// ToDo model is mirrored
+	//PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene);
 #else
 	PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);
 	//PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
@@ -563,6 +563,9 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
 
 void D3D12RaytracingAmbientOcclusion::UpdateBottomLevelASTransforms()
 {
+    //ToDo
+    return;
+
     float animationDuration = 24.0f;
     float curTime = static_cast<float>(m_timer.GetTotalSeconds());
     float t = CalculateAnimationInterpolant(curTime, animationDuration);
@@ -638,6 +641,8 @@ void D3D12RaytracingAmbientOcclusion::UpdateSphereGeometryTransforms()
 // ToDo move to CS.
 void D3D12RaytracingAmbientOcclusion::UpdateGridGeometryTransforms()
 {
+    // ToDO remove
+    return;
 	auto device = m_deviceResources->GetD3DDevice();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
@@ -941,15 +946,12 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
     CreateAuxilaryDeviceResources();
 
 	// ToDo move
-	m_geometryTransforms.Create(device, MaxGeometryTransforms, 1, L"Structured buffer: Geometry desc transforms");
+	m_geometryTransforms.Create(device, MaxGeometryTransforms, FrameCount, L"Structured buffer: Geometry desc transforms");
 
 	// Create a heap for descriptors.
 	CreateDescriptorHeaps();
 
     // Initialize raytracing pipeline.
-
-    // Create raytracing interfaces: raytracing device and commandlist.
-    CreateRaytracingInterfaces();
 
     // Build geometry to be used in the sample.
     // ToDO
@@ -1063,15 +1065,6 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
     }
 }
 
-// Create raytracing device and command list.
-void D3D12RaytracingAmbientOcclusion::CreateRaytracingInterfaces()
-{
-    auto device = m_deviceResources->GetD3DDevice();
-    auto commandList = m_deviceResources->GetCommandList();
-
-   ThrowIfFailed(device->QueryInterface(IID_PPV_ARGS(&m_dxrDevice)), L"Couldn't get DirectX Raytracing interface for the device.\n");
-}
-
 // DXIL library
 // This contains the shaders and their entrypoints for the state object.
 // Since shaders are not considered a subobject, they need to be passed in via DXIL library subobjects.
@@ -1127,6 +1120,8 @@ void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12
 // with all configuration options resolved, such as local signatures and other state.
 void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
 {
+    auto device = m_deviceResources->GetD3DDevice();
+
     // ToDo review
     // Create 18 subobjects that combine into a RTPSO:
     // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
@@ -1175,7 +1170,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
     PrintStateObjectDesc(raytracingPipeline);
 
     // Create the state object.
-    ThrowIfFailed(m_dxrDevice->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object.\n");
+    ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object.\n");
 }
 
 // Create a 2D output texture for raytracing.
@@ -1760,7 +1755,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
     LoadDDSTexture(device, commandList, L"Assets\\Textures\\FlowerRoad\\flower_road_8khdri_1kcubemap.BC7.dds", m_cbvSrvUavHeap.get(), &m_environmentMap, D3D12_SRV_DIMENSION_TEXTURECUBE);
     //LoadDDSTexture(device, commandList, L"Assets\\Textures\\cloud_layers_8khdri_1kcubemap.BC7.dds", m_cbvSrvUavHeap.get(), &m_environmentMap, D3D12_SRV_DIMENSION_TEXTURECUBE);
 
-#if !RUNTIME_AS_UPDATES
+#if 1
 	InitializeAccelerationStructures();
 
 #if ONLY_SQUID_SCENE_BLAS
@@ -1781,6 +1776,12 @@ void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
 
 void D3D12RaytracingAmbientOcclusion::GenerateBottomLevelASInstanceTransforms()
 {
+#if MULTI_BLAS_SCENE
+    for (auto& blas : m_vBottomLevelAS)
+    {
+        blas.SetTransform(XMMatrixIdentity());
+    }
+#else
 #if ONLY_SQUID_SCENE_BLAS
 	// Bottom-level AS with a single plane.
 	int BLASindex = 0;
@@ -1834,6 +1835,7 @@ void D3D12RaytracingAmbientOcclusion::GenerateBottomLevelASInstanceTransforms()
             }
     }
 #endif
+#endif
 
 }
 
@@ -1849,6 +1851,52 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 	UINT64 maxScratchResourceSize = 0;
     m_ASmemoryFootprint = 0;
     {
+        UINT numGeometryTransforms = 0;
+#if MULTI_BLAS_SCENE
+#if DEBUG_MULTI_BLAS_BUILD
+        m_vBottomLevelAS.resize(2);
+        {
+            int index = 1;
+            m_vBottomLevelAS[index].Initialize(device, buildFlags, SquidRoomAssets::StandardIndexFormat, SquidRoomAssets::StandardIndexStride, SquidRoomAssets::StandardVertexStride, m_geometryInstances[Scene::Type::SquidRoom]);
+            maxScratchResourceSize = max(m_vBottomLevelAS[index].RequiredScratchSize(), maxScratchResourceSize);
+            m_ASmemoryFootprint += m_vBottomLevelAS[index].RequiredResultDataSizeInBytes();
+            numGeometryTransforms += static_cast<UINT>(m_geometryInstances[Scene::Type::SquidRoom].size());
+
+            index = 0;
+            m_vBottomLevelAS[index].Initialize(device, buildFlags, SquidRoomAssets::StandardIndexFormat, SquidRoomAssets::StandardIndexStride, SquidRoomAssets::StandardVertexStride, m_geometryInstances[Scene::Type::GeometricForest]);
+            maxScratchResourceSize = max(m_vBottomLevelAS[index].RequiredScratchSize(), maxScratchResourceSize);
+            m_ASmemoryFootprint += m_vBottomLevelAS[index].RequiredResultDataSizeInBytes();
+            numGeometryTransforms += static_cast<UINT>(m_geometryInstances[Scene::Type::GeometricForest].size());
+#else
+        m_vBottomLevelAS.resize(ARRAYSIZE(m_geometryInstances));
+        for (UINT i = 0; i < m_vBottomLevelAS.size(); i++)
+        {
+            auto& geometryInstance = m_geometryInstances[i];
+
+            // ToDo pass IB stride from a geometryInstance object
+
+            switch (i)
+            {
+            case Scene::Type::SingleObject:
+            case Scene::Type::GeometricForest:
+                m_vBottomLevelAS[i].Initialize(device, buildFlags, DXGI_FORMAT_R16_UINT, sizeof(Index), sizeof(DirectX::GeometricPrimitive::VertexType), geometryInstance);
+                break;
+            case Scene::Type::SquidRoom:
+            case Scene::Type::PBRT:
+                m_vBottomLevelAS[i].Initialize(device, buildFlags, SquidRoomAssets::StandardIndexFormat, SquidRoomAssets::StandardIndexStride, SquidRoomAssets::StandardVertexStride, geometryInstance);
+                break;
+            };
+
+            m_numTrianglesInTheScene += m_numTriangles[i];
+
+            maxScratchResourceSize = max(m_vBottomLevelAS[i].RequiredScratchSize(), maxScratchResourceSize);
+            m_ASmemoryFootprint += m_vBottomLevelAS[i].RequiredResultDataSizeInBytes();
+            numGeometryTransforms += static_cast<UINT>(geometryInstance.size());
+#endif
+
+        }
+#else
+    
 #if ONLY_SQUID_SCENE_BLAS
 		m_vBottomLevelAS.resize(1);
 		// ToDo apply scale transform to make all scenes using same spatial unit lengths.
@@ -1901,6 +1949,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
             m_ASmemoryFootprint += m_vBottomLevelAS[i].RequiredResultDataSizeInBytes();
         }
 		UINT numGeometryTransforms = 1 + SceneArgs::NumSphereBLAS * SceneArgs::NumGeometriesPerBLAS;
+#endif
 #endif
 
 		// ToDo Allocate exactly as much is needed?
@@ -2018,6 +2067,17 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 
 	// ToDo remove
 	vector<vector<GeometryInstance>*> geometryInstancesArray;
+#if MULTI_BLAS_SCENE
+#if DEBUG_MULTI_BLAS_BUILD
+    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::Sphere]);
+    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::SquidRoom]);
+#else
+    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::Plane]);
+    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::Sphere]);
+    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::SquidRoom]);
+    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::PBRT]);
+#endif
+#else
 #if ONLY_SQUID_SCENE_BLAS
 #if PBRT_SCENE
 	geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::PBRT]);
@@ -2032,6 +2092,7 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 	geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::Sphere]);
 #endif
 #endif
+#endif
 
 	// Hit group shader table.
 	{
@@ -2044,28 +2105,41 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 		ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
 
 		// Triangle geometry hit groups.
-		for (auto& geometryInstances : geometryInstancesArray)
-			for (auto& geometryInstance: *geometryInstances)
-			{
-				LocalRootSignature::Triangle::RootArguments rootArgs;
-				rootArgs.cb.materialID = geometryInstance.materialID;
+#if 0
+        {
+            UINT shaderRecordOffset = hitGroupShaderTable.GeNumShaderRecords();
+            m_vBottomLevelAS[0].SetInstanceContributionToHitGroupIndex(shaderRecordOffset);
+            for (auto& geometryInstance : *geometryInstancesArray[0])
+#else
+        for (UINT i = 0; i < GeometryType::Count; i++)
+        {
+            UINT shaderRecordOffset = hitGroupShaderTable.GeNumShaderRecords();
+            m_vBottomLevelAS[i].SetInstanceContributionToHitGroupIndex(shaderRecordOffset);
+            for (auto& geometryInstance : *geometryInstancesArray[i])
+#endif
+            {
+                LocalRootSignature::Triangle::RootArguments rootArgs;
+                rootArgs.cb.materialID = geometryInstance.materialID;
 
                 // ToDo rename to ibGPUHandle, otherwise its confusing why copy ib to vb handle.
-				memcpy(&rootArgs.vertexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
+                memcpy(&rootArgs.vertexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
                 memcpy(&rootArgs.diffuseTextureGPUHandle, &geometryInstance.diffuseTexture, sizeof(geometryInstance.diffuseTexture));
                 memcpy(&rootArgs.normalTextureGPUHandle, &geometryInstance.normalTexture, sizeof(geometryInstance.normalTexture));
 
 
-				for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
-				{
-					hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIDSize, &rootArgs, sizeof(rootArgs)));
-				}
-			}
+                for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
+                {
+                    hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIDSize, &rootArgs, sizeof(rootArgs)));
+                }
+            }
 
+        }
         hitGroupShaderTable.DebugPrint(shaderIdToStringMap);
         m_hitGroupShaderTableStrideInBytes = hitGroupShaderTable.GetShaderRecordSize();
         m_hitGroupShaderTable = hitGroupShaderTable.GetResource();
     }
+
+    m_isASinitializationRequested = true;
 }
 
 void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
@@ -2087,6 +2161,12 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
         break;
     case 'V':
         SceneArgs::TAO_LazyRender.Bang();// TODo remove
+        break;
+    case 'J':
+        m_vBottomLevelAS[0].ApplyTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 0.5, 0, 0)));
+        break;
+    case 'M':
+        m_vBottomLevelAS[0].ApplyTransform(XMMatrixTranslationFromVector(XMVectorSet(0, -0.5, 0, 0)));
         break;
     case 'O':
         angleToRotateBy = -10;
@@ -2203,7 +2283,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     }
     m_sceneCB->elapsedTime = static_cast<float>(m_timer.GetTotalSeconds());
 
-#if ENABLE_RAYTRACING
+#if 1
 #if RUNTIME_AS_UPDATES
     // Lazy initialize and update geometries and acceleration structures.
     if (SceneArgs::EnableGeometryAndASBuildsAndUpdates &&
@@ -2305,17 +2385,32 @@ void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructures(bool forceBui
 
 
     // Build BLAS.
-	{
-        ScopedTimer _prof(L"BLAS", commandList);
+    {
 
-		m_geometryTransforms.CopyStagingToGpu(frameIndex);
+        m_geometryTransforms.CopyStagingToGpu(frameIndex);
+#if MULTI_BLAS_SCENE
+        for (auto& blas: m_vBottomLevelAS)
+        {
+            if (blas.IsDirty() || forceBuild)
+            {
+                ScopedTimer _prof(L"BLAS", commandList);
+                // ToDo Heuristic to do an update based on transform amplitude
+                D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGpuAddress = 0;
+                blas.Build(commandList, m_accelerationStructureScratch.Get(), m_cbvSrvUavHeap->GetHeap(), baseGeometryTransformGpuAddress, bUpdate);
+            }
+        }
+#else
 #if ONLY_SQUID_SCENE_BLAS
 		// ToDo this should be per scene
 		// SquidRoom
 		{
-			// ToDo Heuristic to do an update based on transform amplitude
-			D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGpuAddress = 0;
-			m_vBottomLevelAS[0].Build(commandList, m_accelerationStructureScratch.Get(), m_cbvSrvUavHeap->GetHeap(), baseGeometryTransformGpuAddress, bUpdate);
+            if (m_vBottomLevelAS[0].IsDirty() || forceBuild)
+            {
+                ScopedTimer _prof(L"BLAS", commandList);
+                // ToDo Heuristic to do an update based on transform amplitude
+                D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGpuAddress = 0;
+                m_vBottomLevelAS[0].Build(commandList, m_accelerationStructureScratch.Get(), m_cbvSrvUavHeap->GetHeap(), baseGeometryTransformGpuAddress, bUpdate);
+            }
 		}
 #else
 		// Plane
@@ -2338,6 +2433,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructures(bool forceBui
 #endif
 			m_vBottomLevelAS[BottomLevelASType::Sphere].Build(commandList, m_accelerationStructureScratch.Get(), m_cbvSrvUavHeap->GetHeap(), baseGeometryTransformGpuAddress, bUpdate);
         }
+#endif
 #endif
     }
 
@@ -3824,8 +3920,6 @@ void D3D12RaytracingAmbientOcclusion::ReleaseDeviceDependentResources()
 
     m_raytracingGlobalRootSignature.Reset();
     ResetComPtrArray(&m_raytracingLocalRootSignature);
-
-    m_dxrDevice.Reset();
     m_dxrStateObject.Reset();
 
     m_raytracingGlobalRootSignature.Reset();
@@ -4205,12 +4299,17 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
         ScopedTimer _prof(L"Frame", commandList);
 
 #if RUNTIME_AS_UPDATES
+#if 0
         // Update acceleration structures.
         if (m_isASrebuildRequested && SceneArgs::EnableGeometryAndASBuildsAndUpdates)
         {
             UpdateAccelerationStructures(m_isASrebuildRequested);
             m_isASrebuildRequested = false;
         }
+#else
+        // ToDo
+        UpdateAccelerationStructures();
+#endif
 #endif
 
         // Render.

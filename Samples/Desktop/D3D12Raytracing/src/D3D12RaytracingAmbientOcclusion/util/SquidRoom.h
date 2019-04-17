@@ -17,8 +17,8 @@ namespace SquidRoomAssets
 {
 	// ToDo make it take D3DGeometry instead
 	void LoadGeometry(
-		ID3D12Device* device,
-		ID3D12GraphicsCommandList* commandList,
+		ID3D12Device5* device,
+		ID3D12GraphicsCommandList5* commandList,
 		DX::DescriptorHeap* descriptorHeap,
 		LPCWSTR assetPath,
 		D3DGeometry* geometry,

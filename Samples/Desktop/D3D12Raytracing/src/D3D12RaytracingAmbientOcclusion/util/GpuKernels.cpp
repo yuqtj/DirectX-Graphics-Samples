@@ -50,7 +50,7 @@ namespace GpuKernels
 		}
 	}
 
-	void ReduceSum::Initialize(ID3D12Device* device, Type type)
+	void ReduceSum::Initialize(ID3D12Device5* device, Type type)
 	{
         m_resultType = type;
 
@@ -91,7 +91,7 @@ namespace GpuKernels
 	}
 
 	void ReduceSum::CreateInputResourceSizeDependentResources(
-		ID3D12Device* device,
+		ID3D12Device5* device,
 		DX::DescriptorHeap* descriptorHeap,
 		UINT frameCount,
 		UINT width,
@@ -144,7 +144,7 @@ namespace GpuKernels
 	}
 
 	void ReduceSum::Execute(
-		ID3D12GraphicsCommandList* commandList,
+		ID3D12GraphicsCommandList5* commandList,
 		ID3D12DescriptorHeap* descriptorHeap, 
 		UINT frameIndex,
 		UINT invocationIndex,   // per frame invocation index
@@ -247,7 +247,7 @@ namespace GpuKernels
 		}
 	}
 
-	void DownsampleBoxFilter2x2::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
+	void DownsampleBoxFilter2x2::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
 	{
 		// Create root signature.
 		{
@@ -289,7 +289,7 @@ namespace GpuKernels
 	// Downsamples input resource.
 	// width, height - dimensions of the input resource.
 	void DownsampleBoxFilter2x2::Execute(
-		ID3D12GraphicsCommandList* commandList,
+		ID3D12GraphicsCommandList5* commandList,
 		UINT width,
 		UINT height,
 		ID3D12DescriptorHeap* descriptorHeap,
@@ -336,7 +336,7 @@ namespace GpuKernels
 		}
 	}
 
-	void DownsampleGaussianFilter::Initialize(ID3D12Device* device, Type type, UINT frameCount, UINT numCallsPerFrame)
+	void DownsampleGaussianFilter::Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame)
 	{
 		// Create root signature.
 		{
@@ -384,7 +384,7 @@ namespace GpuKernels
 	// Downsamples input resource.
 	// width, height - dimensions of the input resource.
 	void DownsampleGaussianFilter::Execute(
-		ID3D12GraphicsCommandList* commandList,
+		ID3D12GraphicsCommandList5* commandList,
 		UINT width,
 		UINT height,
 		ID3D12DescriptorHeap* descriptorHeap,
@@ -444,7 +444,7 @@ namespace GpuKernels
     }
 
     // ToDo move the Type parameter to Execute?
-    void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Initialize(ID3D12Device* device, Type type)
+    void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Initialize(ID3D12Device5* device, Type type)
     {
         // Create root signature.
         {
@@ -502,7 +502,7 @@ namespace GpuKernels
     // Downsamples input resource.
     // width, height - dimensions of the input resource.
     void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         UINT width,
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -564,7 +564,7 @@ namespace GpuKernels
         }
     }
 
-    void DownsampleValueNormalDepthBilateralFilter::Initialize(ID3D12Device* device, Type type)
+    void DownsampleValueNormalDepthBilateralFilter::Initialize(ID3D12Device5* device, Type type)
     {
         // Create root signature.
         {
@@ -615,7 +615,7 @@ namespace GpuKernels
     // Downsamples input resource.
     // width, height - dimensions of the input resource.
     void DownsampleValueNormalDepthBilateralFilter::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         UINT width,
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -668,7 +668,7 @@ namespace GpuKernels
     }
 
     // ToDo test downsample,upsample on odd resolution
-    void UpsampleBilateralFilter::Initialize(ID3D12Device* device, Type type, UINT frameCount, UINT numCallsPerFrame)
+    void UpsampleBilateralFilter::Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -718,7 +718,7 @@ namespace GpuKernels
     // width, height - dimensions of the output resource.
     // ToDo should the input width/height be of output or input?
     void UpsampleBilateralFilter::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         UINT width, // Todo remove and deduce from outputResourceInstead?
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -790,7 +790,7 @@ namespace GpuKernels
     }
 
     // ToDo test downsample,upsample on odd resolution
-    void MultiScale_UpsampleBilateralFilterAndCombine::Initialize(ID3D12Device* device, Type type)
+    void MultiScale_UpsampleBilateralFilterAndCombine::Initialize(ID3D12Device5* device, Type type)
     {
         // Create root signature.
         {
@@ -837,7 +837,7 @@ namespace GpuKernels
     // Resamples input resource.
     // width, height - dimensions of the input resource.
     void MultiScale_UpsampleBilateralFilterAndCombine::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         UINT width,
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -894,7 +894,7 @@ namespace GpuKernels
         }
     }
 
-    void GaussianFilter::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
+    void GaussianFilter::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -945,7 +945,7 @@ namespace GpuKernels
     // Blurs input resource with a Gaussian filter.
     // width, height - dimensions of the input resource.
     void GaussianFilter::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         UINT width,
         UINT height,
         FilterType type,
@@ -992,7 +992,7 @@ namespace GpuKernels
         }
     }
 
-    void RootMeanSquareError::Initialize(ID3D12Device* device)
+    void RootMeanSquareError::Initialize(ID3D12Device5* device)
     {
         // Create root signature.
         {
@@ -1024,7 +1024,7 @@ namespace GpuKernels
     }
 
     void RootMeanSquareError::CreateInputResourceSizeDependentResources(
-        ID3D12Device* device,
+        ID3D12Device5* device,
         DX::DescriptorHeap* descriptorHeap,
         UINT frameCount,
         UINT width,
@@ -1047,7 +1047,7 @@ namespace GpuKernels
     //  3) Takes a root square on the CPU of the readback result
     // width, height - dimensions of the input resource.
     void RootMeanSquareError::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT frameIndex,
         UINT invocationIndex,
@@ -1114,7 +1114,7 @@ namespace GpuKernels
     }
 
     // ToDo move type to execute
-    void AtrousWaveletTransformCrossBilateralFilter::Initialize(ID3D12Device* device, UINT frameCount, UINT maxFilterPasses, UINT numCallsPerFrame)
+    void AtrousWaveletTransformCrossBilateralFilter::Initialize(ID3D12Device5* device, UINT frameCount, UINT maxFilterPasses, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -1188,7 +1188,7 @@ namespace GpuKernels
     }
 
     void AtrousWaveletTransformCrossBilateralFilter::CreateInputResourceSizeDependentResources(
-        ID3D12Device* device,
+        ID3D12Device5* device,
         DX::DescriptorHeap* descriptorHeap,
         UINT width,
         UINT height)
@@ -1217,7 +1217,7 @@ namespace GpuKernels
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
     void AtrousWaveletTransformCrossBilateralFilter::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         FilterType filterType,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
@@ -1413,7 +1413,7 @@ namespace GpuKernels
     }
 
     // ToDo move type to execute
-    void CalculatePartialDerivatives::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
+    void CalculatePartialDerivatives::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -1450,7 +1450,7 @@ namespace GpuKernels
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
     void CalculatePartialDerivatives::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
         UINT height,
@@ -1506,7 +1506,7 @@ namespace GpuKernels
     }
 
     // ToDo move type to execute
-    void CalculateVariance::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
+    void CalculateVariance::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -1550,7 +1550,7 @@ namespace GpuKernels
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
     void CalculateVariance::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
         UINT height,
@@ -1636,7 +1636,7 @@ namespace GpuKernels
         }
     }
 
-    void RTAO_TemporalCache_ReverseReproject::Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame)
+    void RTAO_TemporalCache_ReverseReproject::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -1700,7 +1700,7 @@ namespace GpuKernels
 
     // ToDo desc
     void RTAO_TemporalCache_ReverseReproject::Execute(
-        ID3D12GraphicsCommandList* commandList,
+        ID3D12GraphicsCommandList5* commandList,
         UINT width,
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,

@@ -23,99 +23,8 @@ inline T Clamp(T value, T minValue, T maxValue)
 	return std::max(minValue, std::min(maxValue, value));
 }
 
-struct AccelerationStructureBuffers
-{
-    ComPtr<ID3D12Resource> scratch;
-    ComPtr<ID3D12Resource> accelerationStructure;
-    ComPtr<ID3D12Resource> instanceDesc;    // Used only for top-level AS
-    UINT64                 ResultDataMaxSizeInBytes;
-};
-
 class D3D12RaytracingAmbientOcclusion;
 extern D3D12RaytracingAmbientOcclusion* g_pSample;
-
-struct alignas(16) AlignedGeometryTransform3x4
-{
-	float transform3x4[12];
-};
-
-// AccelerationStructure
-// A base class for bottom-level and top-level AS.
-class AccelerationStructure
-{
-protected:
-	ComPtr<ID3D12Resource> m_accelerationStructure;
-	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_buildFlags;
-	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO m_prebuildInfo;
-	
-public:
-	AccelerationStructure();
-	virtual ~AccelerationStructure() {}
-	void ReleaseD3DResources();
-	UINT64 RequiredScratchSize() { return std::max(m_prebuildInfo.ScratchDataSizeInBytes, m_prebuildInfo.UpdateScratchDataSizeInBytes); }
-	UINT64 RequiredResultDataSizeInBytes() { return m_prebuildInfo.ResultDataMaxSizeInBytes; }
-	ID3D12Resource* GetResource() { return m_accelerationStructure.Get(); }
-	const D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO& PrebuildInfo() { return m_prebuildInfo; }
-
-protected:
-	void AllocateResource(ID3D12Device* device, const wchar_t* resourceName = nullptr);
-};
-
-class BottomLevelAccelerationStructure : public AccelerationStructure
-{
-	std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> m_geometryDescs;
-	DirectX::XMMATRIX m_transform;
-
-	// Runtime state
-	bool m_isDirty;		// if true, AS requires an update/build.
-    UINT m_instanceContributionToHitGroupIndex;
-
-public:
-	BottomLevelAccelerationStructure();
-	~BottomLevelAccelerationStructure() {}
-	std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>* GetGeometryDescs() { return &m_geometryDescs; }
-	
-	// ToDo:
-	// UpdateGeometry()
-
-	void Initialize(ID3D12Device* device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, DXGI_FORMAT indexFormat, UINT ibStrideInBytes, UINT vbStrideInBytes, std::vector<GeometryInstance>& geometries);
-	void Build(ID3D12GraphicsCommandList* commandList, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress, bool bUpdate = false);
-	void BuildInstanceDesc(void* destInstanceDesc, UINT* descriptorHeapIndex);
-	void UpdateGeometryDescsTransform(D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress);
-	void SetTransform(const DirectX::XMMATRIX& transform)
-	{
-		m_transform = transform;
-		SetDirty(true);
-	}
-    void SetInstanceContributionToHitGroupIndex(UINT index) { m_instanceContributionToHitGroupIndex = index; }
-	void SetDirty(bool isDirty) { m_isDirty = isDirty; }
-	bool IsDirty() { return m_isDirty; }
-
-	const XMMATRIX& GetTransform() { return m_transform; }
-
-private:
-	void BuildGeometryDescs(DXGI_FORMAT indexFormat, UINT ibStrideInBytes, UINT vbStrideInBytes, std::vector<GeometryInstance>& geometries);
-	void ComputePrebuildInfo();
-};
-
-class TopLevelAccelerationStructure : public AccelerationStructure
-{
-	StructuredBuffer<D3D12_RAYTRACING_INSTANCE_DESC> m_dxrInstanceDescs;
-
-public:
-	TopLevelAccelerationStructure() {}
-	~TopLevelAccelerationStructure();
-
-	UINT NumberOfBLAS();
-
-	void Initialize(ID3D12Device* device, std::vector<BottomLevelAccelerationStructure>& vBottomLevelAS, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, std::vector<UINT>* bottomLevelASinstanceDescsDescritorHeapIndices);
-	void Build(ID3D12GraphicsCommandList* commandList, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, bool bUpdate = false);
-	void UpdateInstanceDescTransforms(std::vector<BottomLevelAccelerationStructure>& vBottomLevelAS);
-
-private:
-	void ComputePrebuildInfo();
-	void BuildInstanceDescs(ID3D12Device* device, std::vector<BottomLevelAccelerationStructure>& vBottomLevelAS, std::vector<UINT>* bottomLevelASinstanceDescsDescritorHeapIndices);
-};
 
 // Shader record = {{Shader ID}, {RootArguments}}
 class ShaderRecord
@@ -166,7 +75,7 @@ class ShaderTable : public GpuUploadBuffer
 
     ShaderTable() {}
 public:
-    ShaderTable(ID3D12Device* device, UINT numShaderRecords, UINT shaderRecordSize, LPCWSTR resourceName = nullptr) 
+    ShaderTable(ID3D12Device5* device, UINT numShaderRecords, UINT shaderRecordSize, LPCWSTR resourceName = nullptr) 
         : m_name(resourceName)
     {
         m_shaderRecordSize = Align(shaderRecordSize, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
@@ -185,6 +94,7 @@ public:
     }
 
     UINT GetShaderRecordSize() { return m_shaderRecordSize; }
+    UINT GeNumShaderRecords() { return static_cast<UINT>(m_shaderRecords.size()); }
 
     // Pretty-print the shader records.
     void DebugPrint(std::unordered_map<void*, std::wstring> shaderIdToStringMap)
@@ -203,6 +113,8 @@ public:
         }
         wstr << L"| --------------------------------------------------------------------\n";
         wstr << L"\n";
+
+        // ToDo this won't print more than ~ 200 lines
         OutputDebugStringW(wstr.str().c_str());
     }
 };
@@ -230,7 +142,7 @@ void DefineExports(T* obj, LPCWSTR(&Exports)[N][M])
 }
 
 // Allocate buffer and fill with input data.
-inline void AllocateUploadBuffer(ID3D12Device* pDevice, void *pData, UINT64 datasize, ID3D12Resource **ppResource, const wchar_t* resourceName = nullptr)
+inline void AllocateUploadBuffer(ID3D12Device5* pDevice, void *pData, UINT64 datasize, ID3D12Resource **ppResource, const wchar_t* resourceName = nullptr)
 {
     auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(datasize);
@@ -371,7 +283,7 @@ inline void PrintStateObjectDesc(const D3D12_STATE_OBJECT_DESC* desc)
 // Returns bool whether the device supports DirectX Raytracing tier.
 inline bool IsDirectXRaytracingSupported(IDXGIAdapter1* adapter)
 {
-    ComPtr<ID3D12Device> testDevice;
+    ComPtr<ID3D12Device5> testDevice;
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 featureSupportData = {};
 
     return SUCCEEDED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice)))

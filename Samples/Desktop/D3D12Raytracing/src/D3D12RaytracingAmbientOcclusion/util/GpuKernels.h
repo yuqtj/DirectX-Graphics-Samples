@@ -30,16 +30,16 @@ namespace GpuKernels
 			assert(0 && L"ToDo");
 		}
 
-		void Initialize(ID3D12Device* device, Type type);
+		void Initialize(ID3D12Device5* device, Type type);
 		void CreateInputResourceSizeDependentResources(
-			ID3D12Device* device,
+			ID3D12Device5* device,
 			DX::DescriptorHeap* descriptorHeap,
 			UINT frameCount,
 			UINT width,
 			UINT height,
 			UINT numInvocationsPerFrame);
 		void Execute(
-			ID3D12GraphicsCommandList* commandList,
+			ID3D12GraphicsCommandList5* commandList,
 			ID3D12DescriptorHeap* descriptorHeap,
 			UINT frameIndex,
 			UINT invocationIndex,
@@ -63,9 +63,9 @@ namespace GpuKernels
 			assert(0 && L"ToDo");
 		}
 
-		void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
+		void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
 		void Execute(
-			ID3D12GraphicsCommandList* commandList,
+			ID3D12GraphicsCommandList5* commandList,
 			UINT width,
 			UINT height,
 			ID3D12DescriptorHeap* descriptorHeap,
@@ -96,9 +96,9 @@ namespace GpuKernels
 			assert(0 && L"ToDo");
 		}
 
-		void Initialize(ID3D12Device* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
+		void Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
 		void Execute(
-			ID3D12GraphicsCommandList* commandList,
+			ID3D12GraphicsCommandList5* commandList,
 			UINT width,
 			UINT height,
 			ID3D12DescriptorHeap* descriptorHeap,
@@ -125,9 +125,9 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, Type type);
+        void Initialize(ID3D12Device5* device, Type type);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -162,9 +162,9 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, Type type);
+        void Initialize(ID3D12Device5* device, Type type);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -192,9 +192,9 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -228,9 +228,9 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, Type type);
+        void Initialize(ID3D12Device5* device, Type type);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -260,9 +260,9 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             UINT width,
             UINT height,
             FilterType type,
@@ -287,16 +287,16 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device);
+        void Initialize(ID3D12Device5* device);
         void CreateInputResourceSizeDependentResources(
-            ID3D12Device* device,
+            ID3D12Device5* device,
             DX::DescriptorHeap* descriptorHeap,
             UINT frameCount,
             UINT width,
             UINT height,
             UINT numInvocationsPerFrame);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT frameIndex,
             UINT invocationIndex,
@@ -332,14 +332,14 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, UINT maxFilterPasses, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device5* device, UINT maxFilterPasses, UINT frameCount, UINT numCallsPerFrame = 1);
         void CreateInputResourceSizeDependentResources(
-            ID3D12Device* device,
+            ID3D12Device5* device,
             DX::DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             ID3D12DescriptorHeap* descriptorHeap, 
             FilterType type,
             // ToDo use helper structs to pass the data in
@@ -389,9 +389,9 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height,
@@ -413,9 +413,9 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height,
@@ -447,9 +447,9 @@ namespace GpuKernels
         }
 
         // ToDo set default parameters
-        void Initialize(ID3D12Device* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList* commandList,
+            ID3D12GraphicsCommandList5* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,

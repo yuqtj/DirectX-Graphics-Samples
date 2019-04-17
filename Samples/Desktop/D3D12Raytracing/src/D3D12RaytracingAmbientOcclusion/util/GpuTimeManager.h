@@ -21,7 +21,7 @@ namespace DX
         GpuTimeManager() { assert(++s_numInstances == 1 && L"There can be only one GpuTimeManager instance."); }
         ~GpuTimeManager() { ReleaseDevice(); }
 
-        void RestoreDevice(ID3D12Device* device, ID3D12CommandQueue* commandQueue, UINT maxFrameCount, UINT MaxNumTimers = 100);
+        void RestoreDevice(ID3D12Device5* device, ID3D12CommandQueue* commandQueue, UINT maxFrameCount, UINT MaxNumTimers = 100);
         void ReleaseDevice();
         void Shutdown();
 
@@ -29,12 +29,12 @@ namespace DX
         UINT NewTimer(void);
 
         // Indicate beginning & end of frame
-        void BeginFrame(ID3D12GraphicsCommandList* commandList);
-        void EndFrame(ID3D12GraphicsCommandList* commandList);
+        void BeginFrame(ID3D12GraphicsCommandList5* commandList);
+        void EndFrame(ID3D12GraphicsCommandList5* commandList);
 
         // Write start and stop time stamps on the GPU timeline
-        void Start(ID3D12GraphicsCommandList* commandList, UINT timerid);
-        void Stop(ID3D12GraphicsCommandList* commandList, UINT timerid);
+        void Start(ID3D12GraphicsCommandList5* commandList, UINT timerid);
+        void Stop(ID3D12GraphicsCommandList5* commandList, UINT timerid);
         
         void SetAvgRefreshPeriodMS(float avgRefreshPeriodMs) { m_avgRefreshPeriodMs = avgRefreshPeriodMs; }
         float AvgRefreshPeriodMS() const { return m_avgRefreshPeriodMs; }

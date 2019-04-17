@@ -141,6 +141,9 @@
     <ClInclude Include="util\EngineProfiling.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
+    <ClInclude Include="RaytracingAccelerationStructure.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -214,6 +217,9 @@
     </ClCompile>
     <ClCompile Include="util\EngineProfiling.cpp">
       <Filter>Source Files\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="RaytracingAccelerationStructure.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

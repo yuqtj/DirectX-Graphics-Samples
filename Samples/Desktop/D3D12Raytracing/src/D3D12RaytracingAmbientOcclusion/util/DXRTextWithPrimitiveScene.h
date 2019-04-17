@@ -15,7 +15,7 @@
 // ToDo what is this file for?
 namespace DXRTextWithPrimitives
 {
-	void LoadDensityMap(ID3D12Device* device, ID3D12CommandQueue* commandQueue, LPCWSTR assetPath, ID3D12Resource* resource);
+	void LoadDensityMap(ID3D12Device5* device, ID3D12CommandQueue* commandQueue, LPCWSTR assetPath, ID3D12Resource* resource);
 
     const wchar_t DataFileName[] = L"SquidRoom.bin";
 

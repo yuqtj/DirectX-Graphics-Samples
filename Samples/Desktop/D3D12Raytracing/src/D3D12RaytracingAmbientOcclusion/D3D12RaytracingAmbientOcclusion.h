@@ -16,6 +16,7 @@
 #include "StepTimer.h"  // ToDo remove
 #include "RaytracingSceneDefines.h"
 #include "DirectXRaytracingHelper.h"
+#include "RaytracingAccelerationStructure.h"
 #include "CameraController.h"
 #include "PerformanceTimers.h"
 #include "GpuTimeManager.h"
@@ -45,8 +46,6 @@ public:
 	virtual IDXGISwapChain* GetSwapchain() { return m_deviceResources->GetSwapChain(); }
 
 	const DX::DeviceResources& GetDeviceResources() { return *m_deviceResources; }
-	ID3D12Device5* GetDxrDevice() { return m_dxrDevice.Get(); }
-	ID3D12GraphicsCommandList4* GetDxrCommandList() { return m_deviceResources->GetCommandList(); }
 
 	void RequestGeometryInitialization(bool bRequest) { m_isGeometryInitializationRequested = bRequest; }
 	void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
@@ -86,14 +85,13 @@ private:
 	const float m_geometryRadius = 3.0f;
 #endif
 
-	const UINT MaxGeometryTransforms = 10000;
+	const UINT MaxGeometryTransforms = 10000;       // ToDo lower / remove?
 
 	std::vector<UINT> m_bottomLevelASdescritorHeapIndices;
 	std::vector<UINT> m_bottomLevelASinstanceDescsDescritorHeapIndices;
 	UINT m_topLevelASdescritorHeapIndex;
 
 	// DirectX Raytracing (DXR) attributes
-	ComPtr<ID3D12Device5> m_dxrDevice;		// ToDo remove
 	ComPtr<ID3D12StateObject> m_dxrStateObject;
 
 	// Compute resources.
@@ -331,7 +329,6 @@ private:
     void ReleaseDeviceDependentResources();
     void ReleaseWindowSizeDependentResources();
     void RenderRNGVisualizations();
-    void CreateRaytracingInterfaces();
     void CreateRootSignatures();
     void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
     void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);

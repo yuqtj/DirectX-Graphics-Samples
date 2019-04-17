@@ -27,7 +27,7 @@
 //
 //**********************************************************************************************
 #define ENABLE_RAYTRACING 1
-#define RUNTIME_AS_UPDATES 0
+#define RUNTIME_AS_UPDATES 1
 #define USE_GPU_TRANSFORM 1
 
 #define WORKAROUND_ATROUS_VARYING_OUTPUTS 1
@@ -97,7 +97,7 @@
 
 #define AO_PROGRESSIVE_SAMPLING 0
 
-#define ENABLE_VSYNC 1
+#define ENABLE_VSYNC 1      // Add 60/30 fps sync options to sample
 
 #define BLUR_AO 1
 #define ATROUS_DENOISER 1
@@ -105,12 +105,15 @@
 #define RENDER_RNG_SAMPLE_VISUALIZATION 1   // ToDo doesn't render for all AA settings
 #define ATROUS_ONELEVEL_ONLY 0
 
+#define DEBUG_MULTI_BLAS_BUILD 0
+
 #define CAMERA_JITTER 0
 #define APPLY_SRGB_CORRECTION 0
 #define AO_ONLY 0
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
 
+#define MULTI_BLAS_SCENE 1
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define PBRT_SCENE 1

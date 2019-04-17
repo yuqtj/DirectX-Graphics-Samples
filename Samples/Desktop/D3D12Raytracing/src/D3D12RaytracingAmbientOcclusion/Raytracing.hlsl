@@ -238,7 +238,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
     uint numSampleSetsInX = (DispatchRaysDimensions().x + g_sceneCB.numPixelsPerDimPerSet - 1) / g_sceneCB.numPixelsPerDimPerSet;
     uint2 sampleSetId = DispatchRaysIndex().xy / g_sceneCB.numPixelsPerDimPerSet;
     uint2 pixelZeroId = sampleSetId * g_sceneCB.numPixelsPerDimPerSet;
-    float3 pixelZeroHitPosition = g_texGBufferPositionRT[pixelZeroId].xyz;
+    float3 pixelZeroHitPosition = g_texGBufferPositionRT[pixelZeroId].xyz;      // ToDo remove?
 
     uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + g_sceneCB.seed;
 

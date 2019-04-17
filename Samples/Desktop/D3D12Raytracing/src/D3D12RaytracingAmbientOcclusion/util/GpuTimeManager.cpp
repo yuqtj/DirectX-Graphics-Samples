@@ -70,7 +70,7 @@ GpuTimeManager& GpuTimeManager::instance()
     return global_GpuTimeManager;
 }
 
-void GpuTimeManager::RestoreDevice(ID3D12Device* device, ID3D12CommandQueue* commandQueue, UINT maxFrameCount, UINT MaxNumTimers)
+void GpuTimeManager::RestoreDevice(ID3D12Device5* device, ID3D12CommandQueue* commandQueue, UINT maxFrameCount, UINT MaxNumTimers)
 {
     m_maxframeCount = maxFrameCount;
     m_MaxNumTimers = MaxNumTimers;
@@ -115,7 +115,7 @@ void GpuTimeManager::ReleaseDevice()
     m_QueryHeap.Reset();
 }
 
-void GpuTimeManager::Start(ID3D12GraphicsCommandList* commandList, UINT timerid)
+void GpuTimeManager::Start(ID3D12GraphicsCommandList5* commandList, UINT timerid)
 {
     // ToDo move this to the caller?
     if (timerid == UINT_MAX)
@@ -126,7 +126,7 @@ void GpuTimeManager::Start(ID3D12GraphicsCommandList* commandList, UINT timerid)
     commandList->EndQuery(m_QueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timerid * 2);
 }
 
-void GpuTimeManager::Stop(ID3D12GraphicsCommandList* commandList, UINT timerid)
+void GpuTimeManager::Stop(ID3D12GraphicsCommandList5* commandList, UINT timerid)
 {
     // ToDo move this to the caller?
     if (timerid == UINT_MAX)
@@ -164,12 +164,12 @@ void GpuTimeManager::Reset()
     m_avgPeriodTimer.Start();
 }
 
-void GpuTimeManager::BeginFrame(ID3D12GraphicsCommandList* commandList)
+void GpuTimeManager::BeginFrame(ID3D12GraphicsCommandList5* commandList)
 {
     UNREFERENCED_PARAMETER(commandList);
 }
 
-void GpuTimeManager::EndFrame(ID3D12GraphicsCommandList* commandList)
+void GpuTimeManager::EndFrame(ID3D12GraphicsCommandList5* commandList)
 {
     // Resolve query for the current frame.
     static UINT resolveToFrameID = 0;

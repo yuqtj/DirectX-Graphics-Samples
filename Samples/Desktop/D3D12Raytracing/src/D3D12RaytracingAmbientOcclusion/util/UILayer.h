@@ -14,7 +14,7 @@
 class UILayer
 {
 public:
-    UILayer(UINT frameCount, ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue);
+    UILayer(UINT frameCount, ID3D12Device5* pDevice, ID3D12CommandQueue* pCommandQueue);
 
     void UpdateLabels(const std::wstring& uiText);
     void Render(UINT frameIndex);
@@ -23,7 +23,7 @@ public:
 
 private:
     UINT FrameCount() { return static_cast<UINT>(m_wrappedRenderTargets.size()); }
-    void Initialize(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue);
+    void Initialize(ID3D12Device5* pDevice, ID3D12CommandQueue* pCommandQueue);
 
     // Render target dimensions
     float m_width;

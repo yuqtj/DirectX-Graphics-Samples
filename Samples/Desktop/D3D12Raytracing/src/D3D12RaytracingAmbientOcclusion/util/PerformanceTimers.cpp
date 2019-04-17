@@ -135,12 +135,12 @@ float CPUTimer::GetElapsedMS(uint32_t timerid) const
 // GPUTimer (DirectX 12)
 //======================================================================================
 
-void GPUTimer::BeginFrame(_In_ ID3D12GraphicsCommandList* commandList)
+void GPUTimer::BeginFrame(_In_ ID3D12GraphicsCommandList5* commandList)
 {
     UNREFERENCED_PARAMETER(commandList);
 }
 
-void GPUTimer::EndFrame(_In_ ID3D12GraphicsCommandList* commandList)
+void GPUTimer::EndFrame(_In_ ID3D12GraphicsCommandList5* commandList)
 {
     // Resolve query for the current frame.
     static UINT resolveToFrameID = 0;
@@ -195,7 +195,7 @@ void GPUTimer::EndFrame(_In_ ID3D12GraphicsCommandList* commandList)
     resolveToFrameID = readBackFrameID;
 }
 
-void GPUTimer::Start(_In_ ID3D12GraphicsCommandList* commandList, uint32_t timerid)
+void GPUTimer::Start(_In_ ID3D12GraphicsCommandList5* commandList, uint32_t timerid)
 {
     if (timerid >= c_maxTimers)
         throw std::out_of_range("Timer ID out of range");
@@ -203,7 +203,7 @@ void GPUTimer::Start(_In_ ID3D12GraphicsCommandList* commandList, uint32_t timer
     commandList->EndQuery(m_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timerid * 2);
 }
 
-void GPUTimer::Stop(_In_ ID3D12GraphicsCommandList* commandList, uint32_t timerid)
+void GPUTimer::Stop(_In_ ID3D12GraphicsCommandList5* commandList, uint32_t timerid)
 {
     if (timerid >= c_maxTimers)
         throw std::out_of_range("Timer ID out of range");
@@ -240,7 +240,7 @@ void GPUTimer::ReleaseDevice()
     m_buffer.Reset();
 }
 
-void GPUTimer::RestoreDevice(_In_ ID3D12Device* device, _In_ ID3D12CommandQueue* commandQueue, UINT maxFrameCount)
+void GPUTimer::RestoreDevice(_In_ ID3D12Device5* device, _In_ ID3D12CommandQueue* commandQueue, UINT maxFrameCount)
 {
     assert(device != 0 && commandQueue != 0);
     m_maxframeCount = maxFrameCount;

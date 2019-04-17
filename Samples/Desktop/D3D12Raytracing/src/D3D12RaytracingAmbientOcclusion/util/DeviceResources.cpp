@@ -655,7 +655,7 @@ void DeviceResources::InitializeAdapter(IDXGIAdapter1** ppAdapter)
         }
 
         // Check to see if the adapter supports Direct3D 12, but don't create the actual device yet.
-        if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, _uuidof(ID3D12Device), nullptr)))
+        if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), m_d3dMinFeatureLevel, _uuidof(ID3D12Device5), nullptr)))
         {
             m_adapterID = adapterID;
             m_adapterDescription = desc.Description;
