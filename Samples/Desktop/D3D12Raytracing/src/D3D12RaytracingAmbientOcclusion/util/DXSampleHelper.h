@@ -390,7 +390,7 @@ public:
 
     void CopyStagingToGpu(UINT instanceIndex = 0)
     {
-        memcpy(m_mappedBuffers + instanceIndex * NumElementsPerInstance(), &m_staging[0], InstanceSize());
+        memcpy(m_mappedBuffers + instanceIndex * NumElements(), &m_staging[0], InstanceSize());
     }
 
     auto begin() { return m_staging.begin(); }
@@ -398,10 +398,10 @@ public:
 
     // Accessors
     T& operator[](UINT elementIndex) { return m_staging[elementIndex]; }
-    size_t NumElementsPerInstance() { return m_staging.size(); }
+    size_t NumElements() { return m_staging.size(); }
 	UINT ElementSize() { return sizeof(T); }
-    UINT NumInstances() { return m_staging.size(); }
-    size_t InstanceSize() { return NumElementsPerInstance() * ElementSize(); }
+    UINT NumInstances() { return m_numInstances; }
+    size_t InstanceSize() { return NumElements() * ElementSize(); }
     D3D12_GPU_VIRTUAL_ADDRESS GpuVirtualAddress(UINT instanceIndex = 0, UINT elementIndex = 0)
     {
         return m_resource->GetGPUVirtualAddress() + instanceIndex * InstanceSize() + elementIndex * ElementSize();

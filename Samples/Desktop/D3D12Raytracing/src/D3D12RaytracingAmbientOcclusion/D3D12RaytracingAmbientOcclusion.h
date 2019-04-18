@@ -68,11 +68,9 @@ private:
 	const float c_aabbDistance = 2;   // Distance between AABBs.
 
 	// AmbientOcclusion
-	std::vector<BottomLevelAccelerationStructure> m_vBottomLevelAS;
 	std::vector<GeometryInstance>	m_geometryInstances[Scene::Type::Count];
-	TopLevelAccelerationStructure	m_topLevelAS;
-	ComPtr<ID3D12Resource>			m_accelerationStructureScratch;
-	UINT64 m_ASmemoryFootprint;
+
+
 	int m_numFramesSinceASBuild;
 #if TESSELATED_GEOMETRY_BOX
 #if TESSELATED_GEOMETRY_THIN
@@ -86,10 +84,6 @@ private:
 #endif
 
 	const UINT MaxGeometryTransforms = 10000;       // ToDo lower / remove?
-
-	std::vector<UINT> m_bottomLevelASdescritorHeapIndices;
-	std::vector<UINT> m_bottomLevelASinstanceDescsDescritorHeapIndices;
-	UINT m_topLevelASdescritorHeapIndex;
 
 	// DirectX Raytracing (DXR) attributes
 	ComPtr<ID3D12StateObject> m_dxrStateObject;
@@ -166,17 +160,17 @@ private:
 	ComPtr<ID3D12Resource> m_indexBufferUpload;
 	D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
 
-
-	struct alignas(16) AlignedGeometryTransform3x4
-	{
-		float transform3x4[12];
-	};
-
+    
 	SceneParser::Scene m_pbrtScene;
 	std::vector<D3DGeometry> m_geometries[GeometryType::Count];
     std::vector<D3DTexture> m_geometryTextures[GeometryType::Count];
     D3DTexture m_environmentMap;
 
+    const UINT NumBottomLevelInstances = GeometryType::Count;
+
+    std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
+    UINT m_instanceContributionToHitGroupIndex[GeometryType::Count];
+    UINT m_bottomLevelASInstanceIndices[GeometryType::Count];
 
 	StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
 
@@ -272,7 +266,6 @@ private:
 	UINT m_numTriangles[GeometryType::Count];
 	bool m_isGeometryInitializationRequested;
 	bool m_isASinitializationRequested;
-	bool m_isASrebuildRequested;
 	bool m_isSceneInitializationRequested;
 	bool m_isRecreateRaytracingResourcesRequested;
 	bool m_isRecreateAOSamplesRequested;
@@ -297,7 +290,7 @@ private:
 	void UpdateSphereGeometryTransforms();
     void UpdateGridGeometryTransforms();
     void InitializeScene();
-	void UpdateAccelerationStructures(bool forceBuild = false);
+	void UpdateAccelerationStructure();
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
     void ApplyAtrousWaveletTransformFilter();

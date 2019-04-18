@@ -12,13 +12,13 @@
 #include "stdafx.h"
 #include "RaytracingAccelerationStructure.h"
 #include "D3D12RaytracingAmbientOcclusion.h"
+#include "EngineProfiling.h"
 
 using namespace std;
-using namespace DX;
-using namespace DirectX;
 
 AccelerationStructure::AccelerationStructure() :
 	m_buildFlags(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE),
+    m_isBuilt(false),
 	m_prebuildInfo{}
 {
 }
@@ -44,24 +44,9 @@ void AccelerationStructure::AllocateResource(ID3D12Device5* device, const wchar_
 
 BottomLevelAccelerationStructure::BottomLevelAccelerationStructure() :
 	m_isDirty(true),
-	m_transform(XMMatrixIdentity()),
     m_instanceContributionToHitGroupIndex(0)
 {
 }
-
-void BottomLevelAccelerationStructure::BuildInstanceDesc(void* destInstanceDesc, UINT* descriptorHeapIndex) // ToDo remove descHeapIndex
-{
-	auto InitializeInstanceDesc = [&](auto* instanceDesc, auto bottomLevelAddress)
-	{
-		*instanceDesc = {};
-		instanceDesc->InstanceMask = 1;
-		instanceDesc->InstanceContributionToHitGroupIndex = m_instanceContributionToHitGroupIndex;
-		instanceDesc->AccelerationStructure = bottomLevelAddress;
-        XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc->Transform), m_transform);
-	};
-
-	InitializeInstanceDesc(static_cast<D3D12_RAYTRACING_INSTANCE_DESC*>(destInstanceDesc), m_accelerationStructure->GetGPUVirtualAddress());
-};
 
 void BottomLevelAccelerationStructure::UpdateGeometryDescsTransform(D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress)
 {
@@ -123,16 +108,22 @@ void BottomLevelAccelerationStructure::Initialize(
 	DXGI_FORMAT indexFormat, 
 	UINT ibStrideInBytes, 
 	UINT vbStrideInBytes, 
-	vector<GeometryInstance>& geometries)
+	vector<GeometryInstance>& geometries, 
+    const wchar_t* resourceName)
 {
 	m_buildFlags = buildFlags;
 	BuildGeometryDescs(indexFormat, ibStrideInBytes, vbStrideInBytes, geometries);
 	ComputePrebuildInfo(device);
-	AllocateResource(device, L"BottomLevelAccelerationStructure");
+	AllocateResource(device, resourceName);
 	m_isDirty = true;
 }
 
-void BottomLevelAccelerationStructure::Build(ID3D12GraphicsCommandList5* commandList, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress, bool bUpdate)
+void BottomLevelAccelerationStructure::Build(
+    ID3D12GraphicsCommandList5* commandList, 
+    ID3D12Resource* scratch, 
+    ID3D12DescriptorHeap* descriptorHeap, 
+    D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress, 
+    bool bUpdate)
 {
 	ThrowIfFalse(m_prebuildInfo.ScratchDataSizeInBytes <= scratch->GetDesc().Width, L"Insufficient scratch buffer size provided!");
 	
@@ -149,7 +140,7 @@ void BottomLevelAccelerationStructure::Build(ID3D12GraphicsCommandList5* command
         bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
         bottomLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
         bottomLevelInputs.Flags = m_buildFlags;
-		if (bUpdate)
+		if (m_isBuilt && bUpdate)
 		{
             bottomLevelInputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
 		}
@@ -162,17 +153,12 @@ void BottomLevelAccelerationStructure::Build(ID3D12GraphicsCommandList5* command
 
 	commandList->SetDescriptorHeaps(1, &descriptorHeap);
     commandList->BuildRaytracingAccelerationStructure(&bottomLevelBuildDesc, 0, nullptr);
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_accelerationStructure.Get()));
 
 	m_isDirty = false;
+    m_isBuilt = true;
 }
 
-TopLevelAccelerationStructure::~TopLevelAccelerationStructure()
-{
-	m_dxrInstanceDescs.Release();
-}
-
-void TopLevelAccelerationStructure::ComputePrebuildInfo(ID3D12Device5* device)
+void TopLevelAccelerationStructure::ComputePrebuildInfo(ID3D12Device5* device, UINT numBottomLevelASInstanceDescs)
 {
 	// Get the size requirements for the scratch and AS buffers.
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = {};
@@ -180,80 +166,166 @@ void TopLevelAccelerationStructure::ComputePrebuildInfo(ID3D12Device5* device)
     topLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
     topLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
     topLevelInputs.Flags = m_buildFlags;
-    topLevelInputs.NumDescs = NumberOfBLAS();
+    topLevelInputs.NumDescs = numBottomLevelASInstanceDescs;
 
 	device->GetRaytracingAccelerationStructurePrebuildInfo(&topLevelInputs, &m_prebuildInfo);
 	ThrowIfFalse(m_prebuildInfo.ResultDataMaxSizeInBytes > 0);
 }
 
-void TopLevelAccelerationStructure::BuildInstanceDescs(ID3D12Device5* device, vector<BottomLevelAccelerationStructure>& vBottomLevelAS, vector<UINT>* bottomLevelASinstanceDescsDescritorHeapIndices)
-{
-	auto CreateInstanceDescs = [&](auto* structuredBufferInstanceDescs)
-	{
-		if (structuredBufferInstanceDescs->Size() != vBottomLevelAS.size())
-		{
-			structuredBufferInstanceDescs->Create(device, static_cast<UINT>(vBottomLevelAS.size()), g_pSample->GetDeviceResources().GetBackBufferCount(), L"Instance descs.");
-		}
-		for (UINT i = 0; i < vBottomLevelAS.size(); i++)
-		{
-			vBottomLevelAS[i].BuildInstanceDesc(&((*structuredBufferInstanceDescs)[i]), &(*bottomLevelASinstanceDescsDescritorHeapIndices)[i]);
-		}
-		// Initialize all gpu instances, in case we do only partial runtime updates.
-		for (UINT i = 0; i < g_pSample->GetDeviceResources().GetBackBufferCount(); i++)
-		{
-			structuredBufferInstanceDescs->CopyStagingToGpu(i);
-		}
-	}; 
-	CreateInstanceDescs(&m_dxrInstanceDescs);
-}
-
-void TopLevelAccelerationStructure::UpdateInstanceDescTransforms(vector<BottomLevelAccelerationStructure>& vBottomLevelAS)
-{
-	for (UINT i = 0; i < vBottomLevelAS.size(); i++)
-	{
-		// ToDo should the transform be stored inside TLAS?
-        XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(m_dxrInstanceDescs[i].Transform), vBottomLevelAS[i].GetTransform());
-	}
-	// ToDo do per instance copies instead?
-	m_dxrInstanceDescs.CopyStagingToGpu(g_pSample->GetDeviceResources().GetCurrentFrameIndex());	
-}
-
-UINT TopLevelAccelerationStructure::NumberOfBLAS()
-{
-	return static_cast<UINT>(m_dxrInstanceDescs.NumElementsPerInstance());
-}
-
-void TopLevelAccelerationStructure::Initialize(ID3D12Device5* device, vector<BottomLevelAccelerationStructure>& vBottomLevelAS, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, vector<UINT>* bottomLevelASinstanceDescsDescritorHeapIndices)
+void TopLevelAccelerationStructure::Initialize(ID3D12Device5* device, UINT numBottomLevelASInstanceDescs, vector<BottomLevelAccelerationStructure>& vBottomLevelAS, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, const wchar_t* resourceName)
 {
 	m_buildFlags = buildFlags;
-	BuildInstanceDescs(device, vBottomLevelAS, bottomLevelASinstanceDescsDescritorHeapIndices);
-	ComputePrebuildInfo(device);
-	AllocateResource(device, L"TopLevelAccelerationStructure");
+	ComputePrebuildInfo(device, numBottomLevelASInstanceDescs);
+	AllocateResource(device, resourceName);
 }
 
-void TopLevelAccelerationStructure::Build(ID3D12GraphicsCommandList5* commandList, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, bool bUpdate)
+void TopLevelAccelerationStructure::Build(ID3D12GraphicsCommandList5* commandList, UINT numBottomLevelASInstanceDescs, D3D12_GPU_VIRTUAL_ADDRESS bottomLevelASnstanceDescs, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, bool bUpdate)
 {
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = {};
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &topLevelInputs = topLevelBuildDesc.Inputs;
     {
-        // ToDo remove repeating TOP_LEVEL flag specification
         topLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
         topLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
         topLevelInputs.Flags = m_buildFlags;
-        if (bUpdate)
+        if (m_isBuilt && bUpdate)
         {
             topLevelInputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
         }
-        topLevelInputs.NumDescs = NumberOfBLAS();
+        topLevelInputs.NumDescs = numBottomLevelASInstanceDescs;
 
         topLevelBuildDesc.ScratchAccelerationStructureData = scratch->GetGPUVirtualAddress();
         topLevelBuildDesc.DestAccelerationStructureData = m_accelerationStructure->GetGPUVirtualAddress();
     }
-
-    topLevelInputs.InstanceDescs = m_dxrInstanceDescs.GpuVirtualAddress();
+    topLevelInputs.InstanceDescs = bottomLevelASnstanceDescs;
 
     commandList->SetDescriptorHeaps(1, &descriptorHeap);
     commandList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
+    m_isBuilt = true;
+}
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_accelerationStructure.Get()));
+RaytracingAccelerationStructureManager::RaytracingAccelerationStructureManager(ID3D12Device5* device, UINT numBottomLevelInstances, UINT frameCount)
+{
+    m_bottomLevelASInstanceDescs.Create(device, numBottomLevelInstances, frameCount, L"Bottom-Level Acceleration Structure Instance descs.");
+}
+
+// Adds a bottom-level Acceleration Structure.
+// Requires a corresponding 1 or more AddBottomLevelASInstance() calls to be added to top-level AS.
+// Returns an index to the created bottom-level AS object.
+UINT RaytracingAccelerationStructureManager::AddBottomLevelAS(
+    ID3D12Device5* device,
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags,
+    DXGI_FORMAT indexFormat,
+    UINT ibStrideInBytes,
+    UINT vbStrideInBytes,
+    vector<GeometryInstance>& geometries,
+    bool performUpdateOnBuild,
+    const wchar_t* name)
+{
+    BottomLevelAccelerationStructure bottomLevelAS;
+
+    if (performUpdateOnBuild)
+    {
+        buildFlags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
+    }
+
+    bottomLevelAS.Initialize(device, buildFlags, indexFormat, ibStrideInBytes, vbStrideInBytes, geometries, name);
+
+    m_ASmemoryFootprint += bottomLevelAS.RequiredResultDataSizeInBytes();
+    m_scratchResourceSize = max(bottomLevelAS.RequiredScratchSize(), m_scratchResourceSize);
+
+    UINT bottomLevelASindex = static_cast<UINT>(m_vBottomLevelAS.size());
+    m_vBottomLevelAS.push_back(bottomLevelAS);
+    m_vBottomLevelASPerformUpdateOnBuild.push_back(performUpdateOnBuild);
+
+    return bottomLevelASindex;
+}
+
+// Adds an instance of a bottom-level Acceleration Structure.
+// Requires a call InitializeTopLevelAS() call to be added to top-level AS.
+UINT RaytracingAccelerationStructureManager::AddBottomLevelASInstance(
+    UINT bottomLevelASindex,
+    XMMATRIX transform,
+    UINT instanceContributionToHitGroupIndex,
+    BYTE instanceMask)
+{
+    ThrowIfFalse(numBottomLevelASInstances < m_bottomLevelASInstanceDescs.NumElements(), L"Not enough instance desc buffer size.");
+
+    UINT instanceIndex = numBottomLevelASInstances++;
+    auto& bottomLevelAS = m_vBottomLevelAS[bottomLevelASindex];
+
+    auto& instanceDesc = m_bottomLevelASInstanceDescs[instanceIndex];
+    instanceDesc.InstanceMask = instanceMask;
+    instanceDesc.InstanceContributionToHitGroupIndex = instanceContributionToHitGroupIndex;
+    instanceDesc.AccelerationStructure = bottomLevelAS.GetResource()->GetGPUVirtualAddress();
+    XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), transform);    
+
+    return instanceIndex;
+};
+
+// Initializes the top-level Acceleration Structure.
+void RaytracingAccelerationStructureManager::InitializeTopLevelAS(
+    ID3D12Device5* device,
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, 
+    const wchar_t* resourceName)
+{
+    m_topLevelAS.Initialize(device, GetNumberOfBottomLevelASInstances(), m_vBottomLevelAS, buildFlags, resourceName);
+
+    m_ASmemoryFootprint += m_topLevelAS.RequiredResultDataSizeInBytes();
+    m_scratchResourceSize = max(m_topLevelAS.RequiredScratchSize(), m_scratchResourceSize);
+
+    AllocateUAVBuffer(device, m_scratchResourceSize, &m_accelerationStructureScratch, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Acceleration structure scratch resource");
+}
+
+// Builds all bottom-level and top-level Acceleration Structures.
+void RaytracingAccelerationStructureManager::Build(
+    ID3D12GraphicsCommandList5* commandList, 
+    ID3D12DescriptorHeap* descriptorHeap,
+    UINT frameIndex,
+    bool bForceBuild)
+{
+    ScopedTimer _prof(L"Acceleration Structure build", commandList);
+
+    m_bottomLevelASInstanceDescs.CopyStagingToGpu(frameIndex);
+
+    // Build all bottom-level AS.
+    {
+        ScopedTimer _prof(L"Bottom Level AS", commandList);
+        for (UINT i = 0; i < m_vBottomLevelAS.size(); i++)
+        {
+            auto& bottomLevelAS = m_vBottomLevelAS[i];
+            if (bForceBuild || bottomLevelAS.IsDirty())
+            {
+                ScopedTimer _prof(bottomLevelAS.GetName(), commandList);
+
+                bool performUpdate = m_vBottomLevelASPerformUpdateOnBuild[i];
+                D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGpuAddress = 0;  // ToDo
+                bottomLevelAS.Build(commandList, m_accelerationStructureScratch.Get(), descriptorHeap, baseGeometryTransformGpuAddress, performUpdate);
+
+                // Since a single scratch resource is reused, put a barrier in-between each call.
+                commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(bottomLevelAS.GetResource()));
+            }
+        }
+    }
+
+    // Build the top-level AS.
+    {
+        ScopedTimer _prof(L"Top Level AS", commandList);
+
+        bool performUpdate = false; // Always rebuild top-level Acceleration Structure.
+        D3D12_GPU_VIRTUAL_ADDRESS instanceDescs = m_bottomLevelASInstanceDescs.GpuVirtualAddress(frameIndex);
+        m_topLevelAS.Build(commandList, GetNumberOfBottomLevelASInstances(), instanceDescs, m_accelerationStructureScratch.Get(), descriptorHeap, performUpdate);
+
+        // ToDo move this barrier righ before when the resource is being accessed for reading.
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_topLevelAS.GetResource()));
+    }
+}
+
+void BottomLevelAccelerationStructureInstanceDesc::SetTransform(const XMMATRIX& transform)
+{
+    XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(Transform), transform);
+}
+
+void BottomLevelAccelerationStructureInstanceDesc::GetTransform(XMMATRIX* transform)
+{
+    *transform = XMLoadFloat3x4(reinterpret_cast<XMFLOAT3X4*>(Transform));
 }

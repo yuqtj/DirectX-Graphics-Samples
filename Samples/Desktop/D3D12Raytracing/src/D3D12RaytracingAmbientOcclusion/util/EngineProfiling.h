@@ -38,7 +38,7 @@ namespace EngineProfiling
 class ScopedTimer
 {
 public:
-    ScopedTimer( const std::wstring& name, ID3D12GraphicsCommandList5* CommandList = nullptr) : m_commandList(CommandList)
+    ScopedTimer(const std::wstring& name, ID3D12GraphicsCommandList5* CommandList = nullptr) : m_commandList(CommandList)
     {
         EngineProfiling::BeginBlock(name, m_commandList);
     }

@@ -113,7 +113,6 @@
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
 
-#define MULTI_BLAS_SCENE 1
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define PBRT_SCENE 1
