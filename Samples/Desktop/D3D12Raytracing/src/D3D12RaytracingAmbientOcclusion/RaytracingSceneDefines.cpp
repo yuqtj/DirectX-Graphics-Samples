@@ -65,7 +65,7 @@ namespace Scene
 			camera.position.eye = { 0, 80, 268.555980f, 1 };
 			camera.position.at = { 0, 80, 0, 1 };
 			camera.position.up = { 0, 1, 0, 0 };
-#if PBRT_SCENE
+#if LOAD_PBRT_SCENE
 			camera.boundaries.min = -XMVectorSplatInfinity();
 			camera.boundaries.max = XMVectorSplatInfinity();
 #else

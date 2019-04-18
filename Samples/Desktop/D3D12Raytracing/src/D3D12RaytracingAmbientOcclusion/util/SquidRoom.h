@@ -24,8 +24,7 @@ namespace SquidRoomAssets
 		D3DGeometry* geometry,
         std::vector<D3DTexture>* textures,
         std::vector<PrimitiveMaterialBuffer>* materials,
-		std::vector<GeometryInstance>* geometryInstances
-	);
+        std::vector<GeometryInstance>* geometryInstances);
 
     const wchar_t DataFileName[] = L"SquidRoom.bin";
 

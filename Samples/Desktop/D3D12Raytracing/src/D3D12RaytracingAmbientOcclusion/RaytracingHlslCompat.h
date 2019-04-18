@@ -97,7 +97,10 @@
 
 #define AO_PROGRESSIVE_SAMPLING 0
 
-#define ENABLE_VSYNC 1      // Add 60/30 fps sync options to sample
+#define ENABLE_VSYNC 1
+#if ENABLE_VSYNC
+#define VSYNC_PRESENT_INTERVAL 2  
+#endif
 
 #define BLUR_AO 1
 #define ATROUS_DENOISER 1
@@ -115,10 +118,10 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define PBRT_SCENE 1
-#define FACE_CULLING !PBRT_SCENE
+#define LOAD_PBRT_SCENE 1
+#define FACE_CULLING !LOAD_PBRT_SCENE
 
-#if PBRT_SCENE
+#if LOAD_PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000002
 #define AO_RAY_T_MAX 22
 #define SCENE_SCALE 300     

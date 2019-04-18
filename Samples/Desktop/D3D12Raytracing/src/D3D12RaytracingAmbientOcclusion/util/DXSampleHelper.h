@@ -816,8 +816,6 @@ inline void SerializeAndCreateRootSignature(
 }
 
 
-
-
 struct GeometryDescriptor
 {
 	struct Buffer {
@@ -833,7 +831,6 @@ struct GeometryDescriptor
 	Buffer ib;
 };
 
-// ToDo rename to Geometry. 
 class GeometryInstance
 {
 public:

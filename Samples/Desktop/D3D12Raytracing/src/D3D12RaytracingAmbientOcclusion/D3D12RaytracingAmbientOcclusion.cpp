@@ -197,7 +197,7 @@ namespace SceneArgs
 
     IntVar AOSampleCountPerDimension(L"Render/AO/RTAO/Samples per pixel NxN", AO_SPP_N, 1, 32, 1, OnRecreateSamples, nullptr);
     IntVar AOSampleSetDistributedAcrossPixels(L"Render/AO/RTAO/Sample set distribution across NxN pixels ", 4, 1, 8, 1, OnRecreateSamples, nullptr);
-#if PBRT_SCENE
+#if LOAD_PBRT_SCENE
     NumVar RTAOMaxRayHitTime(L"Render/AO/RTAO/Max ray hit time", AO_RAY_T_MAX, 0.0f, 50.0f, 0.2f);
 #else
     NumVar RTAOMaxRayHitTime(L"Render/AO/RTAO/Max ray hit time", AO_RAY_T_MAX, 0.0f, 1000.0f, 4);
@@ -264,153 +264,170 @@ namespace SceneArgs
 // ToDo move
 void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 {
-	auto device = m_deviceResources->GetD3DDevice();
-	auto commandList = m_deviceResources->GetCommandList();
-	auto commandQueue = m_deviceResources->GetCommandQueue();
-	auto commandAllocator = m_deviceResources->GetCommandAllocator();
+    auto device = m_deviceResources->GetD3DDevice();
+    auto commandList = m_deviceResources->GetCommandList();
+    auto commandQueue = m_deviceResources->GetCommandQueue();
+    auto commandAllocator = m_deviceResources->GetCommandAllocator();
 
     // ToDo remove?
-	auto Vec3ToXMFLOAT3 = [](SceneParser::Vector3 v)
-	{
-		return XMFLOAT3(v.x, v.y, v.z);
-	};
+    auto Vec3ToXMFLOAT3 = [](SceneParser::Vector3 v)
+    {
+        return XMFLOAT3(v.x, v.y, v.z);
+    };
 
-	auto Vec3ToXMVECTOR = [](SceneParser::Vector3 v)
-	{
-		return XMLoadFloat3(&XMFLOAT3(v.x, v.y, v.z));
-	};
+    auto Vec3ToXMVECTOR = [](SceneParser::Vector3 v)
+    {
+        return XMLoadFloat3(&XMFLOAT3(v.x, v.y, v.z));
+    };
 
-	auto Vec3ToXMFLOAT2 = [](SceneParser::Vector2 v)
-	{
-		return XMFLOAT2(v.x, v.y);
-	};
+    auto Vec3ToXMFLOAT2 = [](SceneParser::Vector2 v)
+    {
+        return XMFLOAT2(v.x, v.y);
+    };
 
-	// Work
-#if 1
-    PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
-    // ToDo move plane from car2 to house
-	//PBRTParser::PBRTParser().Parse("Assets\\car2\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\dragon\\scene.pbrt", m_pbrtScene);		// ToDo model is mirrored
-	//PBRTParser::PBRTParser().Parse("Assets\\house\\scene.pbrt", m_pbrtScene);
-#else
-	PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\bmw-m6\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\staircase2\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\classroom\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\living-room-3\\scene.pbrt", m_pbrtScene); //rug geometry skipped
-	//PBRTParser::PBRTParser().Parse("Assets\\staircase\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\living-room\\scene.pbrt", m_pbrtScene);
-	//PBRTParser::PBRTParser().Parse("Assets\\living-room-2\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
-	//PBRTParser::PBRTParser().Parse("Assets\\kitchen\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
-#endif
+    // Work
+
 
     // ToDo
-	//m_camera.Set(
-	//	Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Position),
-	//	Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_LookAt),
-	//	Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Up));
-	//m_camera.fov = 2 * m_pbrtScene.m_Camera.m_FieldOfView;   
-	UINT numGeometries = static_cast<UINT>(m_pbrtScene.m_Meshes.size());
+    //m_camera.Set(
+    //	Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Position),
+    //	Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_LookAt),
+    //	Vec3ToXMVECTOR(m_pbrtScene.m_Camera.m_Up));
+    //m_camera.fov = 2 * m_pbrtScene.m_Camera.m_FieldOfView;   
 
-	auto& geometries = m_geometries[GeometryType::PBRT];
-	geometries.resize(numGeometries);
 
-	auto& geometryInstances = m_geometryInstances[GeometryType::PBRT];
-	geometryInstances.reserve(numGeometries);
+    PBRTScene pbrtSceneDefinitions[] = { 
+        {L"Spaceship", "Assets\\spaceship\\scene.pbrt"},
+        {L"Car", "Assets\\car2\\scene.pbrt"},
+        {L"Dragon", "Assets\\dragon\\scene.pbrt"},
+        {L"House", "Assets\\house\\scene.pbrt"},
+    };
 
-    auto& textures = m_geometryTextures[GeometryType::PBRT];
+    // ToDo remove
+#if 0
+    PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);
+    //PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
+    //PBRTParser::PBRTParser().Parse("Assets\\bmw-m6\\scene.pbrt", m_pbrtScene);
+    //PBRTParser::PBRTParser().Parse("Assets\\staircase2\\scene.pbrt", m_pbrtScene);
+    //PBRTParser::PBRTParser().Parse("Assets\\classroom\\scene.pbrt", m_pbrtScene);
+    //PBRTParser::PBRTParser().Parse("Assets\\living-room-3\\scene.pbrt", m_pbrtScene); //rug geometry skipped
+    //PBRTParser::PBRTParser().Parse("Assets\\staircase\\scene.pbrt", m_pbrtScene);
+    //PBRTParser::PBRTParser().Parse("Assets\\living-room\\scene.pbrt", m_pbrtScene);
+    //PBRTParser::PBRTParser().Parse("Assets\\living-room-2\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
+    //PBRTParser::PBRTParser().Parse("Assets\\kitchen\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
+#endif
 
     ResourceUploadBatch resourceUpload(device);
     resourceUpload.Begin();
 
-	XMVECTOR test = XMVector3TransformNormal(XMVectorSet(0, -1, 0, 0), m_pbrtScene.m_transform);
-	// ToDo
-	m_numTriangles[GeometryType::PBRT] = 0;
-	for (UINT i = 0; i < m_pbrtScene.m_Meshes.size(); i++)
-	{
-		auto &mesh = m_pbrtScene.m_Meshes[i];
-		if (mesh.m_VertexBuffer.size() == 0 || mesh.m_IndexBuffer.size() == 0)
-		{
-			continue;
-		}
-		vector<VertexPositionNormalTextureTangent> vertexBuffer;
-		vector<Index> indexBuffer;
-		vertexBuffer.reserve(mesh.m_VertexBuffer.size());
-		indexBuffer.reserve(mesh.m_IndexBuffer.size());
+    for (auto& pbrtSceneDefinition : pbrtSceneDefinitions)
+    {
+        SceneParser::Scene pbrtScene;
+        PBRTParser::PBRTParser().Parse(pbrtSceneDefinition.path, pbrtScene);
 
-		GeometryDescriptor desc;
-		desc.ib.count = static_cast<UINT>(mesh.m_IndexBuffer.size());
-		desc.vb.count = static_cast<UINT>(mesh.m_VertexBuffer.size());
+        m_bottomLevelASGeometries.push_back(BottomLevelAccelerationStructureGeometry(pbrtSceneDefinition.name));
+        auto& bottomLevelASGeometry = m_bottomLevelASGeometries.back();
 
-		for (auto &parseIndex : mesh.m_IndexBuffer)
-		{
-			Index index = parseIndex;
-			indexBuffer.push_back(index);
-		}
-		desc.ib.indices = indexBuffer.data();
-		
-		for (auto &parseVertex : mesh.m_VertexBuffer)
-		{
-			VertexPositionNormalTextureTangent vertex;
+        // ToDo switch to a common namespace rather than 't reference SquidRoomAssets?
+        bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat;
+        bottomLevelASGeometry.m_ibStrideInBytes = SquidRoomAssets::StandardIndexStride;
+        bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
+        bottomLevelASGeometry.m_vbStrideInBytes = SquidRoomAssets::StandardVertexStride;
+
+        UINT numGeometries = static_cast<UINT>(pbrtScene.m_Meshes.size());
+        auto& geometries = bottomLevelASGeometry.m_geometries;
+        geometries.resize(numGeometries);
+
+        auto& textures = bottomLevelASGeometry.m_textures;
+        auto& numTriangles = bottomLevelASGeometry.m_numTriangles;
+
+        for (UINT i = 0; i < pbrtScene.m_Meshes.size(); i++)
+        {
+            auto &mesh = pbrtScene.m_Meshes[i];
+            if (mesh.m_VertexBuffer.size() == 0 || mesh.m_IndexBuffer.size() == 0)
+            {
+                continue;
+            }
+            vector<VertexPositionNormalTextureTangent> vertexBuffer;
+            vector<Index> indexBuffer;
+            vertexBuffer.reserve(mesh.m_VertexBuffer.size());
+            indexBuffer.reserve(mesh.m_IndexBuffer.size());
+
+            GeometryDescriptor desc;
+            desc.ib.count = static_cast<UINT>(mesh.m_IndexBuffer.size());
+            desc.vb.count = static_cast<UINT>(mesh.m_VertexBuffer.size());
+
+            for (auto &parseIndex : mesh.m_IndexBuffer)
+            {
+                Index index = parseIndex;
+                indexBuffer.push_back(index);
+            }
+            desc.ib.indices = indexBuffer.data();
+
+            for (auto &parseVertex : mesh.m_VertexBuffer)
+            {
+                VertexPositionNormalTextureTangent vertex;
 #if PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES
-			XMStoreFloat3(&vertex.normal, XMVector3TransformNormal(parseVertex.Normal.GetXMVECTOR(), mesh.m_transform));
-			XMStoreFloat3(&vertex.position, XMVector3TransformCoord(parseVertex.Position.GetXMVECTOR(), mesh.m_transform));
+                XMStoreFloat3(&vertex.normal, XMVector3TransformNormal(parseVertex.Normal.GetXMVECTOR(), mesh.m_transform));
+                XMStoreFloat3(&vertex.position, XMVector3TransformCoord(parseVertex.Position.GetXMVECTOR(), mesh.m_transform));
 #else
-			vertex.normal = parseVertex.Normal.xmFloat3;
-			vertex.position = parseVertex.Position.xmFloat3;
+                vertex.normal = parseVertex.Normal.xmFloat3;
+                vertex.position = parseVertex.Position.xmFloat3;
 #endif
-			vertex.tangent = parseVertex.Tangents.xmFloat3;
-			vertex.textureCoordinate = parseVertex.UV.xmFloat2;
-			vertexBuffer.push_back(vertex);
-		}
-		desc.vb.vertices = vertexBuffer.data();
+                vertex.tangent = parseVertex.Tangents.xmFloat3;
+                vertex.textureCoordinate = parseVertex.UV.xmFloat2;
+                vertexBuffer.push_back(vertex);
+            }
+            desc.vb.vertices = vertexBuffer.data();
 
-		auto& geometry = geometries[i];
-		CreateGeometry(device, commandList, m_cbvSrvUavHeap.get(), desc, &geometry);
-		ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
+            auto& geometry = geometries[i];
+            CreateGeometry(device, commandList, m_cbvSrvUavHeap.get(), desc, &geometry);
+            ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
-		PrimitiveMaterialBuffer cb;
-		cb.diffuse = mesh.m_pMaterial->m_Diffuse.xmFloat3;
-		cb.specular = mesh.m_pMaterial->m_Specular.xmFloat3;
-        cb.specularPower = 50;
-		cb.isMirror = mesh.m_pMaterial->m_Opacity.r < 0.5f ? 1 : 0;
-        cb.hasDiffuseTexture = !mesh.m_pMaterial->m_DiffuseTextureFilename.empty();
-        cb.hasNormalTexture = !mesh.m_pMaterial->m_NormalMapTextureFilename.empty();
-        cb.hasPerVertexTangents = true;
+            PrimitiveMaterialBuffer cb;
+            cb.diffuse = mesh.m_pMaterial->m_Diffuse.xmFloat3;
+            cb.specular = mesh.m_pMaterial->m_Specular.xmFloat3;
+            cb.specularPower = 50;
+            cb.isMirror = mesh.m_pMaterial->m_Opacity.r < 0.5f ? 1 : 0;
+            cb.hasDiffuseTexture = !mesh.m_pMaterial->m_DiffuseTextureFilename.empty();
+            cb.hasNormalTexture = !mesh.m_pMaterial->m_NormalMapTextureFilename.empty();
+            cb.hasPerVertexTangents = true;
 
 
-        auto LoadPBRTTexture = [&](auto** ppOutTexture, auto& textureFilename)
-        {
-            auto& srcString = mesh.m_pMaterial->m_DiffuseTextureFilename;
-            wstring filename(textureFilename.begin(), textureFilename.end());
-            textures.push_back(D3DTexture());
-            auto* texture = &textures.back();
-            LoadWICTexture(device, &resourceUpload, filename.c_str(), m_cbvSrvUavHeap.get(), &texture->resource, &texture->heapIndex, &texture->cpuDescriptorHandle, &texture->gpuDescriptorHandle, true);
-            *ppOutTexture = texture;
-        };
+            auto LoadPBRTTexture = [&](auto** ppOutTexture, auto& textureFilename)
+            {
+                auto& srcString = mesh.m_pMaterial->m_DiffuseTextureFilename;
+                wstring filename(textureFilename.begin(), textureFilename.end());
+                D3DTexture texture;
+                LoadWICTexture(device, &resourceUpload, filename.c_str(), m_cbvSrvUavHeap.get(), &texture.resource, &texture.heapIndex, &texture.cpuDescriptorHandle, &texture.gpuDescriptorHandle, true);
+                textures.push_back(texture);
 
-        D3DTexture* diffuseTexture = &m_nullTexture;
-        if (cb.hasDiffuseTexture)
-        {
-            LoadPBRTTexture(&diffuseTexture, mesh.m_pMaterial->m_DiffuseTextureFilename);
-        }
+                *ppOutTexture = &textures.back();
+            };
 
-        D3DTexture* normalTexture = &m_nullTexture;
-        if (cb.hasNormalTexture)
-        {
-            LoadPBRTTexture(&normalTexture, mesh.m_pMaterial->m_NormalMapTextureFilename);
-        }
+            D3DTexture* diffuseTexture = &m_nullTexture;
+            if (cb.hasDiffuseTexture)
+            {
+                LoadPBRTTexture(&diffuseTexture, mesh.m_pMaterial->m_DiffuseTextureFilename);
+            }
 
-		UINT materialID = static_cast<UINT>(m_materials.size());
-		m_materials.push_back(cb);
-		geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle));
+            D3DTexture* normalTexture = &m_nullTexture;
+            if (cb.hasNormalTexture)
+            {
+                LoadPBRTTexture(&normalTexture, mesh.m_pMaterial->m_NormalMapTextureFilename);
+            }
+
+            UINT materialID = static_cast<UINT>(m_materials.size());
+            m_materials.push_back(cb);
+
+            bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle));
 #if !PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES
-		XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(m_geometryTransforms[i].transform3x4), mesh.m_transform);
-		geometryInstances.back().transform = m_geometryTransforms.GpuVirtualAddress(0, i);
+            XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(m_geometryTransforms[i].transform3x4), mesh.m_transform);
+            geometryInstances.back().transform = m_geometryTransforms.GpuVirtualAddress(0, i);
 #endif
-		m_numTriangles[GeometryType::PBRT] += desc.ib.count / 3;
-	}
+            numTriangles += desc.ib.count / 3;
+        }
+    }
 
     // Upload the resources to the GPU.
     auto finish = resourceUpload.End(commandQueue);
@@ -464,6 +481,16 @@ void D3D12RaytracingAmbientOcclusion::OnInit()
     GameInput::Initialize();
     EngineTuning::Initialize();
 
+    XMMATRIX transform;
+    transform.r[0] = XMVectorSet(-0.35, 0, 0, 0);
+    transform.r[1] = XMVectorSet(0, 0.35, 0, 0);
+    transform.r[2] = XMVectorSet(0, 0, -0.35, 0);
+    transform.r[3] = XMVectorSet(-16, -0.7, 22, 1);
+
+    float secondsToRotateAround = 48.0f;
+    XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(270));
+    transform = rotate * transform;
+
     m_deviceResources->InitializeDXGIAdapter();
 #if ENABLE_RAYTRACING
 	ThrowIfFalse(IsDirectXRaytracingSupported(m_deviceResources->GetAdapter()),
@@ -475,6 +502,9 @@ void D3D12RaytracingAmbientOcclusion::OnInit()
     InitializeScene();
     CreateDeviceDependentResources();
     m_deviceResources->CreateWindowSizeDependentResources();
+
+    // ToDo Move?
+    m_bottomLevelASGeometries.reserve(c_maxNumBLAS);
 }
 
 D3D12RaytracingAmbientOcclusion::~D3D12RaytracingAmbientOcclusion()
@@ -1483,9 +1513,18 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
 {
     auto device = m_deviceResources->GetD3DDevice();
 
-	m_geometries[GeometryType::Plane].resize(1);
 
-	auto& geometry = m_geometries[GeometryType::Plane][0];
+    m_bottomLevelASGeometries.push_back(BottomLevelAccelerationStructureGeometry(L"Plane"));
+    auto& bottomLevelASGeometry = m_bottomLevelASGeometries.back();
+
+    bottomLevelASGeometry.m_indexFormat = DXGI_FORMAT_R16_UINT; // ToDo use common or add support to shaders 
+    bottomLevelASGeometry.m_ibStrideInBytes = sizeof(Index);
+    bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
+    bottomLevelASGeometry.m_vbStrideInBytes = sizeof(DirectX::GeometricPrimitive::VertexType);
+
+    auto& geometries = bottomLevelASGeometry.m_geometries;
+    geometries.resize(1);
+	auto& geometry = geometries[0];
 
     // Plane indices.
     Index indices[] =
@@ -1521,18 +1560,29 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
 	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), 50, false, false, false, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(planeMaterialCB);
-	m_geometryInstances[GeometryType::Plane].push_back(GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
+
+    bottomLevelASGeometry.m_geometryInstances.resize(1);
+    bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
+    bottomLevelASGeometry.m_numTriangles = bottomLevelASGeometry.m_geometryInstances.back().ib.count / 3;
 }
 
 void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
 {
     auto device = m_deviceResources->GetD3DDevice();
 
-    const bool RhCoords = false;
+    const bool RhCoords = false;    // ToDo use a global constant
 
-    // ToDo option to reuse multiple geometries
-	m_geometries[GeometryType::Sphere].resize(1);
-    auto& geometry = m_geometries[GeometryType::Sphere][0];
+    m_bottomLevelASGeometries.push_back(BottomLevelAccelerationStructureGeometry(L"Tesselated Geometry"));
+    auto& bottomLevelASGeometry = m_bottomLevelASGeometries.back();
+
+    bottomLevelASGeometry.m_indexFormat = DXGI_FORMAT_R16_UINT; // ToDo use common or add support to shaders 
+    bottomLevelASGeometry.m_ibStrideInBytes = sizeof(Index);
+    bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
+    bottomLevelASGeometry.m_vbStrideInBytes = sizeof(DirectX::GeometricPrimitive::VertexType);
+
+    auto& geometries = bottomLevelASGeometry.m_geometries;
+    geometries.resize(1);
+    auto& geometry = geometries[0];
 
 #if	TESSELATED_GEOMETRY_BOX_TETRAHEDRON
 	// Plane indices.
@@ -1684,37 +1734,52 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
 	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1),  50, false, false, false, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(materialCB);
-	m_geometryInstances[GeometryType::Sphere].resize(SceneArgs::NumGeometriesPerBLAS, GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
+    bottomLevelASGeometry.m_geometryInstances.resize(SceneArgs::NumGeometriesPerBLAS, GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
 
-	m_numTriangles[GeometryType::Sphere] = static_cast<UINT>(indices.size()) / 3;
+    bottomLevelASGeometry.m_numTriangles = bottomLevelASGeometry.m_geometryInstances.back().ib.count / 3;
 }
 
 // ToDo move this out as a helper
-void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
-{
-	auto device = m_deviceResources->GetD3DDevice();
-	auto commandList = m_deviceResources->GetCommandList();
-	
-	m_geometries[GeometryType::SquidRoom].resize(1);
-	auto& geometry = m_geometries[GeometryType::SquidRoom][0];
-    auto& textures = m_geometryTextures[GeometryType::SquidRoom];
 
-	SquidRoomAssets::LoadGeometry(
-		device,
-		commandList,
-		m_cbvSrvUavHeap.get(),
-		GetAssetFullPath(SquidRoomAssets::DataFileName).c_str(),
-		&geometry,
+void D3D12RaytracingAmbientOcclusion::LoadSquidRoom()
+{
+    auto device = m_deviceResources->GetD3DDevice();
+    auto commandList = m_deviceResources->GetCommandList();
+
+    m_bottomLevelASGeometries.push_back(BottomLevelAccelerationStructureGeometry(L"Squid Room"));
+    auto& bottomLevelASGeometry = m_bottomLevelASGeometries.back();
+
+    bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat; // ToDo use common or add support to shaders 
+    bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
+    bottomLevelASGeometry.m_ibStrideInBytes = SquidRoomAssets::StandardIndexStride;
+    bottomLevelASGeometry.m_vbStrideInBytes = SquidRoomAssets::StandardVertexStride;
+
+    bottomLevelASGeometry.m_geometries.resize(1);
+    auto& geometry = bottomLevelASGeometry.m_geometries[0];
+    auto& textures = bottomLevelASGeometry.m_textures;
+
+    SquidRoomAssets::LoadGeometry(
+        device,
+        commandList,
+        m_cbvSrvUavHeap.get(),
+        GetAssetFullPath(SquidRoomAssets::DataFileName).c_str(),
+        &geometry,
         &textures,
         &m_materials,
-		&m_geometryInstances[GeometryType::SquidRoom]);
+        &bottomLevelASGeometry.m_geometryInstances);
 
-	m_numTriangles[GeometryType::SquidRoom] = 0;
-	for (auto& geometry : m_geometryInstances[GeometryType::SquidRoom])
-	{
-		m_numTriangles[GeometryType::SquidRoom] += geometry.ib.count / 3;
-	}
-#if PBRT_SCENE
+    bottomLevelASGeometry.m_numTriangles = 0;
+    for (auto& geometryInstance : bottomLevelASGeometry.m_geometryInstances)
+    {
+        bottomLevelASGeometry.m_numTriangles = geometryInstance.ib.count / 3;
+    }
+}
+
+void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
+{
+    LoadSquidRoom();
+
+#if LOAD_PBRT_SCENE
 	LoadPBRTScene();
 #endif
 }
@@ -1742,14 +1807,14 @@ void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
             m_nullTexture.heapIndex, m_cbvSrvUavHeap->DescriptorSize());
     }
 
-    BuildTesselatedGeometry();
-    BuildPlaneGeometry();   
+    //BuildTesselatedGeometry();
+    //BuildPlaneGeometry();   
 
 	// Begin frame.
 	m_deviceResources->ResetCommandAllocatorAndCommandlist();
 
 	LoadSceneGeometry();
-
+    InitializeAllBottomLevelAccelerationStructures();
 
 	m_materialBuffer.Create(device, static_cast<UINT>(m_materials.size()), 1, L"Structured buffer: materials");
 	copy(m_materials.begin(), m_materials.end(), m_materialBuffer.begin());
@@ -1827,56 +1892,54 @@ void D3D12RaytracingAmbientOcclusion::GenerateBottomLevelASInstanceTransforms()
 }
 
 // Build acceleration structure needed for raytracing.
+void D3D12RaytracingAmbientOcclusion::InitializeAllBottomLevelAccelerationStructures()
+{
+    auto device = m_deviceResources->GetD3DDevice();
+
+    m_accelerationStructure = make_unique<RaytracingAccelerationStructureManager>(device, MaxNumBottomLevelInstances, FrameCount);
+    
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;    // ToDo specify via SceneArgs
+    for (auto& bottomLevelASGeometry : m_bottomLevelASGeometries)
+    {
+        m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, false);
+    }
+}
+
+
+// Build acceleration structure needed for raytracing.
 void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 {
     auto device = m_deviceResources->GetD3DDevice();
-    
-    m_accelerationStructure = make_unique<RaytracingAccelerationStructureManager>(device, NumBottomLevelInstances, FrameCount);
 
     // Initialize bottom-level AS.
-    UINT bottomLevelASindices[ARRAYSIZE(m_geometryInstances)];
-    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;    // ToDo specify via SceneArgs
-    for (UINT i = 0; i < ARRAYSIZE(m_geometryInstances); i++)
-    {
-        auto& geometryInstances = m_geometryInstances[i];
 
-        // ToDo update BLAS resource names
-        switch (i)
-        {
-        case Scene::Type::SingleObject:
-        case Scene::Type::GeometricForest:
-            bottomLevelASindices[i] = m_accelerationStructure->AddBottomLevelAS(device, buildFlags, DXGI_FORMAT_R16_UINT, sizeof(Index), sizeof(DirectX::GeometricPrimitive::VertexType), geometryInstances, false, L"Simple Primitive Bottom-Level Acceleration Structure");
-            break;
-        case Scene::Type::SquidRoom:
-        case Scene::Type::PBRT:
-            bottomLevelASindices[i] = m_accelerationStructure->AddBottomLevelAS(device, buildFlags, SquidRoomAssets::StandardIndexFormat, SquidRoomAssets::StandardIndexStride, SquidRoomAssets::StandardVertexStride, geometryInstances, false, L"Complex Primitive Bottom-Level Acceleration Structure");
-            break;
-        };
+#if LOAD_PBRT_SCENE
+    UINT bottomLevelASIndices[] = {
+        GetBottomLevelASIndex(L"Spaceship"),
+        GetBottomLevelASIndex(L"Car"),
+        GetBottomLevelASIndex(L"Dragon"),
+        GetBottomLevelASIndex(L"House")};
 
-        m_numTrianglesInTheScene += m_numTriangles[i];
-    }
+#else
+    UINT bottomLevelASIndices[] = {
+        GetBottomLevelASIndex(L"Squid Room")};
+
+#endif
+    ThrowIfFalse(ARRAYSIZE(bottomLevelASIndices) < MaxNumBottomLevelInstances, L"Instance size limit reached.");
 
     // Initialize the bottom-level AS instances.
-    for (UINT i = 0; i < NumBottomLevelInstances; i++)
+    for (auto& i : bottomLevelASIndices)
     {
-#if PBRT_SCENE
-        if (i != Scene::Type::PBRT)
-        {
-            continue;
-        }
-#else
-        if (i != Scene::Type::SquidRoom)
-        {
-            continue;
-        }
-#endif
-        // ToDO cleanup?
-        m_bottomLevelASInstanceIndices[i] = m_accelerationStructure->AddBottomLevelASInstance(bottomLevelASindices[i]);
-        auto& bottomLevelASInstance = m_accelerationStructure->GetBottomLevelASInstance(m_bottomLevelASInstanceIndices[i]);
-        bottomLevelASInstance.InstanceContributionToHitGroupIndex = m_instanceContributionToHitGroupIndex[i];
+        // Default to use shader records already created for the bottom-level AS. 
+        // The instance however could go and add a copy of those shader records (modified for this instance) to the shader table.
+        UINT instanceContributionToHitGroupIndex = m_bottomLevelASGeometries[i].m_instanceContributionToHitGroupIndex;
+
+        m_bottomLevelASInstanceIndices[i] = m_accelerationStructure->AddBottomLevelASInstance(i, instanceContributionToHitGroupIndex);
+        auto& bottomLevelASInstance = m_accelerationStructure->GetBottomLevelASInstance(i);
     }
 
     // Initialize the top-level AS.
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;    // ToDo specify via SceneArgs
     m_accelerationStructure->InitializeTopLevelAS(device, buildFlags, L"Top-Level Acceleration Structure");
 }
 
@@ -1976,28 +2039,25 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 	// ToDo remove
 	vector<vector<GeometryInstance>*> geometryInstancesArray;
 
-    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::Plane]);
-    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::Sphere]);
-    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::SquidRoom]);
-    geometryInstancesArray.push_back(&m_geometryInstances[GeometryType::PBRT]);
-
+    // ToDo split shader table per unique pass?
 
 	// Hit group shader table.
 	{
 		UINT numShaderRecords = 0;
-		for (auto& geometryInstances : geometryInstancesArray)
+        for (auto& bottomLevelASGeometry : m_bottomLevelASGeometries)
 		{
-			numShaderRecords += static_cast<UINT>(geometryInstances->size()) * RayType::Count;
+			numShaderRecords += static_cast<UINT>(bottomLevelASGeometry.m_geometryInstances.size()) * RayType::Count;
 		}
 		UINT shaderRecordSize = shaderIDSize + LocalRootSignature::MaxRootArgumentsSize();
 		ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
 
 		// Triangle geometry hit groups.
-        for (UINT i = 0; i < GeometryType::Count; i++)
+        for (auto& bottomLevelASGeometry : m_bottomLevelASGeometries)
         {
             UINT shaderRecordOffset = hitGroupShaderTable.GeNumShaderRecords();
-            m_instanceContributionToHitGroupIndex[i] = shaderRecordOffset;
-            for (auto& geometryInstance : *geometryInstancesArray[i])
+            bottomLevelASGeometry.m_instanceContributionToHitGroupIndex = shaderRecordOffset;
+
+            for (auto& geometryInstance : bottomLevelASGeometry.m_geometryInstances)
             {
                 LocalRootSignature::Triangle::RootArguments rootArgs;
                 rootArgs.cb.materialID = geometryInstance.materialID;
@@ -2162,27 +2222,8 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     }
     m_sceneCB->elapsedTime = static_cast<float>(m_timer.GetTotalSeconds());
 
-#if 0
-#if RUNTIME_AS_UPDATES
     // Lazy initialize and update geometries and acceleration structures.
-    if (SceneArgs::EnableGeometryAndASBuildsAndUpdates &&
-        (m_isGeometryInitializationRequested || m_isASinitializationRequested))
-    {
-        // Since we'll be recreating D3D resources, GPU needs to be done with the current ones.
-		// ToDo
-        m_deviceResources->WaitForGpu();
-
-        m_deviceResources->ResetCommandAllocatorAndCommandlist();
-        InitializeAccelerationStructures();
-        }
-
-        m_isGeometryInitializationRequested = false;
-        m_isASinitializationRequested = false;
-        m_deviceResources->ExecuteCommandList();
-
-		// ToDo remove CPU-GPU syncs
-		m_deviceResources->WaitForGpu();
-    }
+#if 0
     if (m_animateScene)
     {
 #if TESSELATED_GEOMETRY_BOX
@@ -2192,7 +2233,6 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 #endif
 		UpdateBottomLevelASTransforms();
     }
-#endif
 #endif
 
     // ToDo move
@@ -4186,7 +4226,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     }
     
 #if ENABLE_VSYNC
-    m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 1);
+    m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, VSYNC_PRESENT_INTERVAL);
 #else
     m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
 #endif

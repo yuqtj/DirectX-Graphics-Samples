@@ -48,9 +48,29 @@ protected:
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_buildFlags;
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO m_prebuildInfo;
     std::wstring m_name;
-    bool m_isBuilt = false;
+
+    bool m_isBuilt = false; // whether the AS has been built at least once.
+    bool m_isDirty;		    // whether the AS requires to be rebuilt.
 
 	void AllocateResource(ID3D12Device5* device, const wchar_t* resourceName = nullptr);
+};
+
+class BottomLevelAccelerationStructureGeometry
+{
+public:
+    std::wstring                    m_name;
+    std::vector<GeometryInstance>	m_geometryInstances;
+    std::vector<D3DGeometry>        m_geometries;
+    std::vector<D3DTexture>         m_textures;
+    UINT                            m_numTriangles = 0;
+    DXGI_FORMAT                     m_indexFormat;
+    UINT                            m_ibStrideInBytes;
+    DXGI_FORMAT                     m_vertexFormat;
+    UINT                            m_vbStrideInBytes;
+    UINT                            m_instanceContributionToHitGroupIndex = 0;
+
+    BottomLevelAccelerationStructureGeometry(const wchar_t* name) : m_name(name) {}
+    BottomLevelAccelerationStructureGeometry(const std::wstring& name) : m_name(name) {}
 };
 
 class BottomLevelAccelerationStructure : public AccelerationStructure
@@ -63,11 +83,11 @@ public:
 	// ToDo:
 	// UpdateGeometry()
 
-	void Initialize(ID3D12Device5* device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, DXGI_FORMAT indexFormat, UINT ibStrideInBytes, UINT vbStrideInBytes, std::vector<GeometryInstance>& geometries, const wchar_t* name = nullptr);
-	void Build(ID3D12GraphicsCommandList5* commandList, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress = 0, bool bUpdate = false);
-	void BuildInstanceDesc(void* destInstanceDesc);
+    void Initialize(ID3D12Device5* device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry);
+    void Build(ID3D12GraphicsCommandList5* commandList, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress = 0, bool bUpdate = false);
 	void UpdateGeometryDescsTransform(D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress);
 
+    UINT GetInstanceContributionToHitGroupIndex() { return m_instanceContributionToHitGroupIndex; }
     void SetInstanceContributionToHitGroupIndex(UINT index) { m_instanceContributionToHitGroupIndex = index; }
 	void SetDirty(bool isDirty) { m_isDirty = isDirty; }
 	bool IsDirty() { return m_isDirty; }
@@ -79,11 +99,10 @@ private:
     DirectX::XMMATRIX m_transform;
 
     // Runtime state
-    bool m_isDirty;		// if true, AS requires an update/build.
     UINT m_instanceContributionToHitGroupIndex;
 
 
-	void BuildGeometryDescs(DXGI_FORMAT indexFormat, UINT ibStrideInBytes, UINT vbStrideInBytes, std::vector<GeometryInstance>& geometries);
+	void BuildGeometryDescs(BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry);
 	void ComputePrebuildInfo(ID3D12Device5* device);
 };
 
@@ -95,7 +114,6 @@ public:
 
 	void Initialize(ID3D12Device5* device, UINT numBottomLevelASInstanceDescs, std::vector<BottomLevelAccelerationStructure>& vBottomLevelAS, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, const wchar_t* resourceName = nullptr);
 	void Build(ID3D12GraphicsCommandList5* commandList, UINT numInstanceDescs, D3D12_GPU_VIRTUAL_ADDRESS InstanceDescs, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, bool bUpdate = false);
-	void UpdateInstanceDescTransforms(std::vector<BottomLevelAccelerationStructure>& vBottomLevelAS);
 
 private:
 
@@ -117,8 +135,8 @@ public:
     RaytracingAccelerationStructureManager(ID3D12Device5* device, UINT numBottomLevelInstances, UINT frameCount);
     ~RaytracingAccelerationStructureManager() {}
 
-    UINT AddBottomLevelAS(ID3D12Device5* device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, DXGI_FORMAT indexFormat, UINT ibStrideInBytes, UINT vbStrideInBytes, std::vector<GeometryInstance>& geometries, bool performUpdateOnBuild = false, const wchar_t* name = nullptr);
-    UINT AddBottomLevelASInstance(UINT bottomLevelASindex, XMMATRIX transform = XMMatrixIdentity(), UINT instanceContributionToHitGroupIndex = 0, BYTE InstanceMask = 1);
+    UINT AddBottomLevelAS(ID3D12Device5* device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry, bool performUpdateOnBuild = false);
+    UINT AddBottomLevelASInstance(UINT bottomLevelASindex, UINT instanceContributionToHitGroupIndex, XMMATRIX transform = XMMatrixIdentity(), BYTE InstanceMask = 1);
     void InitializeTopLevelAS(ID3D12Device5* device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, const wchar_t* resourceName = nullptr);
     void Build(ID3D12GraphicsCommandList5* commandList, ID3D12DescriptorHeap* descriptorHeap, UINT frameIndex, bool bForceBuild = false);
     BottomLevelAccelerationStructureInstanceDesc& GetBottomLevelASInstance(UINT bottomLevelASinstanceIndex) { return m_bottomLevelASInstanceDescs[bottomLevelASinstanceIndex]; }

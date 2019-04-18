@@ -68,7 +68,8 @@ private:
 	const float c_aabbDistance = 2;   // Distance between AABBs.
 
 	// AmbientOcclusion
-	std::vector<GeometryInstance>	m_geometryInstances[Scene::Type::Count];
+    const UINT c_maxNumBLAS = 10000;
+
 
 
 	int m_numFramesSinceASBuild;
@@ -160,16 +161,31 @@ private:
 	ComPtr<ID3D12Resource> m_indexBufferUpload;
 	D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
 
-    
-	SceneParser::Scene m_pbrtScene;
-	std::vector<D3DGeometry> m_geometries[GeometryType::Count];
-    std::vector<D3DTexture> m_geometryTextures[GeometryType::Count];
+    struct PBRTScene
+    {
+        std::wstring name;
+        std::string path;    // ToDo switch to wstring 
+    };
+
+    std::vector<BottomLevelAccelerationStructureGeometry>	m_bottomLevelASGeometries;
+    UINT GetBottomLevelASIndex(const wchar_t* name)
+    {
+        std::vector<BottomLevelAccelerationStructureGeometry>::iterator i =
+            std::find_if(
+                m_bottomLevelASGeometries.begin(), m_bottomLevelASGeometries.end(),
+                [&](const BottomLevelAccelerationStructureGeometry& x) { return x.m_name == name; });
+
+        ThrowIfFalse(i != m_bottomLevelASGeometries.end(), L"Specified bottom-level AS was not found.");
+
+        return static_cast<UINT>(i - m_bottomLevelASGeometries.begin());
+    }
+
     D3DTexture m_environmentMap;
 
-    const UINT NumBottomLevelInstances = GeometryType::Count;
 
     std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
-    UINT m_instanceContributionToHitGroupIndex[GeometryType::Count];
+
+    const UINT MaxNumBottomLevelInstances = 1000;
     UINT m_bottomLevelASInstanceIndices[GeometryType::Count];
 
 	StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
@@ -262,8 +278,9 @@ private:
 	std::unique_ptr<UILayer> m_uiLayer;
 	
 	float m_fps;
-	UINT m_numTrianglesInTheScene;
-	UINT m_numTriangles[GeometryType::Count];
+	UINT m_numTriangles;
+    UINT m_numInstancedTriangles;
+
 	bool m_isGeometryInitializationRequested;
 	bool m_isASinitializationRequested;
 	bool m_isSceneInitializationRequested;
@@ -283,6 +300,7 @@ private:
     void CreateAoBlurCSResources();
 	void ParseCommandLineArgs(WCHAR* argv[], int argc);
 	void RecreateD3D();
+    void LoadSquidRoom();
 	void LoadPBRTScene();
 	void LoadSceneGeometry();
     void UpdateCameraMatrices();
@@ -335,6 +353,7 @@ private:
     void BuildPlaneGeometry();
     void BuildTesselatedGeometry();
 	void GenerateBottomLevelASInstanceTransforms();
+    void InitializeAllBottomLevelAccelerationStructures();
     void InitializeAccelerationStructures();
     void BuildShaderTables();
     void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);

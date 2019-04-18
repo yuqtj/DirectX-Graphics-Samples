@@ -18,6 +18,7 @@ using namespace std;
 
 AccelerationStructure::AccelerationStructure() :
 	m_buildFlags(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE),
+    m_isDirty(true),
     m_isBuilt(false),
 	m_prebuildInfo{}
 {
@@ -43,7 +44,6 @@ void AccelerationStructure::AllocateResource(ID3D12Device5* device, const wchar_
 
 
 BottomLevelAccelerationStructure::BottomLevelAccelerationStructure() :
-	m_isDirty(true),
     m_instanceContributionToHitGroupIndex(0)
 {
 }
@@ -58,7 +58,7 @@ void BottomLevelAccelerationStructure::UpdateGeometryDescsTransform(D3D12_GPU_VI
 }
 
 // Build geometry descs for bottom-level AS.
-void BottomLevelAccelerationStructure::BuildGeometryDescs(DXGI_FORMAT indexFormat, UINT ibStrideInBytes, UINT vbStrideInBytes, vector<GeometryInstance>& geometries)
+void BottomLevelAccelerationStructure::BuildGeometryDescs(BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry)
 {
 	// ToDo pass geometry flag from the sample cpp
 	// Mark the geometry as opaque. 
@@ -68,13 +68,13 @@ void BottomLevelAccelerationStructure::BuildGeometryDescs(DXGI_FORMAT indexForma
 
 	D3D12_RAYTRACING_GEOMETRY_DESC geometryDescTemplate = {};
 	geometryDescTemplate.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-	geometryDescTemplate.Triangles.IndexFormat = indexFormat;
-	geometryDescTemplate.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+	geometryDescTemplate.Triangles.IndexFormat = bottomLevelASGeometry.m_indexFormat;
+	geometryDescTemplate.Triangles.VertexFormat = bottomLevelASGeometry.m_vertexFormat;
 	geometryDescTemplate.Flags = geometryFlags;
 
-	m_geometryDescs.reserve(geometries.size());
+	m_geometryDescs.reserve(bottomLevelASGeometry.m_geometryInstances.size());
 
-	for (auto& geometry: geometries)
+	for (auto& geometry: bottomLevelASGeometry.m_geometryInstances)
 	{
 		auto& geometryDesc = geometryDescTemplate;
 		geometryDesc.Triangles.IndexBuffer = geometry.ib.indexBuffer;
@@ -105,16 +105,12 @@ void BottomLevelAccelerationStructure::ComputePrebuildInfo(ID3D12Device5* device
 void BottomLevelAccelerationStructure::Initialize(
 	ID3D12Device5* device, 
 	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, 
-	DXGI_FORMAT indexFormat, 
-	UINT ibStrideInBytes, 
-	UINT vbStrideInBytes, 
-	vector<GeometryInstance>& geometries, 
-    const wchar_t* resourceName)
+    BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry)
 {
 	m_buildFlags = buildFlags;
-	BuildGeometryDescs(indexFormat, ibStrideInBytes, vbStrideInBytes, geometries);
+	BuildGeometryDescs(bottomLevelASGeometry);
 	ComputePrebuildInfo(device);
-	AllocateResource(device, resourceName);
+	AllocateResource(device, bottomLevelASGeometry.m_name.c_str());
 	m_isDirty = true;
 }
 
@@ -132,7 +128,6 @@ void BottomLevelAccelerationStructure::Build(
         UpdateGeometryDescsTransform(baseGeometryTransformGPUAddress);
     }
 
-    // ToDo cleanup
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
 	{
@@ -177,6 +172,7 @@ void TopLevelAccelerationStructure::Initialize(ID3D12Device5* device, UINT numBo
 	m_buildFlags = buildFlags;
 	ComputePrebuildInfo(device, numBottomLevelASInstanceDescs);
 	AllocateResource(device, resourceName);
+    m_isDirty = true;
 }
 
 void TopLevelAccelerationStructure::Build(ID3D12GraphicsCommandList5* commandList, UINT numBottomLevelASInstanceDescs, D3D12_GPU_VIRTUAL_ADDRESS bottomLevelASnstanceDescs, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, bool bUpdate)
@@ -200,6 +196,7 @@ void TopLevelAccelerationStructure::Build(ID3D12GraphicsCommandList5* commandLis
 
     commandList->SetDescriptorHeaps(1, &descriptorHeap);
     commandList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
+    m_isDirty = false;
     m_isBuilt = true;
 }
 
@@ -214,12 +211,8 @@ RaytracingAccelerationStructureManager::RaytracingAccelerationStructureManager(I
 UINT RaytracingAccelerationStructureManager::AddBottomLevelAS(
     ID3D12Device5* device,
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags,
-    DXGI_FORMAT indexFormat,
-    UINT ibStrideInBytes,
-    UINT vbStrideInBytes,
-    vector<GeometryInstance>& geometries,
-    bool performUpdateOnBuild,
-    const wchar_t* name)
+    BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry,
+    bool performUpdateOnBuild)
 {
     BottomLevelAccelerationStructure bottomLevelAS;
 
@@ -228,7 +221,7 @@ UINT RaytracingAccelerationStructureManager::AddBottomLevelAS(
         buildFlags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
     }
 
-    bottomLevelAS.Initialize(device, buildFlags, indexFormat, ibStrideInBytes, vbStrideInBytes, geometries, name);
+    bottomLevelAS.Initialize(device, buildFlags, bottomLevelASGeometry);
 
     m_ASmemoryFootprint += bottomLevelAS.RequiredResultDataSizeInBytes();
     m_scratchResourceSize = max(bottomLevelAS.RequiredScratchSize(), m_scratchResourceSize);
@@ -244,15 +237,15 @@ UINT RaytracingAccelerationStructureManager::AddBottomLevelAS(
 // Requires a call InitializeTopLevelAS() call to be added to top-level AS.
 UINT RaytracingAccelerationStructureManager::AddBottomLevelASInstance(
     UINT bottomLevelASindex,
-    XMMATRIX transform,
     UINT instanceContributionToHitGroupIndex,
+    XMMATRIX transform,
     BYTE instanceMask)
 {
     ThrowIfFalse(numBottomLevelASInstances < m_bottomLevelASInstanceDescs.NumElements(), L"Not enough instance desc buffer size.");
 
     UINT instanceIndex = numBottomLevelASInstances++;
     auto& bottomLevelAS = m_vBottomLevelAS[bottomLevelASindex];
-
+    
     auto& instanceDesc = m_bottomLevelASInstanceDescs[instanceIndex];
     instanceDesc.InstanceMask = instanceMask;
     instanceDesc.InstanceContributionToHitGroupIndex = instanceContributionToHitGroupIndex;
