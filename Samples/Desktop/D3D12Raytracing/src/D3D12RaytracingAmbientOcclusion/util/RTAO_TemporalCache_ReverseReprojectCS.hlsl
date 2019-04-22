@@ -24,6 +24,7 @@ Texture2D<uint> g_texInputCacheFrameAge : register(t6);
 Texture2D<float> g_texInputCurrentFrameMean : register(t7);
 Texture2D<float> g_texInputCurrentFrameVariance : register(t8);
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t9); // ToDo standardize naming across files
+Texture2D<float2> g_texTextureSpaceMotionVector : register(t10); // ToDo standardize naming across files
 
 RWTexture2D<float> g_texOutputCachedValue : register(u0);
 RWTexture2D<uint> g_texOutputCacheFrameAge : register(u1);
@@ -197,6 +198,7 @@ float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal
         float cacheLinearDepth = LogToViewDepth(cacheNDCpos.z, cb.zNear, cb.zFar);
 #endif
         //depthThreshold = abs(cacheLinearDepth - ActualDistance);
+
         float fMinEpsilon = cb.floatEpsilonDepthTolerance * 512 * FLT_EPSILON; // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations.
         // ToDo should it be exponential?
         float fMinDepthScaledEpsilon = cb.depthDistanceBasedDepthTolerance * 48 * 1e-6  * ActualDistance;  // Depth threshold to surpress differences that surface at larger depth from the camera.
@@ -282,16 +284,21 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float4 clipSpacePos = GetClipSpacePosition(DTid, linearDepth);
     
     // Reverse project into previous frame
+    // ToDo does manually computing current world space pos and skiping invViewProj improve precision?
     float4 cacheClipSpacePos = mul(clipSpacePos, cb.reverseProjectionTransform);
 
     float3 cacheNDCpos = cacheClipSpacePos.xyz;
     cacheNDCpos /= cacheClipSpacePos.w;                             // Perspective division.
     cacheNDCpos.y = -cacheNDCpos.y;                                 // Invert Y for DirectX-style coordinates.
-    
-    
-    // Suffers from loss of precision moving to and back from log representation.
-    float cacheLinearDepth2 = LogToViewDepth(cacheNDCpos.z, cb.zNear, cb.zFar);
     float2 cacheFrameTexturePos = (cacheNDCpos.xy + 1) * 0.5f;      // [-1,1] -> [0, 1]
+
+    if (cb.forceUseMinSmoothingFactor)
+    {
+        float2 texturePos = (DTid.xy + 0.5f) / float2(cb.textureDim);
+        cacheFrameTexturePos = texturePos - g_texTextureSpaceMotionVector[DTid];
+    }
+    // Suffers from loss of precision moving to and back from log representation.
+    //float cacheLinearDepth2 = LogToViewDepth(cacheNDCpos.z, cb.zNear, cb.zFar);
 
 
     int2 topLeftCacheFrameIndex = int2(cacheFrameTexturePos * cb.textureDim - 0.5);
@@ -333,10 +340,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float cacheLinearDepth = dot(viewPos, cacheCameraDirection);
 
 
-#if 1
-    float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];  // ToDo move to caller
-        // ToDo should this be done separately for both X and Y dimensions?
+    float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];
+    // ToDo should this be done separately for both X and Y dimensions?
     float  ddxy = dot(1, dxdy);
+#if 1
+    float cacheDdxy = ddxy;
+#else
 
     float4 clipSpacePosDdxy = GetClipSpacePosition(DTid + 1, cb.zNear + FLT_EPSILON + ddxy);
     //float4 clipSpacePosDdxy = GetClipSpacePosition(DTid + 1, linearDepth + ddxy);
@@ -413,7 +422,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // ToDo scale this based on depth?
     float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
 
-    bool isCacheValueValid = weightSum > 1e-3f;
+    bool isCacheValueValid = weightSum > 1e-3f; // ToDo
     //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
     uint isDisoccluded;
     uint frameAge;
@@ -441,15 +450,16 @@ void main(uint2 DTid : SV_DispatchThreadID)
             cachedValue = clamp(cachedValue, localMean - localStdDev, localMean + localStdDev); 
             
             // Scale the frame age based on how strongly the cached value got clamped.
-            // TODo frameAgeClamp = abs(cachedValue - prevCachedValue);
-
+            frameAgeClamp = abs(cachedValue - prevCachedValue);
+            frameAge = lerp(frameAge, 0, frameAgeClamp);
         }
         //frameAgeClamp = screenSpaceReprojectionDistanceAsWidthPercentage / maxScreenSpaceReprojectionDistance;
         //uint maxFrame
         //frameAge = lerp(frameAge, 0, frameAgeClamp);
 
         float invFrameAge = 1.f / (frameAge + 1);
-        float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
+        //float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
+        float a =  max(invFrameAge, cb.minSmoothingFactor);
         mergedValue = lerp(cachedValue, value, a);
         
         // ToDo If no valid samples found:

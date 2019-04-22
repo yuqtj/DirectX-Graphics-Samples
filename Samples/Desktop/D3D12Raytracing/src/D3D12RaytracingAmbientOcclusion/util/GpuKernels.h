@@ -135,11 +135,13 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputGeometryHitResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputMotionVectoResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputMotionVectorResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputDepthResourceHandle);
 
     private:
@@ -463,6 +465,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheFrameAgeResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTextureSpaceMotionVectorResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheFrameAgeResourceHandle,
             float minSmoothingFactor,

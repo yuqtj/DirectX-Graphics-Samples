@@ -395,13 +395,16 @@ public:
 
     auto begin() { return m_staging.begin(); }
     auto end() { return m_staging.end(); }
+    auto begin() const { return m_staging.begin(); }
+    auto end() const { return m_staging.end(); }
 
     // Accessors
     T& operator[](UINT elementIndex) { return m_staging[elementIndex]; }
-    size_t NumElements() { return m_staging.size(); }
-	UINT ElementSize() { return sizeof(T); }
-    UINT NumInstances() { return m_numInstances; }
-    size_t InstanceSize() { return NumElements() * ElementSize(); }
+    const T& operator[](UINT elementIndex) const { return m_staging[elementIndex]; }
+    size_t NumElements() const { return m_staging.size(); }
+	UINT ElementSize() const { return sizeof(T); }
+    UINT NumInstances() const { return m_numInstances; }
+    size_t InstanceSize() const { return NumElements() * ElementSize(); }
     D3D12_GPU_VIRTUAL_ADDRESS GpuVirtualAddress(UINT instanceIndex = 0, UINT elementIndex = 0)
     {
         return m_resource->GetGPUVirtualAddress() + instanceIndex * InstanceSize() + elementIndex * ElementSize();

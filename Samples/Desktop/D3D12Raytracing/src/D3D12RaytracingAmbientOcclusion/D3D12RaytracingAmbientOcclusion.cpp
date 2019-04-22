@@ -176,8 +176,10 @@ namespace SceneArgs
     NumVar RTAO_TemporalCache_DepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth tolerance [%%]", 0.05f, 0, 1.f, 0.001f);
     BoolVar RTAO_TemporalCache_UseDepthWeights(L"Render/AO/RTAO/Temporal Cache/Use depth weights", true);    // ToDo remove
     BoolVar RTAO_TemporalCache_UseNormalWeights(L"Render/AO/RTAO/Temporal Cache/Use normal weights", true);
-    BoolVar RTAO_TemporalCache_ForceUseMinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Force min smoothing factor", false);
+    BoolVar RTAO_TemporalCache_ForceUseMinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Force min smoothing factor", true);
     IntVar RTAO_TemporalCache_VarianceFilterKernelWidth(L"Render/AO/RTAO/Temporal Cache/Variance filter/Kernel width", 7, 3, 11, 2);    // ToDo find lowest good enough width
+
+    // ToDo address: Clamping causes rejection of samples in low density areas - such as on ground plane at the end of max ray distance from other objects.
     BoolVar RTAO_TemporalCache_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", false);
     NumVar RTAO_TemporalCache_ClampCachedValues_StdDevGamma(L"Render/AO/RTAO/Temporal Cache/Clamping/Std.dev gamma", 1.0f, 0.1f, 3.f, 0.1f);
     NumVar RTAO_TemporalCache_ClampCachedValues_AbsoluteDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Absolute depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
@@ -480,16 +482,6 @@ void D3D12RaytracingAmbientOcclusion::OnInit()
     g_hWnd = Win32Application::GetHwnd();
     GameInput::Initialize();
     EngineTuning::Initialize();
-
-    XMMATRIX transform;
-    transform.r[0] = XMVectorSet(-0.35, 0, 0, 0);
-    transform.r[1] = XMVectorSet(0, 0.35, 0, 0);
-    transform.r[2] = XMVectorSet(0, 0, -0.35, 0);
-    transform.r[3] = XMVectorSet(-16, -0.7, 22, 1);
-
-    float secondsToRotateAround = 48.0f;
-    XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(270));
-    transform = rotate * transform;
 
     m_deviceResources->InitializeDXGIAdapter();
 #if ENABLE_RAYTRACING
@@ -1017,6 +1009,9 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
     CreateAoBlurCSResources();
 
     m_SSAO.Setup(m_deviceResources);
+
+    // 
+    m_prevFrameBottomLevelASInstanceTransforms.Create(device, MaxNumBottomLevelInstances, FrameCount, L"GPU buffer: Bottom Level AS Instance transforms for previous frame");
 }
 
 void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
@@ -1038,6 +1033,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         ranges[Slot::GBufferDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 13);  // 1 output depth texture
         ranges[Slot::GbufferNormalRGB].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 14);  // 1 output normal texture
         ranges[Slot::AORayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 15);  // 1 output ray hit distance texture
+        ranges[Slot::MotionVector].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 17);  // 1 output texture space motion vector.
         
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
         ranges[Slot::PartialDepthDerivatives].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 16);  // 1 output partial depth derivative texture
@@ -1062,10 +1058,13 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
         rootParameters[Slot::PartialDepthDerivatives].InitAsDescriptorTable(1, &ranges[Slot::PartialDepthDerivatives]);
 #endif
+        rootParameters[Slot::MotionVector].InitAsDescriptorTable(1, &ranges[Slot::MotionVector]);
+        
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
         rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
         rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(4);
+        rootParameters[Slot::PrevFrameBottomLevelASIstanceTransforms].InitAsShaderResourceView(15);
 
         CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, SAMPLER_FILTER);
 
@@ -1267,6 +1266,10 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
         // ToDo use R16G16?
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::PartialDepthDerivatives], initialResourceState, L"GBuffer Partial Depth Derivatives");
+
+        // ToDo use R16G16?
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::MotionVector], initialResourceState, L"GBuffer Texture Space Motion Vector");
+
     }
     
     // Low-res GBuffer resources.
@@ -1289,7 +1292,9 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         // ToDo are below two used?
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::Depth], initialResourceState, L"GBuffer LowRes Depth");
         CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::SurfaceNormalRGB], initialResourceState, L"GBuffer LowRes Normal RGB");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives], initialResourceState, L"GBuffer Partial Depth Derivatives");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives], initialResourceState, L"GBuffer LowRes Partial Depth Derivatives");
+
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::MotionVector], initialResourceState, L"GBuffer LowRes Texture Space Motion Vector");
 
     }
 
@@ -2103,9 +2108,19 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
         break;
     case 'J':
         m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 5, 0, 0)));
+        m_cameraChangedIndex = 2;
         break;
     case 'M':
         m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, -5, 0, 0)));
+        m_cameraChangedIndex = 2;
+        break;
+    case 'U':
+        m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(5, 0, 0, 0)));
+        m_cameraChangedIndex = 2;
+        break;
+    case 'Y':
+        m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-5, 0, 0, 0)));
+        m_cameraChangedIndex = 2;
         break;
     case 'O':
         angleToRotateBy = -10;
@@ -2170,12 +2185,12 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 	{
 		m_isCameraFrozen = !m_isCameraFrozen;
 	}
+    m_prevFrameCamera = m_camera;
 
     m_cameraChangedIndex--;
     m_hasCameraChanged = false;
 	if (!m_isCameraFrozen)
 	{
-        //m_prevFrameCamera = m_camera;
         m_hasCameraChanged = m_cameraController->Update(elapsedTime);
         // ToDo
         // if (CameraChanged)
@@ -2183,6 +2198,13 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 
 	}
 
+
+    float animationDuration = 10.0f;
+    float curTime = static_cast<float>(m_timer.GetTotalSeconds());
+    float t = CalculateAnimationInterpolant(curTime, animationDuration);
+
+    m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(- 5 + 10 * t, 0, 0, 0)));
+    
 
     // Rotate the camera around Y axis.
     if (m_animateCamera)
@@ -2269,13 +2291,24 @@ void D3D12RaytracingAmbientOcclusion::ParseCommandLineArgs(WCHAR* argv[], int ar
 
 void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructure()
 {
+    auto commandList = m_deviceResources->GetCommandList();
+    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+
     if (SceneArgs::EnableGeometryAndASBuildsAndUpdates)
     {
-        auto commandList = m_deviceResources->GetCommandList();
-        auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
         bool forceBuild = false;    // ToDo
 
         m_accelerationStructure->Build(commandList, m_cbvSrvUavHeap->GetHeap(), frameIndex, forceBuild);
+    }
+
+    // Copy previous frame Bottom Level AS instance transforms to GPU. 
+    m_prevFrameBottomLevelASInstanceTransforms.CopyStagingToGpu(frameIndex);
+
+    // Update the CPU staging copy with the current frame transforms.
+    const auto& bottomLevelASInstanceDescs = m_accelerationStructure->GetBottomLevelASInstancesBuffer();
+    for (UINT i = 0; i < bottomLevelASInstanceDescs.NumElements(); i++)
+    {
+        m_prevFrameBottomLevelASInstanceTransforms[i] = *reinterpret_cast<const XMFLOAT3X4*>(bottomLevelASInstanceDescs[i].Transform);
     }
 }
 
@@ -3006,6 +3039,13 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     m_sceneCB->RTAO_IsExponentialFalloffEnabled = SceneArgs::RTAOIsExponentialFalloffEnabled;
     m_sceneCB->RTAO_exponentialFalloffDecayConstant = SceneArgs::RTAO_ExponentialFalloffDecayConstant;
 
+
+    // ToDo should we use cameraAtPosition0 too and offset the world space pos vector in the shader?
+    XMMATRIX prevView, prevProj;
+    m_prevFrameCamera.GetViewProj(&prevView, &prevProj, m_GBufferWidth, m_GBufferHeight);
+    m_sceneCB->prevViewProj = prevView * prevProj;
+
+
     // Calculate a theoretical max ray distance to be used in occlusion factor computation.
     // Occlusion factor of a ray hit is computed based of its ray hit time, falloff exponent and a max ray hit time.
     // By specifying a min occlusion factor of a ray, we can skip tracing rays that would have an occlusion 
@@ -3047,6 +3087,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Depth].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormalRGB].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MotionVector].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after),
             // ToDo remove
             //CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after) ,
@@ -3062,11 +3103,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, m_environmentMap.gpuDescriptorHandle);
+    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::PrevFrameBottomLevelASIstanceTransforms, m_prevFrameBottomLevelASInstanceTransforms.GpuVirtualAddress(frameIndex));
+    
     
 	// Bind output RTs.
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferDepth, m_GBufferResources[GBufferResource::Depth].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GbufferNormalRGB, m_GBufferResources[GBufferResource::SurfaceNormalRGB].gpuDescriptorWriteAccess); 
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GbufferNormalRGB, m_GBufferResources[GBufferResource::SurfaceNormalRGB].gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::MotionVector, m_GBufferResources[GBufferResource::MotionVector].gpuDescriptorWriteAccess);
     
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::PartialDepthDerivatives, m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
@@ -3089,6 +3133,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
 #endif
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MotionVector].resource.Get(), before, after),
 		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
@@ -3137,6 +3182,7 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::HitPosition].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::MotionVector].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::Depth].resource.Get(), before, after)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
@@ -3152,11 +3198,13 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
         m_GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::Hit].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
+        m_GBufferResources[GBufferResource::MotionVector].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::Depth].gpuDescriptorReadAccess,
         m_GBufferLowResResources[GBufferResource::SurfaceNormal].gpuDescriptorWriteAccess,
         m_GBufferLowResResources[GBufferResource::HitPosition].gpuDescriptorWriteAccess,
         m_GBufferLowResResources[GBufferResource::Hit].gpuDescriptorWriteAccess,
         m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess,
+        m_GBufferLowResResources[GBufferResource::MotionVector].gpuDescriptorWriteAccess,
         m_GBufferLowResResources[GBufferResource::Depth].gpuDescriptorWriteAccess);
     // Transition GBuffer resources to shader resource state.
     {
@@ -3167,6 +3215,7 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::HitPosition].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::MotionVector].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::Depth].resource.Get(), before, after)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
@@ -3959,8 +4008,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
     XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
     XMMATRIX prevInvViewProj = XMMatrixInverse(nullptr, prevViewProj);
 
-    // ToDo move
-    m_prevFrameCamera = m_camera;
 #if 1
     XMMATRIX invViewProjAndCameraTranslation = invViewProj * cameraTranslation;
    // XMMATRIX reverseProjectionTransform = invViewProj * cameraTranslation * prevView * prevProj;
@@ -4027,6 +4074,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_temporalCache[0][TemporalCache::Depth].gpuDescriptorReadAccess,      // ToDo dedupe depth from the array
         m_temporalCache[0][TemporalCache::Normal].gpuDescriptorReadAccess,
         m_temporalCache[TC_readID][TemporalCache::FrameAge].gpuDescriptorReadAccess,
+        GBufferResources[GBufferResource::MotionVector].gpuDescriptorReadAccess,
         m_temporalCache[TC_writeID][TemporalCache::AO].gpuDescriptorWriteAccess,
         m_temporalCache[TC_writeID][TemporalCache::FrameAge].gpuDescriptorWriteAccess,
         SceneArgs::RTAO_TemporalCache_MinSmoothingFactor,

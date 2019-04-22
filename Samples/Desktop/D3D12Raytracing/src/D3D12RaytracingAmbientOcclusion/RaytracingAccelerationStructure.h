@@ -24,6 +24,7 @@ struct AccelerationStructureBuffers
     UINT64                 ResultDataMaxSizeInBytes;
 };
 
+// ToDO remove?
 struct alignas(16) AlignedGeometryTransform3x4
 {
 	float transform3x4[12];
@@ -126,7 +127,7 @@ struct BottomLevelAccelerationStructureInstanceDesc : public D3D12_RAYTRACING_IN
     void SetTransform(const DirectX::XMMATRIX& transform);
     void GetTransform(DirectX::XMMATRIX* transform);
 };
-static_assert(sizeof(BottomLevelAccelerationStructureInstanceDesc) == sizeof(D3D12_RAYTRACING_INSTANCE_DESC) % 16 == 0, L"This is a wrapper used in place of the desc. It has to have the same size");
+static_assert(sizeof(BottomLevelAccelerationStructureInstanceDesc) == sizeof(D3D12_RAYTRACING_INSTANCE_DESC), L"This is a wrapper used in place of the desc. It has to have the same size");
 
 
 class RaytracingAccelerationStructureManager
@@ -140,7 +141,7 @@ public:
     void InitializeTopLevelAS(ID3D12Device5* device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, const wchar_t* resourceName = nullptr);
     void Build(ID3D12GraphicsCommandList5* commandList, ID3D12DescriptorHeap* descriptorHeap, UINT frameIndex, bool bForceBuild = false);
     BottomLevelAccelerationStructureInstanceDesc& GetBottomLevelASInstance(UINT bottomLevelASinstanceIndex) { return m_bottomLevelASInstanceDescs[bottomLevelASinstanceIndex]; }
-
+    const StructuredBuffer<BottomLevelAccelerationStructureInstanceDesc>& GetBottomLevelASInstancesBuffer() { return m_bottomLevelASInstanceDescs; }
 
     ID3D12Resource* GetTopLevelASResource() { return m_topLevelAS.GetResource(); }
     UINT64 GetASMemoryFootprint() { return m_ASmemoryFootprint; }

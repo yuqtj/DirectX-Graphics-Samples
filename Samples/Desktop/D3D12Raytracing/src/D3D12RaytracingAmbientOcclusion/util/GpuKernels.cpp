@@ -430,12 +430,14 @@ namespace GpuKernels
                     OutputPosition,
                     OutputGeometryHit,
                     OutputPartialDistanceDerivative,
+                    OutputMotionVector,
                     OutputDepth,
                     Input,
                     InputNormal,
                     InputPosition,
                     InputGeometryHit,
                     InputPartialDistanceDerivative,
+                    InputMotionVector,
                     InputDepth,
                     Count
                 };
@@ -451,7 +453,7 @@ namespace GpuKernels
             using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
 
             // ToDo review access frequency or remove performance tip
-            CD3DX12_DESCRIPTOR_RANGE ranges[12]; // Perfomance TIP: Order from most frequent to least frequent.
+            CD3DX12_DESCRIPTOR_RANGE ranges[14]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input normal texture
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 input position texture
@@ -464,6 +466,8 @@ namespace GpuKernels
             ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);  // 1 output partial distance derivative
             ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input depth
             ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 5);  // 1 output depth
+            ranges[12].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // 1 input motion vector
+            ranges[13].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 6);  // 1 output motion vector
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
@@ -478,6 +482,8 @@ namespace GpuKernels
             rootParameters[Slot::OutputPartialDistanceDerivative].InitAsDescriptorTable(1, &ranges[9]);
             rootParameters[Slot::InputDepth].InitAsDescriptorTable(1, &ranges[10]);
             rootParameters[Slot::OutputDepth].InitAsDescriptorTable(1, &ranges[11]);
+            rootParameters[Slot::InputMotionVector].InitAsDescriptorTable(1, &ranges[12]);
+            rootParameters[Slot::OutputMotionVector].InitAsDescriptorTable(1, &ranges[13]);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
@@ -510,11 +516,13 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputGeometryHitResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputMotionVectoResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputMotionVectorResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputDepthResourceHandle)
     {
         using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
@@ -530,11 +538,13 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputPosition, inputPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputGeometryHit, inputGeometryHitResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputPartialDistanceDerivative, inputPartialDistanceDerivativesResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputMotionVector, inputMotionVectoResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputDepth, inputDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputNormal, outputNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPosition, outputPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputGeometryHit, outputGeometryHitResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPartialDistanceDerivative, outputPartialDistanceDerivativesResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputMotionVector, outputMotionVectorResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDepth, outputDepthResourceHandle);
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
@@ -1629,6 +1639,7 @@ namespace GpuKernels
                     InputCurrentFrameMean,
                     InputCurrentFrameVariance,
                     InputCurrentFrameLinearDepthDerivative,
+                    InputTextureSpaceMotionVector,
                     ConstantBuffer,
                     Count
                 };
@@ -1653,6 +1664,8 @@ namespace GpuKernels
             ranges[Slot::InputCurrentFrameMean].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);    // 1 input current frame mean
             ranges[Slot::InputCurrentFrameVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);// 1 input current frame variance
             ranges[Slot::InputCurrentFrameLinearDepthDerivative].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);// 1 input current frame linear depth derivative
+            ranges[Slot::InputTextureSpaceMotionVector].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10);// 1 input texture space motion vector from previous to current frame
+            
             ranges[Slot::OutputCachedValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);        // 1 output temporal cache value
             ranges[Slot::OutputFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);           // 1 output temporal cache frame age
             ranges[Slot::OutputDebug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);           // 1 output temporal cache frame age
@@ -1669,6 +1682,7 @@ namespace GpuKernels
             rootParameters[Slot::InputCurrentFrameMean].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameMean]);
             rootParameters[Slot::InputCurrentFrameVariance].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameVariance]);
             rootParameters[Slot::InputCurrentFrameLinearDepthDerivative].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameLinearDepthDerivative]);
+            rootParameters[Slot::InputTextureSpaceMotionVector].InitAsDescriptorTable(1, &ranges[Slot::InputTextureSpaceMotionVector]);
             rootParameters[Slot::OutputCachedValue].InitAsDescriptorTable(1, &ranges[Slot::OutputCachedValue]);
             rootParameters[Slot::OutputFrameAge].InitAsDescriptorTable(1, &ranges[Slot::OutputFrameAge]);
             rootParameters[Slot::OutputDebug1].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug1]);
@@ -1714,6 +1728,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheFrameAgeResourceHandle,   // ToDo make this local class owned object?
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputTextureSpaceMotionVectorResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheFrameAgeResourceHandle,   
         float minSmoothingFactor,
@@ -1783,7 +1798,8 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputCacheFrameAge, inputTemporalCacheFrameAgeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameMean, inputCurrentFrameMeanResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameVariance, inputCurrentFrameVarianceResourceHandle); 
-            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameLinearDepthDerivative, inputCurrentFrameLinearDepthDerivativeResourceHandle); 
+            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameLinearDepthDerivative, inputCurrentFrameLinearDepthDerivativeResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputTextureSpaceMotionVector, inputTextureSpaceMotionVectorResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputCachedValue, outputTemporalCacheValueResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputFrameAge, outputTemporalCacheFrameAgeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug1, debugResources[0].gpuDescriptorWriteAccess);

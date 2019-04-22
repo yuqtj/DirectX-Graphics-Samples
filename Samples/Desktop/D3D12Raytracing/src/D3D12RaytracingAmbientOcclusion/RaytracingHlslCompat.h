@@ -403,6 +403,7 @@ struct SceneConstantBuffer
     XMMATRIX viewProjection;    // ToDo remove // world to projection matrix with Camera at (0,0,0).
     XMVECTOR cameraPosition;
 	XMVECTOR lightPosition;
+    XMMATRIX prevViewProj;    // ToDo standardzie proj vs projection
     
     // ToDo remove
     XMVECTOR cameraAt;

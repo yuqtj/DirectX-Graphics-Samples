@@ -114,6 +114,8 @@ namespace GlobalRootSignature {
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
             PartialDepthDerivatives,
 #endif
+            PrevFrameBottomLevelASIstanceTransforms,
+            MotionVector,
             Count
         };
     }
@@ -198,6 +200,7 @@ namespace GBufferResource {
         Depth,          // Non-linear depth of the hit. // ToDo remove
         SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate remove Surface prefix
         PartialDepthDerivatives,
+        MotionVector,
 		Count
 	};
 }

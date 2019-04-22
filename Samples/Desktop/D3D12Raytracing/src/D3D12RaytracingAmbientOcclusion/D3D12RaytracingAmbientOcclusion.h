@@ -184,8 +184,9 @@ private:
 
 
     std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
+    StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.
 
-    const UINT MaxNumBottomLevelInstances = 1000;
+    const UINT MaxNumBottomLevelInstances = 1000;           // ToDo tighten this to only what needed or add support a copy of whats used from StructuredBuffers to GPU.
     UINT m_bottomLevelASInstanceIndices[GeometryType::Count];
 
 	StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;

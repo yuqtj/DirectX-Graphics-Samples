@@ -24,6 +24,8 @@
 
 // ToDo split to Raytracing for GBUffer and AO?
 
+// ToDo excise non-GBuffer parts out for separate timings? Such as 
+
 // ToDo dedupe code triangle normal calc,..
 // ToDo pix doesn't show output for AO pass
 
@@ -66,10 +68,14 @@ RWTexture2D<float> g_rtAORayHitDistance : register(u15);
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
 RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 #endif
+RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
+
+StructuredBuffer<float3x4> g_prevFrameBottomLevelASInstanceTransform : register(t15);
+
 
 SamplerState LinearWrapSampler : register(s0);
 
@@ -89,6 +95,26 @@ Texture2D<float3> l_texDiffuse : register(t10);
 Texture2D<float3> l_texNormalMap : register(t11);
 
 
+// ToDo standardize pos vs position in shaders
+
+
+// Calculate screen texture-space motion vector from a previous to the current frame.
+float2 CalculateTextureSpaceMotionVector()
+{ 
+    // Calculate screen space position of the hit in the previous frame.
+    float3x4 prevFrameBLASTransform = g_prevFrameBottomLevelASInstanceTransform[InstanceIndex()];
+    float3 prevFrameHitPosition = mul(prevFrameBLASTransform, float4(HitObjectPosition(), 1));
+    float4 prevFrameClipSpacePosition = mul(float4(prevFrameHitPosition, 1), g_sceneCB.prevViewProj);
+    float2 prevFrameTexturePosition = ClipSpaceToTexturePosition(prevFrameClipSpacePosition);
+
+    // ToDO pass in inverted dimensions?
+    // ToDo should this add 0.5f?
+    float2 xy = DispatchRaysIndex().xy + 0.5f;   // Center in the middle of the pixel.
+    float2 texturePosition = xy / DispatchRaysDimensions().xy;
+    
+
+    return texturePosition - prevFrameTexturePosition;
+}
 
 
 //***************************************************************************
@@ -870,6 +896,11 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         rayPayload.ryTHit += length(ryRaySegment);
 #endif
     }
+
+    // Store the motion vector.
+    // ToDo store it here or pass via rayPayload?
+    g_rtTextureSpaceMotionVector[DispatchRaysIndex().xy] = CalculateTextureSpaceMotionVector();
+
 }
 
 

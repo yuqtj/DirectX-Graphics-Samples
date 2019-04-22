@@ -139,6 +139,20 @@ float3 HitWorldPosition()
     return WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
 }
 
+// Retrieve hit object space position.
+float3 HitObjectPosition()
+{
+    return ObjectRayOrigin() + RayTCurrent() * ObjectRayDirection();
+}
+
+float2 ClipSpaceToTexturePosition(in float4 clipSpacePosition)
+{
+    float3 NDCposition = clipSpacePosition.xyz / clipSpacePosition.w;   // Perspective divide to get Normal Device Coordinates: {[-1,1], [-1,1], (0, 1]}
+    NDCposition.y = -NDCposition.y;                                     // Invert Y for DirectX-style coordinates.
+    float2 texturePosition = (NDCposition.xy + 1) * 0.5f;               // [-1,1] -> [0, 1]
+    return texturePosition;
+}
+
 // Retrieve attribute at a hit position interpolated from vertex attributes using the hit's barycentrics.
 float3 HitAttribute(float3 vertexAttribute[3], BuiltInTriangleIntersectionAttributes attr)
 {
@@ -627,6 +641,7 @@ void GetAuxilaryCameraRays(in float3 cameraPosition, in float4x4 projectionToWor
     rx = GenerateCameraRay(DispatchRaysIndex().xy + uint2(1, 0), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);
     ry = GenerateCameraRay(DispatchRaysIndex().xy + uint2(0, 1), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);
 }
+
 
 
 #endif // RAYTRACINGSHADERHELPER_H
