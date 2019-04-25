@@ -122,6 +122,8 @@ private:
 	const UINT c_SupersamplingScale = 2;    // ToDo UI parameter
 	UINT								m_numRayGeometryHits[ReduceSumCalculations::Count];
 
+    GpuKernels::WriteValueToTexture m_writeValueToTexture;
+
 
     GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
 
@@ -294,6 +296,7 @@ private:
 	void RenderPass_CalculateAmbientOcclusion();
     void RenderPass_BlurAmbientOcclusion();
 	void RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV);
+    void RenderPass_TestEarlyExitOVerhead();
 
 	// ToDo cleanup
 	// Utility functions

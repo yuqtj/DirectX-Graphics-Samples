@@ -68,7 +68,9 @@ RWTexture2D<float> g_rtAORayHitDistance : register(u15);
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
 RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 #endif
+// ToDo pack motion vector, depth and normal into float4
 RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
+RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18);
 
 ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
@@ -94,26 +96,135 @@ StructuredBuffer<VertexPositionNormalTexture> l_vertices : register(t2, space0);
 Texture2D<float3> l_texDiffuse : register(t10);
 Texture2D<float3> l_texNormalMap : register(t11);
 
+float GetPlaneConstant(in float3 planeNormal, in float3 pointOnThePlane)
+{
+    // Given a plane equation N*P + d = 0
+    // d = - N*P
+    return -dot(planeNormal, pointOnThePlane);
+}
+
+bool IsPointOnTheNormalSideOfPlane(in float3 P, in float3 planeNormal, in float3 pointOnThePlane)
+{
+    float d = GetPlaneConstant(planeNormal, pointOnThePlane);
+    return dot(P, planeNormal) + d > 0;
+}
+
+float3 ReflectPointThroughAPlane(in float3 P, in float3 planeNormal, in float3 pointOnThePlane)
+{
+    //           |
+    //           |
+    //  P ------ C ------ R
+    //           |
+    //           |
+    // Given a point P, plane with normal N and constant d, the projection point C of P onto plane is:
+    // C = P + t*N
+    //
+    // Then the reflected point R of P through the plane can be computed using t as:
+    // R = P + 2*t*N
+
+    // Given C = P + t*N, and C lying on the plane,
+    // C*N + d = 0
+    // then
+    // C = - d/N
+    // -d/N = P + t*N
+    // 0 = d + P*N + t*N*N
+    // t = -(d + P*N) / N*N
+
+    float d = GetPlaneConstant(planeNormal, pointOnThePlane);
+    float3 N = planeNormal;
+    float t = -(d + dot(P, N)) / dot(N, N);
+
+    return P + 2 * t * N;
+}
 
 // ToDo standardize pos vs position in shaders
+// Calculate screen texture-space motion vector from a previous to the current frame.
+void CalculateMotionVectorForReflectedPoint(
+    out float2 motionVector,
+    out float prevFrameDepth, 
+    out float3 prevFrameNormal,
+    in uint instanceIndex,
+    in float3 hitObjectPosition,
+    in float3 hitObjectNormal,
+    in uint reflectorInstanceIndex,
+    in float3 reflectorHitObjectPosition,
+    in float3 reflectorObjectNormal)
+{
+    // ToDo cleanup matrix multiplication order
+
+    // Variables starting with underscore _ denote values in the previous frame.
+    float3x4 _BLASTransform = g_prevFrameBottomLevelASInstanceTransform[instanceIndex];
+
+    // Calculate hit position and normal of the hit in the previous frame.
+    float3 _hitPosition = mul(_BLASTransform, float4(hitObjectPosition, 1));
+
+    // Calculate normal at the hit in the previous frame.
+    // BLAS Transforms in this sample are uniformly scaled so it's OK to directly apply the BLAS transform.
+    // ToDo add a note that the transform is expected to have uniform scaling
+    prevFrameNormal = normalize(mul((float3x3)_BLASTransform, hitObjectNormal));
+
+    // Reflect the previous frame hitPosition through the reflector in the previous frame.
+    float3x4 _reflectorBLASTransform = g_prevFrameBottomLevelASInstanceTransform[reflectorInstanceIndex];
+    float3 _reflectorHitPosition = mul(_reflectorBLASTransform, float4(reflectorHitObjectPosition, 1));
+    float3 _reflectorNormal = mul((float3x3)_reflectorBLASTransform, reflectorObjectNormal);      // Skipping normalization as it's not required for the uses of the transformed normal here.
+    
+    // If the hit position is behind the reflector in the previous frame, set the motion vector to be out of bounds
+    // ToDo attempt direct lookup instead of reflected point?
+    if (!IsPointOnTheNormalSideOfPlane(_hitPosition, _reflectorNormal, _reflectorHitPosition))
+    {
+        motionVector = float2(1, 1);
+        return;
+    }
+
+    // Calculate depth of the reflected hit position in the previous frame.
+    // ToDo explain
+    float3 _mirrorReflectedHitPosition = ReflectPointThroughAPlane(_hitPosition, _reflectorNormal, _reflectorHitPosition);
+    float3 _mirrorReflectedHitViewPosition = _mirrorReflectedHitPosition - g_sceneCB.prevCameraPosition.xyz;
+    float3 _cameraDirection = GenerateForwardCameraRayDirection(g_sceneCB.prevProjToWorldWithCameraEyeAtOrigin);
+    prevFrameDepth = dot(_mirrorReflectedHitViewPosition, _cameraDirection);
+
+    float4 _clipSpacePosition = mul(float4(_mirrorReflectedHitPosition, 1), g_sceneCB.prevViewProj);   // ToDO is 3x3 multiply enough here?
+    float2 _texturePosition = ClipSpaceToTexturePosition(_clipSpacePosition);
+
+    // ToDO pass in inverted dimensions?
+    // ToDo should this add 0.5f?
+    float2 xy = DispatchRaysIndex().xy + 0.5f;   // Center in the middle of the pixel.
+    float2 texturePosition = xy / (float2) DispatchRaysDimensions().xy;
+    //prevFrameNormal.xy = _texturePosition * DispatchRaysDimensions().xy;
+    motionVector = texturePosition - _texturePosition;
+}
 
 
 // Calculate screen texture-space motion vector from a previous to the current frame.
-float2 CalculateTextureSpaceMotionVector()
+void CalculateMotionVector(
+    out float2 motionVector,
+    out float prevFrameDepth,
+    out float3 prevFrameNormal,
+    in uint instanceIndex,
+    in float3 hitObjectPosition,
+    in float3 hitObjectNormal)
 { 
+    // Calculate hit position of the hit in the previous frame.
+    float3x4 _BLASTransform = g_prevFrameBottomLevelASInstanceTransform[instanceIndex];
+    float3 _hitPosition = mul(_BLASTransform, float4(hitObjectPosition, 1));
+    float3 _hitViewPosition = _hitPosition - g_sceneCB.prevCameraPosition.xyz;
+    float3 _cameraDirection = GenerateForwardCameraRayDirection(g_sceneCB.prevProjToWorldWithCameraEyeAtOrigin);
+    prevFrameDepth = dot(_hitViewPosition, _cameraDirection);
+
+    // Calculate normal at the hit in the previous frame.
+    // BLAS Transforms in this sample are uniformly scaled so it's OK to directly apply the BLAS transform.
+    prevFrameNormal = normalize(mul((float3x3)_BLASTransform, hitObjectNormal));
+
     // Calculate screen space position of the hit in the previous frame.
-    float3x4 prevFrameBLASTransform = g_prevFrameBottomLevelASInstanceTransform[InstanceIndex()];
-    float3 prevFrameHitPosition = mul(prevFrameBLASTransform, float4(HitObjectPosition(), 1));
-    float4 prevFrameClipSpacePosition = mul(float4(prevFrameHitPosition, 1), g_sceneCB.prevViewProj);
-    float2 prevFrameTexturePosition = ClipSpaceToTexturePosition(prevFrameClipSpacePosition);
+    float4 _clipSpacePosition = mul(float4(_hitPosition, 1), g_sceneCB.prevViewProj);
+    float2 _texturePosition = ClipSpaceToTexturePosition(_clipSpacePosition);
 
     // ToDO pass in inverted dimensions?
     // ToDo should this add 0.5f?
     float2 xy = DispatchRaysIndex().xy + 0.5f;   // Center in the middle of the pixel.
     float2 texturePosition = xy / DispatchRaysDimensions().xy;
     
-
-    return texturePosition - prevFrameTexturePosition;
+    motionVector = texturePosition - _texturePosition;
 }
 
 
@@ -224,7 +335,7 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 	rayDesc.TMin = tMin;
 	rayDesc.TMax = tMax;
 #if ALLOW_MIRRORS
-	GBufferRayPayload rayPayload = { currentRayRecursionDepth + 1, false, (uint2)0, (float3)0, (float3)0, rx, ry, 0, 0
+	GBufferRayPayload rayPayload = { currentRayRecursionDepth + 1, false, (uint2)0, (float3)0, (float3)0, 0, (float3)0, (float3)0, rx, ry, 0, 0
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
         , 0, 0
 #endif
@@ -446,6 +557,17 @@ float CalculateAO(in float3 hitPosition, in uint2 DTid, UINT numSamples, in floa
 //********************------ Ray gen shader.. -------************************
 //***************************************************************************
 
+
+#if TEST_EARLY_EXIT
+[shader("raygeneration")]
+void MyRayGenShader_Visibility()
+{
+    if (g_texInputAOFrameAge[DispatchRaysIndex().xy] > 0)
+    {
+        g_rtVisibilityCoefficient[DispatchRaysIndex().xy] = 1;
+    }
+}
+#else
 [shader("raygeneration")]
 void MyRayGenShader_Visibility()
 {
@@ -469,6 +591,7 @@ void MyRayGenShader_Visibility()
 	// ToDo add option to be true distance and do contact hardening
 	g_rtVisibilityCoefficient[DispatchRaysIndex().xy] = inShadow ? 0 : 1;
 }
+#endif
 
 // ToDo remove
 inline Ray GenerateCameraRayViaInterpolation(uint2 index, in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin, float2 jitter = float2(0, 0))
@@ -502,6 +625,8 @@ inline Ray GenerateCameraRayViaInterpolation(uint2 index, in float3 cameraPositi
 [shader("raygeneration")]
 void MyRayGenShader_GBuffer()
 {
+    // ToDo make sure all pixels get written to or clear buffers beforehand. 
+
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
 	Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, g_sceneCB.cameraJitter);
     //Ray ray = GenerateCameraRayViaInterpolation(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
@@ -782,6 +907,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 
     // Load triangle normal.
     float3 normal;
+    float3 objectNormal;
     {
         // Retrieve corresponding vertex normals for the triangle vertices.
         float3 vertexNormals[3] = { vertices[0].normal, vertices[1].normal, vertices[2].normal };
@@ -790,14 +916,18 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         BuiltInTriangleIntersectionAttributes attrCenter;
         attrCenter.barycentrics.x = attrCenter.barycentrics.y = 1.f / 3;
         // ToDo input normals should be normalized already
-        normal = normalize(HitAttribute(vertexNormals, attrCenter));
+        objectNormal = normalize(HitAttribute(vertexNormals, attrCenter));
 #else
-        normal = normalize(HitAttribute(vertexNormals, attr));
+        objectNormal = normalize(HitAttribute(vertexNormals, attr));
 #endif
 #if !FACE_CULLING
         float orientation = HitKind() == HIT_KIND_TRIANGLE_FRONT_FACE ? 1 : -1;
-        normal *= orientation;
+        objectNormal *= orientation;
 #endif
+
+        // BLAS Transforms in this sample are uniformly scaled so it's OK to directly apply the BLAS transform.
+        // ToDo add a note that the transform is expected to have uniform scaling
+        normal = normalize(mul((float3x3)ObjectToWorld3x4(), objectNormal));
     }
 
     rayPayload.obliqueness = dot(normal, -WorldRayDirection());
@@ -852,6 +982,8 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         float3 bumpNormal = normalize(l_texNormalMap.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz) * 2.f - 1.f;
         normal = BumpMapNormalToWorldSpaceNormal(bumpNormal, normal, tangent);
     }
+
+    UINT rayRecursionDepth = rayPayload.rayRecursionDepth;
 #if ALLOW_MIRRORS
     if (material.isMirror && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
     {
@@ -889,18 +1021,63 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         rayPayload.hitPosition = hitPosition;
         rayPayload.surfaceNormal = normal;
         rayPayload.tHit = RayTCurrent();
+        rayPayload.instanceIndex = InstanceIndex();
+        rayPayload.hitObjectPosition = HitObjectPosition();
+        rayPayload.objectNormal = objectNormal;
+
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
         float3 rxRaySegment = px - rayPayload.rx.origin;
         float3 ryRaySegment = py - rayPayload.ry.origin;
         rayPayload.rxTHit += length(rxRaySegment);
         rayPayload.ryTHit += length(ryRaySegment);
+        rayPayload.BLASinstanceIndex = InstanceIndex();
 #endif
     }
 
-    // Store the motion vector.
-    // ToDo store it here or pass via rayPayload?
-    g_rtTextureSpaceMotionVector[DispatchRaysIndex().xy] = CalculateTextureSpaceMotionVector();
 
+    if (rayRecursionDepth == 1)
+    {
+        float2 motionVector;
+        float prevFrameDepth;
+        float3 prevFrameNormal;
+
+        // Primary ray hits.
+        if (rayPayload.rayRecursionDepth == 1)
+        {
+            CalculateMotionVector(
+                motionVector,
+                prevFrameDepth,
+                prevFrameNormal,
+                InstanceIndex(),
+                HitObjectPosition(),
+                objectNormal);
+        }
+        // Single reflected/refracted ray hits.
+        else if (rayPayload.rayRecursionDepth == 2)
+        {
+            CalculateMotionVectorForReflectedPoint(
+                motionVector,
+                prevFrameDepth,
+                prevFrameNormal,
+                rayPayload.instanceIndex,
+                rayPayload.hitObjectPosition,
+                rayPayload.objectNormal,
+                InstanceIndex(),
+                HitObjectPosition(),
+                objectNormal);
+        }
+        // Multiple reflected/refracted ray hits.
+        else
+        {
+            // Not supported
+            // Set motion vetor to point out of bounds.
+            motionVector = float2(1, 1);
+        }
+        // Store the motion vector.
+        // ToDo store it here or pass via rayPayload?
+        g_rtTextureSpaceMotionVector[DispatchRaysIndex().xy] = motionVector;
+        g_rtReprojectedHitPosition[DispatchRaysIndex().xy] = float4(prevFrameNormal, prevFrameDepth);
+    }
 }
 
 

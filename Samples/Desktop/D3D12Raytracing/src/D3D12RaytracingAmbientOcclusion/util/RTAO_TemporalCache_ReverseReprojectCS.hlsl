@@ -18,13 +18,15 @@ Texture2D<float> g_texInputCachedValue : register(t0);
 Texture2D<float> g_texInputCurrentFrameValue : register(t1);
 Texture2D<float> g_texInputCachedDepth : register(t2);
 Texture2D<float> g_texInputCurrentFrameDepth : register(t3);
-Texture2D<float4> g_texInputCachedNormal : register(t4);
+Texture2D<float4> g_texInputCachedNormal : register(t4);        // ToDo standardize cache vs cached
 Texture2D<float4> g_texInputCurrentFrameNormal : register(t5);
 Texture2D<uint> g_texInputCacheFrameAge : register(t6);
 Texture2D<float> g_texInputCurrentFrameMean : register(t7);
 Texture2D<float> g_texInputCurrentFrameVariance : register(t8);
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t9); // ToDo standardize naming across files
-Texture2D<float2> g_texTextureSpaceMotionVector : register(t10); // ToDo standardize naming across files
+Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t10); // ToDo standardize naming across files
+Texture2D<float4> g_texInputReprojectedHitPosition : register(t11); // ToDo standardize naming across files
+Texture2D<float4> g_texInputCachedHitPosition : register(t12); // ToDo standardize naming across files
 
 RWTexture2D<float> g_texOutputCachedValue : register(u0);
 RWTexture2D<uint> g_texOutputCacheFrameAge : register(u1);
@@ -173,8 +175,6 @@ float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal
     float4 depthMask = 1;
     if (cb.useDepthWeights)
     {
-        float2 ddxy = abs(g_texInputCurrentFrameLinearDepthDerivative[actualIndex]);  // ToDo move to caller
-
 #if 0
         float depthThreshold = 1.f;     // ToDo standardize depth vs distance
         float fEpsilon = 1e-6 * ActualDistance;
@@ -212,6 +212,9 @@ float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal
         //depthWeigths = exp(e_d);
 #endif
         depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise
+
+        g_texOutputDebug1[actualIndex] = float4(ActualDistance, depthThreshold, actualIndex.x, actualIndex.y);
+        g_texOutputDebug2[actualIndex] = SampleDistances;
     }
     
 
@@ -281,6 +284,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float dummy;
     LoadDepthAndNormal(g_texInputCurrentFrameNormal, DTid, dummy, normal);
   
+#if 0
     float4 clipSpacePos = GetClipSpacePosition(DTid, linearDepth);
     
     // Reverse project into previous frame
@@ -291,12 +295,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
     cacheNDCpos /= cacheClipSpacePos.w;                             // Perspective division.
     cacheNDCpos.y = -cacheNDCpos.y;                                 // Invert Y for DirectX-style coordinates.
     float2 cacheFrameTexturePos = (cacheNDCpos.xy + 1) * 0.5f;      // [-1,1] -> [0, 1]
-
-    if (cb.forceUseMinSmoothingFactor)
-    {
-        float2 texturePos = (DTid.xy + 0.5f) / float2(cb.textureDim);
-        cacheFrameTexturePos = texturePos - g_texTextureSpaceMotionVector[DTid];
-    }
+#else
+    float2 texturePos = (DTid.xy + 0.5f) / float2(cb.textureDim);
+    float2 cacheFrameTexturePos = texturePos - g_texInputTextureSpaceMotionVector[DTid];
+#endif
     // Suffers from loss of precision moving to and back from log representation.
     //float cacheLinearDepth2 = LogToViewDepth(cacheNDCpos.z, cb.zNear, cb.zFar);
 
@@ -345,6 +347,16 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float  ddxy = dot(1, dxdy);
 #if 1
     float cacheDdxy = ddxy;
+    float4 reprojectedPointNormalANdDepth = g_texInputReprojectedHitPosition[DTid];
+    cacheLinearDepth = reprojectedPointNormalANdDepth.w;
+    normal = reprojectedPointNormalANdDepth.xyz;
+#elif 1
+    float cacheDdxy = ddxy;
+    cacheLinearDepth = dot(reprojectedViewPosition, cacheCameraDirection);
+
+    float3 reprojectedHitPosition = g_texInputReprojectedHitPosition[DTid].xyz;
+    float3 reprojectedViewPosition = reprojectedHitPosition - (cb.cameraPosition.xyz - cb.prevToCurrentFrameCameraTranslation.xyz);
+    cacheLinearDepth = dot(reprojectedViewPosition, cacheCameraDirection);
 #else
 
     float4 clipSpacePosDdxy = GetClipSpacePosition(DTid + 1, cb.zNear + FLT_EPSILON + ddxy);
@@ -368,8 +380,24 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     float2 pixelOffset = abs(cacheFrameTexturePos - cacheFrameTexturePosDxdy) * cb.textureDim;
 
+#if 0
+    float3 vCacheHitPositions[4] = float4(
+        g_texInputCachedHitPosition[cacheIndices[0]],   // ToDo this is currentFrames hit position.
+        g_texInputCachedHitPosition[cacheIndices[1]],
+        g_texInputCachedHitPosition[cacheIndices[2]],
+        g_texInputCachedHitPosition[cacheIndices[3]]);
 
+    float3 reprojectedHitPosition = g_texInputReprojectedHitPosition[DTid];
+    if (cb.useWorldSpaceDistance)
+    {
+        // ToDo cleanup
+        vCacheDepths = length(reprojectedHitPosition - vCacheHitPositions);
+        cacheLinearDepth = 0.0f;
+    }
+#endif
 
+    float3 reprojectedViewPosition = reprojectedHitPosition - (cb.cameraPosition + cb.prevToCurrentFrameCameraTranslation);
+    cacheLinearDepth = dot(reprojectedViewPosition, cacheCameraDirection);
     
 #if 0
     float4 cacheClipPos[4] = {
@@ -397,9 +425,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         g_texInputCacheFrameAge[cacheIndices[1]],
         g_texInputCacheFrameAge[cacheIndices[2]],
         g_texInputCacheFrameAge[cacheIndices[3]]);
-
-    
-    
+ 
 
     float value = g_texInputCurrentFrameValue[DTid];
     float mergedValue;
@@ -418,7 +444,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float2 currentFrameTexturePos = xy * cb.invTextureDim;
 
     float aspectRatio = cb.textureDim.x / cb.textureDim.y;
-    float maxScreenSpaceReprojectionDistance = 0.01;// cb.minSmoothingFactor * 0.1f;
+    float maxScreenSpaceReprojectionDistance = 0.01;// cb.minSmoothingFactor * 0.1f; // ToDo
     // ToDo scale this based on depth?
     float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
 
@@ -434,7 +460,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float cachedValue = dot(weights, vCacheValues);
 
         float cacheFrameAge = dot(weights, vCacheFrameAge);
-        frameAge = uint(cacheFrameAge + 0.5f);              // HLSL rounds down when converting float to uint, bump up the value by 0.5 before rounding.
+        frameAge = round(cacheFrameAge);
 
         // Clamp value to mean +/- std.dev of local neighborhood to surpress ghosting on value changing due to other occluder movements.
         // This will prevent reusing values outside the expected range.
@@ -445,21 +471,21 @@ void main(uint2 DTid : SV_DispatchThreadID)
         {
             float localMean = g_texInputCurrentFrameMean[DTid];
             float localVariance = g_texInputCurrentFrameVariance[DTid];
-            float localStdDev = cb.stdDevGamma * sqrt(localVariance);
+            float localStdDev = max(cb.stdDevGamma * sqrt(localVariance), cb.minStdDevTolerance);
             float prevCachedValue = cachedValue;
             cachedValue = clamp(cachedValue, localMean - localStdDev, localMean + localStdDev); 
             
+            float frameAgeAdjustmentDueClamping = 1; // todo
             // Scale the frame age based on how strongly the cached value got clamped.
-            frameAgeClamp = abs(cachedValue - prevCachedValue);
+            frameAgeClamp = frameAgeAdjustmentDueClamping * abs(cachedValue - prevCachedValue);
             frameAge = lerp(frameAge, 0, frameAgeClamp);
         }
         //frameAgeClamp = screenSpaceReprojectionDistanceAsWidthPercentage / maxScreenSpaceReprojectionDistance;
         //uint maxFrame
         //frameAge = lerp(frameAge, 0, frameAgeClamp);
 
-        float invFrameAge = 1.f / (frameAge + 1);
-        //float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
-        float a =  max(invFrameAge, cb.minSmoothingFactor);
+        float invFrameAge = 1.f / (frameAge + 1.f);
+        float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
         mergedValue = lerp(cachedValue, value, a);
         
         // ToDo If no valid samples found:
@@ -476,14 +502,5 @@ void main(uint2 DTid : SV_DispatchThreadID)
    
     //float distToPixelCenter = length((cacheFrameTexturePos * cb.textureDim - 0.5f) - topLeftCacheFrameIndex);
     g_texOutputCachedValue[DTid] = mergedValue;
-    //g_texOutputCachedValue[DTid] = abs(cacheLinearDepthNear - cacheLinearDepthDxdy);
-    //g_texOutputCachedValue[DTid] = cacheClipSpacePosDdxy.z - cacheClipSpacePos.z;
-
-   // g_texOutputCachedValue[DTid] = clipSpacePosDdxy.z - clipSpacePos.z;
-    //g_texOutputCachedValue[DTid] = ddxy;
-
-    //g_texOutputCachedValue[DTid] = length(cacheClipSpacePosDdxy - cacheClipSpacePos);
-    //g_texOutputCachedValue[DTid] = cacheDdxy;
     g_texOutputCacheFrameAge[DTid] = min(frameAge + 1, maxFrameAge);
-    //g_texOutputCachedValue[DTid] = cacheClipSpacePos.x;
 }

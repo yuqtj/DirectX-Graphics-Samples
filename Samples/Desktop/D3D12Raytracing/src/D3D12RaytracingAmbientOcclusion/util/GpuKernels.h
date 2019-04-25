@@ -135,13 +135,15 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputGeometryHitResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputMotionVectoResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputMotionVectorResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputPrevFrameHitPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputMotionVectorResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputPrevFrameHitPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputDepthResourceHandle);
 
     private:
@@ -337,7 +339,7 @@ namespace GpuKernels
         void Initialize(ID3D12Device5* device, UINT maxFilterPasses, UINT frameCount, UINT numCallsPerFrame = 1);
         void CreateInputResourceSizeDependentResources(
             ID3D12Device5* device,
-            DX::DescriptorHeap* descriptorHeap,
+            DX::DescriptorHeap* descriptorHeap, // ToDo pass the same heap type in all inputs?
             UINT width,
             UINT height);
         void Execute(
@@ -379,6 +381,28 @@ namespace GpuKernels
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CBfilterWeigth;
         UINT                                m_CBinstanceID = 0;
         UINT                                m_maxFilterPasses = 0;
+    };
+
+
+    // ToDo remove
+    class WriteValueToTexture
+    {
+    public:
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device5* device, DX::DescriptorHeap* descriptorHeap);
+        void Execute(ID3D12GraphicsCommandList5* commandList, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_DESCRIPTOR_HANDLE* outputResourceHandle);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        RWGpuResource			            m_output;
+        UINT m_width = 3840;
+        UINT m_height = 2160;
     };
 
 
@@ -466,6 +490,8 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheFrameAgeResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTextureSpaceMotionVectorResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheHitPositionResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputReprojectedHitPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheFrameAgeResourceHandle,
             float minSmoothingFactor,
@@ -481,10 +507,12 @@ namespace GpuKernels
             bool useNormalWeigths,
             bool forceUseMinSmoothingFactor,
             bool clampCachedValues,
-            bool clampStdDevGamma,
+            float clampStdDevGamma,
+            float clampMinStdDevTolerance,
             float floatEpsilonDepthTolerance,
             float depthDistanceBasedDepthTolerance,
             float depthSigma,
+            bool useWorldSpaceDistance,
             RWGpuResource debugResources[2],
             const XMVECTOR& currentFrameCameraPosition,
             const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,

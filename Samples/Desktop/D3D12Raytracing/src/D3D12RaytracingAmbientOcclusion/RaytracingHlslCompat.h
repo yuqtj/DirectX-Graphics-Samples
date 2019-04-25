@@ -42,6 +42,8 @@
 
 #define ALLOW_MIRRORS 1
 
+#define TEST_EARLY_EXIT 0
+
 // ToDo set max recursion
 // Give opacity to mirrors and shade. Some mirrors are tesselated in the kitchen and its not clear from pure reflections.
 #if ALLOW_MIRRORS
@@ -268,7 +270,7 @@ typedef UINT16 Index;
 // ToDo revise
 // PERFORMANCE TIP: Set max recursion depth as low as needed
 // as drivers may apply optimization strategies for low recursion depths.
-#define MAX_RAY_RECURSION_DEPTH 3    // ~ primary rays + reflections + shadow rays from reflected geometry.  
+#define MAX_RAY_RECURSION_DEPTH 2    // ~ primary rays + reflections + shadow rays from reflected geometry. 
 
 // ToDo:
 // Options:
@@ -291,7 +293,7 @@ struct ProceduralPrimitiveAttributes
 struct RayPayload
 {
     XMFLOAT4 color;
-    UINT   recursionDepth;
+    UINT   recursionDepth; // encode?
 };
 
 struct Ray
@@ -306,10 +308,13 @@ struct GBufferRayPayload
 #if ALLOW_MIRRORS
     UINT rayRecursionDepth;
 #endif
-	UINT hit; // ToDo compact
+	UINT hit; // ToDo compact - use BOOL?
 	XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
 	XMFLOAT3 hitPosition;
 	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
+    UINT instanceIndex;
+    XMFLOAT3 hitObjectPosition;
+    XMFLOAT3 objectNormal;
     Ray rx;    // Auxilary camera ray offset by one pixel in x dimension in screen space.
     Ray ry;    // Auxilary camera ray offset by one pixel in y dimension in screen space.
     float obliqueness; // obliqueness of the hit surface ~ sin(incidentAngle)
@@ -404,7 +409,9 @@ struct SceneConstantBuffer
     XMVECTOR cameraPosition;
 	XMVECTOR lightPosition;
     XMMATRIX prevViewProj;    // ToDo standardzie proj vs projection
-    
+    XMMATRIX prevProjToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
+    XMVECTOR prevCameraPosition;
+
     // ToDo remove
     XMVECTOR cameraAt;
     XMVECTOR cameraUp;
@@ -536,10 +543,15 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     BOOL useNormalWeights;
     BOOL clampCachedValues;
 
-    UINT stdDevGamma;
+    float stdDevGamma;
     float floatEpsilonDepthTolerance;
     float depthDistanceBasedDepthTolerance;
     float depthSigma;
+
+    BOOL useWorldSpaceDistance;
+    float minStdDevTolerance;
+    float frameAgeAdjustmentDueClamping;
+    float padding;
 };
 
 struct CalculatePartialDerivativesConstantBuffer

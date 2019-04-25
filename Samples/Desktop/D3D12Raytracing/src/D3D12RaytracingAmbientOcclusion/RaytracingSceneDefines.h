@@ -116,6 +116,7 @@ namespace GlobalRootSignature {
 #endif
             PrevFrameBottomLevelASIstanceTransforms,
             MotionVector,
+            ReprojectedHitPosition,
             Count
         };
     }
@@ -201,6 +202,7 @@ namespace GBufferResource {
         SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate remove Surface prefix
         PartialDepthDerivatives,
         MotionVector,
+        ReprojectedHitPosition,
 		Count
 	};
 }
