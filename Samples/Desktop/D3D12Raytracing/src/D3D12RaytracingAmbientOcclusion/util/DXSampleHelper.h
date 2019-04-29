@@ -38,6 +38,7 @@ inline void ThrowIfFailed(HRESULT hr)
 {
     if (FAILED(hr))
     {
+        DebugBreak();
         throw HrException(hr);
     }
 }
@@ -47,6 +48,7 @@ inline void ThrowIfFailed(HRESULT hr, const wchar_t* msg)
     if (FAILED(hr))
     {
         OutputDebugString(msg);
+        DebugBreak();
         throw HrException(hr);
     }
 }
@@ -59,6 +61,7 @@ inline void ThrowIfFailed(HRESULT hr, const wchar_t* format, Args... args)
 		WCHAR msg[128];
 		swprintf_s(msg, format, args...);
 		OutputDebugString(msg);
+        DebugBreak();
 		throw HrException(hr);
 	}
 }
@@ -71,6 +74,13 @@ inline void ThrowIfFalse(bool value)
 inline void ThrowIfFalse(bool value, const wchar_t* msg)
 {
     ThrowIfFailed(value ? S_OK : E_FAIL, msg);
+}
+
+
+template<typename... Args>
+inline void ThrowIfFalse(bool value, const wchar_t* format, Args... args)
+{
+    ThrowIfFailed(value ? S_OK : E_FAIL, format, args...);
 }
 
 inline void ThrowIfTrue(bool value)
@@ -241,8 +251,8 @@ void ResetUniquePtrArray(T* uniquePtrArray)
 struct D3DBuffer
 {
     ComPtr<ID3D12Resource> resource;
-    D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle = { UINT64_MAX };
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle = { UINT64_MAX };
     UINT heapIndex = UINT_MAX;
 };
 
@@ -348,7 +358,8 @@ public:
     }
 
     // Accessors
-    T staging;
+    // Align staging object on 16B boundary to faster mempcy to the memory returned by Map()
+    alignas(16) T staging;
     T* operator->() { return &staging; }
     UINT NumInstances() { return m_numInstances; }
     D3D12_GPU_VIRTUAL_ADDRESS GpuVirtualAddress(UINT instanceIndex = 0)
@@ -555,7 +566,7 @@ inline void CreateTextureSRV(
 // The caller is expected to execute the commandList.
 inline void LoadDDSTexture(
     ID3D12Device5* device,
-    ID3D12GraphicsCommandList5* commandList,
+    ID3D12GraphicsCommandList4* commandList,
     const wchar_t* filename,
     DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
@@ -589,7 +600,7 @@ inline void LoadDDSTexture(
 
 inline void LoadDDSTexture(
     ID3D12Device5* device,
-    ID3D12GraphicsCommandList5* commandList,
+    ID3D12GraphicsCommandList4* commandList,
     const wchar_t* filename,
     DX::DescriptorHeap* descriptorHeap,
     D3DTexture* tex,
@@ -602,7 +613,7 @@ inline void LoadDDSTexture(
 // The caller is expected to execute the commandList.
 inline void LoadWICTexture(
     ID3D12Device5* device,
-    ID3D12GraphicsCommandList5* commandList,
+    ID3D12GraphicsCommandList4* commandList,
     const wchar_t* filename,
     DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
@@ -655,7 +666,7 @@ inline void LoadWICTexture(
 // The caller is expected to execute the commandList.
 inline void LoadTexture(
     ID3D12Device5* device,
-    ID3D12GraphicsCommandList5* commandList,
+    ID3D12GraphicsCommandList4* commandList,
     const wchar_t* filename,
     DX::DescriptorHeap* descriptorHeap,
     ID3D12Resource** ppResource,
@@ -732,6 +743,42 @@ inline void AllocateUAVBuffer(ID3D12Device5* pDevice, UINT64 bufferSize, ID3D12R
 	}
 }
 
+// Create a SRV for a buffer.
+inline void CreateBufferSRV(
+    ID3D12Resource* resource,
+    ID3D12Device5* device,
+    UINT numElements,
+    UINT elementSize,
+    DX::DescriptorHeap* descriptorHeap,
+    D3D12_CPU_DESCRIPTOR_HANDLE* cpuDescriptorHandle,
+    D3D12_GPU_DESCRIPTOR_HANDLE* gpuDescriptorHandle,
+    UINT* heapIndex,
+    UINT firstElement = 0)
+{
+    // SRV
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Buffer.NumElements = numElements;
+    srvDesc.Buffer.FirstElement = firstElement;
+    if (elementSize == 0)
+    {
+        srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+        srvDesc.Buffer.StructureByteStride = 0;
+    }
+    else
+    {
+        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+        srvDesc.Buffer.StructureByteStride = elementSize;
+    }
+    *heapIndex = descriptorHeap->AllocateDescriptor(cpuDescriptorHandle, *heapIndex);
+    device->CreateShaderResourceView(resource, &srvDesc, *cpuDescriptorHandle);
+    *gpuDescriptorHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(),
+        *heapIndex, descriptorHeap->DescriptorSize());
+};
+
 // ToDo: standardize create/alloc resource calls
 inline void AllocateUAVBuffer(
 	ID3D12Device5* device, 
@@ -747,14 +794,14 @@ inline void AllocateUAVBuffer(
 
 	if (dest->rwFlags & ResourceRWFlags::AllowWrite)
 	{
-		assert(descriptorHeap);
+		assert(descriptorHeap); // ToDo
 		D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptorHandle;
 		dest->uavDescriptorHeapIndex = descriptorHeap->AllocateDescriptor(&uavDescriptorHandle, dest->uavDescriptorHeapIndex);
-		D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc = {};
 
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc = {};
 		UAVDesc.Buffer.NumElements = numElements;
 		UAVDesc.Buffer.FirstElement = 0;
+        UAVDesc.Buffer.StructureByteStride = elementSize;
 		UAVDesc.Format = format;
 		UAVDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
 		device->CreateUnorderedAccessView(dest->resource.Get(), nullptr, &UAVDesc, uavDescriptorHandle);
@@ -763,8 +810,16 @@ inline void AllocateUAVBuffer(
 
 	if (dest->rwFlags & ResourceRWFlags::AllowRead)
 	{
-		assert(descriptorHeap);
-		assert(0 && L"ToDo");
+        D3D12_CPU_DESCRIPTOR_HANDLE dummyHandle;
+        CreateBufferSRV(
+            dest->resource.Get(),
+            device, numElements,
+            elementSize,
+            descriptorHeap,
+            &dummyHandle,
+            &dest->gpuDescriptorReadAccess,
+            &dest->srvDescriptorHeapIndex,
+            0);
 	}
 }
 
@@ -840,8 +895,8 @@ public:
 
 	GeometryInstance() : transform(0) {}
 
-	GeometryInstance(const D3DGeometry& geometry, UINT _materialID, D3D12_GPU_DESCRIPTOR_HANDLE _diffuseTexture, D3D12_GPU_DESCRIPTOR_HANDLE _normalTexture) : 
-        materialID(_materialID), diffuseTexture(_diffuseTexture), normalTexture(_normalTexture), transform(0)
+	GeometryInstance(const D3DGeometry& geometry, UINT _materialID, D3D12_GPU_DESCRIPTOR_HANDLE _diffuseTexture, D3D12_GPU_DESCRIPTOR_HANDLE _normalTexture, bool _isVertexAnimated = false) : 
+        materialID(_materialID), diffuseTexture(_diffuseTexture), normalTexture(_normalTexture), transform(0), isVertexAnimated(_isVertexAnimated)
 	{
 		ib.startIndex = 0;
 		ib.count = static_cast<UINT>(geometry.ib.buffer.resource->GetDesc().Width / sizeof(Index));
@@ -874,45 +929,11 @@ public:
 
 	D3D12_GPU_VIRTUAL_ADDRESS transform;
 	UINT materialID;
+    bool isVertexAnimated;
     D3D12_GPU_DESCRIPTOR_HANDLE diffuseTexture;
     D3D12_GPU_DESCRIPTOR_HANDLE normalTexture;
 };
 
-// Create a SRV for a buffer.
-inline void CreateBufferSRV(
-	ID3D12Resource* resource,
-	ID3D12Device5* device,
-	UINT numElements,
-	UINT elementSize,
-	DX::DescriptorHeap* descriptorHeap,
-	D3D12_CPU_DESCRIPTOR_HANDLE* cpuDescriptorHandle,
-	D3D12_GPU_DESCRIPTOR_HANDLE* gpuDescriptorHandle,
-	UINT* heapIndex,
-	UINT firstElement = 0)
-{
-	// SRV
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Buffer.NumElements = numElements;
-	srvDesc.Buffer.FirstElement = firstElement;
-	if (elementSize == 0)
-	{
-		srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-		srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
-		srvDesc.Buffer.StructureByteStride = 0;
-	}
-	else
-	{
-		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-		srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-		srvDesc.Buffer.StructureByteStride = elementSize;
-	}
-	*heapIndex = descriptorHeap->AllocateDescriptor(cpuDescriptorHandle, *heapIndex);
-	device->CreateShaderResourceView(resource, &srvDesc, *cpuDescriptorHandle);
-	*gpuDescriptorHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(),
-			*heapIndex, descriptorHeap->DescriptorSize());
-};
 
 // Create a SRV for a buffer.
 inline void CreateBufferSRV(
@@ -923,7 +944,7 @@ inline void CreateBufferSRV(
 	D3DBuffer* dest,
 	UINT firstElement = 0)
 {
-	return CreateBufferSRV(
+	CreateBufferSRV(
 		dest->resource.Get(), 
 		device, numElements, 
 		elementSize, 
@@ -934,109 +955,150 @@ inline void CreateBufferSRV(
 		firstElement);
 };
 
-// ToDo move?
-// Load geometry from a file into buffers.
+// Allocates raw typeless buffer.
+inline void AllocateRawTypelessBuffer(
+    ID3D12Device5* device,
+    UINT numElements,
+    UINT elementByteSize,
+    DX::DescriptorHeap* descriptorHeap,
+    D3DBuffer* buffer,
+    D3D12_RESOURCE_STATES initialResourceState,
+    const wchar_t* resourceName = nullptr)
+{
+    UINT size = numElements * elementByteSize;
+    ThrowIfFailed(device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(size),
+        initialResourceState,
+        nullptr,
+        IID_PPV_ARGS(&buffer->resource)));
+    if (resourceName)
+    {
+        buffer->resource->SetName(resourceName);
+    }
+
+    // Using raw typeless buffer. 
+    // - numElements - number of 32bit dwords.
+    // - elementSize - 0.
+    UINT numDWORDs = size / sizeof(UINT);        // ToDO use ceilDivide instead?
+    UINT elementStride = 0;
+    CreateBufferSRV(device, numDWORDs, elementStride, descriptorHeap, buffer);
+}
+
+// Allocates index buffer.
+inline void AllocateIndexBuffer(
+    ID3D12Device5* device,
+    UINT numElements,
+    UINT elementByteSize,
+    DX::DescriptorHeap* descriptorHeap,
+    D3DBuffer* buffer,
+    D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_INDEX_BUFFER
+)
+{
+    AllocateRawTypelessBuffer(device, numElements, elementByteSize, descriptorHeap, buffer, initialResourceState, L"Index buffer");
+}
+
+
+inline void AllocateBuffer(
+    ID3D12Device5* device,
+    UINT numElements,
+    UINT elementByteSize,
+    DX::DescriptorHeap* descriptorHeap,
+    D3DBuffer* buffer,
+    D3D12_RESOURCE_STATES initialResourceState,
+    // ToDo cleanup - to be same as CreateRT
+    const wchar_t* resourceName = nullptr)
+{
+    UINT vertexDataSize = numElements * elementByteSize;
+    ThrowIfFailed(device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(vertexDataSize),
+        initialResourceState,
+        nullptr,
+        IID_PPV_ARGS(&buffer->resource)));
+    if (resourceName)
+    {
+        buffer->resource->SetName(resourceName);
+    }
+
+    CreateBufferSRV(device, numElements, elementByteSize, descriptorHeap, buffer);
+}
+
+// Allocates vertex buffer.
+inline void AllocateVertexBuffer(
+    ID3D12Device5* device,
+    UINT numElements,
+    UINT elementByteSize,
+    DX::DescriptorHeap* descriptorHeap,
+    D3DBuffer* buffer,
+    D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
+)
+{
+    AllocateBuffer(device, numElements, elementByteSize, descriptorHeap, buffer, initialResourceState, L"Vertex buffer");
+}
+
+
+// Allocates buffers for the geometry without uploading anything.
+inline void UploadDataToBuffer(
+    ID3D12Device5* device,
+    ID3D12GraphicsCommandList4* commandList,
+    const void* pSrcData,
+    UINT numElements,
+    UINT elementByteSize,
+    ID3D12Resource* destBuffer,
+    ID3D12Resource** ppUploadResource,
+    D3D12_RESOURCE_STATES outResourceState
+)
+{
+    UINT indexDataSize = numElements * elementByteSize;
+    ThrowIfFailed(device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(indexDataSize),
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(ppUploadResource)));
+    (*ppUploadResource)->SetName(L"Buffer upload");
+
+    // Copy data to the upload heap and then schedule a copy 
+    // from the upload heap to the index buffer.
+    D3D12_SUBRESOURCE_DATA data = {};
+    data.pData = pSrcData;
+    data.RowPitch = indexDataSize;
+    data.SlicePitch = data.RowPitch;
+
+    PIXBeginEvent(commandList, 0, L"Copy buffer data to default resource...");
+    {
+        UpdateSubresources<1>(commandList, destBuffer, *ppUploadResource, 0, 0, 1, &data);
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(destBuffer, D3D12_RESOURCE_STATE_COPY_DEST, outResourceState));
+    }
+    PIXEndEvent(commandList);
+
+}
+
+// ToDo rename
 inline void CreateGeometry(
 	ID3D12Device5* device,
-	ID3D12GraphicsCommandList5* commandList,
+	ID3D12GraphicsCommandList4* commandList,
 	DX::DescriptorHeap* descriptorHeap,
 	const GeometryDescriptor& desc,
 	D3DGeometry* geometry
 )
 {
-	// Create the index buffer.
-	{
-		ThrowIfFalse(desc.ib.indices);
-		UINT indexDataSize = desc.ib.count * sizeof(desc.ib.indices[0]);
-		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(indexDataSize),
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			nullptr,
-			IID_PPV_ARGS(&geometry->ib.buffer.resource)));
-		geometry->ib.buffer.resource->SetName(L"Index buffer: Squid room");
+    // Create index buffer and upload data to it.
+    AllocateIndexBuffer(device, desc.ib.count, sizeof(Index), descriptorHeap, &geometry->ib.buffer, D3D12_RESOURCE_STATE_COPY_DEST);
+    UploadDataToBuffer(device, commandList, desc.ib.indices, desc.ib.count, sizeof(Index), geometry->ib.buffer.resource.Get(), &geometry->ib.upload, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 
-		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(indexDataSize),
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(&geometry->ib.upload)));
-		geometry->ib.upload->SetName(L"Index buffer upload: Squid room");
-
-		// Copy data to the upload heap and then schedule a copy 
-		// from the upload heap to the index buffer.
-		D3D12_SUBRESOURCE_DATA indexData = {};
-		indexData.pData = desc.ib.indices;
-		indexData.RowPitch = indexDataSize;
-		indexData.SlicePitch = indexData.RowPitch;
-
-		PIXBeginEvent(commandList, 0, L"Copy index buffer data to default resource...");
-		{
-			UpdateSubresources<1>(commandList, geometry->ib.buffer.resource.Get(), geometry->ib.upload.Get(), 0, 0, 1, &indexData);
-#if VBIB_AS_NON_PIXEL_SHADER_RESOURCE
-			commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->ib.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-#else
-			commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->ib.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
-#endif
-		}
-		PIXEndEvent(commandList);
-
-		// Using raw typeless buffer. 
-		// - numElements - number of 32bit dwords.
-		// - elementSize - 0.
-		UINT numElements = indexDataSize / sizeof(UINT);
-		UINT elementStride = 0;	
-		CreateBufferSRV(device, numElements, elementStride, descriptorHeap, &geometry->ib.buffer);
-	}
-
-	// Create the vertex buffer.
-	{
-		UINT vertexDataSize = desc.vb.count * sizeof(desc.vb.vertices[0]);
-		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(vertexDataSize),
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			nullptr,
-			IID_PPV_ARGS(&geometry->vb.buffer.resource)));
-		geometry->vb.buffer.resource->SetName(L"VertexPositionNormalTextureTangent buffer: Squid room");
-
-		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(vertexDataSize),
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(&geometry->vb.upload)));
-		geometry->vb.upload->SetName(L"VertexPositionNormalTextureTangent buffer upload: Squid room");
-
-		// Copy data to the upload heap and then schedule a copy 
-		// from the upload heap to the vertex buffer.
-		D3D12_SUBRESOURCE_DATA vertexData = {};
-		vertexData.pData = desc.vb.vertices;
-		vertexData.RowPitch = vertexDataSize;
-		vertexData.SlicePitch = vertexData.RowPitch;
-
-		PIXBeginEvent(commandList, 0, L"Copy vertex buffer data to default resource...");
-		{
-			UpdateSubresources<1>(commandList, geometry->vb.buffer.resource.Get(), geometry->vb.upload.Get(), 0, 0, 1, &vertexData);
-#if VBIB_AS_NON_PIXEL_SHADER_RESOURCE
-			commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->vb.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-#else
-			commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(geometry->vb.buffer.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
-#endif
-		}
-		PIXEndEvent(commandList);
-
-		CreateBufferSRV(device, desc.vb.count, sizeof(desc.vb.vertices[0]), descriptorHeap, &geometry->vb.buffer);
-	}
+    // Create vertex buffer and upload data to it.
+    AllocateVertexBuffer(device, desc.vb.count, sizeof(VertexPositionNormalTextureTangent), descriptorHeap, &geometry->vb.buffer, D3D12_RESOURCE_STATE_COPY_DEST);
+    UploadDataToBuffer(device, commandList, desc.vb.vertices, desc.vb.count, sizeof(VertexPositionNormalTextureTangent), geometry->vb.buffer.resource.Get(), &geometry->vb.upload, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 }
 
+
 inline void CopyResource(
-    ID3D12GraphicsCommandList5* commandList,
+    ID3D12GraphicsCommandList4* commandList,
     ID3D12Resource* srcResource,
     ID3D12Resource* destResource,
     D3D12_RESOURCE_STATES inSrcResourceState,
@@ -1061,7 +1123,7 @@ inline void CopyResource(
 }
 
 inline void CopyResource(
-    ID3D12GraphicsCommandList5* commandList,
+    ID3D12GraphicsCommandList4* commandList,
     ID3D12Resource* srcResource,
     ID3D12Resource* destResource,
     D3D12_RESOURCE_STATES inSrcResourceState,
@@ -1078,7 +1140,7 @@ inline void CopyResource(
 }
 
 inline void CopyTextureRegion(
-    ID3D12GraphicsCommandList5* commandList,
+    ID3D12GraphicsCommandList4* commandList,
     ID3D12Resource* srcResource,
     ID3D12Resource* destResource,
     const D3D12_BOX *srcBox,
@@ -1108,7 +1170,7 @@ inline void CopyTextureRegion(
 
 
 inline void CopyTextureRegion(
-    ID3D12GraphicsCommandList5* commandList,
+    ID3D12GraphicsCommandList4* commandList,
     ID3D12Resource* src,
     ID3D12Resource* dest,
     const D3D12_BOX *srcBox,

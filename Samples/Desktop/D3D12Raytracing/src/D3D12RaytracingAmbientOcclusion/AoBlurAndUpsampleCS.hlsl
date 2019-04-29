@@ -11,6 +11,8 @@
 // Author:  James Stanard 
 //
 
+// ToDo test SM 6.3 and set all shaders to 6.3
+
 RWTexture2D<float> AoResult : register(u0);
 Texture2D<float4> Normal : register(t0);
 Texture2D<float> Distance : register(t1);

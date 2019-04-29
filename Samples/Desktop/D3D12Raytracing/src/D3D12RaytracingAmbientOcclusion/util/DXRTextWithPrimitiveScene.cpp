@@ -41,7 +41,7 @@ void DXRTextWithPrimitives::LoadDensityMap(
 
 void LoadScene(
 	ID3D12Device5* device,
-	ID3D12GraphicsCommandList5* commandList,
+	ID3D12GraphicsCommandList4* commandList,
 	ID3D12CommandQueue* commandQueue
 )
 {

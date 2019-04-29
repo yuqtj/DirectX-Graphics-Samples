@@ -29,6 +29,8 @@ using namespace DirectX;
 using namespace SceneEnums;
 using namespace GameCore;
 
+// ToDo tighten shader visibility in Root Sigs - CS + DXR
+
 D3D12RaytracingAmbientOcclusion* g_pSample = nullptr;
 HWND g_hWnd = 0;
 
@@ -156,13 +158,30 @@ namespace SceneArgs
 
     BoolVar TestEarlyExit_TightScheduling(L"Test Early Exit/Tight Scheduling", true);
 
+    // Grass geometry
+    // ToDo fails with Scene/...
+    IntVar GrassGeometry_NumberStrawsX(L"Scene2/Grass/Patch/Num Straws X", 100, 10, MAX_GRASS_STRAWS_1D, 10);
+    IntVar GrassGeometry_NumberStrawsZ(L"Scene2/Grass/Patch/Num Straws Z", 100, 10, MAX_GRASS_STRAWS_1D, 10);
+    NumVar GrassGeometry_PatchLengthX(L"Scene2/Grass/Patch/Length X", 20, 1, 100, 1);
+    NumVar GrassGeometry_PatchLengthY(L"Scene2/Grass/Patch/Length Y", 1, 0.1f, 10, 0.1f);
+    NumVar GrassGeometry_PatchLengthZ(L"Scene2/Grass/Patch/Length Z", 20, 1, 100, 1);
+    NumVar GrassGeometry_StrawHeight(L"Scene2/Grass/Patch/Straw Height", 0.25f, 0.1f, 10, 0.05f);
+    NumVar GrassGeometry_StrawScale(L"Scene2/Grass/Patch/Straw Scale", 0.6, 0.1f, 10, 0.05f);
+    NumVar GrassGeometry_StrawThickness(L"Scene2/Grass/Patch/Straw Thickness", 1, 0.1f, 10, 0.05f);
+    NumVar GrassGeometry_BendStrengthSideways(L"Scene2/Grass/Bend strength sideways", 0.4f, 0, 1, 0.02f);
+    NumVar GrassGeometry_WindStrength(L"Scene2/Grass/Wind strength", 0.3f, 0, 1, 0.02f);
+    NumVar GrassGeometry_WindFrequency(L"Scene2/Grass/Wind frequency", 0.04f, 0, 1, 0.005f);
+    NumVar GrassGeometry_RandomPositionJitterStrength(L"Scene2/Grass/Randomness/Position jitter strength", 0.9, 0, 2, 0.05f);
+    NumVar GrassGeometry_WindMapSpeedU(L"Scene2/Grass/Wind Texture speed U", 1.0f, -1, 1, 0.05f);   // ToDo randomize slowly over frames
+    NumVar GrassGeometry_WindMapSpeedV(L"Scene2/Grass/Wind Texture speed V", 1.0f, -1, 1, 0.05f);
+
     // RTAO
     // Adaptive Sampling.
     BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
     BoolVar RTAOAdaptiveSampling(L"Render/AO/RTAO/Adaptive Sampling/Enabled", true);
     BoolVar RTAOUseNormalMaps(L"Render/AO/RTAO/Normal maps", false);
     NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"Render/AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
-    BoolVar RTAOAdaptiveSamplingMinMaxSampling(L"Render/AO/RTAO/Adaptive Sampling/Only min\\max sampling", false );
+    BoolVar RTAOAdaptiveSamplingMinMaxSampling(L"Render/AO/RTAO/Adaptive Sampling/Only min/max sampling", false );
     NumVar RTAOAdaptiveSamplingScaleExponent(L"Render/AO/RTAO/Adaptive Sampling/Sampling scale exponent", 0.3f, 0.0f, 10, 0.1f);
     BoolVar RTAORandomFrameSeed(L"Render/AO/RTAO/Random per-frame seed", true);
 
@@ -267,6 +286,29 @@ namespace SceneArgs
 
 };
 
+
+void D3D12RaytracingAmbientOcclusion::CreateIndexAndVertexBuffers(
+    const GeometryDescriptor& desc,
+    D3DGeometry* geometry)
+{
+    auto device = m_deviceResources->GetD3DDevice();
+    auto commandList = m_deviceResources->GetCommandList();
+
+    CreateGeometry(device, commandList, m_cbvSrvUavHeap.get(), desc, geometry);
+
+    // Create null descriptor for the unused second VB.
+    D3D12_CPU_DESCRIPTOR_HANDLE nullCPUhandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE nullGPUhandle;
+    UINT nullHeapIndex = UINT_MAX;
+    CreateBufferSRV(
+        nullptr, device, desc.vb.count, sizeof(VertexPositionNormalTextureTangent), m_cbvSrvUavHeap.get(), 
+        &nullCPUhandle, &nullGPUhandle,  &nullHeapIndex);
+
+    ThrowIfFalse(geometry->vb.buffer.heapIndex == geometry->ib.buffer.heapIndex + 1
+              && nullHeapIndex == geometry->ib.buffer.heapIndex + 2, 
+              L"Vertex Buffer descriptor indices must follow that of Index Buffer descriptor index since they're all passed via a descriptor table");
+}
+
 // ToDo move
 void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 {
@@ -304,9 +346,11 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 
     PBRTScene pbrtSceneDefinitions[] = { 
         {L"Spaceship", "Assets\\spaceship\\scene.pbrt"},
+#if !LOAD_ONLY_SPACESHIP 
         {L"Car", "Assets\\car2\\scene.pbrt"},
         {L"Dragon", "Assets\\dragon\\scene.pbrt"},
         {L"House", "Assets\\house\\scene.pbrt"},
+#endif
     };
 
     // ToDo remove
@@ -326,13 +370,16 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
     ResourceUploadBatch resourceUpload(device);
     resourceUpload.Begin();
 
+    // ToDo
+    bool isVertexAnimated = false;
+
     for (auto& pbrtSceneDefinition : pbrtSceneDefinitions)
     {
         SceneParser::Scene pbrtScene;
         PBRTParser::PBRTParser().Parse(pbrtSceneDefinition.path, pbrtScene);
 
-        m_bottomLevelASGeometries.push_back(BottomLevelAccelerationStructureGeometry(pbrtSceneDefinition.name));
-        auto& bottomLevelASGeometry = m_bottomLevelASGeometries.back();
+        auto& bottomLevelASGeometry = m_bottomLevelASGeometries[pbrtSceneDefinition.name];
+        bottomLevelASGeometry.SetName(pbrtSceneDefinition.name);
 
         // ToDo switch to a common namespace rather than 't reference SquidRoomAssets?
         bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat;
@@ -380,15 +427,14 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
                 vertex.normal = parseVertex.Normal.xmFloat3;
                 vertex.position = parseVertex.Position.xmFloat3;
 #endif
-                vertex.tangent = parseVertex.Tangents.xmFloat3;
+                vertex.tangent = parseVertex.Tangent.xmFloat3;
                 vertex.textureCoordinate = parseVertex.UV.xmFloat2;
                 vertexBuffer.push_back(vertex);
             }
             desc.vb.vertices = vertexBuffer.data();
 
             auto& geometry = geometries[i];
-            CreateGeometry(device, commandList, m_cbvSrvUavHeap.get(), desc, &geometry);
-            ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
+            CreateIndexAndVertexBuffers(desc, &geometry);
 
             PrimitiveMaterialBuffer cb;
             cb.diffuse = mesh.m_pMaterial->m_Diffuse.xmFloat3;
@@ -402,7 +448,6 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 
             auto LoadPBRTTexture = [&](auto** ppOutTexture, auto& textureFilename)
             {
-                auto& srcString = mesh.m_pMaterial->m_DiffuseTextureFilename;
                 wstring filename(textureFilename.begin(), textureFilename.end());
                 D3DTexture texture;
                 LoadWICTexture(device, &resourceUpload, filename.c_str(), m_cbvSrvUavHeap.get(), &texture.resource, &texture.heapIndex, &texture.cpuDescriptorHandle, &texture.gpuDescriptorHandle, true);
@@ -426,7 +471,7 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
             UINT materialID = static_cast<UINT>(m_materials.size());
             m_materials.push_back(cb);
 
-            bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle));
+            bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle, isVertexAnimated));
 #if !PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES
             XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(m_geometryTransforms[i].transform3x4), mesh.m_transform);
             geometryInstances.back().transform = m_geometryTransforms.GpuVirtualAddress(0, i);
@@ -499,8 +544,6 @@ void D3D12RaytracingAmbientOcclusion::OnInit()
     CreateDeviceDependentResources();
     m_deviceResources->CreateWindowSizeDependentResources();
 
-    // ToDo Move?
-    m_bottomLevelASGeometries.reserve(c_maxNumBLAS);
 }
 
 D3D12RaytracingAmbientOcclusion::~D3D12RaytracingAmbientOcclusion()
@@ -1087,12 +1130,12 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 			using namespace LocalRootSignature::Triangle;
 
             CD3DX12_DESCRIPTOR_RANGE ranges[3]; // Perfomance TIP: Order from most frequent to least frequent.
-            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 1);  // 2 static index and vertex buffers.
-            ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10);  // 1 diffuse texture
-            ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 11);  // 1 normal texture
+            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 1);  // 3 buffers - static index buffer and 2 vertex buffers.
+            ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 1);  // 1 diffuse texture
+            ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4, 1);  // 1 normal texture
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-            rootParameters[Slot::ConstantBuffer].InitAsConstants(SizeOfInUint32(PrimitiveConstantBuffer), 1);
+            rootParameters[Slot::ConstantBuffer].InitAsConstants(SizeOfInUint32(PrimitiveConstantBuffer), 0, 1);
             rootParameters[Slot::VertexBuffers].InitAsDescriptorTable(1, &ranges[0]);
             rootParameters[Slot::DiffuseTexture].InitAsDescriptorTable(1, &ranges[1]);
             rootParameters[Slot::NormalTexture].InitAsDescriptorTable(1, &ranges[2]);
@@ -1482,6 +1525,8 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 	auto commandList = m_deviceResources->GetCommandList();
 
     EngineProfiling::RestoreDevice(device, commandQueue, FrameCount);
+    ResourceUploadBatch resourceUpload(device);
+    resourceUpload.Begin();
 
 	// ToDo move?
 	m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
@@ -1498,6 +1543,13 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
     m_multiScale_upsampleBilateralFilterAndCombineKernel.Initialize(device, GpuKernels::MultiScale_UpsampleBilateralFilterAndCombine::Filter2x2);
     m_temporalCacheReverseReprojectKernel.Initialize(device, FrameCount, 1);
     m_writeValueToTexture.Initialize(device, m_cbvSrvUavHeap.get());
+    m_grassGeometryGenerator.Initialize(device, L"Assets\\wind\\wind2.jpg", m_cbvSrvUavHeap.get(), &resourceUpload, FrameCount);
+
+    // Upload the resources to the GPU.
+    auto finish = resourceUpload.End(commandQueue);
+
+    // Wait for the upload thread to terminate
+    finish.wait();
     
 }
 
@@ -1532,10 +1584,8 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
 {
     auto device = m_deviceResources->GetD3DDevice();
 
-
-    m_bottomLevelASGeometries.push_back(BottomLevelAccelerationStructureGeometry(L"Plane"));
-    auto& bottomLevelASGeometry = m_bottomLevelASGeometries.back();
-
+    auto& bottomLevelASGeometry = m_bottomLevelASGeometries[L"Plane"];
+    bottomLevelASGeometry.SetName(L"Plane");
     bottomLevelASGeometry.m_indexFormat = DXGI_FORMAT_R16_UINT; // ToDo use common or add support to shaders 
     bottomLevelASGeometry.m_ibStrideInBytes = sizeof(Index);
     bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
@@ -1575,6 +1625,9 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
 	CreateBufferSRV(device, numIndexBufferElements, 0, m_cbvSrvUavHeap.get(), &geometry.ib.buffer);
     CreateBufferSRV(device, ARRAYSIZE(vertices), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
+       
+    ThrowIfFalse(0 && L"ToDo: fix up null VB SRV");
+
 
 	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), 50, false, false, false, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
@@ -1591,9 +1644,8 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
 
     const bool RhCoords = false;    // ToDo use a global constant
 
-    m_bottomLevelASGeometries.push_back(BottomLevelAccelerationStructureGeometry(L"Tesselated Geometry"));
-    auto& bottomLevelASGeometry = m_bottomLevelASGeometries.back();
-
+    auto& bottomLevelASGeometry = m_bottomLevelASGeometries[L"Tesselated Geometry"];
+    bottomLevelASGeometry.SetName(L"Tesselated Geometry");
     bottomLevelASGeometry.m_indexFormat = DXGI_FORMAT_R16_UINT; // ToDo use common or add support to shaders 
     bottomLevelASGeometry.m_ibStrideInBytes = sizeof(Index);
     bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
@@ -1749,6 +1801,7 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
     CreateBufferSRV(device, static_cast<UINT>(vertices.size()), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
+    ThrowIfFalse(0 && L"ToDo: fix up null VB SRV");
 
 	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1),  50, false, false, false, false };
 	UINT materialID = static_cast<UINT>(m_materials.size());
@@ -1765,9 +1818,8 @@ void D3D12RaytracingAmbientOcclusion::LoadSquidRoom()
     auto device = m_deviceResources->GetD3DDevice();
     auto commandList = m_deviceResources->GetCommandList();
 
-    m_bottomLevelASGeometries.push_back(BottomLevelAccelerationStructureGeometry(L"Squid Room"));
-    auto& bottomLevelASGeometry = m_bottomLevelASGeometries.back();
-
+    auto& bottomLevelASGeometry = m_bottomLevelASGeometries[L"Squid Room"];
+    bottomLevelASGeometry.SetName(L"Squid Room");
     bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat; // ToDo use common or add support to shaders 
     bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
     bottomLevelASGeometry.m_ibStrideInBytes = SquidRoomAssets::StandardIndexStride;
@@ -1796,11 +1848,132 @@ void D3D12RaytracingAmbientOcclusion::LoadSquidRoom()
 
 void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
 {
-    LoadSquidRoom();
 
 #if LOAD_PBRT_SCENE
 	LoadPBRTScene();
+#else
+    LoadSquidRoom();
 #endif
+
+#if USE_GRASS_GEOMETRY
+    InitializeGrassGeometry();
+#endif
+
+}
+
+// Build geometry used in the sample.
+void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
+{
+    auto device = m_deviceResources->GetD3DDevice();
+    auto commandList = m_deviceResources->GetCommandList();
+    auto commandQueue = m_deviceResources->GetCommandQueue();
+
+    // ToDO replace strings with enums
+    auto& bottomLevelASGeometry = m_bottomLevelASGeometries[L"Grass patch"];
+    bottomLevelASGeometry.SetName(L"Grass patch");
+    bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat; // ToDo use common or add support to shaders 
+    bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
+    bottomLevelASGeometry.m_ibStrideInBytes = SquidRoomAssets::StandardIndexStride;
+    bottomLevelASGeometry.m_vbStrideInBytes = SquidRoomAssets::StandardVertexStride;
+
+    // Single patch geometry per bottom-level AS.
+    bottomLevelASGeometry.m_geometries.resize(1);
+    auto& geometry = bottomLevelASGeometry.m_geometries[0];
+    auto& textures = bottomLevelASGeometry.m_textures;
+    
+    // Initialize index and vertex buffers.
+    {
+        const UINT NumStraws = MAX_GRASS_STRAWS_1D * MAX_GRASS_STRAWS_1D;
+        const UINT NumTrianglesPerStraw = N_GRASS_TRIANGLES;
+        const UINT NumTriangles = NumStraws * NumTrianglesPerStraw;
+        const UINT NumVerticesPerStraw = N_GRASS_VERTICES;
+        const UINT NumVertices = NumStraws * NumVerticesPerStraw;
+        const UINT NumIndicesPerStraw = NumTrianglesPerStraw * 3;
+        const UINT NumIndices = NumStraws * NumIndicesPerStraw;
+        UINT strawIndices[NumIndicesPerStraw] = { 0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5, 4, 6, 5 };
+        vector<UINT> indices;
+        indices.resize(NumIndices);
+
+        UINT indexID = 0;
+        for (UINT i = 0, indexID = 0; i < NumStraws; i++)
+        {
+            UINT baseVertexID = i * NumVerticesPerStraw;
+            for (auto index : strawIndices)
+            {
+                indices[indexID++] = baseVertexID + index;
+            }
+        }
+
+        AllocateIndexBuffer(device, NumIndices, sizeof(Index), m_cbvSrvUavHeap.get(), &geometry.ib.buffer, D3D12_RESOURCE_STATE_COPY_DEST);
+        UploadDataToBuffer(device, commandList, &indices[0], NumIndices, sizeof(Index), geometry.ib.buffer.resource.Get(), &geometry.ib.upload, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+
+
+        // Preallocate subsequent descriptor indices for both SRV and UAV groups.
+        m_grassPatchVB[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(2, m_grassPatchVB[0].uavDescriptorHeapIndex);
+        m_grassPatchVB[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(2, m_grassPatchVB[0].srvDescriptorHeapIndex);
+        for (UINT i = 0; i < 2; i++)
+        {
+            m_grassPatchVB[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            m_grassPatchVB[i].uavDescriptorHeapIndex = m_grassPatchVB[0].uavDescriptorHeapIndex + i;
+            m_grassPatchVB[i].srvDescriptorHeapIndex = m_grassPatchVB[0].srvDescriptorHeapIndex + i;
+        }
+
+        for (auto& vb : m_grassPatchVB)
+        {
+            AllocateUAVBuffer(device, NumVertices, sizeof(VertexPositionNormalTextureTangent), &vb, DXGI_FORMAT_UNKNOWN, m_cbvSrvUavHeap.get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"Vertex Buffer: Grass geometry");
+        }
+        geometry.vb.buffer.resource = m_grassPatchVB[0].resource;
+        geometry.vb.buffer.gpuDescriptorHandle = m_grassPatchVB[0].gpuDescriptorReadAccess;
+        geometry.vb.buffer.heapIndex = m_grassPatchVB[0].srvDescriptorHeapIndex;
+    }
+
+    // Load textures.
+    D3DTexture* diffuseTexture;
+    D3DTexture* normalTexture = &m_nullTexture;
+    {
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
+
+        auto LoadTexture = [&](auto** ppOutTexture, const wchar_t* textureFilename)
+        {
+            D3DTexture texture;
+            LoadWICTexture(device, &resourceUpload, textureFilename, m_cbvSrvUavHeap.get(), &texture.resource, &texture.heapIndex, &texture.cpuDescriptorHandle, &texture.gpuDescriptorHandle, false);
+            textures.push_back(texture);
+
+            *ppOutTexture = &textures.back();
+        };
+        LoadTexture(&diffuseTexture, L"assets\\grass\\albedo.png");
+
+        // ToDo load everything via single resource upload?
+        // Upload the resources to the GPU.
+        auto finish = resourceUpload.End(commandQueue);
+
+        // Wait for the upload thread to terminate
+        finish.wait();
+    }
+
+
+    // Single material per grass patch.
+    UINT materialID;
+    {
+        PrimitiveMaterialBuffer materialCB;
+        materialCB.diffuse = XMFLOAT3(0.75f, 0.75f, 0.75f);
+        materialCB.specular = XMFLOAT3(1, 1, 1);
+        materialCB.specularPower = 50;
+        materialCB.isMirror = false;
+        materialCB.hasDiffuseTexture = true;
+        materialCB.hasNormalTexture = false;
+        materialCB.hasPerVertexTangents = false;    // ToDo calculate these when geometry is generated?
+
+        materialID = static_cast<UINT>(m_materials.size());
+        m_materials.push_back(materialCB);
+    }
+
+    // Create geometry instance.
+    bool isVertexAnimated = true;
+    bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle, isVertexAnimated));
+
+    bottomLevelASGeometry.m_numTriangles = bottomLevelASGeometry.m_geometryInstances[0].ib.count / 3;
 }
 
 // Build geometry used in the sample.
@@ -1918,9 +2091,10 @@ void D3D12RaytracingAmbientOcclusion::InitializeAllBottomLevelAccelerationStruct
     m_accelerationStructure = make_unique<RaytracingAccelerationStructureManager>(device, MaxNumBottomLevelInstances, FrameCount);
     
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;    // ToDo specify via SceneArgs
-    for (auto& bottomLevelASGeometry : m_bottomLevelASGeometries)
+    for (auto& bottomLevelASGeometryPair : m_bottomLevelASGeometries)
     {
-        m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, false);
+        auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
+        m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, false, false);
     }
 }
 
@@ -1933,33 +2107,31 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
     // Initialize bottom-level AS.
 
 #if LOAD_PBRT_SCENE
-    UINT bottomLevelASIndices[] = {
-        GetBottomLevelASIndex(L"Spaceship"),
-        GetBottomLevelASIndex(L"Car"),
-        GetBottomLevelASIndex(L"Dragon"),
-        GetBottomLevelASIndex(L"House")};
-
+    wstring bottomLevelASnames[] = {
+        L"Spaceship",
+#if !LOAD_ONLY_SPACESHIP
+        L"Car",
+        L"Dragon",
+        L"House",
+#endif    
+        L"Grass patch" };
 #else
-    UINT bottomLevelASIndices[] = {
-        GetBottomLevelASIndex(L"Squid Room")};
+    UINT bottomLevelASnames[] = {
+        L"Squid Room"};
 
 #endif
-    ThrowIfFalse(ARRAYSIZE(bottomLevelASIndices) < MaxNumBottomLevelInstances, L"Instance size limit reached.");
 
     // Initialize the bottom-level AS instances.
-    for (auto& i : bottomLevelASIndices)
+    for (auto& bottomLevelASname : bottomLevelASnames)
     {
-        // Default to use shader records already created for the bottom-level AS. 
-        // The instance however could go and add a copy of those shader records (modified for this instance) to the shader table.
-        UINT instanceContributionToHitGroupIndex = m_bottomLevelASGeometries[i].m_instanceContributionToHitGroupIndex;
-
-        m_bottomLevelASInstanceIndices[i] = m_accelerationStructure->AddBottomLevelASInstance(i, instanceContributionToHitGroupIndex);
-        auto& bottomLevelASInstance = m_accelerationStructure->GetBottomLevelASInstance(i);
+        m_accelerationStructure->AddBottomLevelASInstance(bottomLevelASname);
     }
 
     // Initialize the top-level AS.
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;    // ToDo specify via SceneArgs
-    m_accelerationStructure->InitializeTopLevelAS(device, buildFlags, L"Top-Level Acceleration Structure");
+    bool allowUpdate = false;
+    bool performUpdateOnBuild = false;
+    m_accelerationStructure->InitializeTopLevelAS(device, buildFlags, allowUpdate, performUpdateOnBuild, L"Top-Level Acceleration Structure");
 }
 
 // Build shader tables.
@@ -2063,26 +2235,33 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 	// Hit group shader table.
 	{
 		UINT numShaderRecords = 0;
-        for (auto& bottomLevelASGeometry : m_bottomLevelASGeometries)
-		{
+        for (auto& bottomLevelASGeometryPair : m_bottomLevelASGeometries)
+        {
+            auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
 			numShaderRecords += static_cast<UINT>(bottomLevelASGeometry.m_geometryInstances.size()) * RayType::Count;
 		}
 		UINT shaderRecordSize = shaderIDSize + LocalRootSignature::MaxRootArgumentsSize();
 		ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
 
 		// Triangle geometry hit groups.
-        for (auto& bottomLevelASGeometry : m_bottomLevelASGeometries)
+        for (auto& bottomLevelASGeometryPair : m_bottomLevelASGeometries)
         {
+            auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
+
             UINT shaderRecordOffset = hitGroupShaderTable.GeNumShaderRecords();
+
+            // ToDo - bottomLevelASGeometry.m_instanceContributionToHitGroupIndex is not used as the AS's BLAS are separate objects. CLeanup.
             bottomLevelASGeometry.m_instanceContributionToHitGroupIndex = shaderRecordOffset;
+
+            m_accelerationStructure->GetBottomLevelAS(bottomLevelASGeometryPair.first).SetInstanceContributionToHitGroupIndex(shaderRecordOffset);
 
             for (auto& geometryInstance : bottomLevelASGeometry.m_geometryInstances)
             {
                 LocalRootSignature::Triangle::RootArguments rootArgs;
                 rootArgs.cb.materialID = geometryInstance.materialID;
+                rootArgs.cb.isVertexAnimated = geometryInstance.isVertexAnimated;
 
-                // ToDo rename to ibGPUHandle, otherwise its confusing why copy ib to vb handle.
-                memcpy(&rootArgs.vertexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
+                memcpy(&rootArgs.indexVertexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
                 memcpy(&rootArgs.diffuseTextureGPUHandle, &geometryInstance.diffuseTexture, sizeof(geometryInstance.diffuseTexture));
                 memcpy(&rootArgs.normalTextureGPUHandle, &geometryInstance.normalTexture, sizeof(geometryInstance.normalTexture));
 
@@ -2221,6 +2400,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 
         m_accelerationStructure->GetBottomLevelASInstance(3).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-5 + 10 * t, 0, 0, 0)));
         m_accelerationStructure->GetBottomLevelASInstance(0).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 10 * t, 0, 0)));
+        m_accelerationStructure->GetBottomLevelASInstance(1).SetTransform(XMMatrixRotationX(XMConvertToRadians((t-0.5f) * 20)));
     }
 
     // Rotate the camera around Y axis.
@@ -2295,7 +2475,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     m_sceneCB->RTAO_AdaptiveSamplingMinSamples = SceneArgs::RTAOAdaptiveSamplingMinSamples;
     m_sceneCB->RTAO_TraceRayOffsetAlongNormal = SceneArgs::RTAOTraceRayOffsetAlongNormal;
     m_sceneCB->RTAO_TraceRayOffsetAlongRayDirection = SceneArgs::RTAOTraceRayOffsetAlongRayDirection;
-
+    m_sceneCB->frameIndex = frameIndex;
 
     SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
  }
@@ -4239,6 +4419,61 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
 
+void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
+{
+    auto commandList = m_deviceResources->GetCommandList();
+    float upTime = static_cast<float>(m_timer.GetTotalSeconds());
+    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+
+    using namespace SceneArgs;
+    GenerateGrassStrawsConstantBuffer_AppParams params;
+    params.grassHeight = GrassGeometry_StrawHeight;
+    params.grassScale = GrassGeometry_StrawScale;
+    params.grassThickness = GrassGeometry_StrawThickness;
+    params.patchBasePos = XMFLOAT3(-20, -1.15f, -20);
+    params.bendStrengthAlongTangent = GrassGeometry_BendStrengthSideways;
+    params.patchSize = XMFLOAT3(GrassGeometry_PatchLengthX, GrassGeometry_PatchLengthY, GrassGeometry_PatchLengthZ);
+    params.windDirection = XMFLOAT3(0, 0, 0); // ToDo
+    params.windStrength = GrassGeometry_WindStrength;
+    params.windFrequency = GrassGeometry_WindFrequency;
+    params.positionJitterStrength = GrassGeometry_RandomPositionJitterStrength;
+    params.timeOffset = XMFLOAT2(GrassGeometry_WindMapSpeedU * upTime, GrassGeometry_WindMapSpeedV * upTime);
+    params.activePatchDim = XMUINT2(GrassGeometry_NumberStrawsX, GrassGeometry_NumberStrawsZ);
+    params.maxPatchDim = XMUINT2(MAX_GRASS_STRAWS_1D, MAX_GRASS_STRAWS_1D);
+
+
+
+    UINT vbID = frameIndex & 1;
+    // Transition output vertex buffer to UAV state.        
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_grassPatchVB[vbID].resource.Get(), before, after)
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+    }
+
+    m_grassGeometryGenerator.Execute(commandList, params, m_cbvSrvUavHeap->GetHeap(), m_grassPatchVB[vbID].gpuDescriptorWriteAccess);
+
+    // Transition the output vertex buffer to VB state.        
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_grassPatchVB[vbID].resource.Get(), before, after)
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+    }
+
+    // Point bottom-levelAS VB pointer to the updated VB.
+    auto& bottomLevelAS = m_accelerationStructure->GetBottomLevelAS(L"Grass patch");
+    auto& geometryDesc = bottomLevelAS.GetGeometryDescs()[0];
+    geometryDesc.Triangles.VertexBuffer.StartAddress = m_grassPatchVB[vbID].resource->GetGPUVirtualAddress();
+    bottomLevelAS.SetDirty(true);
+
+}
+
 // Render the scene.
 void D3D12RaytracingAmbientOcclusion::OnRender()
 {
@@ -4260,6 +4495,10 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     {
         // ToDo fix RTAO not being a child of Frame marker
         ScopedTimer _prof(L"Frame", commandList);
+
+#if USE_GRASS_GEOMETRY
+        GenerateGrassGeometry();
+#endif
 
         UpdateAccelerationStructure();
 

@@ -23,11 +23,11 @@ namespace EngineProfiling
     void ReleaseDevice();
 
     void Update();
-    void BeginFrame(ID3D12GraphicsCommandList5* CommandList);
-    void EndFrame(ID3D12GraphicsCommandList5* CommandList);
+    void BeginFrame(ID3D12GraphicsCommandList4* CommandList);
+    void EndFrame(ID3D12GraphicsCommandList4* CommandList);
 
-    void BeginBlock(const std::wstring& name, ID3D12GraphicsCommandList5* CommandList = nullptr);
-    void EndBlock(ID3D12GraphicsCommandList5* CommandList = nullptr);
+    void BeginBlock(const std::wstring& name, ID3D12GraphicsCommandList4* CommandList = nullptr);
+    void EndBlock(ID3D12GraphicsCommandList4* CommandList = nullptr);
 
     void DisplayFrameRate(std::wstringstream& Text, UINT indent);
     void Display(std::wstringstream& text, UINT indent);
@@ -38,11 +38,11 @@ namespace EngineProfiling
 class ScopedTimer
 {
 public:
-    ScopedTimer(const std::wstring& name, ID3D12GraphicsCommandList5* CommandList = nullptr) : m_commandList(CommandList)
+    ScopedTimer(const std::wstring& name, ID3D12GraphicsCommandList4* CommandList = nullptr) : m_commandList(CommandList)
     {
         EngineProfiling::BeginBlock(name, m_commandList);
     }
-    ScopedTimer(const std::wstring& name, UINT indexSuffix, ID3D12GraphicsCommandList5* CommandList = nullptr) : m_commandList(CommandList)
+    ScopedTimer(const std::wstring& name, UINT indexSuffix, ID3D12GraphicsCommandList4* CommandList = nullptr) : m_commandList(CommandList)
     {
         std::wstringstream wstr;
         wstr << name << L" " << indexSuffix;
@@ -57,5 +57,5 @@ public:
 
 
 private:
-    ID3D12GraphicsCommandList5* m_commandList;
+    ID3D12GraphicsCommandList4* m_commandList;
 };

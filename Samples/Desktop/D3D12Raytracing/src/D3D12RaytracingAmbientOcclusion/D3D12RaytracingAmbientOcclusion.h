@@ -61,17 +61,7 @@ private:
 	// ToDo change ID3D12Resourcs with views to RWGpuResource
 
 	std::mt19937 m_generatorURNG;
-
-	// Constants.
-	const UINT NUM_BLAS = 2;          // Triangle + AABB bottom-level AS.
-	const float c_aabbWidth = 2;      // AABB width.
-	const float c_aabbDistance = 2;   // Distance between AABBs.
-
-	// AmbientOcclusion
-    const UINT c_maxNumBLAS = 10000;
-
-
-
+    
 	int m_numFramesSinceASBuild;
 #if TESSELATED_GEOMETRY_BOX
 #if TESSELATED_GEOMETRY_THIN
@@ -122,10 +112,15 @@ private:
 	const UINT c_SupersamplingScale = 2;    // ToDo UI parameter
 	UINT								m_numRayGeometryHits[ReduceSumCalculations::Count];
 
-    GpuKernels::WriteValueToTexture m_writeValueToTexture;
+    GpuKernels::WriteValueToTexture     m_writeValueToTexture;
+    GpuKernels::GenerateGrassPatch      m_grassGeometryGenerator;
 
 
     GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
+
+
+    RWGpuResource                           m_grassPatchVB[2];      // Two VBs: current and previous frame.
+    D3DBuffer                           m_nullVB;               // Null vertex Buffer - used for geometries that don't animate and don't need double buffering for motion vector calculation.
 
 	ComPtr<ID3D12RootSignature>         m_rootSignature;
 	ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
@@ -169,19 +164,7 @@ private:
         std::string path;    // ToDo switch to wstring 
     };
 
-    std::vector<BottomLevelAccelerationStructureGeometry>	m_bottomLevelASGeometries;
-    UINT GetBottomLevelASIndex(const wchar_t* name)
-    {
-        std::vector<BottomLevelAccelerationStructureGeometry>::iterator i =
-            std::find_if(
-                m_bottomLevelASGeometries.begin(), m_bottomLevelASGeometries.end(),
-                [&](const BottomLevelAccelerationStructureGeometry& x) { return x.m_name == name; });
-
-        ThrowIfFalse(i != m_bottomLevelASGeometries.end(), L"Specified bottom-level AS was not found.");
-
-        return static_cast<UINT>(i - m_bottomLevelASGeometries.begin());
-    }
-
+    std::map<std::wstring, BottomLevelAccelerationStructureGeometry>	m_bottomLevelASGeometries;
     D3DTexture m_environmentMap;
 
 
@@ -189,7 +172,6 @@ private:
     StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.
 
     const UINT MaxNumBottomLevelInstances = 1000;           // ToDo tighten this to only what needed or add support a copy of whats used from StructuredBuffers to GPU.
-    UINT m_bottomLevelASInstanceIndices[GeometryType::Count];
 
 	StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
 
@@ -300,11 +282,13 @@ private:
 
 	// ToDo cleanup
 	// Utility functions
+    void GenerateGrassGeometry();
 	void CreateComposeRenderPassesCSResources();
     void CreateAoBlurCSResources();
 	void ParseCommandLineArgs(WCHAR* argv[], int argc);
 	void RecreateD3D();
     void LoadSquidRoom();
+    void CreateIndexAndVertexBuffers(const GeometryDescriptor& desc, D3DGeometry* geometry);
 	void LoadPBRTScene();
 	void LoadSceneGeometry();
     void UpdateCameraMatrices();
@@ -353,6 +337,7 @@ private:
     void CreateRaytracingOutputResource();
 	void CreateGBufferResources();
 	void CreateAuxilaryDeviceResources();
+    void InitializeGrassGeometry();
     void InitializeGeometry();
     void BuildPlaneGeometry();
     void BuildTesselatedGeometry();

@@ -16,7 +16,7 @@ WorldBegin
 	# MakeNamedMaterial "Chrome" "string type" [ "mirror" ] 
 	MakeNamedMaterial "Chrome" "string type" [ "matte" ] "rgb Kd" [ 0.549 0.556 0.554 ]
 	MakeNamedMaterial "WhiteRubber" "string type" [ "matte" ] "rgb Kd" [ 0.578596 0.578596 0.578596 ] 
-	MakeNamedMaterial "Ground" "string type" [ "matte" ] "rgb Kd" [ 0.70740 0.70740 0.70740 ]   "rgb opacity" [ 0.000000 0.000000 0.000000 ] 
+	MakeNamedMaterial "Ground" "string type" [ "matte" ] "rgb Kd" [ 0.70740 0.70740 0.70740 ]   "rgb opacity" [ 1.000000 1.000000 1.000000 ] 
 	MakeNamedMaterial "Black" "string type" [ "matte" ] "rgb Kd" [ 0.000000 0.000000 0.000000 ] 
 	MakeNamedMaterial "Leather" "string type" [ "substrate" ] "rgb Ks" [ 0.040000 0.040000 0.040000 ] "rgb Kd" [ 0.417004 0.403278 0.391924 ] "float uroughness" [ 0.400000 ] "float vroughness" [ 0.400000 ] "bool remaproughness" [ "false" ] 
 	MakeNamedMaterial "Leather2" "string type" [ "substrate" ] "rgb Ks" [ 0.040000 0.040000 0.040000 ] "rgb Kd" [ 0.612066 0.612066 0.612066 ] "float uroughness" [ 0.300000 ] "float vroughness" [ 0.300000 ] "bool remaproughness" [ "false" ] 

@@ -115,8 +115,8 @@ namespace SceneParser
 	{
 		Vector3 Normal;
 		Vector3 Position;
-		Vector3 Tangents;
-		Vector2 UV;
+        Vector2 UV;
+		Vector3 Tangent;
 	};
 
 	typedef UINT Index;
@@ -133,7 +133,7 @@ namespace SceneParser
             // Zero tangents.
             for (auto& vertex : m_VertexBuffer)
             {
-                vertex.Tangents.xmFloat3 = XMFLOAT3(0, 0, 0);
+                vertex.Tangent.xmFloat3 = XMFLOAT3(0, 0, 0);
             }
 
             // Add tangents from all triangles a vertex corresponds to.
@@ -150,9 +150,9 @@ namespace SceneParser
                 XMFLOAT2& uv1 = m_VertexBuffer[index1].UV.xmFloat2;
                 XMFLOAT2& uv2 = m_VertexBuffer[index2].UV.xmFloat2;
 
-                Vector3& tangent1 = m_VertexBuffer[index0].Tangents;
-                Vector3& tangent2 = m_VertexBuffer[index1].Tangents;
-                Vector3& tangent3 = m_VertexBuffer[index2].Tangents;
+                Vector3& tangent1 = m_VertexBuffer[index0].Tangent;
+                Vector3& tangent2 = m_VertexBuffer[index1].Tangent;
+                Vector3& tangent3 = m_VertexBuffer[index2].Tangent;
 
                 XMVECTOR tangent = XMLoadFloat3(&CalculateTangent(v0, v1, v2, uv0, uv1, uv2));
 
@@ -164,7 +164,7 @@ namespace SceneParser
             // Renormalize the tangents.
             for (auto& vertex : m_VertexBuffer)
             {
-                XMStoreFloat3(&vertex.Tangents.xmFloat3, XMVector3Normalize(XMLoadFloat3(&vertex.Tangents.xmFloat3)));
+                XMStoreFloat3(&vertex.Tangent.xmFloat3, XMVector3Normalize(XMLoadFloat3(&vertex.Tangent.xmFloat3)));
             }
         }
     };

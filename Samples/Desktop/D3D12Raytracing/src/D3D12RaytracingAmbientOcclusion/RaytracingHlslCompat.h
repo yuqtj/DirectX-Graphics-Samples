@@ -99,7 +99,7 @@
 
 #define AO_PROGRESSIVE_SAMPLING 0
 
-#define ENABLE_VSYNC 1
+#define ENABLE_VSYNC 0
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 2  
 #endif
@@ -116,11 +116,14 @@
 #define APPLY_SRGB_CORRECTION 0
 #define AO_ONLY 0
 // ToDO this wasn't necessary before..
-#define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0
+#define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0 // ToDo spec requires it but it works without it?
+
+#define USE_GRASS_GEOMETRY 1
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1
+#define LOAD_ONLY_SPACESHIP 0
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
@@ -452,7 +455,8 @@ struct SceneConstantBuffer
 
     float RTAO_TraceRayOffsetAlongNormal;
     float RTAO_TraceRayOffsetAlongRayDirection;
-    float padding[2];
+    UINT  frameIndex;
+    float padding;
 };
  
 // Final render output composition modes.
@@ -469,6 +473,7 @@ enum CompositionType {
     Count
 };
 
+// ToDo compress
 // ToDo explain padding
 struct ComposeRenderPassesConstantBuffer
 {
@@ -568,12 +573,49 @@ struct DownAndUpsampleFilterConstantBuffer
     BOOL useDynamicDepthThreshold;
 };
 
+struct GenerateGrassStrawsConstantBuffer_AppParams
+{
+    XMUINT2 activePatchDim; // Dimensions of active grass straws.
+    XMUINT2 maxPatchDim;    // Dimensions of the whole vertex buffer.
+
+    XMFLOAT2 timeOffset;
+    float grassHeight;
+    float grassScale;
+
+    XMFLOAT3 patchBasePos;
+    float bendStrengthAlongTangent;
+
+    XMFLOAT3 patchSize;
+    float grassThickness;
+
+    XMFLOAT3 windDirection;
+    float windStrength;
+
+    float windFrequency;
+    float positionJitterStrength;
+    float padding[2];
+};
+
+// ToDo move?
+#define N_GRASS_TRIANGLES 5
+#define N_GRASS_VERTICES 7
+#define MAX_GRASS_STRAWS_1D 100
+struct GenerateGrassStrawsConstantBuffer
+{
+    XMFLOAT2 invActivePatchDim;
+    float padding1; // ToDo doing float p[2]; instead adds extra padding - as per PIX.
+    float padding2;
+    GenerateGrassStrawsConstantBuffer_AppParams p;
+};
+
+
+
 // Attributes per primitive type.
 struct PrimitiveConstantBuffer
 {
-	UINT     materialID;
-    UINT     BLASindex;
-    XMUINT2   padding;
+	UINT     materialID;          
+    UINT     isVertexAnimated; 
+    UINT     padding[2];
 };
 
 struct PrimitiveMaterialBuffer
@@ -582,7 +624,7 @@ struct PrimitiveMaterialBuffer
 	XMFLOAT3 specular;
     float specularPower;
     // ToDo use a bitmask?
-    UINT hasDiffuseTexture;
+    UINT hasDiffuseTexture; // ToDO use BOOL?
     UINT hasNormalTexture;
     UINT hasPerVertexTangents;
     UINT isMirror;
@@ -629,6 +671,7 @@ struct VertexPositionNormalTexture
 	XMFLOAT2 uv;
 };
 
+// ToDo dedupe with Vertex in PBRT.
 struct VertexPositionNormalTextureTangent
 {
 	XMFLOAT3 position;
@@ -637,6 +680,14 @@ struct VertexPositionNormalTextureTangent
 	XMFLOAT3 tangent;
 };
 
+/* TODO remove
+ 
+ float3 position;
+ float3 normal;
+ float2 textureCoordinate;
+ float3 tangent;
+
+ */
 
 namespace RayGenShaderType {
 	enum Enum {

@@ -21,7 +21,7 @@ using namespace std;
 // Load geometry from a file into buffers.
 void SquidRoomAssets::LoadGeometry(
 	ID3D12Device5* device,
-	ID3D12GraphicsCommandList5* commandList,
+	ID3D12GraphicsCommandList4* commandList,
 	DX::DescriptorHeap* descriptorHeap,
 	LPCWSTR assetPath,
 	D3DGeometry* geometry,

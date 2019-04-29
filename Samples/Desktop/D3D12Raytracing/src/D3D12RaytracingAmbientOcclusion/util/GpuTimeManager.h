@@ -29,12 +29,12 @@ namespace DX
         UINT NewTimer(void);
 
         // Indicate beginning & end of frame
-        void BeginFrame(ID3D12GraphicsCommandList5* commandList);
-        void EndFrame(ID3D12GraphicsCommandList5* commandList);
+        void BeginFrame(ID3D12GraphicsCommandList4* commandList);
+        void EndFrame(ID3D12GraphicsCommandList4* commandList);
 
         // Write start and stop time stamps on the GPU timeline
-        void Start(ID3D12GraphicsCommandList5* commandList, UINT timerid);
-        void Stop(ID3D12GraphicsCommandList5* commandList, UINT timerid);
+        void Start(ID3D12GraphicsCommandList4* commandList, UINT timerid);
+        void Stop(ID3D12GraphicsCommandList4* commandList, UINT timerid);
         
         void SetAvgRefreshPeriodMS(float avgRefreshPeriodMs) { m_avgRefreshPeriodMs = avgRefreshPeriodMs; }
         float AvgRefreshPeriodMS() const { return m_avgRefreshPeriodMs; }

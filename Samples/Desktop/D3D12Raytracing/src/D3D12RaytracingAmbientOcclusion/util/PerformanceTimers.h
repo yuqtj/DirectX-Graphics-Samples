@@ -98,12 +98,12 @@ namespace DX
         ~GPUTimer() { ReleaseDevice(); }
 
         // Indicate beginning & end of frame
-        void BeginFrame(_In_ ID3D12GraphicsCommandList5* commandList);
-        void EndFrame(_In_ ID3D12GraphicsCommandList5* commandList);
+        void BeginFrame(_In_ ID3D12GraphicsCommandList4* commandList);
+        void EndFrame(_In_ ID3D12GraphicsCommandList4* commandList);
 
         // Start/stop a particular performance timer (don't start same index more than once in a single frame)
-        void Start(_In_ ID3D12GraphicsCommandList5* commandList, uint32_t timerid = 0);
-        void Stop(_In_ ID3D12GraphicsCommandList5* commandList, uint32_t timerid = 0);
+        void Start(_In_ ID3D12GraphicsCommandList4* commandList, uint32_t timerid = 0);
+        void Stop(_In_ ID3D12GraphicsCommandList4* commandList, uint32_t timerid = 0);
 		
 		void SetAvgRefreshPeriodMS(float avgRefreshPeriodMs) { m_avgRefreshPeriodMs = avgRefreshPeriodMs; }
 

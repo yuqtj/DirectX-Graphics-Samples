@@ -72,7 +72,7 @@ RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
 RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18);
 
-ConstantBuffer<SceneConstantBuffer> g_sceneCB : register(b0);
+ConstantBuffer<SceneConstantBuffer> CB : register(b0);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
 
@@ -81,25 +81,30 @@ StructuredBuffer<float3x4> g_prevFrameBottomLevelASInstanceTransform : register(
 
 SamplerState LinearWrapSampler : register(s0);
 
+
+// ToDo: https://developer.nvidia.com/content/understanding-structured-buffer-performance
+/*******************************************************************************************************/
 // Per-object resources
-ConstantBuffer<PrimitiveConstantBuffer> l_materialCB : register(b1);
+ConstantBuffer<PrimitiveConstantBuffer> l_materialCB : register(b0, space1);
 
-
-// ToDo remove space0
 #if ONLY_SQUID_SCENE_BLAS
-StructuredBuffer<Index> l_indices : register(t1, space0);
-StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices : register(t2, space0);
+StructuredBuffer<Index> l_indices : register(t0, space1);
+// Vertex buffers for current and previous frame.
+// Current frame array index is ~ (frameIndex & 1) for animated geometry, 0 otherwise.
+StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices[2] : register(t1, space1);  // t1-t2
 #else
-ByteAddressBuffer l_indices : register(t1, space0);
-StructuredBuffer<VertexPositionNormalTexture> l_vertices : register(t2, space0);
+ByteAddressBuffer l_indices : register(t0, space1);
+StructuredBuffer<VertexPositionNormalTexture> l_vertices[2] : register(t1, space1); // t1-t2
 #endif
-Texture2D<float3> l_texDiffuse : register(t10);
-Texture2D<float3> l_texNormalMap : register(t11);
+Texture2D<float3> l_texDiffuse : register(t3, space1);
+Texture2D<float3> l_texNormalMap : register(t4, space1);
+/*******************************************************************************************************/
+
 
 float GetPlaneConstant(in float3 planeNormal, in float3 pointOnThePlane)
 {
-    // Given a plane equation N*P + d = 0
-    // d = - N*P
+    // Given a plane equation N * P + d = 0
+    // d = - N * P
     return -dot(planeNormal, pointOnThePlane);
 }
 
@@ -137,6 +142,26 @@ float3 ReflectPointThroughAPlane(in float3 P, in float3 planeNormal, in float3 p
     return P + 2 * t * N;
 }
 
+
+// Calculate translation vector for the hit object position from previous to current frame due to animated vertices.
+float3 GetHitObjectTranslationPrevToCurrentFrame(in float3 hitObjectPosition, in uint indices[3], in BuiltInTriangleIntersectionAttributes attr)
+{
+    float3 hitObjectTranslationPrevToCurrentFrame = 0;
+    if (l_materialCB.isVertexAnimated)
+    {
+        UINT vbID = (CB.frameIndex + 1) & 1;
+        float3 _vertices[3] = { 
+            l_vertices[vbID][indices[0]].position, 
+            l_vertices[vbID][indices[1]].position, 
+            l_vertices[vbID][indices[2]].position };
+        float3 _hitObjectPosition = HitAttribute(_vertices, attr);
+        hitObjectTranslationPrevToCurrentFrame = hitObjectPosition - _hitObjectPosition;
+    }
+
+    return hitObjectTranslationPrevToCurrentFrame;
+}
+
+
 // ToDo standardize pos vs position in shaders
 // Calculate screen texture-space motion vector from a previous to the current frame.
 void CalculateMotionVectorForReflectedPoint(
@@ -146,6 +171,8 @@ void CalculateMotionVectorForReflectedPoint(
     in uint instanceIndex,
     in float3 hitObjectPosition,
     in float3 hitObjectNormal,
+    in uint3 vertexIndices,
+    in BuiltInTriangleIntersectionAttributes attr,
     in uint reflectorInstanceIndex,
     in float3 reflectorHitObjectPosition,
     in float3 reflectorObjectNormal)
@@ -155,9 +182,21 @@ void CalculateMotionVectorForReflectedPoint(
     // Variables starting with underscore _ denote values in the previous frame.
     float3x4 _BLASTransform = g_prevFrameBottomLevelASInstanceTransform[instanceIndex];
 
-    // Calculate hit position and normal of the hit in the previous frame.
-    float3 _hitPosition = mul(_BLASTransform, float4(hitObjectPosition, 1));
+    // Calculate hit object position of the hit in the previous frame.
+    float3 _hitObjectPosition = hitObjectPosition;
+    if (l_materialCB.isVertexAnimated)
+    {
+        UINT _vbID = (CB.frameIndex + 1) & 1;
+        float3 _vertices[3] = { 
+            l_vertices[_vbID][vertexIndices[0]].position,
+            l_vertices[_vbID][vertexIndices[1]].position,
+            l_vertices[_vbID][vertexIndices[2]].position };
+        _hitObjectPosition = HitAttribute(_vertices, attr);
+    }
 
+    // Transform the hit object position to world space.
+    float3 _hitPosition = mul(_BLASTransform, float4(_hitObjectPosition, 1));
+    
     // Calculate normal at the hit in the previous frame.
     // BLAS Transforms in this sample are uniformly scaled so it's OK to directly apply the BLAS transform.
     // ToDo add a note that the transform is expected to have uniform scaling
@@ -179,11 +218,11 @@ void CalculateMotionVectorForReflectedPoint(
     // Calculate depth of the reflected hit position in the previous frame.
     // ToDo explain
     float3 _mirrorReflectedHitPosition = ReflectPointThroughAPlane(_hitPosition, _reflectorNormal, _reflectorHitPosition);
-    float3 _mirrorReflectedHitViewPosition = _mirrorReflectedHitPosition - g_sceneCB.prevCameraPosition.xyz;
-    float3 _cameraDirection = GenerateForwardCameraRayDirection(g_sceneCB.prevProjToWorldWithCameraEyeAtOrigin);
+    float3 _mirrorReflectedHitViewPosition = _mirrorReflectedHitPosition - CB.prevCameraPosition.xyz;
+    float3 _cameraDirection = GenerateForwardCameraRayDirection(CB.prevProjToWorldWithCameraEyeAtOrigin);
     prevFrameDepth = dot(_mirrorReflectedHitViewPosition, _cameraDirection);
 
-    float4 _clipSpacePosition = mul(float4(_mirrorReflectedHitPosition, 1), g_sceneCB.prevViewProj);   // ToDO is 3x3 multiply enough here?
+    float4 _clipSpacePosition = mul(float4(_mirrorReflectedHitPosition, 1), CB.prevViewProj);   // ToDO is 3x3 multiply enough here?
     float2 _texturePosition = ClipSpaceToTexturePosition(_clipSpacePosition);
 
     // ToDO pass in inverted dimensions?
@@ -194,7 +233,6 @@ void CalculateMotionVectorForReflectedPoint(
     motionVector = texturePosition - _texturePosition;
 }
 
-
 // Calculate screen texture-space motion vector from a previous to the current frame.
 void CalculateMotionVector(
     out float2 motionVector,
@@ -202,13 +240,30 @@ void CalculateMotionVector(
     out float3 prevFrameNormal,
     in uint instanceIndex,
     in float3 hitObjectPosition,
-    in float3 hitObjectNormal)
+    in float3 hitObjectNormal,
+    in uint3 vertexIndices,
+    in BuiltInTriangleIntersectionAttributes attr)
 { 
     // Calculate hit position of the hit in the previous frame.
     float3x4 _BLASTransform = g_prevFrameBottomLevelASInstanceTransform[instanceIndex];
-    float3 _hitPosition = mul(_BLASTransform, float4(hitObjectPosition, 1));
-    float3 _hitViewPosition = _hitPosition - g_sceneCB.prevCameraPosition.xyz;
-    float3 _cameraDirection = GenerateForwardCameraRayDirection(g_sceneCB.prevProjToWorldWithCameraEyeAtOrigin);
+
+    // Calculate hit object position of the hit in the previous frame.
+    float3 _hitObjectPosition = hitObjectPosition;
+    if (l_materialCB.isVertexAnimated)
+    {
+        UINT _vbID = (CB.frameIndex + 1) & 1;
+        float3 _vertices[3] = {
+            l_vertices[_vbID][vertexIndices[0]].position,
+            l_vertices[_vbID][vertexIndices[1]].position,
+            l_vertices[_vbID][vertexIndices[2]].position };
+        _hitObjectPosition = HitAttribute(_vertices, attr);
+    }
+
+    // Calculate hit position in the previous frame.
+    float3 _hitPosition = mul(_BLASTransform, float4(_hitObjectPosition, 1));
+
+    float3 _hitViewPosition = _hitPosition - CB.prevCameraPosition.xyz;
+    float3 _cameraDirection = GenerateForwardCameraRayDirection(CB.prevProjToWorldWithCameraEyeAtOrigin);
     prevFrameDepth = dot(_hitViewPosition, _cameraDirection);
 
     // Calculate normal at the hit in the previous frame.
@@ -216,7 +271,7 @@ void CalculateMotionVector(
     prevFrameNormal = normalize(mul((float3x3)_BLASTransform, hitObjectNormal));
 
     // Calculate screen space position of the hit in the previous frame.
-    float4 _clipSpacePosition = mul(float4(_hitPosition, 1), g_sceneCB.prevViewProj);
+    float4 _clipSpacePosition = mul(float4(_hitPosition, 1), CB.prevViewProj);
     float2 _texturePosition = ClipSpaceToTexturePosition(_clipSpacePosition);
 
     // ToDO pass in inverted dimensions?
@@ -301,7 +356,7 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRay
         | RAY_FLAG_FORCE_OPAQUE;             // ~skip any hit shaders
     
     // Skip closest hit shaders of tHit time is not needed.
-    if (!g_sceneCB.useShadowRayHitTime)
+    if (!CB.useShadowRayHitTime)
     {
         rayFlags |= RAY_FLAG_SKIP_CLOSEST_HIT_SHADER;
     }
@@ -365,31 +420,31 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 DTid, in UINT numSamples, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1))
 {
     numShadowRayHits = 0;
-    minHitDistance = g_sceneCB.RTAO_maxTheoreticalShadowRayHitTime;
+    minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
     float occlussionCoefSum = 0;
 
 #if AO_HITPOSITION_BASED_SEED
 #if AO_SAMPLES_SPREAD_ACCROSS_PIXELS
     // Neighboring samples NxN share a sample set.
     // Get a sample set ID and seed shared across neighboring pixels.
-    uint numSampleSetsInX = (DispatchRaysDimensions().x + g_sceneCB.numPixelsPerDimPerSet - 1) / g_sceneCB.numPixelsPerDimPerSet;
-    uint2 sampleSetId = DispatchRaysIndex().xy / g_sceneCB.numPixelsPerDimPerSet;
-    uint2 pixelZeroId = sampleSetId * g_sceneCB.numPixelsPerDimPerSet;
+    uint numSampleSetsInX = (DispatchRaysDimensions().x + CB.numPixelsPerDimPerSet - 1) / CB.numPixelsPerDimPerSet;
+    uint2 sampleSetId = DispatchRaysIndex().xy / CB.numPixelsPerDimPerSet;
+    uint2 pixelZeroId = sampleSetId * CB.numPixelsPerDimPerSet;
     float3 pixelZeroHitPosition = g_texGBufferPositionRT[pixelZeroId].xyz;      // ToDo remove?
 
-    uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + g_sceneCB.seed;
+    uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + CB.seed;
 
     uint RNGState = RNG::SeedThread(sampleSetSeed);
-    uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamplesPerSet;
+    uint sampleSetJump = RNG::Random(RNGState, 0, CB.numSampleSets - 1) * CB.numSamplesPerSet;
 
     // Get a pixel ID within the shared set across neighboring pixels.
-    uint2 pixeIDPerSet2D = DispatchRaysIndex().xy % g_sceneCB.numPixelsPerDimPerSet;
-    uint pixeIDPerSet = pixeIDPerSet2D.y * g_sceneCB.numPixelsPerDimPerSet + pixeIDPerSet2D.x;
+    uint2 pixeIDPerSet2D = DispatchRaysIndex().xy % CB.numPixelsPerDimPerSet;
+    uint pixeIDPerSet = pixeIDPerSet2D.y * CB.numPixelsPerDimPerSet + pixeIDPerSet2D.x;
 
     // ToDo is RNG being used here any useful?
-    uint numPixelsPerSet = g_sceneCB.numPixelsPerDimPerSet * g_sceneCB.numPixelsPerDimPerSet;
+    uint numPixelsPerSet = CB.numPixelsPerDimPerSet * CB.numPixelsPerDimPerSet;
     uint sampleJump = (pixeIDPerSet + RNG::Random(RNGState, 0, numPixelsPerSet - 1)) % numPixelsPerSet;
-    sampleJump *= g_sceneCB.numSamplesToUse;
+    sampleJump *= CB.numSamplesToUse;
 
 #if AO_PROGRESSIVE_SAMPLING
     sampleJump += numSamples * g_texInputAOFrameAge[DTid];
@@ -403,16 +458,16 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 	// Seed:
 	// - DispatchRaysDimensions to break correlation among neighboring pixels.
 	// - hash(hitPosition) to break correlation for the same pixel but differet hitPosition when moving camera/objects.
-    uint seed = (DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x) * hash(hitPosition) + g_sceneCB.seed;
+    uint seed = (DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x) * hash(hitPosition) + CB.seed;
 
 	uint RNGState = RNG::SeedThread(seed);
-	uint sampleSetJump = RNG::Random(RNGState, 0, g_sceneCB.numSampleSets - 1) * g_sceneCB.numSamples;
-	uint sampleJump = 0; //RNG::Random(RNGState, 0, g_sceneCB.numSamples - 1);
+	uint sampleSetJump = RNG::Random(RNGState, 0, CB.numSampleSets - 1) * CB.numSamples;
+	uint sampleJump = 0; //RNG::Random(RNGState, 0, CB.numSamples - 1);
 
-    for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
+    for (uint i = 0; i < CB.numSamplesToUse; i++)
     {
         // Load a pregenerated random sample from the sample set.
-        float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % g_sceneCB.numSamples].value;
+        float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % CB.numSamples].value;
 #endif
         // Calculate coordinate system for the hemisphere
         float3 u, v, w;
@@ -434,13 +489,13 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
         // ToDo hitPosition adjustment - fix crease artifacts
         // Todo fix noise on flat surface / box
         // ToDo remove unnecessary normalize()
-        Ray shadowRay = { hitPosition + g_sceneCB.RTAO_TraceRayOffsetAlongNormal * surfaceNormal, normalize(rayDirection) };
+        Ray shadowRay = { hitPosition + CB.RTAO_TraceRayOffsetAlongNormal * surfaceNormal, normalize(rayDirection) };
 
 #else
     uint2 BTid = DispatchRaysIndex().xy & 3; // 4x4 BlockThreadID
-    uint RNGState = RNG::SeedThread(g_sceneCB.seed + (BTid.y << 2 | BTid.x));
+    uint RNGState = RNG::SeedThread(CB.seed + (BTid.y << 2 | BTid.x));
 
-    for (uint i = 0; i < g_sceneCB.numSamplesToUse; i++)
+    for (uint i = 0; i < CB.numSamplesToUse; i++)
     {
         // Compute random normal using cylindrical coordinates
         float theta = RNG::Random01ex(RNGState) * 6.2831853;
@@ -455,20 +510,20 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 #endif
 
 #if REPRO_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF
-        const float tMax = g_sceneCB.RTAO_maxShadowRayHitTime;
+        const float tMax = CB.RTAO_maxShadowRayHitTime;
         float tHit;
         if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
         {
             // ToDo Setting coef to 1 and then 0.5 below causes device removal. Wth?
             float occlusionCoef = 1;
-            if (g_sceneCB.RTAO_IsExponentialFalloffEnabled)
+            if (CB.RTAO_IsExponentialFalloffEnabled)
             {
                 //float t = tHit / tMax;
-                //float lambda = g_sceneCB.RTAO_exponentialFalloffDecayConstant;
+                //float lambda = CB.RTAO_exponentialFalloffDecayConstant;
                 occlusionCoef = 0;    // Causes device removal
                 //occlusionCoef = 1 - t;  // Works...
             }
-            occlussionCoefSum += occlusionCoef;// (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
+            occlussionCoefSum += occlusionCoef;// (1.f - CB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
 
             numShadowRayHits++;
         }
@@ -476,19 +531,19 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
     float occlusionCoef = saturate(occlussionCoefSum / numSamples);
     float ambientCoef = 1.f - occlusionCoef;
 #elif REPRO_INVISIBLE_WALL
-        const float tMax = g_sceneCB.RTAO_maxShadowRayHitTime;
+        const float tMax = CB.RTAO_maxShadowRayHitTime;
         float tHit;
         if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
         {
             float occlusionCoef = 0;
             float t = tHit / tMax;
-            if (g_sceneCB.RTAO_IsExponentialFalloffEnabled && t >= g_sceneCB.RTAO_minimumAmbientIllumnination)
+            if (CB.RTAO_IsExponentialFalloffEnabled && t >= CB.RTAO_minimumAmbientIllumnination)
             {
-                float lambda = g_sceneCB.RTAO_exponentialFalloffDecayConstant;
+                float lambda = CB.RTAO_exponentialFalloffDecayConstant;
                 occlusionCoef = 1 - t;// exp(-lambda * t*t);
             }
-            //occlussionCoefSum += occlusionCoef;// (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
-            occlussionCoefSum = max(occlusionCoef, occlussionCoefSum);// (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
+            //occlussionCoefSum += occlusionCoef;// (1.f - CB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
+            occlussionCoefSum = max(occlusionCoef, occlussionCoefSum);// (1.f - CB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
 
             numShadowRayHits++;
         }
@@ -500,20 +555,20 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 
         float RTAO_TraceRayOffsetAlongNormal;
         float RTAO_TraceRayOffsetAlongRayDirection;
-        const float tMax = g_sceneCB.RTAO_maxShadowRayHitTime;
+        const float tMax = CB.RTAO_maxShadowRayHitTime;
         float tHit;
-        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, g_sceneCB.RTAO_TraceRayOffsetAlongRayDirection, tMax))
+        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, CB.RTAO_TraceRayOffsetAlongRayDirection, tMax))
         {
             float occlusionCoef = 1;
-            if (g_sceneCB.RTAO_IsExponentialFalloffEnabled)
+            if (CB.RTAO_IsExponentialFalloffEnabled)
             {
-                float theoreticalTMax = g_sceneCB.RTAO_maxTheoreticalShadowRayHitTime;
+                float theoreticalTMax = CB.RTAO_maxTheoreticalShadowRayHitTime;
                 float t = tHit / theoreticalTMax;
-                float lambda = g_sceneCB.RTAO_exponentialFalloffDecayConstant;
+                float lambda = CB.RTAO_exponentialFalloffDecayConstant;
                 // Note: update tMax calculation on falloff expression change.
                 occlusionCoef = exp(-lambda * t*t);
             }
-            occlussionCoefSum += (1.f - g_sceneCB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
+            occlussionCoefSum += (1.f - CB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
 
             minHitDistance = min(tHit, minHitDistance);
             numShadowRayHits++;
@@ -534,10 +589,10 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
     //      o Current surface color is the same as that of the occluders
     // Since this sample uses scalar ambient coefficient, we use the scalar luminance of the surface color.
     // This will generally brighten the AO making it closer to the result of full Global Illumination, including interreflections.
-    if (g_sceneCB.RTAO_approximateInterreflections)
+    if (CB.RTAO_approximateInterreflections)
     {
         float kA = ambientCoef;
-        float rho = g_sceneCB.RTAO_diffuseReflectanceScale * RGBtoLuminance(surfaceAlbedo);
+        float rho = CB.RTAO_diffuseReflectanceScale * RGBtoLuminance(surfaceAlbedo);
 
         ambientCoef = kA / (1 - rho * (1 - kA));
     }
@@ -582,7 +637,7 @@ void MyRayGenShader_Visibility()
 #else
 		float3 surfaceNormal = g_texGBufferNormal[DispatchRaysIndex().xy].xyz;
 #endif
-        Ray visibilityRay = { hitPosition + 0.001f * surfaceNormal, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
+        Ray visibilityRay = { hitPosition + 0.001f * surfaceNormal, normalize(CB.lightPosition.xyz - hitPosition) };
 
         float tHit;
 		inShadow = TraceShadowRayAndReportIfHit(tHit, visibilityRay, 0);
@@ -607,7 +662,7 @@ inline Ray GenerateCameraRayViaInterpolation(uint2 index, in float3 cameraPositi
     // ToDo remove CB ref
     Ray ray;
     ray.origin = cameraPosition;
-    ray.direction = normalize(g_sceneCB.cameraAt.xyz - cameraPosition) + screenPos.x * g_sceneCB.cameraRight.xyz + screenPos.y * g_sceneCB.cameraUp.xyz;
+    ray.direction = normalize(CB.cameraAt.xyz - cameraPosition) + screenPos.x * CB.cameraRight.xyz + screenPos.y * CB.cameraUp.xyz;
 
 #else
     float3 pos00 = ScreenPosToWorldPos(uint2(0, 0), projectionToWorldWithCameraEyeAtOrigin);
@@ -628,11 +683,11 @@ void MyRayGenShader_GBuffer()
     // ToDo make sure all pixels get written to or clear buffers beforehand. 
 
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
-	Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, g_sceneCB.cameraJitter);
-    //Ray ray = GenerateCameraRayViaInterpolation(DispatchRaysIndex().xy, g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
+	Ray ray = GenerateCameraRay(DispatchRaysIndex().xy, CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin, CB.cameraJitter);
+    //Ray ray = GenerateCameraRayViaInterpolation(DispatchRaysIndex().xy, CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
 
     Ray rx, ry;
-    GetAuxilaryCameraRays(g_sceneCB.cameraPosition.xyz, g_sceneCB.projectionToWorldWithCameraEyeAtOrigin, rx, ry);
+    GetAuxilaryCameraRays(CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin, rx, ry);
 
 	// Cast a ray into the scene and retrieve GBuffer information.
 	UINT currentRayRecursionDepth = 0;
@@ -653,15 +708,15 @@ void MyRayGenShader_GBuffer()
 #if  REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // CB value is incorrect on rayPayload.hit boundaries causing blocky artifacts when within if (hit) block
     if (rayPayload.hit)
     {
-        float3 raySegment = rayPayload.hitPosition - g_sceneCB.cameraPosition.xyz;
+        float3 raySegment = rayPayload.hitPosition - CB.cameraPosition.xyz;
 #else
 
     // ToDo dedupe
-    //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - g_sceneCB.cameraPosition.xyz, 1);
+    //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - CB.cameraPosition.xyz, 1);
     if (rayPayload.hit)
     {
         // Calculate depth value.
-        //float4 homogeneousScreenSpaceHitPosition = mul(viewSpaceHitPosition, g_sceneCB.viewProjection);
+        //float4 homogeneousScreenSpaceHitPosition = mul(viewSpaceHitPosition, CB.viewProjection);
         //float4 screenSpaceHitPosition = homogeneousScreenSpaceHitPosition / homogeneousScreenSpaceHitPosition.w;
 
 
@@ -681,12 +736,12 @@ void MyRayGenShader_GBuffer()
     // ToDo normalize depth to [0,1] as floating point has higher precision around 0.
     // ToDo need to normalize hit distance as well
 #if USE_NORMALIZED_Z
-     float linearDistance = NormalizeToRange(rayLength, g_sceneCB.Zmin, g_sceneCB.Zmax);
+     float linearDistance = NormalizeToRange(rayLength, CB.Zmin, CB.Zmax);
 #else
-    float linearDistance = rayLength;// (rayLength - g_sceneCB.Zmin) / (g_sceneCB.Zmax - g_sceneCB.Zmin);
+    float linearDistance = rayLength;// (rayLength - CB.Zmin) / (CB.Zmax - CB.Zmin);
 #endif
     // Calculate z-depth
-    float3 cameraDirection = GenerateForwardCameraRayDirection(g_sceneCB.projectionToWorldWithCameraEyeAtOrigin);
+    float3 cameraDirection = GenerateForwardCameraRayDirection(CB.projectionToWorldWithCameraEyeAtOrigin);
     float linearDepth = linearDistance * dot(ray.direction, cameraDirection);
 
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
@@ -740,7 +795,7 @@ void MyRayGenShader_AO()
 #endif
 
         float3 surfaceAlbedo = float3(1, 1, 1);
-        if (g_sceneCB.RTAO_approximateInterreflections)
+        if (CB.RTAO_approximateInterreflections)
         {
             uint2 materialInfo = g_texGBufferMaterialInfo[DTid];
             UINT materialID;
@@ -748,24 +803,24 @@ void MyRayGenShader_AO()
             surfaceAlbedo = surfaceAlbedo;
         }
 
-        UINT numSamples = g_sceneCB.numSamplesToUse;
+        UINT numSamples = CB.numSamplesToUse;
 
-        if (g_sceneCB.RTAO_UseAdaptiveSampling)
+        if (CB.RTAO_UseAdaptiveSampling)
         {
             float filterWeightSum = g_filterWeightSum[DTid].x;
-            float clampedFilterWeightSum = min(filterWeightSum, g_sceneCB.RTAO_AdaptiveSamplingMaxWeightSum);
-            float sampleScale = 1 - (clampedFilterWeightSum / g_sceneCB.RTAO_AdaptiveSamplingMaxWeightSum);
+            float clampedFilterWeightSum = min(filterWeightSum, CB.RTAO_AdaptiveSamplingMaxWeightSum);
+            float sampleScale = 1 - (clampedFilterWeightSum / CB.RTAO_AdaptiveSamplingMaxWeightSum);
             
-            UINT minSamples = g_sceneCB.RTAO_AdaptiveSamplingMinSamples;
-            UINT extraSamples = g_sceneCB.numSamplesToUse - minSamples;
+            UINT minSamples = CB.RTAO_AdaptiveSamplingMinSamples;
+            UINT extraSamples = CB.numSamplesToUse - minSamples;
 
-            if (g_sceneCB.RTAO_AdaptiveSamplingMinMaxSampling)
+            if (CB.RTAO_AdaptiveSamplingMinMaxSampling)
             {
                 numSamples = minSamples + (sampleScale >= 0.001 ? extraSamples : 0);
             }
             else
             {
-                float scaleExponent = g_sceneCB.RTAO_AdaptiveSamplingScaleExponent;
+                float scaleExponent = CB.RTAO_AdaptiveSamplingScaleExponent;
                 numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
             }
         }
@@ -778,10 +833,10 @@ void MyRayGenShader_AO()
 	g_rtAORayHits[DispatchRaysIndex().xy] = numShadowRayHits;
 #endif
 
-    if (g_sceneCB.useShadowRayHitTime)
+    if (CB.useShadowRayHitTime)
     {
 #if USE_NORMALIZED_Z
-        minHitDistance *= 1 / (g_sceneCB.Zmax - g_sceneCB.Zmin); // ToDo pass by CB? 
+        minHitDistance *= 1 / (CB.Zmax - CB.Zmin); // ToDo pass by CB? 
 #endif
       g_rtAORayHitDistance[DispatchRaysIndex().xy] = minHitDistance;
     }
@@ -805,7 +860,7 @@ void MyRayGenShaderQuarterRes_AO()
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
         // ToDo Standardize naming AO vs AmbientOcclusion ?
-		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, DTid, g_sceneCB.numSamplesToUse, hitPosition, surfaceNormal);
+		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, DTid, CB.numSamplesToUse, hitPosition, surfaceNormal);
 	}
 
 	g_rtAOcoefficient[DispatchRaysIndex().xy] = ambientCoef;
@@ -838,7 +893,12 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
 	const uint3 indices = Load3x16BitIndices(baseIndex, l_indices);
 #endif
 	// Retrieve corresponding vertex normals for the triangle vertices.
-	float3 vertexNormals[3] = { l_vertices[indices[0]].normal, l_vertices[indices[1]].normal, l_vertices[indices[2]].normal};
+    UINT vbID = l_materialCB.isVertexAnimated & (CB.frameIndex & 1);
+	float3 vertexNormals[3] = { 
+        // Use NonUniformResourceIndex qualifier on the VB index since it may differ between animated and non-animated geometry.
+        l_vertices[NonUniformResourceIndex(vbID)][indices[0]].normal,
+        l_vertices[NonUniformResourceIndex(vbID)][indices[1]].normal,
+        l_vertices[NonUniformResourceIndex(vbID)][indices[2]].normal};
 
 #if FLAT_FACE_NORMALS
 	BuiltInTriangleIntersectionAttributes attrCenter;
@@ -851,7 +911,7 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
     // PERFORMANCE TIP: it is recommended to avoid values carry over across TraceRay() calls. 
     // Therefore, in cases like retrieving HitWorldPosition(), it is recomputed every time.
 #if AO_ONLY
-	float ambientCoef = CalculateAO(HitWorldPosition(), 0, g_sceneCB.numSamplesToUse, triangleNormal);
+	float ambientCoef = CalculateAO(HitWorldPosition(), 0, CB.numSamplesToUse, triangleNormal);
 	float4 color = ambientCoef * float4(0.75, 0.75, 0.75, 0.75);
 #else
     // Shadow component.
@@ -859,11 +919,11 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
     float3 hitPosition = HitWorldPosition();
 	
 	// ToDo
-//    Ray shadowRay = { hitPosition + 0.0001f * triangleNormal, normalize(g_sceneCB.lightPosition.xyz - hitPosition) };
+//    Ray shadowRay = { hitPosition + 0.0001f * triangleNormal, normalize(CB.lightPosition.xyz - hitPosition) };
   //  bool shadowRayHit = TraceShadowRayAndReportIfHit(shadowRay, rayPayload.recursionDepth);
 	
     // Calculate final color.
-	float ambientCoef = CalculateAO(HitWorldPosition(), 0, g_sceneCB.numSamplesToUse, triangleNormal);
+	float ambientCoef = CalculateAO(HitWorldPosition(), 0, CB.numSamplesToUse, triangleNormal);
 	float4 color = float4(1, 0, 0, 0); //ToDo
     //float3 phongColor = CalculatePhongLighting(triangleNormal, shadowRayHit, ambient, l_materialCB.diffuse, l_materialCB.specular, l_materialCB.specularPower);
 	//float4 color =  float4(phongColor, 1);
@@ -897,7 +957,13 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #endif
 
     // Retrieve texture coordinates for the hit.
-    VertexPositionNormalTextureTangent vertices[3] = { l_vertices[indices[0]], l_vertices[indices[1]], l_vertices[indices[2]] };
+    UINT vbID = l_materialCB.isVertexAnimated & (CB.frameIndex & 1);
+    VertexPositionNormalTextureTangent vertices[3] = { 
+        // Use NonUniformResourceIndex qualifier on the VB index since it may differ between animated and non-animated geometry.
+        l_vertices[NonUniformResourceIndex(vbID)][indices[0]],
+        l_vertices[NonUniformResourceIndex(vbID)][indices[1]],
+        l_vertices[NonUniformResourceIndex(vbID)][indices[2]]};
+
     float2 vertexTexCoords[3] = { vertices[0].textureCoordinate, vertices[1].textureCoordinate, vertices[2].textureCoordinate };
     float2 texCoord = HitAttribute(vertexTexCoords, attr);
 
@@ -947,7 +1013,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
 
     if (material.hasDiffuseTexture || 
-        (g_sceneCB.RTAO_UseNormalMaps && material.hasNormalTexture))
+        (CB.RTAO_UseNormalMaps && material.hasNormalTexture))
     {
         float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
         float3 tangent = HitAttribute(vertexTangents, attr);
@@ -960,7 +1026,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     }
 
     // Apply NormalMap
-    if (g_sceneCB.RTAO_UseNormalMaps && material.hasNormalTexture)
+    if (CB.RTAO_UseNormalMaps && material.hasNormalTexture)
     {
         float3 tangent;
         if (material.hasPerVertexTangents)
@@ -1050,7 +1116,9 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
                 prevFrameNormal,
                 InstanceIndex(),
                 HitObjectPosition(),
-                objectNormal);
+                objectNormal,
+                indices,
+                attr);
         }
         // Single reflected/refracted ray hits.
         else if (rayPayload.rayRecursionDepth == 2)
@@ -1062,6 +1130,8 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
                 rayPayload.instanceIndex,
                 rayPayload.hitObjectPosition,
                 rayPayload.objectNormal,
+                indices,
+                attr,
                 InstanceIndex(),
                 HitObjectPosition(),
                 objectNormal);

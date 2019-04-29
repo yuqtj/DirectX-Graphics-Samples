@@ -39,7 +39,7 @@ namespace GpuKernels
 			UINT height,
 			UINT numInvocationsPerFrame);
 		void Execute(
-			ID3D12GraphicsCommandList5* commandList,
+			ID3D12GraphicsCommandList4* commandList,
 			ID3D12DescriptorHeap* descriptorHeap,
 			UINT frameIndex,
 			UINT invocationIndex,
@@ -65,7 +65,7 @@ namespace GpuKernels
 
 		void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
 		void Execute(
-			ID3D12GraphicsCommandList5* commandList,
+			ID3D12GraphicsCommandList4* commandList,
 			UINT width,
 			UINT height,
 			ID3D12DescriptorHeap* descriptorHeap,
@@ -98,7 +98,7 @@ namespace GpuKernels
 
 		void Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
 		void Execute(
-			ID3D12GraphicsCommandList5* commandList,
+			ID3D12GraphicsCommandList4* commandList,
 			UINT width,
 			UINT height,
 			ID3D12DescriptorHeap* descriptorHeap,
@@ -127,7 +127,7 @@ namespace GpuKernels
 
         void Initialize(ID3D12Device5* device, Type type);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -168,7 +168,7 @@ namespace GpuKernels
 
         void Initialize(ID3D12Device5* device, Type type);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -198,7 +198,7 @@ namespace GpuKernels
 
         void Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -234,7 +234,7 @@ namespace GpuKernels
 
         void Initialize(ID3D12Device5* device, Type type);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -266,7 +266,7 @@ namespace GpuKernels
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
             FilterType type,
@@ -300,7 +300,7 @@ namespace GpuKernels
             UINT height,
             UINT numInvocationsPerFrame);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT frameIndex,
             UINT invocationIndex,
@@ -343,7 +343,7 @@ namespace GpuKernels
             UINT width,
             UINT height);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap, 
             FilterType type,
             // ToDo use helper structs to pass the data in
@@ -395,7 +395,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, DX::DescriptorHeap* descriptorHeap);
-        void Execute(ID3D12GraphicsCommandList5* commandList, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_DESCRIPTOR_HANDLE* outputResourceHandle);
+        void Execute(ID3D12GraphicsCommandList4* commandList, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_DESCRIPTOR_HANDLE* outputResourceHandle);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -417,7 +417,7 @@ namespace GpuKernels
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height,
@@ -441,7 +441,7 @@ namespace GpuKernels
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height,
@@ -475,7 +475,7 @@ namespace GpuKernels
         // ToDo set default parameters
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
-            ID3D12GraphicsCommandList5* commandList,
+            ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -524,6 +524,35 @@ namespace GpuKernels
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
         ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
+    };
+
+    class GenerateGrassPatch
+    {
+    public:
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device5* device, const wchar_t* windTexturePath, DX::DescriptorHeap* descriptorHeap, ResourceUploadBatch* resourceUpload, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList4* commandList,
+            const GenerateGrassStrawsConstantBuffer_AppParams& appParams,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputVertexBufferResourceHandle);
+
+        UINT GetVertexBufferSize(UINT grassStrawsX, UINT grassStrawsY)
+        {
+            return grassStrawsX * grassStrawsY * N_GRASS_VERTICES * sizeof(VertexPositionNormalTextureTangent);
+        }
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+
+        ConstantBuffer<GenerateGrassStrawsConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
+        D3DTexture                          m_windTexture;
     };
 
 }

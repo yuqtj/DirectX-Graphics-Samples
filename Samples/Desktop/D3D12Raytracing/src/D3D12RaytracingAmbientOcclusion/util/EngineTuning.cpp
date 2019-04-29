@@ -206,7 +206,7 @@ EngineVar* VariableGroup::NextVariable(EngineVar* curVar)
             break;
     }
 
-    ThrowIfFailed(iter != m_Children.end(), L"Did not find engine variable in its designated group");
+    ThrowIfFalse(iter != m_Children.end(), L"Did not find engine variable in its designated group");
 
     auto nextIter = iter;
     ++nextIter;
@@ -226,7 +226,7 @@ EngineVar* VariableGroup::PrevVariable(EngineVar* curVar)
             break;
     }
 
-    ThrowIfFailed(iter != m_Children.end(), L"Did not find engine variable in its designated group");
+    ThrowIfFalse(iter != m_Children.end(), L"Did not find engine variable in its designated group");
 
     if (iter == m_Children.begin())
         return this;
@@ -329,7 +329,7 @@ void BoolVar::SetValue(FILE* file, const wstring& setting)
 NumVar::NumVar(const wstring& path, float val, float minVal, float maxVal, float stepSize, function<void(void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
-    ThrowIfFailed(minVal <= maxVal);
+    ThrowIfFalse(minVal <= maxVal);
     m_MinValue = minVal;
     m_MaxValue = maxVal;
     m_Value = Clamp(val);
@@ -404,7 +404,7 @@ void ExpVar::SetValue(FILE* file, const wstring& setting)
 IntVar::IntVar(const wstring& path, int32_t val, int32_t minVal, int32_t maxVal, int32_t stepSize, function<void(void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
-    ThrowIfFailed(minVal <= maxVal);
+    ThrowIfFalse(minVal <= maxVal);
     m_MinValue = minVal;
     m_MaxValue = maxVal;
     m_Value = Clamp(val);
@@ -436,7 +436,7 @@ void IntVar::SetValue(FILE* file, const wstring& setting)
 EnumVar::EnumVar(const wstring& path, int32_t initialVal, int32_t listLength, const WCHAR** listLabels, function<void(void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
-    ThrowIfFailed(listLength > 0);
+    ThrowIfFalse(listLength > 0);
     m_EnumLength = listLength;
     m_EnumLabels = listLabels;
     m_Value = Clamp(initialVal);
@@ -505,8 +505,8 @@ void EngineTuning::Initialize(void)
 {
     for (int32_t i = 0; i < s_UnregisteredCount; ++i)
     {
-        ThrowIfFailed(wcslen(s_UnregisteredPath[i]) > 0, L"Register = %d\n", i);
-        ThrowIfFailed(s_UnregisteredVariable[i] != nullptr);
+        ThrowIfFalse(wcslen(s_UnregisteredPath[i]) > 0, L"Register = %d\n", i);
+        ThrowIfFalse(s_UnregisteredVariable[i] != nullptr);
         AddToVariableGraph(s_UnregisteredPath[i], *s_UnregisteredVariable[i]);
     }
     s_UnregisteredCount = -1;
@@ -646,7 +646,7 @@ void EngineTuning::AddToVariableGraph(const wstring& path, EngineVar& var)
         else
         {
             nextGroup = dynamic_cast<VariableGroup*>(node);
-            ThrowIfFailed(nextGroup != nullptr, L"Attempted to trash the tweak graph");
+            ThrowIfFalse(nextGroup != nullptr, L"Attempted to trash the tweak graph");
             group = nextGroup;
         }
     }

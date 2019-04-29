@@ -146,7 +146,7 @@ namespace LocalRootSignature {
         struct RootArguments {
             PrimitiveConstantBuffer cb;
 			//XMUINT3 padding;		// ToDo remove/explain why - CB needs to be aligned to 16B
-            D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
+            D3D12_GPU_DESCRIPTOR_HANDLE indexVertexBufferGPUHandle;
             D3D12_GPU_DESCRIPTOR_HANDLE diffuseTextureGPUHandle;
             D3D12_GPU_DESCRIPTOR_HANDLE normalTextureGPUHandle;
         };

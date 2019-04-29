@@ -34,6 +34,7 @@
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
 #include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
+#include "CompiledShaders\GenerateGrassStrawsCS.hlsl.h"
 
 using namespace std;
 
@@ -145,7 +146,7 @@ namespace GpuKernels
 	}
 
 	void ReduceSum::Execute(
-		ID3D12GraphicsCommandList5* commandList,
+		ID3D12GraphicsCommandList4* commandList,
 		ID3D12DescriptorHeap* descriptorHeap, 
 		UINT frameIndex,
 		UINT invocationIndex,   // per frame invocation index
@@ -290,7 +291,7 @@ namespace GpuKernels
 	// Downsamples input resource.
 	// width, height - dimensions of the input resource.
 	void DownsampleBoxFilter2x2::Execute(
-		ID3D12GraphicsCommandList5* commandList,
+		ID3D12GraphicsCommandList4* commandList,
 		UINT width,
 		UINT height,
 		ID3D12DescriptorHeap* descriptorHeap,
@@ -385,7 +386,7 @@ namespace GpuKernels
 	// Downsamples input resource.
 	// width, height - dimensions of the input resource.
 	void DownsampleGaussianFilter::Execute(
-		ID3D12GraphicsCommandList5* commandList,
+		ID3D12GraphicsCommandList4* commandList,
 		UINT width,
 		UINT height,
 		ID3D12DescriptorHeap* descriptorHeap,
@@ -515,7 +516,7 @@ namespace GpuKernels
     // Downsamples input resource.
     // width, height - dimensions of the input resource.
     void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -636,7 +637,7 @@ namespace GpuKernels
     // Downsamples input resource.
     // width, height - dimensions of the input resource.
     void DownsampleValueNormalDepthBilateralFilter::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -739,7 +740,7 @@ namespace GpuKernels
     // width, height - dimensions of the output resource.
     // ToDo should the input width/height be of output or input?
     void UpsampleBilateralFilter::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         UINT width, // Todo remove and deduce from outputResourceInstead?
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -858,7 +859,7 @@ namespace GpuKernels
     // Resamples input resource.
     // width, height - dimensions of the input resource.
     void MultiScale_UpsampleBilateralFilterAndCombine::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -966,7 +967,7 @@ namespace GpuKernels
     // Blurs input resource with a Gaussian filter.
     // width, height - dimensions of the input resource.
     void GaussianFilter::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
         FilterType type,
@@ -1068,7 +1069,7 @@ namespace GpuKernels
     //  3) Takes a root square on the CPU of the readback result
     // width, height - dimensions of the input resource.
     void RootMeanSquareError::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT frameIndex,
         UINT invocationIndex,
@@ -1238,7 +1239,7 @@ namespace GpuKernels
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
     void AtrousWaveletTransformCrossBilateralFilter::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         FilterType filterType,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
@@ -1471,7 +1472,7 @@ namespace GpuKernels
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
     void CalculatePartialDerivatives::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
         UINT height,
@@ -1507,7 +1508,6 @@ namespace GpuKernels
             commandList->Dispatch(groupSize.x, groupSize.y, 1);
         }
     }
-
 
 
     namespace RootSignature {
@@ -1571,7 +1571,7 @@ namespace GpuKernels
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
     void CalculateVariance::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
         UINT height,
@@ -1731,7 +1731,7 @@ namespace GpuKernels
 
     // ToDo desc
     void RTAO_TemporalCache_ReverseReproject::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -1893,7 +1893,7 @@ namespace GpuKernels
     }
 
     void WriteValueToTexture::Execute(
-        ID3D12GraphicsCommandList5* commandList,
+        ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         D3D12_GPU_DESCRIPTOR_HANDLE* outputResourceHandle)
     {
@@ -1920,6 +1920,112 @@ namespace GpuKernels
         commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_output.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 
         *outputResourceHandle = m_output.gpuDescriptorReadAccess;
+    }
+
+
+
+    namespace RootSignature {
+        namespace GenerateGrassPatch {
+            namespace Slot {
+                enum Enum {
+                    OutputVB = 0,
+                    InputWindMap,
+                    ConstantBuffer,
+                    Count
+                };
+            }
+        }
+    }
+
+    // ToDo move resource upload to a separate call?
+    void GenerateGrassPatch::Initialize(
+        ID3D12Device5* device, 
+        const wchar_t* windTexturePath,
+        DX::DescriptorHeap* descriptorHeap,
+        ResourceUploadBatch* resourceUpload, 
+        UINT frameCount, 
+        UINT numCallsPerFrame)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::GenerateGrassPatch;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
+            ranges[Slot::InputWindMap].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input wind texture
+            ranges[Slot::OutputVB].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output vertex buffer 
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::InputWindMap].InitAsDescriptorTable(1, &ranges[Slot::InputWindMap]);
+            rootParameters[Slot::OutputVB].InitAsDescriptorTable(1, &ranges[Slot::OutputVB]);
+            rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+            CD3DX12_STATIC_SAMPLER_DESC staticWrapLinearSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticWrapLinearSampler);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: GenerateGrassPatch");
+        }
+
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pGenerateGrassStrawsCS), ARRAYSIZE(g_pGenerateGrassStrawsCS));
+
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: GenerateGrassPatch");
+        }
+
+        // Create shader resources.
+        {
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: GenerateGrassPatch");
+        }
+
+        // Load the wind texture.
+        {
+            LoadWICTexture(device, resourceUpload, windTexturePath, descriptorHeap, &m_windTexture.resource, &m_windTexture.heapIndex, &m_windTexture.cpuDescriptorHandle, &m_windTexture.gpuDescriptorHandle, false);
+        };
+
+    }
+
+    // ToDo add option to allow input, output being the same
+    // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
+    void GenerateGrassPatch::Execute(
+        ID3D12GraphicsCommandList4* commandList,
+        const GenerateGrassStrawsConstantBuffer_AppParams& appParams,
+        ID3D12DescriptorHeap* descriptorHeap,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputVertexBufferResourceHandle)
+    {
+        using namespace RootSignature::GenerateGrassPatch;
+        using namespace DefaultComputeShaderParams;
+        
+        // ToDo move out or rename
+        // ToDo add spaces to names?
+        ScopedTimer _prof(L"Generate Grass Patch", commandList);
+
+        // Set pipeline state.
+        {
+            commandList->SetDescriptorHeaps(1, &descriptorHeap);
+            commandList->SetComputeRootSignature(m_rootSignature.Get());
+            commandList->SetPipelineState(m_pipelineStateObject.Get());
+            commandList->SetComputeRootDescriptorTable(Slot::InputWindMap, m_windTexture.gpuDescriptorHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputVB, outputVertexBufferResourceHandle);
+        }
+
+        // Update the Constant Buffer.
+        m_CB->p = appParams;
+        m_CB->invActivePatchDim = XMFLOAT2(1.f / appParams.activePatchDim.x, 1.f / appParams.activePatchDim.y);
+        m_CB->p = appParams;
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
+        commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
+
+
+        // Dispatch.
+        {
+            XMUINT2 dim = appParams.maxPatchDim;
+            XMUINT2 groupSize(CeilDivide(dim.x, ThreadGroup::Width), CeilDivide(dim.y, ThreadGroup::Height));
+            commandList->Dispatch(groupSize.x, groupSize.y, 1);
+        }
     }
 
 }

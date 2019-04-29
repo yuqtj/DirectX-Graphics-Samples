@@ -29,8 +29,9 @@ The title bar of the sample provides runtime information:
 ## Requirements
 * Requires DXR capable HW and SW. Consult the main [D3D12 Raytracing readme](../../readme.md) for requirements. The sample doesn't implement Raytracing Fallback Layer path.
 
-## 3rd party assets
-* The sample graciously uses following 3rd party assets:
+## Acknowledgements
+* The grass straw generation is based on Emerald Engine implementation https://github.com/lragnarsson/Emerald-Engine
+* The sample uses following 3rd party assets:
   * A pbrt-v3 version of 'Victoryan Style House' by MrChimp2313, downloaded from https://benedikt-bitterli.me/resources/, released under a [CC0 license](https://creativecommons.org/publicdomain/zero/1.0/).
   * A pbrt-v3 version of 'Pontiac GTO 67' by thecali, downloaded from https://benedikt-bitterli.me/resources/, released under a [CC0 license](https://creativecommons.org/publicdomain/zero/1.0/).
   * A pbrt-v3 version of 'Dragon' by Delatronic, downloaded from https://benedikt-bitterli.me/resources/, released under a [CC-BY license](https://creativecommons.org/licenses/by/3.0/).

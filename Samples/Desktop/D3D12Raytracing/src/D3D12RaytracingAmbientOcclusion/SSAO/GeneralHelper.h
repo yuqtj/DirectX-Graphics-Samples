@@ -28,7 +28,7 @@ inline void AllocateTexture2D(
     void *pData,
     ID3D12Resource **ppResource,
     ID3D12Resource **ppUploadResource,
-    ID3D12GraphicsCommandList5* commandList,
+    ID3D12GraphicsCommandList4* commandList,
     UINT width,
     UINT height,
     UINT stride,
