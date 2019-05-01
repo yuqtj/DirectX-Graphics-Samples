@@ -118,7 +118,7 @@ private:
 
     GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
 
-
+    UINT                                m_currentGrassPatchVBIndex = 0;
     RWGpuResource                           m_grassPatchVB[2];      // Two VBs: current and previous frame.
     D3DBuffer                           m_nullVB;               // Null vertex Buffer - used for geometries that don't animate and don't need double buffering for motion vector calculation.
 

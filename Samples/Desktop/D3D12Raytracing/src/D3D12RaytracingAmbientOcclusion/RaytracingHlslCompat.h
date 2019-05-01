@@ -99,9 +99,9 @@
 
 #define AO_PROGRESSIVE_SAMPLING 0
 
-#define ENABLE_VSYNC 0
+#define ENABLE_VSYNC 1
 #if ENABLE_VSYNC
-#define VSYNC_PRESENT_INTERVAL 2  
+#define VSYNC_PRESENT_INTERVAL 1  
 #endif
 
 #define BLUR_AO 1
@@ -455,7 +455,7 @@ struct SceneConstantBuffer
 
     float RTAO_TraceRayOffsetAlongNormal;
     float RTAO_TraceRayOffsetAlongRayDirection;
-    UINT  frameIndex;
+    UINT  currentFrameVBindex;
     float padding;
 };
  

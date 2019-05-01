@@ -90,7 +90,7 @@ ConstantBuffer<PrimitiveConstantBuffer> l_materialCB : register(b0, space1);
 #if ONLY_SQUID_SCENE_BLAS
 StructuredBuffer<Index> l_indices : register(t0, space1);
 // Vertex buffers for current and previous frame.
-// Current frame array index is ~ (frameIndex & 1) for animated geometry, 0 otherwise.
+// Current frame array index is ~ (currentFrameVBindex & 1) for animated geometry, 0 otherwise.
 StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices[2] : register(t1, space1);  // t1-t2
 #else
 ByteAddressBuffer l_indices : register(t0, space1);
@@ -142,26 +142,6 @@ float3 ReflectPointThroughAPlane(in float3 P, in float3 planeNormal, in float3 p
     return P + 2 * t * N;
 }
 
-
-// Calculate translation vector for the hit object position from previous to current frame due to animated vertices.
-float3 GetHitObjectTranslationPrevToCurrentFrame(in float3 hitObjectPosition, in uint indices[3], in BuiltInTriangleIntersectionAttributes attr)
-{
-    float3 hitObjectTranslationPrevToCurrentFrame = 0;
-    if (l_materialCB.isVertexAnimated)
-    {
-        UINT vbID = (CB.frameIndex + 1) & 1;
-        float3 _vertices[3] = { 
-            l_vertices[vbID][indices[0]].position, 
-            l_vertices[vbID][indices[1]].position, 
-            l_vertices[vbID][indices[2]].position };
-        float3 _hitObjectPosition = HitAttribute(_vertices, attr);
-        hitObjectTranslationPrevToCurrentFrame = hitObjectPosition - _hitObjectPosition;
-    }
-
-    return hitObjectTranslationPrevToCurrentFrame;
-}
-
-
 // ToDo standardize pos vs position in shaders
 // Calculate screen texture-space motion vector from a previous to the current frame.
 void CalculateMotionVectorForReflectedPoint(
@@ -183,11 +163,11 @@ void CalculateMotionVectorForReflectedPoint(
     float3x4 _BLASTransform = g_prevFrameBottomLevelASInstanceTransform[instanceIndex];
 
     // Calculate hit object position of the hit in the previous frame.
-    float3 _hitObjectPosition = hitObjectPosition;
+    float3 _hitObjectPosition = hitObjectPosition;  // For non-animated geometry, object position are same frame to frame.
     if (l_materialCB.isVertexAnimated)
     {
-        UINT _vbID = (CB.frameIndex + 1) & 1;
-        float3 _vertices[3] = { 
+        UINT _vbID = (CB.currentFrameVBindex + 1) & 1;
+        float3 _vertices[3] = {
             l_vertices[_vbID][vertexIndices[0]].position,
             l_vertices[_vbID][vertexIndices[1]].position,
             l_vertices[_vbID][vertexIndices[2]].position };
@@ -226,10 +206,9 @@ void CalculateMotionVectorForReflectedPoint(
     float2 _texturePosition = ClipSpaceToTexturePosition(_clipSpacePosition);
 
     // ToDO pass in inverted dimensions?
-    // ToDo should this add 0.5f?
     float2 xy = DispatchRaysIndex().xy + 0.5f;   // Center in the middle of the pixel.
     float2 texturePosition = xy / (float2) DispatchRaysDimensions().xy;
-    //prevFrameNormal.xy = _texturePosition * DispatchRaysDimensions().xy;
+
     motionVector = texturePosition - _texturePosition;
 }
 
@@ -248,14 +227,14 @@ void CalculateMotionVector(
     float3x4 _BLASTransform = g_prevFrameBottomLevelASInstanceTransform[instanceIndex];
 
     // Calculate hit object position of the hit in the previous frame.
-    float3 _hitObjectPosition = hitObjectPosition;
+    float3 _hitObjectPosition = hitObjectPosition; // For non-animated geometry, object position are same frame to frame.
     if (l_materialCB.isVertexAnimated)
     {
-        UINT _vbID = (CB.frameIndex + 1) & 1;
-        float3 _vertices[3] = {
-            l_vertices[_vbID][vertexIndices[0]].position,
-            l_vertices[_vbID][vertexIndices[1]].position,
-            l_vertices[_vbID][vertexIndices[2]].position };
+        float3 _vertices[3];
+        UINT _vbID = (CB.currentFrameVBindex + 1) & 1;
+        _vertices[0] = l_vertices[_vbID][vertexIndices[0]].position;
+        _vertices[1] = l_vertices[_vbID][vertexIndices[1]].position;
+        _vertices[2] = l_vertices[_vbID][vertexIndices[2]].position;
         _hitObjectPosition = HitAttribute(_vertices, attr);
     }
 
@@ -264,6 +243,7 @@ void CalculateMotionVector(
 
     float3 _hitViewPosition = _hitPosition - CB.prevCameraPosition.xyz;
     float3 _cameraDirection = GenerateForwardCameraRayDirection(CB.prevProjToWorldWithCameraEyeAtOrigin);
+
     prevFrameDepth = dot(_hitViewPosition, _cameraDirection);
 
     // Calculate normal at the hit in the previous frame.
@@ -893,12 +873,11 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
 	const uint3 indices = Load3x16BitIndices(baseIndex, l_indices);
 #endif
 	// Retrieve corresponding vertex normals for the triangle vertices.
-    UINT vbID = l_materialCB.isVertexAnimated & (CB.frameIndex & 1);
-	float3 vertexNormals[3] = { 
-        // Use NonUniformResourceIndex qualifier on the VB index since it may differ between animated and non-animated geometry.
-        l_vertices[NonUniformResourceIndex(vbID)][indices[0]].normal,
-        l_vertices[NonUniformResourceIndex(vbID)][indices[1]].normal,
-        l_vertices[NonUniformResourceIndex(vbID)][indices[2]].normal};
+    UINT vbID = l_materialCB.isVertexAnimated & (CB.currentFrameVBindex & 1);
+    float3 vertexNormals[3] = {
+        l_vertices[vbID][indices[0]].normal,
+        l_vertices[vbID][indices[1]].normal,
+        l_vertices[vbID][indices[2]].normal };
 
 #if FLAT_FACE_NORMALS
 	BuiltInTriangleIntersectionAttributes attrCenter;
@@ -956,17 +935,15 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 	const uint3 indices = Load3x16BitIndices(baseIndex, l_indices);
 #endif
 
-    // Retrieve texture coordinates for the hit.
-    UINT vbID = l_materialCB.isVertexAnimated & (CB.frameIndex & 1);
-    VertexPositionNormalTextureTangent vertices[3] = { 
-        // Use NonUniformResourceIndex qualifier on the VB index since it may differ between animated and non-animated geometry.
-        l_vertices[NonUniformResourceIndex(vbID)][indices[0]],
-        l_vertices[NonUniformResourceIndex(vbID)][indices[1]],
-        l_vertices[NonUniformResourceIndex(vbID)][indices[2]]};
+    // Retrieve vertices for the hit triangle.
+    UINT vbID = l_materialCB.isVertexAnimated & (CB.currentFrameVBindex & 1);
+    VertexPositionNormalTextureTangent vertices[3] = {
+        l_vertices[vbID][indices[0]],
+        l_vertices[vbID][indices[1]],
+        l_vertices[vbID][indices[2]]};
 
     float2 vertexTexCoords[3] = { vertices[0].textureCoordinate, vertices[1].textureCoordinate, vertices[2].textureCoordinate };
     float2 texCoord = HitAttribute(vertexTexCoords, attr);
-
 
     UINT materialID = l_materialCB.materialID;
     PrimitiveMaterialBuffer material = g_materials[materialID];

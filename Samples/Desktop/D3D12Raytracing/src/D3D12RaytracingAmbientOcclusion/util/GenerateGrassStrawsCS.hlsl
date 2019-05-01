@@ -91,37 +91,27 @@ void GenerateGrassStraw(
     in uint baseVertexID, in float2 texCoord, in float3 rootPos, in float3 inNormal,
     in float3 base_u, in float3 base_v, in float grassX[N_GRASS_VERTICES], in float grassY[N_GRASS_VERTICES])
 {
-#if 1
     uint RNGState = RNG::SeedThread(baseVertexID);
     float2 noiseUV = {
         2 * RNG::Random01(RNGState) - 1,                      // [0, 1] -> [-1, 1]
         2 * RNG::Random01(RNGState) - 1
     };
-#elif 1
-    float2 noiseUV = {
-        2 * rand(texCoord.xy) - 1,                      // [0, 1] -> [-1, 1]
-        2 * rand(texCoord.yx) - 1
-    };
-#else
-    float2 noiseUV = 0.5;
-#endif
+
     float3 up = float3(0, 1, 0);
     float3 tangent = (noiseUV.x * base_u + noiseUV.y * base_v);
     rootPos = rootPos 
             + CB.p.positionJitterStrength * tangent 
             - 0.001 * CB.p.grassHeight * up;           // Root it in the ground a bit for bottom vertices not to stick out.
-
-    float windFrequency;
-    float positionJitterStrength;
-
+    
     float2 windCoord = frac(texCoord + CB.p.windFrequency * CB.p.timeOffset);
     float3 windNoise = g_windMap.SampleLevel(WrapLinearSampler, windCoord, 0).rbg;      // RGB -> RBG
     windNoise = 2 * windNoise - 1;                    // [0, 1] -> [-1, 1]
     float3 gradient = CB.p.windStrength * (0.5 * CB.p.windDirection + 2.5 * windNoise);
-
-    gradient = gradient
-        - 0.8 * up * dot(up, gradient)             // Project onto xz-plane.
-         -(1 - CB.p.bendStrengthAlongTangent) * tangent * dot(tangent, gradient);   // Restrain bending along tangent.
+    
+    // ToDo simplify
+    gradient -= up * dot(up, gradient);             // Project onto xz-plane.
+    float3 nTangent = normalize(tangent);
+    gradient -= (1 - CB.p.bendStrengthAlongTangent) * nTangent * dot(nTangent, gradient);   // Restrain bending along tangent.
 
     float3 vertexPos[N_GRASS_VERTICES];
     for (uint i = 0; i < N_GRASS_VERTICES; i++) 
@@ -204,9 +194,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         uint threadID = DTid.x + DTid.y * CB.p.maxPatchDim.x;
         uint baseVertexID = threadID * N_GRASS_VERTICES;
 
-        // Distribute types of straws in a checkerboard pattern.
-        bool tall = dot(DTid & 1, uint2(1, 1)) == 1;
-        UINT grassType = tall ? 1 : 2;
+        uint grassType = dot(DTid & 1, uint2(1, 1));
         GenerateGrassStraw(baseVertexID, rootUV, rootPos, surfaceNormal, base_u, base_v, GRASS_X[grassType], GRASS_Y[grassType]);
     }
     else // Non-active geometry ~ make degenerate triangles to disable them in the acceleration structure builds.

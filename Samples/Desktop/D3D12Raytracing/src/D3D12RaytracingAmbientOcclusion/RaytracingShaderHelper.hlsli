@@ -177,8 +177,6 @@ inline float3 GenerateForwardCameraRayDirection(in float4x4 projectionToWorldWit
 	
 	// Unproject the pixel coordinate into a world positon.
 	float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
-	//world.xyz /= world.w;
-
 	return normalize(world.xyz);   // ToDo is this normalization needed? - yes but maybe it could be done via /zNear instead?
 }
 
@@ -188,7 +186,6 @@ inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projec
 
     // Unproject the pixel coordinate into a world positon.
     float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
-    //world.xyz /= world.w;
 
     Ray ray;
     ray.origin = cameraPosition;
@@ -199,7 +196,7 @@ inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projec
     return ray;
 }
 
-// Calculate a world position from a screen position on near plane;
+// Calculate a world position from a screen position on near plane.
 float3 ScreenPosToWorldPos(in uint2 index, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
 {
     float2 xy = index + 0.5f; // center in the middle of the pixel.
@@ -210,7 +207,6 @@ float3 ScreenPosToWorldPos(in uint2 index, in float4x4 projectionToWorldWithCame
 
     // Unproject the pixel coordinate into a world positon.
     float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
-    //world.xyz /= world.w;
 
     return world.xyz;
 }

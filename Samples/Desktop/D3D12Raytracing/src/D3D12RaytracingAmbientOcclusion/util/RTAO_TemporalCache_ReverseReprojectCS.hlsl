@@ -104,6 +104,43 @@ float4 GetClipSpacePosition(in uint2 DTid, in float linearDepth)
 #endif
 
 
+// Calculates a depth threshold for surface at angle beta from camera plane
+// based on threshold for a surface at angle alpha
+float CalculateAdjustedDepthThreshold(
+    float d1,       // ddxy for surface at angle alpha from camera plane
+    float alpha,    // angle in radians for surface with threshold d1 
+    float beta,     // angle in radians for target surface
+    float rho)      // view angle for the pixel
+{
+    // ToDo add derivation comment
+    return d1
+           * (sin(beta) / sin(alpha))
+           * (cos(rho + alpha) / cos(rho + beta));
+   
+}
+
+float CalculateAdjustedDepthThreshold(
+    float d,          // ddxy for surface with normal
+    float z,       // Linear depth for current frame
+    float _z,      // Linear depth for prev frame
+    float3 normal,    // normal for a surface with threshold d 
+    float3 _normal)    // normal of a target surface
+{
+    float _d = d * _z / z;
+
+
+    float3 forwardRay = GenerateForwardCameraRayDirection(cb.projectionToWorldWithCameraEyeAtOrigin);
+    float3 _forwardRay = GenerateForwardCameraRayDirection(cb.prevProjectionToWorldWithCameraEyeAtOrigin);
+
+    float alpha = acos(dot(normal, forwardRay));
+    float beta = acos(dot(_normal, _forwardRay));
+
+    float rho = (FOVY * PI / 180) * cb.invTextureDim.y;
+
+    return CalculateAdjustedDepthThreshold(_d, alpha, beta, rho);
+}
+
+
 
 float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float2 offset, in uint2 sampleIndices[4], in float cacheDdxy, in uint2 DTid )
 {
@@ -213,8 +250,7 @@ float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal
 #endif
         depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise
 
-        g_texOutputDebug1[actualIndex] = float4(ActualDistance, depthThreshold, actualIndex.x, actualIndex.y);
-        g_texOutputDebug2[actualIndex] = SampleDistances;
+        g_texOutputDebug2[actualIndex] = float4(depthWeigths);
     }
     
 
@@ -246,6 +282,9 @@ float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal
 
     //float weightSum = dot(weights, 1);
     weightSum = dot(weights, 1);
+
+
+    g_texOutputDebug1[actualIndex] = float4(ActualDistance, cacheDdxy, weightSum, 0);
 
     float minWeightSum = 1e-3f;
     return weightSum >= minWeightSum ? weights / (dot(weights, 1) + FLT_EPSILON) : 0;
@@ -349,7 +388,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float cacheDdxy = ddxy;
     float4 reprojectedPointNormalANdDepth = g_texInputReprojectedHitPosition[DTid];
     cacheLinearDepth = reprojectedPointNormalANdDepth.w;
-    normal = reprojectedPointNormalANdDepth.xyz;
+    float3 _normal = reprojectedPointNormalANdDepth.xyz;
+
+    if (cb.useWorldSpaceDistance)
+    {
+        cacheDdxy = CalculateAdjustedDepthThreshold(ddxy, linearDepth, cacheLinearDepth, normal, _normal);
+    }
+
 #elif 1
     float cacheDdxy = ddxy;
     cacheLinearDepth = dot(reprojectedViewPosition, cacheCameraDirection);
@@ -430,10 +475,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float value = g_texInputCurrentFrameValue[DTid];
     float mergedValue;
 #if 0
-    float4 weights = BilateralResampleWeights(cacheLinearDepth, normal, vCacheDepths, cacheNormals, cachePixelOffset, cacheIndices, cacheDdxy, DTid);
+    float4 weights = BilateralResampleWeights(cacheLinearDepth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, cacheIndices, cacheDdxy, DTid);
 #else
     float weightSum2;
-    float4 weights = BilateralResampleWeights2(cacheLinearDepth, normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy, weightSum2);
+    float4 weights = BilateralResampleWeights2(cacheLinearDepth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy, weightSum2);
 #endif
 
 

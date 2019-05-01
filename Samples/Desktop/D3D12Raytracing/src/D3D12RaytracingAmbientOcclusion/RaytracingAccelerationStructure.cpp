@@ -140,6 +140,11 @@ void BottomLevelAccelerationStructure::Build(
         UpdateGeometryDescsTransform(baseGeometryTransformGPUAddress);
     }
 
+    currentID = (currentID + 1) % 3;
+    m_cacheGeometryDescs[currentID].clear();
+    m_cacheGeometryDescs[currentID].resize(m_geometryDescs.size());
+    copy(m_geometryDescs.begin(), m_geometryDescs.end(), m_cacheGeometryDescs[currentID].begin());
+
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS &bottomLevelInputs = bottomLevelBuildDesc.Inputs;
 	{
@@ -151,8 +156,8 @@ void BottomLevelAccelerationStructure::Build(
 		{
             bottomLevelInputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
 		}
-        bottomLevelInputs.NumDescs = static_cast<UINT>(m_geometryDescs.size());
-        bottomLevelInputs.pGeometryDescs = m_geometryDescs.data();
+        bottomLevelInputs.NumDescs = static_cast<UINT>(m_cacheGeometryDescs[currentID].size());
+        bottomLevelInputs.pGeometryDescs = m_cacheGeometryDescs[currentID].data();
 
 		bottomLevelBuildDesc.ScratchAccelerationStructureData = scratch->GetGPUVirtualAddress();
 		bottomLevelBuildDesc.DestAccelerationStructureData = m_accelerationStructure->GetGPUVirtualAddress();

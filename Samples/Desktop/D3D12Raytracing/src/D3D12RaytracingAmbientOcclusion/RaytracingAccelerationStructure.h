@@ -104,6 +104,10 @@ public:
 
 private:
     std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> m_geometryDescs;
+    
+    UINT currentID = 0;
+    std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> m_cacheGeometryDescs[3];
+
     DirectX::XMMATRIX m_transform;
 
     // Runtime state

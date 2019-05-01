@@ -160,18 +160,18 @@ namespace SceneArgs
 
     // Grass geometry
     // ToDo fails with Scene/...
-    IntVar GrassGeometry_NumberStrawsX(L"Scene2/Grass/Patch/Num Straws X", 100, 10, MAX_GRASS_STRAWS_1D, 10);
-    IntVar GrassGeometry_NumberStrawsZ(L"Scene2/Grass/Patch/Num Straws Z", 100, 10, MAX_GRASS_STRAWS_1D, 10);
-    NumVar GrassGeometry_PatchLengthX(L"Scene2/Grass/Patch/Length X", 20, 1, 100, 1);
+    IntVar GrassGeometry_NumberStrawsX(L"Scene2/Grass/Patch/Num Straws X", 3, 1, MAX_GRASS_STRAWS_1D, 10);
+    IntVar GrassGeometry_NumberStrawsZ(L"Scene2/Grass/Patch/Num Straws Z", 3, 1, MAX_GRASS_STRAWS_1D, 10);
+    NumVar GrassGeometry_PatchLengthX(L"Scene2/Grass/Patch/Length X", 1, 1, 100, 1);
     NumVar GrassGeometry_PatchLengthY(L"Scene2/Grass/Patch/Length Y", 1, 0.1f, 10, 0.1f);
-    NumVar GrassGeometry_PatchLengthZ(L"Scene2/Grass/Patch/Length Z", 20, 1, 100, 1);
+    NumVar GrassGeometry_PatchLengthZ(L"Scene2/Grass/Patch/Length Z", 1, 1, 100, 1);
     NumVar GrassGeometry_StrawHeight(L"Scene2/Grass/Patch/Straw Height", 0.25f, 0.1f, 10, 0.05f);
-    NumVar GrassGeometry_StrawScale(L"Scene2/Grass/Patch/Straw Scale", 0.6, 0.1f, 10, 0.05f);
+    NumVar GrassGeometry_StrawScale(L"Scene2/Grass/Patch/Straw Scale", 0.6f, 0.1f, 10, 0.05f);
     NumVar GrassGeometry_StrawThickness(L"Scene2/Grass/Patch/Straw Thickness", 1, 0.1f, 10, 0.05f);
-    NumVar GrassGeometry_BendStrengthSideways(L"Scene2/Grass/Bend strength sideways", 0.4f, 0, 1, 0.02f);
+    NumVar GrassGeometry_BendStrengthSideways(L"Scene2/Grass/Bend strength sideways", 0.0f, 0, 1, 0.02f);
     NumVar GrassGeometry_WindStrength(L"Scene2/Grass/Wind strength", 0.3f, 0, 1, 0.02f);
     NumVar GrassGeometry_WindFrequency(L"Scene2/Grass/Wind frequency", 0.04f, 0, 1, 0.005f);
-    NumVar GrassGeometry_RandomPositionJitterStrength(L"Scene2/Grass/Randomness/Position jitter strength", 0.9, 0, 2, 0.05f);
+    NumVar GrassGeometry_RandomPositionJitterStrength(L"Scene2/Grass/Randomness/Position jitter strength", 0.0f, 0, 2, 0.05f);
     NumVar GrassGeometry_WindMapSpeedU(L"Scene2/Grass/Wind Texture speed U", 1.0f, -1, 1, 0.05f);   // ToDo randomize slowly over frames
     NumVar GrassGeometry_WindMapSpeedV(L"Scene2/Grass/Wind Texture speed V", 1.0f, -1, 1, 0.05f);
 
@@ -202,7 +202,7 @@ namespace SceneArgs
     IntVar RTAO_TemporalCache_VarianceFilterKernelWidth(L"Render/AO/RTAO/Temporal Cache/Variance filter/Kernel width", 7, 3, 11, 2);    // ToDo find lowest good enough width
 
     // ToDo address: Clamping causes rejection of samples in low density areas - such as on ground plane at the end of max ray distance from other objects.
-    BoolVar RTAO_TemporalCache_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", true);
+    BoolVar RTAO_TemporalCache_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", false);
     NumVar RTAO_TemporalCache_ClampCachedValues_StdDevGamma(L"Render/AO/RTAO/Temporal Cache/Clamping/Std.dev gamma", 1.0f, 0.1f, 20.f, 0.1f);
     NumVar RTAO_TemporalCache_ClampCachedValues_MinStdDevTolerance(L"Render/AO/RTAO/Temporal Cache/Clamping/Minimum std.dev", 0.2f, 0.0f, 1.f, 0.01f);   // ToDo finetune
     NumVar RTAO_TemporalCache_ClampCachedValues_AbsoluteDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Absolute depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
@@ -296,12 +296,11 @@ void D3D12RaytracingAmbientOcclusion::CreateIndexAndVertexBuffers(
 
     CreateGeometry(device, commandList, m_cbvSrvUavHeap.get(), desc, geometry);
 
-    // Create null descriptor for the unused second VB.
+    // Create null resource descriptor for the unused second VB.
     D3D12_CPU_DESCRIPTOR_HANDLE nullCPUhandle;
     D3D12_GPU_DESCRIPTOR_HANDLE nullGPUhandle;
     UINT nullHeapIndex = UINT_MAX;
-    CreateBufferSRV(
-        nullptr, device, desc.vb.count, sizeof(VertexPositionNormalTextureTangent), m_cbvSrvUavHeap.get(), 
+    CreateBufferSRV( nullptr, device, desc.vb.count, sizeof(VertexPositionNormalTextureTangent), m_cbvSrvUavHeap.get(), 
         &nullCPUhandle, &nullGPUhandle,  &nullHeapIndex);
 
     ThrowIfFalse(geometry->vb.buffer.heapIndex == geometry->ib.buffer.heapIndex + 1
@@ -492,7 +491,7 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     DXSample(width, height, name),
     m_animateCamera(false),
     m_animateLight(false),
-    m_animateScene(true),
+    m_animateScene(false),
     m_missShaderTableStrideInBytes(UINT_MAX),
     m_hitGroupShaderTableStrideInBytes(UINT_MAX),
     m_isGeometryInitializationRequested(true),
@@ -506,6 +505,7 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     g_pSample = this;
     UpdateForSizeChange(width, height);
 	m_generatorURNG.seed(1729);
+
 }
 
 // ToDo worth moving some common member vars and fncs to DxSampleRaytracing base class?
@@ -1129,16 +1129,16 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         {
 			using namespace LocalRootSignature::Triangle;
 
-            CD3DX12_DESCRIPTOR_RANGE ranges[3]; // Perfomance TIP: Order from most frequent to least frequent.
-            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 1);  // 3 buffers - static index buffer and 2 vertex buffers.
-            ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 1);  // 1 diffuse texture
-            ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4, 1);  // 1 normal texture
+            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
+            ranges[Slot::IndexAndVertexBuffers].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 1);  // 3 buffers - static index buffer and 2 vertex buffers.
+            ranges[Slot::DiffuseTexture].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 1);  // 1 diffuse texture
+            ranges[Slot::NormalTexture].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4, 1);  // 1 normal texture
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::ConstantBuffer].InitAsConstants(SizeOfInUint32(PrimitiveConstantBuffer), 0, 1);
-            rootParameters[Slot::VertexBuffers].InitAsDescriptorTable(1, &ranges[0]);
-            rootParameters[Slot::DiffuseTexture].InitAsDescriptorTable(1, &ranges[1]);
-            rootParameters[Slot::NormalTexture].InitAsDescriptorTable(1, &ranges[2]);
+            rootParameters[Slot::IndexAndVertexBuffers].InitAsDescriptorTable(1, &ranges[Slot::IndexAndVertexBuffers]);
+            rootParameters[Slot::DiffuseTexture].InitAsDescriptorTable(1, &ranges[Slot::DiffuseTexture]);
+            rootParameters[Slot::NormalTexture].InitAsDescriptorTable(1, &ranges[Slot::NormalTexture]);
 
             CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
@@ -1297,8 +1297,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     // Full-res GBuffer resources.
     {
         // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-        m_GBufferResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count, m_GBufferResources[0].uavDescriptorHeapIndex);
-        m_GBufferResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count, m_GBufferResources[0].srvDescriptorHeapIndex);
+        m_GBufferResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count);
+        m_GBufferResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count);
         for (UINT i = 0; i < GBufferResource::Count; i++)
         {
             m_GBufferResources[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -1330,8 +1330,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     // Low-res GBuffer resources.
     {
         // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-        m_GBufferLowResResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count, m_GBufferLowResResources[0].uavDescriptorHeapIndex);
-        m_GBufferLowResResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count, m_GBufferLowResResources[0].srvDescriptorHeapIndex);
+        m_GBufferLowResResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count);
+        m_GBufferLowResResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count);
         for (UINT i = 0; i < GBufferResource::Count; i++)
         {
             m_GBufferLowResResources[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -1361,8 +1361,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     // Full-res AO resources.
     {
         // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-        m_AOResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOResources[0].uavDescriptorHeapIndex);
-        m_AOResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOResources[0].srvDescriptorHeapIndex);
+        m_AOResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count);
+        m_AOResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count);
         for (UINT i = 0; i < AOResource::Count; i++)
         {
             m_AOResources[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -1391,8 +1391,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     // Low-res AO resources.
     {
         // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-        m_AOLowResResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOLowResResources[0].uavDescriptorHeapIndex);
-        m_AOLowResResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count, m_AOLowResResources[0].srvDescriptorHeapIndex);
+        m_AOLowResResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count);
+        m_AOLowResResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count);
         for (UINT i = 0; i < AOResource::Count; i++)
         {
             m_AOLowResResources[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -1420,8 +1420,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         for (UINT i = 0; i < 2; i++)
         {
             // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-            m_temporalCache[i][0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(TemporalCache::Count, m_temporalCache[i][0].uavDescriptorHeapIndex);
-            m_temporalCache[i][0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(TemporalCache::Count, m_temporalCache[i][0].srvDescriptorHeapIndex);
+            m_temporalCache[i][0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(TemporalCache::Count);
+            m_temporalCache[i][0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(TemporalCache::Count);
             for (UINT j = 0; j < TemporalCache::Count; j++)
             {
                 m_temporalCache[i][j].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -1443,8 +1443,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     // Debug resources
     {
         // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-        m_debugOutput[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(ARRAYSIZE(m_debugOutput), m_debugOutput[0].uavDescriptorHeapIndex);
-        m_debugOutput[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(ARRAYSIZE(m_debugOutput), m_debugOutput[0].srvDescriptorHeapIndex);
+        m_debugOutput[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(ARRAYSIZE(m_debugOutput));
+        m_debugOutput[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(ARRAYSIZE(m_debugOutput));
         for (UINT i = 0; i < ARRAYSIZE(m_debugOutput); i++)
         {
             m_debugOutput[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -1541,7 +1541,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
     m_downsampleValueNormalDepthBilateralFilterKernel.Initialize(device, static_cast<GpuKernels::DownsampleValueNormalDepthBilateralFilter::Type>(static_cast<UINT>(SceneArgs::DownsamplingBilateralFilter)));
     m_upsampleBilateralFilterKernel.Initialize(device, GpuKernels::UpsampleBilateralFilter::Filter2x2, FrameCount);
     m_multiScale_upsampleBilateralFilterAndCombineKernel.Initialize(device, GpuKernels::MultiScale_UpsampleBilateralFilterAndCombine::Filter2x2);
-    m_temporalCacheReverseReprojectKernel.Initialize(device, FrameCount, 1);
+    m_temporalCacheReverseReprojectKernel.Initialize(device, FrameCount);
     m_writeValueToTexture.Initialize(device, m_cbvSrvUavHeap.get());
     m_grassGeometryGenerator.Initialize(device, L"Assets\\wind\\wind2.jpg", m_cbvSrvUavHeap.get(), &resourceUpload, FrameCount);
 
@@ -1903,25 +1903,25 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
                 indices[indexID++] = baseVertexID + index;
             }
         }
+        // Preallocate subsequent descriptor indices for both SRV and UAV groups.
+        UINT baseSRVHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(3);      // 1 IB + 2 VB
+        geometry.ib.buffer.heapIndex = baseSRVHeapIndex;
+        m_grassPatchVB[0].srvDescriptorHeapIndex = baseSRVHeapIndex + 1;
+        m_grassPatchVB[1].srvDescriptorHeapIndex = baseSRVHeapIndex + 2;
+
+        UINT baseUAVHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(2);      // 2 VB
+        m_grassPatchVB[0].uavDescriptorHeapIndex = baseUAVHeapIndex;
+        m_grassPatchVB[1].uavDescriptorHeapIndex = baseUAVHeapIndex + 1;
 
         AllocateIndexBuffer(device, NumIndices, sizeof(Index), m_cbvSrvUavHeap.get(), &geometry.ib.buffer, D3D12_RESOURCE_STATE_COPY_DEST);
         UploadDataToBuffer(device, commandList, &indices[0], NumIndices, sizeof(Index), geometry.ib.buffer.resource.Get(), &geometry.ib.upload, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 
-
-        // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-        m_grassPatchVB[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(2, m_grassPatchVB[0].uavDescriptorHeapIndex);
-        m_grassPatchVB[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(2, m_grassPatchVB[0].srvDescriptorHeapIndex);
-        for (UINT i = 0; i < 2; i++)
-        {
-            m_grassPatchVB[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-            m_grassPatchVB[i].uavDescriptorHeapIndex = m_grassPatchVB[0].uavDescriptorHeapIndex + i;
-            m_grassPatchVB[i].srvDescriptorHeapIndex = m_grassPatchVB[0].srvDescriptorHeapIndex + i;
-        }
-
         for (auto& vb : m_grassPatchVB)
         {
+            vb.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             AllocateUAVBuffer(device, NumVertices, sizeof(VertexPositionNormalTextureTangent), &vb, DXGI_FORMAT_UNKNOWN, m_cbvSrvUavHeap.get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"Vertex Buffer: Grass geometry");
         }
+
         geometry.vb.buffer.resource = m_grassPatchVB[0].resource;
         geometry.vb.buffer.gpuDescriptorHandle = m_grassPatchVB[0].gpuDescriptorReadAccess;
         geometry.vb.buffer.heapIndex = m_grassPatchVB[0].srvDescriptorHeapIndex;
@@ -2321,6 +2321,9 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
     case 'P':
         angleToRotateBy = 10;
         break;
+    case 'B':
+        m_cameraChangedIndex = 2;
+        break;
     default:
         break;
     }
@@ -2475,7 +2478,6 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     m_sceneCB->RTAO_AdaptiveSamplingMinSamples = SceneArgs::RTAOAdaptiveSamplingMinSamples;
     m_sceneCB->RTAO_TraceRayOffsetAlongNormal = SceneArgs::RTAOTraceRayOffsetAlongNormal;
     m_sceneCB->RTAO_TraceRayOffsetAlongRayDirection = SceneArgs::RTAOTraceRayOffsetAlongRayDirection;
-    m_sceneCB->frameIndex = frameIndex;
 
     SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
  }
@@ -3186,7 +3188,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 {
 	auto device = m_deviceResources->GetD3DDevice();
 	auto commandList = m_deviceResources->GetCommandList();
-	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();        // ToDo rename to Backbuffer index
 
     ScopedTimer _prof(L"GenerateGbuffer", commandList);
 
@@ -4000,7 +4002,7 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
 		break;
 	case DownsampleFilter::GaussianFilter9Tap:
 	case DownsampleFilter::GaussianFilter25Tap:
-		m_GBufferWidth = c_SupersamplingScale * m_width + 1;
+		m_GBufferWidth = c_SupersamplingScale * m_width + 1;        // ToDo remove +1
 		m_GBufferHeight = c_SupersamplingScale * m_height + 1;
 		break;
 	}
@@ -4430,7 +4432,7 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
     params.grassHeight = GrassGeometry_StrawHeight;
     params.grassScale = GrassGeometry_StrawScale;
     params.grassThickness = GrassGeometry_StrawThickness;
-    params.patchBasePos = XMFLOAT3(-20, -1.15f, -20);
+    params.patchBasePos = XMFLOAT3(-20, -1.16f, -20);
     params.bendStrengthAlongTangent = GrassGeometry_BendStrengthSideways;
     params.patchSize = XMFLOAT3(GrassGeometry_PatchLengthX, GrassGeometry_PatchLengthY, GrassGeometry_PatchLengthZ);
     params.windDirection = XMFLOAT3(0, 0, 0); // ToDo
@@ -4441,9 +4443,16 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
     params.activePatchDim = XMUINT2(GrassGeometry_NumberStrawsX, GrassGeometry_NumberStrawsZ);
     params.maxPatchDim = XMUINT2(MAX_GRASS_STRAWS_1D, MAX_GRASS_STRAWS_1D);
 
+    m_currentGrassPatchVBIndex = (m_currentGrassPatchVBIndex + 1) % 2;
+    UINT vbID = m_currentGrassPatchVBIndex & 1;
+    m_sceneCB->currentFrameVBindex = m_currentGrassPatchVBIndex;
 
+    // ToDo batch UAV with transition barriers
+    // Make sure the UAV reads from the resource we are going to write to are all done.
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[vbID].resource.Get()));
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[0].resource.Get()));
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[1].resource.Get()));
 
-    UINT vbID = frameIndex & 1;
     // Transition output vertex buffer to UAV state.        
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
@@ -4466,12 +4475,16 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
+    // Make sure the UAV writes to the resource are all done before the acceleration build starts.
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[vbID].resource.Get()));
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[0].resource.Get()));
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[1].resource.Get()));
+    
     // Point bottom-levelAS VB pointer to the updated VB.
     auto& bottomLevelAS = m_accelerationStructure->GetBottomLevelAS(L"Grass patch");
     auto& geometryDesc = bottomLevelAS.GetGeometryDescs()[0];
     geometryDesc.Triangles.VertexBuffer.StartAddress = m_grassPatchVB[vbID].resource->GetGPUVirtualAddress();
     bottomLevelAS.SetDirty(true);
-
 }
 
 // Render the scene.
