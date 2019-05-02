@@ -618,6 +618,11 @@ struct PrimitiveConstantBuffer
     UINT     padding[2];
 };
 
+enum MaterialType {
+    Default,
+    AnalyticalCheckerboardTexture
+};
+
 struct PrimitiveMaterialBuffer
 {
 	XMFLOAT3 diffuse;
@@ -628,7 +633,7 @@ struct PrimitiveMaterialBuffer
     UINT hasNormalTexture;
     UINT hasPerVertexTangents;
     UINT isMirror;
-    UINT padding;
+    MaterialType type;
 };
 
 // Attributes per primitive instance.

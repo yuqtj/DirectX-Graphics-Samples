@@ -28,6 +28,7 @@ StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
 Texture2D<float> g_texFilterWeightSum : register(t8);
 Texture2D<float> g_texRayHitDistance : register(t9);
 Texture2D<uint> g_texTemporalCacheDisocclusionMap : register(t10);
+Texture2D<uint> g_texPartialDepthDerivatives : register(t11);
 
 SamplerState LinearWrapSampler : register(s0);
 
@@ -86,7 +87,9 @@ void main(uint2 DTid : SV_DispatchThreadID )
             // ToDo incorrect when subtracting camera
             distance = length(hitPosition);// -g_CB.cameraPosition.xyz);
             float t = distance;
-            color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF * t*t*t));
+            
+            // ToDo
+            //color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF * t*t*t));
         }
         else if (g_CB.compositionType == CompositionType::AmbientOcclusionOnly ||
                  g_CB.compositionType == CompositionType::AmbientOcclusionOnly_RawOneFrame ||

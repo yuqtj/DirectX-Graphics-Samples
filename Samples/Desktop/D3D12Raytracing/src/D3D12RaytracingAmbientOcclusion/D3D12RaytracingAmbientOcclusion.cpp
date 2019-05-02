@@ -160,18 +160,18 @@ namespace SceneArgs
 
     // Grass geometry
     // ToDo fails with Scene/...
-    IntVar GrassGeometry_NumberStrawsX(L"Scene2/Grass/Patch/Num Straws X", 3, 1, MAX_GRASS_STRAWS_1D, 10);
-    IntVar GrassGeometry_NumberStrawsZ(L"Scene2/Grass/Patch/Num Straws Z", 3, 1, MAX_GRASS_STRAWS_1D, 10);
-    NumVar GrassGeometry_PatchLengthX(L"Scene2/Grass/Patch/Length X", 1, 1, 100, 1);
+    IntVar GrassGeometry_NumberStrawsX(L"Scene2/Grass/Patch/Num Straws X", 100, 1, MAX_GRASS_STRAWS_1D, 10);
+    IntVar GrassGeometry_NumberStrawsZ(L"Scene2/Grass/Patch/Num Straws Z", 100, 1, MAX_GRASS_STRAWS_1D, 10);
+    NumVar GrassGeometry_PatchLengthX(L"Scene2/Grass/Patch/Length X", 14, 1, 100, 1);
     NumVar GrassGeometry_PatchLengthY(L"Scene2/Grass/Patch/Length Y", 1, 0.1f, 10, 0.1f);
-    NumVar GrassGeometry_PatchLengthZ(L"Scene2/Grass/Patch/Length Z", 1, 1, 100, 1);
-    NumVar GrassGeometry_StrawHeight(L"Scene2/Grass/Patch/Straw Height", 0.25f, 0.1f, 10, 0.05f);
+    NumVar GrassGeometry_PatchLengthZ(L"Scene2/Grass/Patch/Length Z", 14, 1, 100, 1);
+    NumVar GrassGeometry_StrawHeight(L"Scene2/Grass/Patch/Straw Height", 0.4f, 0.1f, 10, 0.05f);
     NumVar GrassGeometry_StrawScale(L"Scene2/Grass/Patch/Straw Scale", 0.6f, 0.1f, 10, 0.05f);
     NumVar GrassGeometry_StrawThickness(L"Scene2/Grass/Patch/Straw Thickness", 1, 0.1f, 10, 0.05f);
     NumVar GrassGeometry_BendStrengthSideways(L"Scene2/Grass/Bend strength sideways", 0.0f, 0, 1, 0.02f);
-    NumVar GrassGeometry_WindStrength(L"Scene2/Grass/Wind strength", 0.3f, 0, 1, 0.02f);
+    NumVar GrassGeometry_WindStrength(L"Scene2/Grass/Wind strength", 0.4f, 0, 1, 0.02f);
     NumVar GrassGeometry_WindFrequency(L"Scene2/Grass/Wind frequency", 0.04f, 0, 1, 0.005f);
-    NumVar GrassGeometry_RandomPositionJitterStrength(L"Scene2/Grass/Randomness/Position jitter strength", 0.0f, 0, 2, 0.05f);
+    NumVar GrassGeometry_RandomPositionJitterStrength(L"Scene2/Grass/Randomness/Position jitter strength", 1.0f, 0, 2, 0.05f);
     NumVar GrassGeometry_WindMapSpeedU(L"Scene2/Grass/Wind Texture speed U", 1.0f, -1, 1, 0.05f);   // ToDo randomize slowly over frames
     NumVar GrassGeometry_WindMapSpeedV(L"Scene2/Grass/Wind Texture speed V", 1.0f, -1, 1, 0.05f);
 
@@ -349,6 +349,7 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
         {L"Car", "Assets\\car2\\scene.pbrt"},
         {L"Dragon", "Assets\\dragon\\scene.pbrt"},
         {L"House", "Assets\\house\\scene.pbrt"},
+        {L"GroundPlane", "Assets\\groundplane\\scene.pbrt"},
 #endif
     };
 
@@ -443,7 +444,7 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
             cb.hasDiffuseTexture = !mesh.m_pMaterial->m_DiffuseTextureFilename.empty();
             cb.hasNormalTexture = !mesh.m_pMaterial->m_NormalMapTextureFilename.empty();
             cb.hasPerVertexTangents = true;
-
+            cb.type = pbrtSceneDefinition.name == L"GroundPlane" ? MaterialType::AnalyticalCheckerboardTexture : MaterialType::Default; // ToDo cleaner?
 
             auto LoadPBRTTexture = [&](auto** ppOutTexture, auto& textureFilename)
             {
@@ -918,24 +919,24 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
 	{
 		using namespace CSRootSignature::ComposeRenderPassesCS;
 
-		CD3DX12_DESCRIPTOR_RANGE ranges[7]; // Perfomance TIP: Order from most frequent to least frequent.
-		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);  // 5 input GBuffer textures
-		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input AO texture
-		ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // 1 input Visibility texture
-        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // 1 input filterWeightSum texture
-        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // 1 input AO ray hit distance texture
-        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // 1 input disocclusion map texture
+		CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
+		ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+		ranges[Slot::GBufferResources].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);  // 5 input GBuffer textures
+		ranges[Slot::AO].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input AO texture
+		ranges[Slot::Visibility].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // 1 input Visibility texture
+        ranges[Slot::FilterWeightSum].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // 1 input filterWeightSum texture
+        ranges[Slot::AORayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // 1 input AO ray hit distance texture
+        ranges[Slot::FrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // 1 input disocclusion map texture
         
 
 		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-		rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
-		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[1]);
-		rootParameters[Slot::AO].InitAsDescriptorTable(1, &ranges[2]);
-		rootParameters[Slot::Visibility].InitAsDescriptorTable(1, &ranges[3]);
-        rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[4]);
-        rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[5]);
-        rootParameters[Slot::FrameAge].InitAsDescriptorTable(1, &ranges[6]);
+		rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
+		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[Slot::GBufferResources]);
+		rootParameters[Slot::AO].InitAsDescriptorTable(1, &ranges[Slot::AO]);
+		rootParameters[Slot::Visibility].InitAsDescriptorTable(1, &ranges[Slot::Visibility]);
+        rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[Slot::FilterWeightSum]);
+        rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::AORayHitDistance]);
+        rootParameters[Slot::FrameAge].InitAsDescriptorTable(1, &ranges[Slot::FrameAge]);
 		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(7);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
@@ -1629,7 +1630,7 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
     ThrowIfFalse(0 && L"ToDo: fix up null VB SRV");
 
 
-	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), 50, false, false, false, false };
+	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), 50, false, false, false, false, MaterialType::Default };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(planeMaterialCB);
 
@@ -1803,7 +1804,7 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
 
     ThrowIfFalse(0 && L"ToDo: fix up null VB SRV");
 
-	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1),  50, false, false, false, false };
+	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1),  50, false, false, false, false, MaterialType::Default };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(materialCB);
     bottomLevelASGeometry.m_geometryInstances.resize(SceneArgs::NumGeometriesPerBLAS, GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
@@ -1964,6 +1965,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
         materialCB.hasDiffuseTexture = true;
         materialCB.hasNormalTexture = false;
         materialCB.hasPerVertexTangents = false;    // ToDo calculate these when geometry is generated?
+        materialCB.type = MaterialType::Default;
 
         materialID = static_cast<UINT>(m_materials.size());
         m_materials.push_back(materialCB);
@@ -2113,6 +2115,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
         L"Car",
         L"Dragon",
         L"House",
+        L"GroundPlane",
 #endif    
         L"Grass patch" };
 #else
@@ -2124,8 +2127,30 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
     // Initialize the bottom-level AS instances.
     for (auto& bottomLevelASname : bottomLevelASnames)
     {
-        m_accelerationStructure->AddBottomLevelASInstance(bottomLevelASname);
+        if (bottomLevelASname != L"Grass patch")
+        {
+            m_accelerationStructure->AddBottomLevelASInstance(bottomLevelASname);
+        }
     }
+
+    std::mt19937 m_generatorURNG;  // Uniform random number generator
+    m_generatorURNG.seed(1729);
+    uniform_real_distribution<float> unitSquareDistributionInclusive(0.f, nextafter(1.f, FLT_MAX));
+    function<float()> GetRandomFloat01inclusive = bind(unitSquareDistributionInclusive, ref(m_generatorURNG));
+
+    XMVECTOR base = XMVectorSet(0, 0, 2, 0);
+    float width = 14.f;
+    for (int z = -50; z < 50; z++)
+        for (int x = -50; x < 50; x++)
+        {
+            if (x < -1 || x > 2 || abs(z) > 2)
+            {
+                float jitterX = 2 * GetRandomFloat01inclusive() - 1;
+                float jitterZ = 2 * GetRandomFloat01inclusive() - 1;
+                XMMATRIX transform = XMMatrixTranslationFromVector(width * (base + XMVectorSet(x, 0, z, 0) + 0.01f * XMVectorSet(jitterX, 0, jitterZ, 0)));
+                m_accelerationStructure->AddBottomLevelASInstance(L"Grass patch", UINT_MAX, transform);
+            }
+        }
 
     // Initialize the top-level AS.
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;    // ToDo specify via SceneArgs
@@ -4447,38 +4472,29 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
     UINT vbID = m_currentGrassPatchVBIndex & 1;
     m_sceneCB->currentFrameVBindex = m_currentGrassPatchVBIndex;
 
-    // ToDo batch UAV with transition barriers
-    // Make sure the UAV reads from the resource we are going to write to are all done.
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[vbID].resource.Get()));
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[0].resource.Get()));
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[1].resource.Get()));
-
-    // Transition output vertex buffer to UAV state.        
+    // Transition output vertex buffer to UAV state and make sure the resource is done being read from.      
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_grassPatchVB[vbID].resource.Get(), before, after)
+            CD3DX12_RESOURCE_BARRIER::Transition(m_grassPatchVB[vbID].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[vbID].resource.Get())
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
     m_grassGeometryGenerator.Execute(commandList, params, m_cbvSrvUavHeap->GetHeap(), m_grassPatchVB[vbID].gpuDescriptorWriteAccess);
 
-    // Transition the output vertex buffer to VB state.        
+    // Transition the output vertex buffer to VB state and make sure the CS is done writing.        
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_grassPatchVB[vbID].resource.Get(), before, after)
+            CD3DX12_RESOURCE_BARRIER::Transition(m_grassPatchVB[vbID].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[vbID].resource.Get())
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
-
-    // Make sure the UAV writes to the resource are all done before the acceleration build starts.
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[vbID].resource.Get()));
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[0].resource.Get()));
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_grassPatchVB[1].resource.Get()));
     
     // Point bottom-levelAS VB pointer to the updated VB.
     auto& bottomLevelAS = m_accelerationStructure->GetBottomLevelAS(L"Grass patch");

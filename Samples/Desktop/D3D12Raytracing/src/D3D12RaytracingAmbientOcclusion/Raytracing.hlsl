@@ -19,6 +19,7 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RandomNumberGenerator.hlsli"
 #include "SSAO/GlobalSharedHlslCompat.h" // ToDo remove
+#include "util/AnalyticalTextures.hlsli"
 
 #define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS
 
@@ -72,7 +73,7 @@ RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
 RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18);
 
-ConstantBuffer<SceneConstantBuffer> CB : register(b0);
+ConstantBuffer<SceneConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
 
@@ -990,7 +991,8 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
 
     if (material.hasDiffuseTexture || 
-        (CB.RTAO_UseNormalMaps && material.hasNormalTexture))
+        (CB.RTAO_UseNormalMaps && material.hasNormalTexture) ||
+        (material.type == MaterialType::AnalyticalCheckerboardTexture))
     {
         float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
         float3 tangent = HitAttribute(vertexTangents, attr);
@@ -1051,13 +1053,31 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #endif
     {
         float3 diffuse;
-        if (material.hasDiffuseTexture)
+        if (material.type == MaterialType::Default)
         {
-            diffuse = l_texDiffuse.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz;
-        }
-        else
+            if (material.hasDiffuseTexture)
+            {
+                diffuse = l_texDiffuse.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz;
+            }
+            else
+            {
+                diffuse = material.diffuse;
+            }
+        } 
+        else if (material.type == MaterialType::AnalyticalCheckerboardTexture)
         {
-            diffuse = material.diffuse;
+#if 0 
+            float2 ddx_uv;
+            float2 ddy_uv;
+            float2 uv = TexCoords(hitPosition);
+
+            CalculateRayDifferentials(ddx_uv, ddy_uv, uv, hitPosition, normal, CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin);
+            diffuse = CheckersTextureBoxFilter(uv, ddx_uv, ddy_uv, 25);
+#else // ToDo fix derivatives
+            float2 uv = hitPosition.xz / 2;
+            float checkers = CheckersTextureBoxFilter(uv, ddx, ddy);
+            diffuse = checkers > 0.5 ? float3(50, 68, 90) / 255 : float3(170, 170, 170) / 255;
+#endif
         }
         rayPayload.hit = true;
         rayPayload.materialInfo = EncodeMaterial16b(materialID, diffuse);

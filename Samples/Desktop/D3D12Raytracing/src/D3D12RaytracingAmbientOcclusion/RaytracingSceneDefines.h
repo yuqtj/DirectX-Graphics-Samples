@@ -57,7 +57,7 @@ namespace ComputeShader {
 					ConstantBuffer,
                     FilterWeightSum,
                     AORayHitDistance,
-                    FrameAge,
+                    FrameAge,   // ToDo use same name as in the shader
 					Count
 				};
 			}

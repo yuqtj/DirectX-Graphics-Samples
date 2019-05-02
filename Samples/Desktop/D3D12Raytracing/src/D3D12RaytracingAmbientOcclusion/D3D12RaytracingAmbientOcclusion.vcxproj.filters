@@ -237,6 +237,9 @@
     <None Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilterCS.hlsli">
       <Filter>Assets\Shaders</Filter>
     </None>
+    <None Include="util\AnalyticalTextures.hlsli">
+      <Filter>Assets\Shaders\Util</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Raytracing.hlsl">
