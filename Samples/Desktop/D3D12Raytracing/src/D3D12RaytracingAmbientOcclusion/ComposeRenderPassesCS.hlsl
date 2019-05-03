@@ -55,9 +55,9 @@ void main(uint2 DTid : SV_DispatchThreadID )
     if (hit && length(hitPosition.xz + float2(10,-10)) < 60)
     {
 #else
+    float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
 	if (hit)
 	{
-		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
 #endif
 #if COMPRES_NORMALS
         float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[DTid].xy);
@@ -89,7 +89,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float t = distance;
             
             // ToDo
-            //color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF * t*t*t));
+            color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF * t*t*t*t));
         }
         else if (g_CB.compositionType == CompositionType::AmbientOcclusionOnly ||
                  g_CB.compositionType == CompositionType::AmbientOcclusionOnly_RawOneFrame ||
@@ -170,7 +170,8 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float3 diffuse;
             DecodeMaterial16b(materialInfo, materialID, diffuse);
             diffuse = RemoveSRGB(diffuse);
-            color = float4(diffuse, 1);
+            float t = (clamp(hitPosition.y, 0.015, 0.025) - 0.015) * 100;
+            color = lerp(BackgroundColor, float4(diffuse, 1), t);
 #else
             color = BackgroundColor;
 #endif

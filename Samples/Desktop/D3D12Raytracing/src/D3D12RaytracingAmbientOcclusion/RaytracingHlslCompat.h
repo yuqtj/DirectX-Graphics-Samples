@@ -127,7 +127,7 @@
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
-#define DISTANCE_FALLOFF 0.000002
+#define DISTANCE_FALLOFF 0.000000005
 #define AO_RAY_T_MAX 22
 #define SCENE_SCALE 300     
 #else
@@ -273,7 +273,8 @@ typedef UINT16 Index;
 // ToDo revise
 // PERFORMANCE TIP: Set max recursion depth as low as needed
 // as drivers may apply optimization strategies for low recursion depths.
-#define MAX_RAY_RECURSION_DEPTH 2    // ~ primary rays + reflections + shadow rays from reflected geometry. 
+#define MAX_RAY_RECURSION_DEPTH 4    // ~ primary rays + 2 x reflections + shadow rays from reflected geometry. 
+// ToDo add recursion viz
 
 // ToDo:
 // Options:
@@ -315,9 +316,18 @@ struct GBufferRayPayload
 	XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
 	XMFLOAT3 hitPosition;
 	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
-    UINT instanceIndex;
+    UINT BLASInstanceIndex;
     XMFLOAT3 hitObjectPosition;
     XMFLOAT3 objectNormal;
+    XMFLOAT3 _virtualHitPosition;  
+                            // virtual hitPosition in the previous frame.
+                            // For non-reflected points this is a true world position of a hit.
+                            // For reflected points, this is not a true world position of a hit 
+                            // but a position reflected across the reflected surface ultimately giving the same
+                            // screen space coords when projected and the depth corresponding to the ray depth.
+
+
+    XMFLOAT3 _normal;       // normal in the previous frame
     Ray rx;    // Auxilary camera ray offset by one pixel in x dimension in screen space.
     Ray ry;    // Auxilary camera ray offset by one pixel in y dimension in screen space.
     float obliqueness; // obliqueness of the hit surface ~ sin(incidentAngle)

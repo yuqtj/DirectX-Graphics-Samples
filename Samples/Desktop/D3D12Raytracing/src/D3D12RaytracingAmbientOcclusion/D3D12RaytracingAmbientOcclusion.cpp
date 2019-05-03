@@ -103,7 +103,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -127,7 +127,7 @@ namespace SceneArgs
         L"Normal Map", 
         L"Depth Buffer", 
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_RawOneFrame, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::PhongLighting, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
 
@@ -202,9 +202,9 @@ namespace SceneArgs
     IntVar RTAO_TemporalCache_VarianceFilterKernelWidth(L"Render/AO/RTAO/Temporal Cache/Variance filter/Kernel width", 7, 3, 11, 2);    // ToDo find lowest good enough width
 
     // ToDo address: Clamping causes rejection of samples in low density areas - such as on ground plane at the end of max ray distance from other objects.
-    BoolVar RTAO_TemporalCache_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", false);
+    BoolVar RTAO_TemporalCache_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", true);
     NumVar RTAO_TemporalCache_ClampCachedValues_StdDevGamma(L"Render/AO/RTAO/Temporal Cache/Clamping/Std.dev gamma", 1.0f, 0.1f, 20.f, 0.1f);
-    NumVar RTAO_TemporalCache_ClampCachedValues_MinStdDevTolerance(L"Render/AO/RTAO/Temporal Cache/Clamping/Minimum std.dev", 0.2f, 0.0f, 1.f, 0.01f);   // ToDo finetune
+    NumVar RTAO_TemporalCache_ClampCachedValues_MinStdDevTolerance(L"Render/AO/RTAO/Temporal Cache/Clamping/Minimum std.dev", 0.04f, 0.0f, 1.f, 0.01f);   // ToDo finetune
     NumVar RTAO_TemporalCache_ClampCachedValues_AbsoluteDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Absolute depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
     NumVar RTAO_TemporalCache_ClampCachedValues_DepthBasedDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Depth based depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
     NumVar RTAO_TemporalCache_ClampCachedValues_DepthSigma(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Depth sigma", 0.9f, 0.0f, 10.f, 0.1f);   // Setting it lower than 0.9 makes cache values to swim...
@@ -351,21 +351,8 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
         {L"House", "Assets\\house\\scene.pbrt"},
         {L"GroundPlane", "Assets\\groundplane\\scene.pbrt"},
 #endif
+        {L"MirrorQuad", "Assets\\mirrorquad\\scene.pbrt"},
     };
-
-    // ToDo remove
-#if 0
-    PBRTParser::PBRTParser().Parse("Assets\\bedroom\\scene.pbrt", m_pbrtScene);
-    //PBRTParser::PBRTParser().Parse("Assets\\spaceship\\scene.pbrt", m_pbrtScene);
-    //PBRTParser::PBRTParser().Parse("Assets\\bmw-m6\\scene.pbrt", m_pbrtScene);
-    //PBRTParser::PBRTParser().Parse("Assets\\staircase2\\scene.pbrt", m_pbrtScene);
-    //PBRTParser::PBRTParser().Parse("Assets\\classroom\\scene.pbrt", m_pbrtScene);
-    //PBRTParser::PBRTParser().Parse("Assets\\living-room-3\\scene.pbrt", m_pbrtScene); //rug geometry skipped
-    //PBRTParser::PBRTParser().Parse("Assets\\staircase\\scene.pbrt", m_pbrtScene);
-    //PBRTParser::PBRTParser().Parse("Assets\\living-room\\scene.pbrt", m_pbrtScene);
-    //PBRTParser::PBRTParser().Parse("Assets\\living-room-2\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
-    //PBRTParser::PBRTParser().Parse("Assets\\kitchen\\scene.pbrt", m_pbrtScene); // incorrect normals on the backwall.
-#endif
 
     ResourceUploadBatch resourceUpload(device);
     resourceUpload.Begin();
@@ -450,7 +437,15 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
             {
                 wstring filename(textureFilename.begin(), textureFilename.end());
                 D3DTexture texture;
-                LoadWICTexture(device, &resourceUpload, filename.c_str(), m_cbvSrvUavHeap.get(), &texture.resource, &texture.heapIndex, &texture.cpuDescriptorHandle, &texture.gpuDescriptorHandle, true);
+                // ToDo use a hel
+                if (filename.find(L".dds") != wstring::npos)
+                {
+                    LoadDDSTexture(device, commandList, filename.c_str(), m_cbvSrvUavHeap.get(), &texture);
+                }
+                else
+                {
+                    LoadWICTexture(device, &resourceUpload, filename.c_str(), m_cbvSrvUavHeap.get(), &texture.resource, &texture.heapIndex, &texture.cpuDescriptorHandle, &texture.gpuDescriptorHandle, true);
+                }
                 textures.push_back(texture);
 
                 *ppOutTexture = &textures.back();
@@ -2117,6 +2112,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
         L"House",
         L"GroundPlane",
 #endif    
+        L"MirrorQuad",
         L"Grass patch" };
 #else
     UINT bottomLevelASnames[] = {
@@ -2140,14 +2136,14 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 
     XMVECTOR base = XMVectorSet(0, 0, 2, 0);
     float width = 14.f;
-    for (int z = -50; z < 50; z++)
-        for (int x = -50; x < 50; x++)
+    for (int z = -15; z < 15; z++)
+        for (int x = -15; x < 15; x++)
         {
-            if (x < -1 || x > 2 || abs(z) > 2)
+            if (x < -1 || x > 2 || z < -2 || z > 1)
             {
                 float jitterX = 2 * GetRandomFloat01inclusive() - 1;
                 float jitterZ = 2 * GetRandomFloat01inclusive() - 1;
-                XMMATRIX transform = XMMatrixTranslationFromVector(width * (base + XMVectorSet(x, 0, z, 0) + 0.01f * XMVectorSet(jitterX, 0, jitterZ, 0)));
+                XMMATRIX transform = XMMatrixTranslationFromVector(width * (base + XMVectorSet(static_cast<float>(x), 0, static_cast<float>(z), 0) + 0.01f * XMVectorSet(jitterX, 0, jitterZ, 0)));
                 m_accelerationStructure->AddBottomLevelASInstance(L"Grass patch", UINT_MAX, transform);
             }
         }
@@ -2416,7 +2412,6 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
         // ToDo
         // if (CameraChanged)
         //m_bClearTemporalCache = true;
-
 	}
 
 
@@ -2425,6 +2420,8 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
         float animationDuration = 10.0f;
         float curTime = static_cast<float>(m_timer.GetTotalSeconds());
         float t = CalculateAnimationInterpolant(curTime, animationDuration);
+        m_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0 ), curTime/9) 
+            * XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
 
         m_accelerationStructure->GetBottomLevelASInstance(3).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-5 + 10 * t, 0, 0, 0)));
         m_accelerationStructure->GetBottomLevelASInstance(0).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 10 * t, 0, 0)));
