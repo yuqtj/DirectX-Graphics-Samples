@@ -103,7 +103,7 @@ void GenerateGrassStraw(
             + CB.p.positionJitterStrength * tangent 
             - 0.001 * CB.p.grassHeight * up;           // Root it in the ground a bit for bottom vertices not to stick out.
     
-    float2 windCoord = frac(texCoord + CB.p.windFrequency * CB.p.timeOffset);
+    float2 windCoord = frac(texCoord + CB.p.timeOffset);
     float3 windNoise = g_windMap.SampleLevel(WrapLinearSampler, windCoord, 0).rbg;      // RGB -> RBG
     windNoise = 2 * windNoise - 1;                    // [0, 1] -> [-1, 1]
     float3 gradient = CB.p.windStrength * (0.5 * CB.p.windDirection + 2.5 * windNoise);

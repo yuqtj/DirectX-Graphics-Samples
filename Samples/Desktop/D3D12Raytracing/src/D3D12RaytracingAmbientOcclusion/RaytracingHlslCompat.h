@@ -99,15 +99,18 @@
 
 #define AO_PROGRESSIVE_SAMPLING 0
 
-#define ENABLE_VSYNC 1
+#define ENABLE_VSYNC 0
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 1  
 #endif
 
+// ToDo Fix missing DirectXTK12.lib in Profile config - as the nuget doesnt provide profile
+// ToDo remove PROFILE preprocesser macro from Release
+
 #define BLUR_AO 1
 #define ATROUS_DENOISER 1
 #define ATROUS_DENOISER_MAX_PASSES 10
-#define RENDER_RNG_SAMPLE_VISUALIZATION 1   // ToDo doesn't render for all AA settings
+#define RENDER_RNG_SAMPLE_VISUALIZATION 0   // ToDo doesn't render for all AA settings
 #define ATROUS_ONELEVEL_ONLY 0
 
 #define DEBUG_MULTI_BLAS_BUILD 0
@@ -466,7 +469,7 @@ struct SceneConstantBuffer
     float RTAO_TraceRayOffsetAlongNormal;
     float RTAO_TraceRayOffsetAlongRayDirection;
     UINT  currentFrameVBindex;
-    float padding;
+    BOOL useDiffuseFromMaterial;
 };
  
 // Final render output composition modes.
@@ -479,6 +482,7 @@ enum CompositionType {
     RTAOHitDistance,    // ToDo standardize naming
     NormalsOnly,
     DepthOnly,
+    Diffuse,
     DisocclusionMap,
     Count
 };
@@ -601,9 +605,8 @@ struct GenerateGrassStrawsConstantBuffer_AppParams
     XMFLOAT3 windDirection;
     float windStrength;
 
-    float windFrequency;
     float positionJitterStrength;
-    float padding[2];
+    float padding[3];
 };
 
 // ToDo move?

@@ -178,17 +178,6 @@ namespace GeometryType {
     };
 }
 
-namespace UIParameters {
-	enum Enum {
-		RaytracingAPI = 0,
-		BuildQuality,
-		UpdateAlgorithm,
-		TesselationQuality,
-		NumberOfObjects,
-		Count
-	};
-}
-
 // ToDo update descriptions, prune redundant.
 namespace GBufferResource {
 	enum Enum {

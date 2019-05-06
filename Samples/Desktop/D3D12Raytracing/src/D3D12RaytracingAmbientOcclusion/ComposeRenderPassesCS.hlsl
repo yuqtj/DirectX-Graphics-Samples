@@ -155,6 +155,15 @@ void main(uint2 DTid : SV_DispatchThreadID )
         {
             color = float4(0, 0, 0, 1); // ToDo
         }
+        else if (g_CB.compositionType == CompositionType::Diffuse)
+        {
+            uint2 materialInfo = g_texGBufferMaterial[DTid];
+            UINT materialID;
+            float3 diffuse;
+            DecodeMaterial16b(materialInfo, materialID, diffuse);
+
+            color = float4(diffuse, 1); // ToDo
+        }
         else if (g_CB.compositionType == CompositionType::DisocclusionMap)
         {
             color = g_texTemporalCacheDisocclusionMap[DTid].x == 1 ? float4(1, 0, 0, 0) : float4(1, 1, 1, 1);

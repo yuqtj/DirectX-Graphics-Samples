@@ -259,6 +259,16 @@ EngineVar::EngineVar(const wstring& path, function<void(void*)> callback, void* 
     EngineTuning::RegisterVariable(path, *this);
 }
 
+void EngineVar::Initialize(const wstring& path, function<void(void*)> callback, void* args)
+{
+    m_Callback = callback;
+    m_Arguments = args;
+
+    EngineTuning::RegisterVariable(path, *this);
+}
+
+
+
 EngineVar* EngineVar::NextVar(void)
 {
     EngineVar* next = nullptr;
@@ -299,6 +309,14 @@ BoolVar::BoolVar(const wstring& path, bool val, function<void(void*)> callback, 
     m_Flag = val;
 }
 
+
+void BoolVar::Initialize(const wstring& path, bool val, function<void(void*)> callback, void* args)
+{
+    EngineVar::Initialize(path, callback, args);
+
+    m_Flag = val;
+}
+
 wstring BoolVar::ToFormattedString() const
 {
     return ToString();
@@ -326,12 +344,23 @@ void BoolVar::SetValue(FILE* file, const wstring& setting)
         0 == _wcsicmp(valstr, L"true"));
 }
 
-NumVar::NumVar(const wstring& path, float val, float minVal, float maxVal, float stepSize, function<void(void*)> callback, void* args)
+NumVar::NumVar(const wstring& path, float val, float minValue, float maxValue, float stepSize, function<void(void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
-    ThrowIfFalse(minVal <= maxVal);
-    m_MinValue = minVal;
-    m_MaxValue = maxVal;
+    ThrowIfFalse(minValue <= maxValue);
+    m_MinValue = minValue;
+    m_MaxValue = maxValue;
+    m_Value = Clamp(val);
+    m_StepSize = stepSize;
+}
+
+void NumVar::Initialize(const std::wstring& path, float val, float minValue, float maxValue, float stepSize, std::function<void(void*)> callback, void* args)
+{
+    EngineVar::Initialize(path, callback, args);
+
+    ThrowIfFalse(minValue <= maxValue);
+    m_MinValue = minValue;
+    m_MaxValue = maxValue;
     m_Value = Clamp(val);
     m_StepSize = stepSize;
 }
@@ -364,7 +393,7 @@ __forceinline float exp2(float x) { return pow(2.0f, x); }
 #endif
 
 ExpVar::ExpVar(const wstring& path, float val, float minExp, float maxExp, float expStepSize, function<void(void*)> callback, void* args)
-    : NumVar(path, log2(val), minExp, maxExp, expStepSize)
+    : NumVar(path, log2(val), minExp, maxExp, expStepSize, callback, args)
 {
 }
 
@@ -377,6 +406,11 @@ ExpVar& ExpVar::operator=(float val)
 ExpVar::operator float() const
 {
     return exp2(m_Value);
+}
+
+void ExpVar::Initialize(const std::wstring& path, float val, float minExp, float maxExp, float expStepSize, std::function<void(void*)> callback, void* args)
+{
+    NumVar::Initialize(path, val, minExp, maxExp, expStepSize, callback, args);
 }
 
 wstring ExpVar::ToFormattedString() const
@@ -411,6 +445,18 @@ IntVar::IntVar(const wstring& path, int32_t val, int32_t minVal, int32_t maxVal,
     m_StepSize = stepSize;
 }
 
+void IntVar::Initialize(const wstring& path, int32_t val, int32_t minVal, int32_t maxVal, int32_t stepSize, function<void(void*)> callback, void* args)
+{
+    EngineVar::Initialize(path, callback, args);
+
+    ThrowIfFalse(minVal <= maxVal);
+    m_MinValue = minVal;
+    m_MaxValue = maxVal;
+    m_Value = Clamp(val);
+    m_StepSize = stepSize;
+}
+
+
 wstring IntVar::ToFormattedString() const
 {
     return FormattedString(L"%-11d", m_Value);
@@ -436,6 +482,16 @@ void IntVar::SetValue(FILE* file, const wstring& setting)
 EnumVar::EnumVar(const wstring& path, int32_t initialVal, int32_t listLength, const WCHAR** listLabels, function<void(void*)> callback, void* args)
     : EngineVar(path, callback, args)
 {
+    ThrowIfFalse(listLength > 0);
+    m_EnumLength = listLength;
+    m_EnumLabels = listLabels;
+    m_Value = Clamp(initialVal);
+}
+
+void EnumVar::Initialize(const wstring& path, int32_t initialVal, int32_t listLength, const WCHAR** listLabels, function<void(void*)> callback, void* args)
+{
+    EngineVar::Initialize(path, callback, args);
+
     ThrowIfFalse(listLength > 0);
     m_EnumLength = listLength;
     m_EnumLabels = listLabels;

@@ -1044,7 +1044,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         float3 diffuse;
         if (material.type == MaterialType::Default)
         {
-            if (material.hasDiffuseTexture)
+            if (material.hasDiffuseTexture && !CB.useDiffuseFromMaterial)
             {
                 diffuse = l_texDiffuse.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz;
             }

@@ -25,6 +25,7 @@
 #include "GpuKernels.h"
 #include "PBRTParser.h"
 #include "SSAO\SSAO.h"
+#include "SceneParameters.h"
 
 
 class D3D12RaytracingAmbientOcclusion : public DXSample
@@ -36,7 +37,7 @@ public:
 	// IDeviceNotify
 	virtual void OnReleaseWindowSizeDependentResources() override { ReleaseWindowSizeDependentResources(); };
 	virtual void OnCreateWindowSizeDependentResources() override { CreateWindowSizeDependentResources(); };
-
+    
 	// Messages
 	virtual void OnInit();
 	virtual void OnKeyDown(UINT8 key);
@@ -53,7 +54,9 @@ public:
 	void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 	void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
 
-	static const UINT MaxBLAS = 1000;
+    static const UINT NumGrassPatchesX = 30;
+    static const UINT NumGrassPatchesZ = 30;
+    static const UINT MaxBLAS = 10 + NumGrassPatchesX * NumGrassPatchesZ;   // ToDo enumerate all instances in the comment
 
 private:
 	static const UINT FrameCount = 3;
@@ -118,8 +121,9 @@ private:
 
     GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
 
+    UINT                                m_grassInstanceIndices[NumGrassPatchesX * NumGrassPatchesZ];
     UINT                                m_currentGrassPatchVBIndex = 0;
-    RWGpuResource                           m_grassPatchVB[2];      // Two VBs: current and previous frame.
+    RWGpuResource                       m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
     D3DBuffer                           m_nullVB;               // Null vertex Buffer - used for geometries that don't animate and don't need double buffering for motion vector calculation.
 
 	ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -166,7 +170,6 @@ private:
 
     std::map<std::wstring, BottomLevelAccelerationStructureGeometry>	m_bottomLevelASGeometries;
     D3DTexture m_environmentMap;
-
 
     std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
     StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.

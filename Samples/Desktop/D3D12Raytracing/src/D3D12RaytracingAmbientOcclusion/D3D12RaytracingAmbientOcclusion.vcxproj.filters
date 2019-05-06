@@ -144,6 +144,9 @@
     <ClInclude Include="RaytracingAccelerationStructure.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SceneParameters.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -224,7 +227,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="readme.md" />
-    <None Include="packages.config" />
     <None Include="SSAO\Shaders\SSAOBlurAndUpsampleCS.hlsli">
       <Filter>SSAO\Shaders</Filter>
     </None>
@@ -237,9 +239,7 @@
     <None Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilterCS.hlsli">
       <Filter>Assets\Shaders</Filter>
     </None>
-    <None Include="util\AnalyticalTextures.hlsli">
-      <Filter>Assets\Shaders\Util</Filter>
-    </None>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Raytracing.hlsl">
@@ -359,6 +359,7 @@
     <FxCompile Include="util\GenerateGrassStrawsCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
+    <FxCompile Include="util\AnalyticalTextures.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">
