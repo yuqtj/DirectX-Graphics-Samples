@@ -90,12 +90,12 @@ ConstantBuffer<PrimitiveConstantBuffer> l_materialCB : register(b0, space1);
 
 #if ONLY_SQUID_SCENE_BLAS
 StructuredBuffer<Index> l_indices : register(t0, space1);
-// Vertex buffers for current and previous frame.
-// Current frame array index is ~ (currentFrameVBindex & 1) for animated geometry, 0 otherwise.
-StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices[2] : register(t1, space1);  // t1-t2
+StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices : register(t1, space1); // Current frame vertex buffer.
+StructuredBuffer<VertexPositionNormalTextureTangent> l_verticesPrevFrame : register(t2, space1); 
 #else
 ByteAddressBuffer l_indices : register(t0, space1);
-StructuredBuffer<VertexPositionNormalTexture> l_vertices[2] : register(t1, space1); // t1-t2
+StructuredBuffer<VertexPositionNormalTexture> l_vertices : register(t1, space1); // Current frame vertex buffer.
+StructuredBuffer<VertexPositionNormalTexture> l_verticesPrevFrame : register(t2, space1);
 #endif
 Texture2D<float3> l_texDiffuse : register(t3, space1);
 Texture2D<float3> l_texNormalMap : register(t4, space1);
@@ -173,11 +173,10 @@ float3 GetWorldHitPositionInPreviousFrame(
     float3 _hitObjectPosition;
     if (l_materialCB.isVertexAnimated)
     {
-        UINT _vbID = (CB.currentFrameVBindex + 1) & 1;
         float3 _vertices[3] = {
-            l_vertices[_vbID][vertexIndices[0]].position,
-            l_vertices[_vbID][vertexIndices[1]].position,
-            l_vertices[_vbID][vertexIndices[2]].position };
+            l_verticesPrevFrame[vertexIndices[0]].position,
+            l_verticesPrevFrame[vertexIndices[1]].position,
+            l_verticesPrevFrame[vertexIndices[2]].position };
         _hitObjectPosition = HitAttribute(_vertices, attr);
     }
     else // non-vertex animated geometry        // ToDo apply this at declaration instead and avoid else?
@@ -836,11 +835,10 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
 	const uint3 indices = Load3x16BitIndices(baseIndex, l_indices);
 #endif
 	// Retrieve corresponding vertex normals for the triangle vertices.
-    UINT vbID = l_materialCB.isVertexAnimated & (CB.currentFrameVBindex & 1);
     float3 vertexNormals[3] = {
-        l_vertices[vbID][indices[0]].normal,
-        l_vertices[vbID][indices[1]].normal,
-        l_vertices[vbID][indices[2]].normal };
+        l_vertices[indices[0]].normal,
+        l_vertices[indices[1]].normal,
+        l_vertices[indices[2]].normal };
 
 #if FLAT_FACE_NORMALS
 	BuiltInTriangleIntersectionAttributes attrCenter;
@@ -899,11 +897,10 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #endif
 
     // Retrieve vertices for the hit triangle.
-    UINT vbID = l_materialCB.isVertexAnimated & (CB.currentFrameVBindex & 1);
     VertexPositionNormalTextureTangent vertices[3] = {
-        l_vertices[vbID][indices[0]],
-        l_vertices[vbID][indices[1]],
-        l_vertices[vbID][indices[2]]};
+        l_vertices[indices[0]],
+        l_vertices[indices[1]],
+        l_vertices[indices[2]]};
 
     float2 vertexTexCoords[3] = { vertices[0].textureCoordinate, vertices[1].textureCoordinate, vertices[2].textureCoordinate };
     float2 texCoord = HitAttribute(vertexTexCoords, attr);

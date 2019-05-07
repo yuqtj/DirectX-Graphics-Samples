@@ -323,6 +323,7 @@ void RaytracingAccelerationStructureManager::Build(
                 bottomLevelAS.Build(commandList, m_accelerationStructureScratch.Get(), descriptorHeap, baseGeometryTransformGpuAddress);
 
                 // Since a single scratch resource is reused, put a barrier in-between each call.
+                // ToDo should this be on the scratch instead? Or both?
                 commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(bottomLevelAS.GetResource()));
             }
         }

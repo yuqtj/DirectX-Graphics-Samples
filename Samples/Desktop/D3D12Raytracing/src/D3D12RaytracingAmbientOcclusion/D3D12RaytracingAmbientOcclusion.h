@@ -119,12 +119,15 @@ private:
     GpuKernels::GenerateGrassPatch      m_grassGeometryGenerator;
 
 
+    D3D12_GPU_DESCRIPTOR_HANDLE m_nullVertexBufferGPUhandle;
     GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
 
     UINT                                m_grassInstanceIndices[NumGrassPatchesX * NumGrassPatchesZ];
     UINT                                m_currentGrassPatchVBIndex = 0;
     RWGpuResource                       m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
     D3DBuffer                           m_nullVB;               // Null vertex Buffer - used for geometries that don't animate and don't need double buffering for motion vector calculation.
+    UINT                                m_grassInstanceShaderRecordOffsets[2];
+    UINT                                m_prevFrameLODs[NumGrassPatchesX * NumGrassPatchesZ];
 
 	ComPtr<ID3D12RootSignature>         m_rootSignature;
 	ComPtr<ID3D12PipelineState>         m_pipelineStateObject;

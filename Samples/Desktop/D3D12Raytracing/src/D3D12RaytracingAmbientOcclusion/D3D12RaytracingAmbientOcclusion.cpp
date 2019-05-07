@@ -104,7 +104,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -129,7 +129,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::PhongLighting, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionAndDisocclusionMap, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
 
@@ -300,17 +300,6 @@ void D3D12RaytracingAmbientOcclusion::CreateIndexAndVertexBuffers(
     auto commandList = m_deviceResources->GetCommandList();
 
     CreateGeometry(device, commandList, m_cbvSrvUavHeap.get(), desc, geometry);
-
-    // Create null resource descriptor for the unused second VB.
-    D3D12_CPU_DESCRIPTOR_HANDLE nullCPUhandle;
-    D3D12_GPU_DESCRIPTOR_HANDLE nullGPUhandle;
-    UINT nullHeapIndex = UINT_MAX;
-    CreateBufferSRV( nullptr, device, desc.vb.count, sizeof(VertexPositionNormalTextureTangent), m_cbvSrvUavHeap.get(), 
-        &nullCPUhandle, &nullGPUhandle,  &nullHeapIndex);
-
-    ThrowIfFalse(geometry->vb.buffer.heapIndex == geometry->ib.buffer.heapIndex + 1
-              && nullHeapIndex == geometry->ib.buffer.heapIndex + 2, 
-              L"Vertex Buffer descriptor indices must follow that of Index Buffer descriptor index since they're all passed via a descriptor table");
 }
 
 // ToDo move
@@ -1131,13 +1120,17 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 			using namespace LocalRootSignature::Triangle;
 
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
-            ranges[Slot::IndexAndVertexBuffers].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 1);  // 3 buffers - static index buffer and 2 vertex buffers.
+            ranges[Slot::IndexBuffer].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 1 buffer - index buffer.
+            ranges[Slot::VertexBuffer].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);  // 1 buffer - current frame vertex buffer.
+            ranges[Slot::PreviousFrameVertexBuffer].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1);  // 1 buffer - previous frame vertex buffer.
             ranges[Slot::DiffuseTexture].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 1);  // 1 diffuse texture
             ranges[Slot::NormalTexture].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4, 1);  // 1 normal texture
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::ConstantBuffer].InitAsConstants(SizeOfInUint32(PrimitiveConstantBuffer), 0, 1);
-            rootParameters[Slot::IndexAndVertexBuffers].InitAsDescriptorTable(1, &ranges[Slot::IndexAndVertexBuffers]);
+            rootParameters[Slot::IndexBuffer].InitAsDescriptorTable(1, &ranges[Slot::IndexBuffer]);
+            rootParameters[Slot::VertexBuffer].InitAsDescriptorTable(1, &ranges[Slot::VertexBuffer]);
+            rootParameters[Slot::PreviousFrameVertexBuffer].InitAsDescriptorTable(1, &ranges[Slot::PreviousFrameVertexBuffer]);
             rootParameters[Slot::DiffuseTexture].InitAsDescriptorTable(1, &ranges[Slot::DiffuseTexture]);
             rootParameters[Slot::NormalTexture].InitAsDescriptorTable(1, &ranges[Slot::NormalTexture]);
 
@@ -1850,6 +1843,8 @@ void D3D12RaytracingAmbientOcclusion::LoadSquidRoom()
 void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
 {
 
+
+
 #if LOAD_PBRT_SCENE
 	LoadPBRTScene();
 #else
@@ -1860,6 +1855,12 @@ void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
     InitializeGrassGeometry();
 #endif
 
+    auto device = m_deviceResources->GetD3DDevice();
+
+    // Create null resource descriptor for the unused second VB in non-animated geometry.
+    D3D12_CPU_DESCRIPTOR_HANDLE nullCPUhandle;
+    UINT nullHeapIndex = UINT_MAX;
+    CreateBufferSRV(nullptr, device, 0, sizeof(VertexPositionNormalTextureTangent), m_cbvSrvUavHeap.get(), &nullCPUhandle, &m_nullVertexBufferGPUhandle, &nullHeapIndex);
 }
 
 // Build geometry used in the sample.
@@ -1875,7 +1876,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
     // Initialize all LOD bottom-level Acceleration Structures for the grass.
     for (UINT i = 0; i < UIParameters::NumGrassGeometryLODs; i++)
     {
-        wstring name = L"Grass patch LOD " + to_wstring(i);
+        wstring name = L"Grass Patch LOD " + to_wstring(i);
         auto& bottomLevelASGeometry = m_bottomLevelASGeometries[name];
         bottomLevelASGeometry.SetName(name);
         bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat; // ToDo use common or add support to shaders 
@@ -1929,6 +1930,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
                 AllocateUAVBuffer(device, NumVertices, sizeof(VertexPositionNormalTextureTangent), &vb, DXGI_FORMAT_UNKNOWN, m_cbvSrvUavHeap.get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"Vertex Buffer: Grass geometry");
             }
 
+            // ToDo add comment
             geometry.vb.buffer.resource = m_grassPatchVB[i][0].resource;
             geometry.vb.buffer.gpuDescriptorHandle = m_grassPatchVB[i][0].gpuDescriptorReadAccess;
             geometry.vb.buffer.heapIndex = m_grassPatchVB[i][0].srvDescriptorHeapIndex;
@@ -1994,6 +1996,8 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
 
         bottomLevelASGeometry.m_numTriangles = bottomLevelASGeometry.m_geometryInstances[0].ib.count / 3;
     }
+
+    ZeroMemory(m_prevFrameLODs, ARRAYSIZE(m_prevFrameLODs) * sizeof(m_prevFrameLODs[0]));
 }
 
 // Build geometry used in the sample.
@@ -2158,7 +2162,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
             0.f, 0.f, 0.f, 0.f,
             0.f, 0.f, 0.f, 0.f,
             0.f, 0.f, 0.f, 0.f);
-        m_grassInstanceIndices[i] = m_accelerationStructure->AddBottomLevelASInstance(L"Grass patch LOD 0", UINT_MAX, degenerateTransform);
+        m_grassInstanceIndices[i] = m_accelerationStructure->AddBottomLevelASInstance(L"Grass Patch LOD 0", UINT_MAX, degenerateTransform);
     }
 
     // Initialize the top-level AS.
@@ -2274,6 +2278,9 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
             auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
 			numShaderRecords += static_cast<UINT>(bottomLevelASGeometry.m_geometryInstances.size()) * RayType::Count;
 		}
+        UINT numGrassGeometryShaderRecords = 2 * UIParameters::NumGrassGeometryLODs * 3 * RayType::Count;
+        numShaderRecords += numGrassGeometryShaderRecords;
+
 		UINT shaderRecordSize = shaderIDSize + LocalRootSignature::MaxRootArgumentsSize();
 		ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
 
@@ -2281,31 +2288,102 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
         for (auto& bottomLevelASGeometryPair : m_bottomLevelASGeometries)
         {
             auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
+            auto& name = bottomLevelASGeometry.GetName();
 
             UINT shaderRecordOffset = hitGroupShaderTable.GeNumShaderRecords();
-
-            // ToDo - bottomLevelASGeometry.m_instanceContributionToHitGroupIndex is not used as the AS's BLAS are separate objects. CLeanup.
-            bottomLevelASGeometry.m_instanceContributionToHitGroupIndex = shaderRecordOffset;
-
             m_accelerationStructure->GetBottomLevelAS(bottomLevelASGeometryPair.first).SetInstanceContributionToHitGroupIndex(shaderRecordOffset);
 
-            for (auto& geometryInstance : bottomLevelASGeometry.m_geometryInstances)
+            // ToDo cleaner?
+            // Grass Patch LOD shader recods
+            if (name.find(L"Grass Patch LOD") != wstring::npos)
             {
+                UINT LOD = stoi(name.data() + 15);
+
+                // ToDo remove assert
+                assert(bottomLevelASGeometry.m_geometryInstances.size() == 1);
+                auto& geometryInstance = bottomLevelASGeometry.m_geometryInstances[0];
+
                 LocalRootSignature::Triangle::RootArguments rootArgs;
                 rootArgs.cb.materialID = geometryInstance.materialID;
                 rootArgs.cb.isVertexAnimated = geometryInstance.isVertexAnimated;
 
-                memcpy(&rootArgs.indexVertexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
+                memcpy(&rootArgs.indexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
                 memcpy(&rootArgs.diffuseTextureGPUHandle, &geometryInstance.diffuseTexture, sizeof(geometryInstance.diffuseTexture));
                 memcpy(&rootArgs.normalTextureGPUHandle, &geometryInstance.normalTexture, sizeof(geometryInstance.normalTexture));
 
+                // Create three variants:
 
-                for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
+
+                struct VertexBufferHandles {
+                    D3D12_GPU_DESCRIPTOR_HANDLE prevFrameVertexBuffer;
+                    D3D12_GPU_DESCRIPTOR_HANDLE vertexBuffer;
+                };
+
+                // 2 * 3 Shader Records per LOD
+                //  2 - ping-pong frame to frame
+                //  3 - transition types
+                //      Transition from lower LOD in previous frame
+                //      Same LOD as previous frame
+                //      Transition from higher LOD in previous
+
+                VertexBufferHandles vbHandles[2][3];
+                for (UINT frameID = 0; frameID < 2; frameID++)
                 {
-                    hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIDSize, &rootArgs, sizeof(rootArgs)));
+                    UINT prevFrameID = (frameID + 1) % 2;
+                        
+                    // For simplicity, we assume the LOD difference from frame to frame is no greater than 1.
+                    // ToDo explain why multiple LODs somewhere.s
+                    // This can be false if camera moves fast, but in that case temporal reprojection 
+                    // would fail for the most part anyway, and consistency checks will prevent blending in from false geometry.
+
+                    // Transitioning from lower LOD.
+                    vbHandles[frameID][0].vertexBuffer = m_grassPatchVB[LOD][frameID].gpuDescriptorReadAccess;
+                    vbHandles[frameID][0].prevFrameVertexBuffer = LOD > 0 ? m_grassPatchVB[LOD - 1][prevFrameID].gpuDescriptorReadAccess
+                                                                          : m_grassPatchVB[LOD][prevFrameID].gpuDescriptorReadAccess;
+
+                    // Same LOD as previous frame.
+                    vbHandles[frameID][1].vertexBuffer = m_grassPatchVB[LOD][frameID].gpuDescriptorReadAccess;
+                    vbHandles[frameID][1].prevFrameVertexBuffer = m_grassPatchVB[LOD][prevFrameID].gpuDescriptorReadAccess;
+
+                    // Transitioning from higher LOD.
+                    vbHandles[frameID][2].vertexBuffer = m_grassPatchVB[LOD][frameID].gpuDescriptorReadAccess;
+                    vbHandles[frameID][2].prevFrameVertexBuffer = LOD < UIParameters::NumGrassGeometryLODs - 1 ? m_grassPatchVB[LOD + 1][prevFrameID].gpuDescriptorReadAccess
+                                                                                                               : m_grassPatchVB[LOD][prevFrameID].gpuDescriptorReadAccess;
+                }
+
+                for (UINT frameID = 0; frameID < 2; frameID++)
+                    for (UINT transitionType = 0; transitionType < 3; transitionType++)
+                    {
+                        memcpy(&rootArgs.vertexBufferGPUHandle, &vbHandles[frameID][transitionType].vertexBuffer, sizeof(vbHandles[frameID][transitionType].vertexBuffer));
+                        memcpy(&rootArgs.previousFrameVertexBufferGPUHandle, &vbHandles[frameID][transitionType].prevFrameVertexBuffer, sizeof(vbHandles[frameID][transitionType].prevFrameVertexBuffer));
+
+                        for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
+                        {
+                            hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIDSize, &rootArgs, sizeof(rootArgs)));
+                        }
+                    }
+            }
+            else // Non-vertex buffer animated geometry with 1 shader record per ray-type per bottom-level AS
+            {
+                for (auto& geometryInstance : bottomLevelASGeometry.m_geometryInstances)
+                {
+                    LocalRootSignature::Triangle::RootArguments rootArgs;
+                    rootArgs.cb.materialID = geometryInstance.materialID;
+                    rootArgs.cb.isVertexAnimated = geometryInstance.isVertexAnimated;
+
+                    memcpy(&rootArgs.indexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
+                    memcpy(&rootArgs.vertexBufferGPUHandle, &geometryInstance.vb.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
+                    memcpy(&rootArgs.previousFrameVertexBufferGPUHandle, &m_nullVertexBufferGPUhandle, sizeof(m_nullVertexBufferGPUhandle));
+                    memcpy(&rootArgs.diffuseTextureGPUHandle, &geometryInstance.diffuseTexture, sizeof(geometryInstance.diffuseTexture));
+                    memcpy(&rootArgs.normalTextureGPUHandle, &geometryInstance.normalTexture, sizeof(geometryInstance.normalTexture));
+
+
+                    for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
+                    {
+                        hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIDSize, &rootArgs, sizeof(rootArgs)));
+                    }
                 }
             }
-
         }
         hitGroupShaderTable.DebugPrint(shaderIdToStringMap);
         m_hitGroupShaderTableStrideInBytes = hitGroupShaderTable.GetShaderRecordSize();
@@ -4476,7 +4554,6 @@ void GetGrassParameters(GenerateGrassStrawsConstantBuffer_AppParams* params, UIN
 
     params->grassHeight = g_UIparameters.GrassGeometryLOD[LOD].StrawHeight;
     params->grassScale = g_UIparameters.GrassGeometryLOD[LOD].StrawScale;
-    params->patchBasePos = XMFLOAT3(-20, -1.16f, -20);      /// ToDo move this to UIParameters w/o path so it doesn't show up?
     params->bendStrengthAlongTangent = g_UIparameters.GrassGeometryLOD[LOD].BendStrengthSideways;
 
     params->patchSize = XMFLOAT3(   // ToDO rename to scale?
@@ -4496,7 +4573,8 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
 {
     auto commandList = m_deviceResources->GetCommandList();
     float totalTime = static_cast<float>(m_timer.GetTotalSeconds());
-    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+
+    m_currentGrassPatchVBIndex = (m_currentGrassPatchVBIndex + 1) % 2;
 
     // Update all LODs.
     for (UINT i = 0; i < UIParameters::NumGrassGeometryLODs; i++)
@@ -4504,11 +4582,8 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
         GenerateGrassStrawsConstantBuffer_AppParams params;
         GetGrassParameters(&params, i, totalTime);
 
-        m_currentGrassPatchVBIndex = (m_currentGrassPatchVBIndex + 1) % 2;
-
         UINT vbID = m_currentGrassPatchVBIndex & 1;
         auto& grassPatchVB = m_grassPatchVB[i][vbID];
-        m_sceneCB->currentFrameVBindex = m_currentGrassPatchVBIndex;
 
         // Transition output vertex buffer to UAV state and make sure the resource is done being read from.      
         {
@@ -4535,7 +4610,7 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
         }
 
         // Point bottom-levelAS VB pointer to the updated VB.
-        auto& bottomLevelAS = m_accelerationStructure->GetBottomLevelAS(L"Grass patch LOD " + to_wstring(i));
+        auto& bottomLevelAS = m_accelerationStructure->GetBottomLevelAS(L"Grass Patch LOD " + to_wstring(i));
         auto& geometryDesc = bottomLevelAS.GetGeometryDescs()[0];
         geometryDesc.Triangles.VertexBuffer.StartAddress = grassPatchVB.resource->GetGPUVirtualAddress();
         bottomLevelAS.SetDirty(true);
@@ -4548,7 +4623,7 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
 
         for (UINT i = 0; i < UIParameters::NumGrassGeometryLODs; i++)
         {
-            grassBottomLevelAS[i] = &m_accelerationStructure->GetBottomLevelAS(L"Grass patch LOD " + to_wstring(i));
+            grassBottomLevelAS[i] = &m_accelerationStructure->GetBottomLevelAS(L"Grass Patch LOD " + to_wstring(i));
         }
 
 
@@ -4557,8 +4632,10 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
         uniform_real_distribution<float> unitSquareDistributionInclusive(0.f, nextafter(1.f, FLT_MAX));
         function<float()> GetRandomFloat01inclusive = bind(unitSquareDistributionInclusive, ref(m_generatorURNG));
 
-        XMVECTOR base = XMVectorSet(0, 0, 2, 0);
+        XMVECTOR baseIndex = XMVectorSet(0, 0, 2, 0);
+        XMVECTOR patchOffset = XMLoadFloat3(&g_UIparameters.GrassCommon.PatchOffset);
         float width = g_UIparameters.GrassCommon.PatchWidth;
+
         for (int i = 0; i < NumGrassPatchesZ; i++)
             for (int j = 0; j < NumGrassPatchesX; j++)
             {
@@ -4566,17 +4643,19 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
                 int x = j - 15;
                 if (x < -1 || x > 2 || z < -2 || z > 1)
                 {
-                    UINT index = i * NumGrassPatchesX + j;
-                    auto& BLASinstance = m_accelerationStructure->GetBottomLevelASInstance(m_grassInstanceIndices[index]);
+                    UINT instanceIndex = i * NumGrassPatchesX + j;
+
+                    auto& BLASinstance = m_accelerationStructure->GetBottomLevelASInstance(m_grassInstanceIndices[instanceIndex]);
                     
                     float jitterX = 2 * GetRandomFloat01inclusive() - 1;
                     float jitterZ = 2 * GetRandomFloat01inclusive() - 1;
-                    XMVECTOR position = width * (base + XMVectorSet(static_cast<float>(x), 0, static_cast<float>(z), 0) + 0.01f * XMVectorSet(jitterX, 0, jitterZ, 0));
+                    XMVECTOR position = patchOffset + width * (baseIndex + XMVectorSet(static_cast<float>(x), 0, static_cast<float>(z), 0) + 0.01f * XMVectorSet(jitterX, 0, jitterZ, 0));
                     XMMATRIX transform = XMMatrixTranslationFromVector(position);
                     BLASinstance.SetTransform(transform);
 
                     // Find the LOD for this instance based on the distance from the camera.
-                    float approxDistanceToCamera = max(0.f, XMVectorGetX(XMVector3Length(position - m_camera.Eye())) - 0.5f * width );
+                    XMVECTOR centerPosition = position + XMVectorSet(0.5f * width, 0, 0.5f * width, 0);
+                    float approxDistanceToCamera = max(0.f, XMVectorGetX(XMVector3Length((centerPosition - m_camera.Eye()))) - 0.5f * width );
                     UINT LOD = UIParameters::NumGrassGeometryLODs - 1;
                     if (!g_UIparameters.GrassCommon.ForceLOD0)
                     {
@@ -4593,9 +4672,29 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
                     {
                         LOD = 0;
                     }
+
+                    auto GetShaderRecordIndexOffset = [&](UINT* outShaderRecordIndexOffset, UINT instanceIndex, UINT LOD, UINT prevFrameLOD)
+                    {
+                        UINT baseShaderRecordID = grassBottomLevelAS[LOD]->GetInstanceContributionToHitGroupIndex();
+
+                        UINT NumTransitionTypes = 3;
+                        UINT transitionType;
+                        if (LOD > prevFrameLOD) transitionType = 0;
+                        else if (LOD == prevFrameLOD) transitionType = 1;
+                        else transitionType = 2;
+                        UINT NumShaderRecordsPerHitGroup = RayType::Count;
+
+                        *outShaderRecordIndexOffset = baseShaderRecordID + (m_currentGrassPatchVBIndex * NumTransitionTypes + transitionType) * NumShaderRecordsPerHitGroup;
+                    };
+
+                    UINT shaderRecordIndexOffset;
+                    GetShaderRecordIndexOffset(&shaderRecordIndexOffset, instanceIndex, LOD, m_prevFrameLODs[instanceIndex]);
+
                     // Point the instance at BLAS at the LOD.
-                    BLASinstance.InstanceContributionToHitGroupIndex = grassBottomLevelAS[LOD]->GetInstanceContributionToHitGroupIndex();
+                    BLASinstance.InstanceContributionToHitGroupIndex = shaderRecordIndexOffset;
                     BLASinstance.AccelerationStructure = grassBottomLevelAS[LOD]->GetResource()->GetGPUVirtualAddress();
+
+                    m_prevFrameLODs[instanceIndex] = LOD;
                 }
             }
     }

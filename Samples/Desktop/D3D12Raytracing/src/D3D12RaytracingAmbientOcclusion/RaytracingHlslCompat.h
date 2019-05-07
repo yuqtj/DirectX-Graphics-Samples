@@ -99,7 +99,7 @@
 
 #define AO_PROGRESSIVE_SAMPLING 0
 
-#define ENABLE_VSYNC 0
+#define ENABLE_VSYNC 1
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 1  
 #endif
@@ -468,7 +468,7 @@ struct SceneConstantBuffer
 
     float RTAO_TraceRayOffsetAlongNormal;
     float RTAO_TraceRayOffsetAlongRayDirection;
-    UINT  currentFrameVBindex;
+    float  padding;
     BOOL useDiffuseFromMaterial;
 };
  
@@ -595,10 +595,7 @@ struct GenerateGrassStrawsConstantBuffer_AppParams
     XMFLOAT2 timeOffset;
     float grassHeight;
     float grassScale;
-
-    XMFLOAT3 patchBasePos;
-    float bendStrengthAlongTangent;
-
+    
     XMFLOAT3 patchSize;
     float grassThickness;
 
@@ -606,7 +603,8 @@ struct GenerateGrassStrawsConstantBuffer_AppParams
     float windStrength;
 
     float positionJitterStrength;
-    float padding[3];
+    float bendStrengthAlongTangent;
+    float padding[2];
 };
 
 // ToDo move?

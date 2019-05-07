@@ -11,6 +11,7 @@
 
 #include "EngineTuning.h"
 
+// ToDo rename to UIParameters?
 namespace SceneParameters
 {
     class GrassGeometryCommon
@@ -23,6 +24,7 @@ namespace SceneParameters
         NumVar WindMapSpeedU;
         NumVar WindMapSpeedV;
         BoolVar ForceLOD0;
+        XMFLOAT3 PatchOffset;
 
         GrassGeometryCommon()
         {
@@ -31,6 +33,7 @@ namespace SceneParameters
             WindMapSpeedU.Initialize(RootPath + L"Wind Texture speed U", 1.f, -1.f, 1.f, 0.05f);
             WindMapSpeedV.Initialize(RootPath + L"Wind Texture speed V", 1.f, -1.f, 1.f, 0.05f);
             ForceLOD0.Initialize(RootPath + L"Force LOD 0", false);
+            PatchOffset = XMFLOAT3(-20, -1.16f, -20);
         }
     };
 
@@ -61,7 +64,7 @@ namespace SceneParameters
             StrawScale.Initialize(RootPath + L"Straw Scale", 0.6f, 0.1f, 10.f, 0.05f);
             StrawThickness.Initialize(RootPath + L"Straw Thickness", 1.f, 0.1f, 10.f, 0.05f);
             BendStrengthSideways.Initialize(RootPath + L"Bend strength sideways", 0.f, 0.f, 1.f, 0.02f);
-            WindStrength.Initialize(RootPath + L"Wind strength", 0.4f, 0.f, 1.f, 0.02f);
+            WindStrength.Initialize(RootPath + L"Wind strength", 0.4f, 0.f, 1.f, 0.005f);
             WindFrequency.Initialize(RootPath + L"Wind frequency", 0.04f, 0.f, 1.f, 0.005f);
             RandomPositionJitterStrength.Initialize(RootPath + L"Position jitter strength", 1.0f, 0.f, 2.f, 0.05f);
             MaxLODdistance.Initialize(RootPath + L"Max LOD distance from the camera", 50.f + 50.f * LOD, 0.f, 1000.f, 1.f);
@@ -85,12 +88,17 @@ public:
             GrassGeometryLOD[i].Initialize(i);
         }
 
-        GrassGeometryLOD[0].MaxLODdistance = 44;
+        GrassGeometryLOD[0].MaxLODdistance = 34;
         GrassGeometryLOD[1].MaxLODdistance = 64;
-        GrassGeometryLOD[1].WindStrength = 0.3f;
-        GrassGeometryLOD[2].WindStrength = 0.1f;
-        GrassGeometryLOD[3].WindStrength = 0.f;
-        GrassGeometryLOD[4].WindStrength = 0.f;
+        GrassGeometryLOD[2].MaxLODdistance = 120;
+        GrassGeometryLOD[3].MaxLODdistance = 200;
+
+        GrassGeometryLOD[1].WindStrength = 0.4f;
+        GrassGeometryLOD[1].WindStrength = 0.16f;
+        GrassGeometryLOD[2].WindStrength = 0.06f;
+        GrassGeometryLOD[3].WindStrength = 0.02f;
+        GrassGeometryLOD[4].WindStrength = 0.01f;
+
     }
 };
 

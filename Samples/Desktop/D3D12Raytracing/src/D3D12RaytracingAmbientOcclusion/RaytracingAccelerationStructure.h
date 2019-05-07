@@ -73,7 +73,6 @@ public:
     UINT                            m_ibStrideInBytes;
     DXGI_FORMAT                     m_vertexFormat;
     UINT                            m_vbStrideInBytes;
-    UINT                            m_instanceContributionToHitGroupIndex = 0;
 
     BottomLevelAccelerationStructureGeometry() {}
     BottomLevelAccelerationStructureGeometry(const wchar_t* name) : m_name(name) {}
@@ -105,7 +104,8 @@ public:
 private:
     std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> m_geometryDescs;
     
-    UINT currentID = 0;
+    // ToDo remove
+    UINT currentID = 0; 
     std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> m_cacheGeometryDescs[3];
 
     DirectX::XMMATRIX m_transform;

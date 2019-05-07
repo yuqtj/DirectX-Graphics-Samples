@@ -187,8 +187,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float3 base_u = ddu * CB.p.patchSize.x * float3(1, 0, 0);
         float3 base_v = ddv * CB.p.patchSize.z * float3(0, 0, 1);
         float2 rootUV = float2((DTid.x + 0.5f) * ddu, (DTid.y + 0.5f) * ddv); // Center the uv at the root center.
-        float3 rootPos = CB.p.patchBasePos + CB.p.patchSize * float3(rootUV.x, 0, rootUV.y);
-
+        float3 rootPos = CB.p.patchSize * float3(rootUV.x, 0, rootUV.y);
 
         float3 surfaceNormal = float3(0, 1, 0);
         uint threadID = DTid.x + DTid.y * CB.p.maxPatchDim.x;
@@ -202,7 +201,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     else // Non-active geometry ~ make degenerate triangles to disable them in the acceleration structure builds.
     {
         VertexPositionNormalTextureTangent vertex;
-        vertex.position = CB.p.patchBasePos;
+        vertex.position = 0;
         uint threadID = DTid.x + DTid.y * CB.p.maxPatchDim.x;
         uint baseVertexID = threadID * N_GRASS_VERTICES;
 

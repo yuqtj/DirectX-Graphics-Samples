@@ -137,7 +137,9 @@ namespace LocalRootSignature {
         namespace Slot {
             enum Enum {
                 ConstantBuffer = 0,
-                IndexAndVertexBuffers,
+                IndexBuffer,
+                VertexBuffer,
+                PreviousFrameVertexBuffer,
                 DiffuseTexture,
                 NormalTexture,
                 Count
@@ -145,7 +147,13 @@ namespace LocalRootSignature {
         }
         struct RootArguments {
             PrimitiveConstantBuffer cb;
-            D3D12_GPU_DESCRIPTOR_HANDLE indexVertexBufferGPUHandle;
+            // ToDo add align specifier
+            // Bind each resource via a descriptor.
+            // This design was picked for simplicity, but one could optimize for shader record size
+            // by binding multiple descriptors via a range descriptor instead.
+            D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
+            D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
+            D3D12_GPU_DESCRIPTOR_HANDLE previousFrameVertexBufferGPUHandle;
             D3D12_GPU_DESCRIPTOR_HANDLE diffuseTextureGPUHandle;
             D3D12_GPU_DESCRIPTOR_HANDLE normalTextureGPUHandle;
         };
