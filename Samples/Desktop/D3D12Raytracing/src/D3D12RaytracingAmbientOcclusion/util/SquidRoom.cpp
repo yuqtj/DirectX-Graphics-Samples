@@ -222,7 +222,7 @@ void SquidRoomAssets::LoadGeometry(
     }
 
     // Create a shared material.
-    PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1), 50, true, true, true, false };
+    PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1), XMFLOAT3(1, 1, 1), true, true, true, 1, MaterialType::Default };
     UINT size = sizeof(PrimitiveMaterialBuffer);
     UINT materialID = static_cast<UINT>(materials->size());
     materials->push_back(materialCB);

@@ -490,7 +490,7 @@ float3 CalculateTangent(in float3 v0, in float3 v1, in float3 v2, in float2 uv0,
     float2 deltaUV2 = uv2 - uv0;
 
     float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x);
-    return (deltaPos1 * deltaUV2.y - deltaPos2 * deltaUV1.y)*r;
+    return (deltaPos1 * deltaUV2.y - deltaPos2 * deltaUV1.y) * r;
 }
 
 

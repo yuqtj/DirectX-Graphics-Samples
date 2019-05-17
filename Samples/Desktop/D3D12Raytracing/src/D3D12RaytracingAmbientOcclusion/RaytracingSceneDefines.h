@@ -149,8 +149,9 @@ namespace LocalRootSignature {
             PrimitiveConstantBuffer cb;
             // ToDo add align specifier
             // Bind each resource via a descriptor.
-            // This design was picked for simplicity, but one could optimize for shader record size
-            // by binding multiple descriptors via a range descriptor instead.
+            // This design was picked for simplicity, but one could optimize for shader record size by:
+            //    1) Binding multiple descriptors via a range descriptor instead.
+            //    2) Storing 4 Byte indices (instead of 8 Byte descriptors) to a global pool resources.
             D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
             D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
             D3D12_GPU_DESCRIPTOR_HANDLE previousFrameVertexBufferGPUHandle;

@@ -46,6 +46,7 @@
 
 // ToDo set max recursion
 // Give opacity to mirrors and shade. Some mirrors are tesselated in the kitchen and its not clear from pure reflections.
+// ToDo TAO is swimming in reflections
 #if ALLOW_MIRRORS
 // Use anyhit instead??
 #define TURN_MIRRORS_SEETHROUGH 0
@@ -125,8 +126,9 @@
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
-#define LOAD_PBRT_SCENE 1
-#define LOAD_ONLY_SPACESHIP 0
+#define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
+#define LOAD_ONLY_SPACESHIP 0   // for LOAD_PBRT_SCENE == 1 only
+#define GENERATE_GRASS 1
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
@@ -276,7 +278,7 @@ typedef UINT16 Index;
 // ToDo revise
 // PERFORMANCE TIP: Set max recursion depth as low as needed
 // as drivers may apply optimization strategies for low recursion depths.
-#define MAX_RAY_RECURSION_DEPTH 4    // ~ primary rays + 2 x reflections + shadow rays from reflected geometry. 
+#define MAX_RAY_RECURSION_DEPTH 6    // ~ primary rays + 2 x reflections + shadow rays from reflected geometry. 
 // ToDo add recursion viz
 
 // ToDo:
@@ -319,15 +321,13 @@ struct GBufferRayPayload
 	XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
 	XMFLOAT3 hitPosition;
 	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
-    UINT BLASInstanceIndex;
     XMFLOAT3 hitObjectPosition;
     XMFLOAT3 objectNormal;
     XMFLOAT3 _virtualHitPosition;  
                             // virtual hitPosition in the previous frame.
                             // For non-reflected points this is a true world position of a hit.
-                            // For reflected points, this is not a true world position of a hit 
-                            // but a position reflected across the reflected surface ultimately giving the same
-                            // screen space coords when projected and the depth corresponding to the ray depth.
+                            // For reflected points, this is a world position of a hit reflected across the reflected surface 
+                            //   ultimately giving the same screen space coords when projected and the depth corresponding to the ray depth.
 
 
     XMFLOAT3 _normal;       // normal in the previous frame
@@ -638,13 +638,15 @@ struct PrimitiveMaterialBuffer
 {
 	XMFLOAT3 diffuse;
 	XMFLOAT3 specular;
+    XMFLOAT3 opacity;
     float specularPower;
     // ToDo use a bitmask?
     UINT hasDiffuseTexture; // ToDO use BOOL?
     UINT hasNormalTexture;
     UINT hasPerVertexTangents;
-    UINT isMirror;
+    float roughness;
     MaterialType type;
+    float padding;
 };
 
 // Attributes per primitive instance.

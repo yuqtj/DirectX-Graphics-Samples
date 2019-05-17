@@ -14,7 +14,7 @@ WorldBegin
 	MakeNamedMaterial "Leather" "string type" [ "substrate" ] "rgb Ks" [ 0.040000 0.040000 0.040000 ] "rgb Kd" [ 0.034000 0.014000 0.008000 ] "float uroughness" [ 0.400000 ] "float vroughness" [ 0.400000 ] "bool remaproughness" [ "false" ] 
 	MakeNamedMaterial "RedLeather" "string type" [ "substrate" ] "rgb Ks" [ 0.040000 0.040000 0.040000 ] "rgb Kd" [ 0.163000 0.030000 0.037000 ] "float uroughness" [ 0.400000 ] "float vroughness" [ 0.400000 ] "bool remaproughness" [ "false" ] 
 	MakeNamedMaterial "BrightPinkLeather" "string type" [ "substrate" ] "rgb Ks" [ 0.040000 0.040000 0.040000 ] "rgb Kd" [ 0.772000 0.175000 0.262000 ] "float uroughness" [ 0.400000 ] "float vroughness" [ 0.400000 ] "bool remaproughness" [ "false" ] 
-	MakeNamedMaterial "Glass" "string type" [ "glass" ] "float index" [ 1.500000 ] "bool remaproughness" [ "false" ] "float uroughness" [ 0.010000 ] "float vroughness" [ 0.010000 ] 
+	MakeNamedMaterial "Glass" "string type" [ "glass" ] "float index" [ 1.500000 ] "bool remaproughness" [ "false" ] "float uroughness" [ 0.010000 ] "float vroughness" [ 0.010000 ]  "rgb opacity" [ 0.000000 0.000000 0.000000 ] 
 	MakeNamedMaterial "DarkRubber" "string type" [ "substrate" ] "rgb Ks" [ 0.040000 0.040000 0.040000 ] "rgb Kd" [ 0.025000 0.025000 0.025000 ] "float uroughness" [ 0.400000 ] "float vroughness" [ 0.400000 ] "bool remaproughness" [ "false" ] 
 	MakeNamedMaterial "Black" "string type" [ "matte" ] "rgb Kd" [ 0.000000 0.000000 0.000000 ] 
 	NamedMaterial "RoughAluminium" 

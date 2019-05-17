@@ -167,7 +167,7 @@ float3 GetWorldHitPositionInPreviousFrame(
     in BuiltInTriangleIntersectionAttributes attr,
     out float3x4 _BLASTransform)
 {
-    // Variables starting with underscore _ denote values in the previous frame.
+    // Variables prefixed with underscore _ denote values in the previous frame.
 
     // Calculate hit object position of the hit in the previous frame.
     float3 _hitObjectPosition;
@@ -189,12 +189,12 @@ float3 GetWorldHitPositionInPreviousFrame(
     return mul(_BLASTransform, float4(_hitObjectPosition, 1));
 }
 
-// Calculates a texture space motion vector from previous to current frame
+// Calculate a texture space motion vector from previous to current frame.
 float2 CalculateMotionVector(
     in float3 _hitPosition,
     out float _depth)
 {
-    // Variables starting with underscore _ denote values in the previous frame.
+    // Variables prefixed with underscore _ denote values in the previous frame.
     float3 _hitViewPosition = _hitPosition - CB.prevCameraPosition.xyz;
     float3 _cameraDirection = GenerateForwardCameraRayDirection(CB.prevProjToWorldWithCameraEyeAtOrigin);
     _depth = dot(_hitViewPosition, _cameraDirection);
@@ -320,15 +320,12 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 	// ToDo Tmin - this should be offset along normal.
 	rayDesc.TMin = tMin;
 	rayDesc.TMax = tMax;
-#if ALLOW_MIRRORS
-	GBufferRayPayload rayPayload = { currentRayRecursionDepth + 1, false, (uint2)0, (float3)0, (float3)0, 0, (float3)0, (float3)0, (float3)0, (float3)0, rx, ry, 0, 0
-#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-        , 0, 0
+
+    GBufferRayPayload rayPayload = { 
+#if ALLOW_MIRRORS 
+        currentRayRecursionDepth + 1, 
 #endif
-    };
-#else
-	GBufferRayPayload rayPayload = { false, (uint2)0, (float3)0, (float3)0, rx, ry };
-#endif
+        false, (uint2)0, (float3)0, (float3)0, (float3)0, (float3)0, (float3)0, (float3)0, rx, ry, 0, 0 };
 	TraceRay(g_scene,
 #if FACE_CULLING
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES
@@ -664,7 +661,6 @@ void MyRayGenShader_GBuffer()
         float2 motionVector = CalculateMotionVector(rayPayload._virtualHitPosition, _depth);
         g_rtTextureSpaceMotionVector[DispatchRaysIndex().xy] = motionVector;
         g_rtReprojectedHitPosition[DispatchRaysIndex().xy] = float4(rayPayload._normal, _depth);
-
     }
     else
     {
@@ -872,6 +868,36 @@ void MyClosestHitShader(inout RayPayload rayPayload, in BuiltInTriangleIntersect
     rayPayload.color = color;
 }
 
+float3 NormalMap(
+    in float3 normal,
+    in float2 texCoord,
+    in float2 ddx,
+    in float2 ddy,
+    in VertexPositionNormalTextureTangent vertices[3],
+    in PrimitiveMaterialBuffer material,
+    in BuiltInTriangleIntersectionAttributes attr)
+{
+    float3 tangent;
+    if (material.hasPerVertexTangents)
+    {
+        float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
+        tangent = HitAttribute(vertexTangents, attr);
+    }
+    else // ToDo precompute them for all geometry
+    {
+        float3 v0 = vertices[0].position;
+        float3 v1 = vertices[1].position;
+        float3 v2 = vertices[2].position;
+        float2 uv0 = vertices[0].textureCoordinate;
+        float2 uv1 = vertices[1].textureCoordinate;
+        float2 uv2 = vertices[2].textureCoordinate;
+        tangent = CalculateTangent(v0, v1, v2, uv0, uv1, uv2);
+    }
+
+    float3 bumpNormal = normalize(l_texNormalMap.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz) * 2.f - 1.f;
+    return BumpMapNormalToWorldSpaceNormal(bumpNormal, normal, tangent);
+}
+
 [shader("closesthit")]
 void MyClosestHitShader_ShadowRay(inout ShadowRayPayload rayPayload, in BuiltInTriangleIntersectionAttributes attr)
 {
@@ -963,28 +989,9 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         //ddy *= 0.5;
     }
 
-    // Apply NormalMap
     if (CB.RTAO_UseNormalMaps && material.hasNormalTexture)
     {
-        float3 tangent;
-        if (material.hasPerVertexTangents)
-        {
-            float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
-            tangent = HitAttribute(vertexTangents, attr);
-        }
-        else
-        {
-            float3 v0 = vertices[0].position;
-            float3 v1 = vertices[1].position;
-            float3 v2 = vertices[2].position;
-            float2 uv0 = vertices[0].textureCoordinate;
-            float2 uv1 = vertices[1].textureCoordinate;
-            float2 uv2 = vertices[2].textureCoordinate;
-            tangent = CalculateTangent(v0, v1, v2, uv0, uv1, uv2);
-        }
-
-        float3 bumpNormal = normalize(l_texNormalMap.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz) * 2.f - 1.f;
-        normal = BumpMapNormalToWorldSpaceNormal(bumpNormal, normal, tangent);
+        normal = NormalMap(normal, texCoord, ddx, ddy, vertices, material, attr);
     }
 
 
@@ -1000,31 +1007,45 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #else // ToDo fix derivatives
         float2 uv = hitPosition.xz / 2;
         float checkers = CheckersTextureBoxFilter(uv, ddx, ddy);
-        material.isMirror = (abs(uv.x) < 20 && abs(uv.y) < 20) && (checkers > 0.5);
+        material.roughness = (abs(uv.x) < 20 && abs(uv.y) < 20) && (checkers > 0.5) ? 0 : 1;
 #endif
     }
 
-    UINT rayRecursionDepth = rayPayload.rayRecursionDepth;
+    float reflectanceCoef = material.roughness < 0.99;
+
 #if ALLOW_MIRRORS
-    if (material.isMirror && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
+    UINT rayRecursionDepth = rayPayload.rayRecursionDepth;
+    if (dot(1, material.opacity) < 0.9 && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
     {
         // ToDo offset hitposition, add comment.
+
+        // ToDo TAO needs larger thresholds for rays that passed through, why?
 #if TURN_MIRRORS_SEETHROUGH
+        float tOffset = 0.001f;
         // Calculate refracted rx, ry
         // No refraction ,just passing the rays through.
         Ray rx = rayPayload.rx;
         Ray ry = rayPayload.ry;
-        Ray ray = { hitPosition + 0.05f * WorldRayDirection(), WorldRayDirection() };
+        Ray ray = { hitPosition + tOffset * WorldRayDirection(), WorldRayDirection() };
 #else
+        float tOffset = 0.001f;
         // Calculate reflected rx, ry
         Ray rx = { px, reflect(rayPayload.rx.direction, normal) };
         Ray ry = { py, reflect(rayPayload.ry.direction, normal) };
-        Ray ray = { hitPosition, reflect(WorldRayDirection(), normal) };
+        // ToDo offset along surface normal, and adjust tOffset subtraction below.
+        Ray ray = { hitPosition + tOffset * normal, reflect(WorldRayDirection(), normal) };
+
+        // Adjust the tOffset for the part along the ray direction.
+        //tOffset = dot(tOffset * normal, -  
 #endif
 
-        rayPayload = TraceGBufferRay(ray, rx, ry, rayPayload.rayRecursionDepth, NEAR_PLANE, FAR_PLANE - RayTCurrent());
-        rayPayload.tHit += RayTCurrent();
+        float tMin = 0; // NEAR_PLANE ToDo
+        float tMax = 1000;  //  FAR_PLANE - RayTCurrent()
 
+        rayPayload = TraceGBufferRay(ray, rx, ry, rayPayload.rayRecursionDepth, tMin, tMax);
+        rayPayload.tHit += RayTCurrent() - tOffset; // We have to subtract the added offset for corret tHit.
+
+#if !TURN_MIRRORS_SEETHROUGH
         // Get the current planar mirror in the previous frame.
         float3x4 _mirrorBLASTransform = g_prevFrameBottomLevelASInstanceTransform[InstanceIndex()];
         float3 _mirrorHitPosition = mul(_mirrorBLASTransform, float4(HitObjectPosition(), 1));
@@ -1034,7 +1055,8 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         // Skipping normalization as it's not required for the uses of the transformed normal here.
         float3 _mirrorNormal = mul((float3x3)_mirrorBLASTransform, objectNormal);
         rayPayload._virtualHitPosition = ReflectFrontPointThroughPlane(rayPayload._virtualHitPosition, _mirrorHitPosition, _mirrorNormal);
-	}
+#endif
+    }
     else
 #endif
     {
@@ -1055,7 +1077,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #if 0 
             float2 ddx_uv;
             float2 ddy_uv;
-            float2 uv = TexCoords(hitPosition);
+            float2 uv = hitPosition.xz;
 
             CalculateRayDifferentials(ddx_uv, ddy_uv, uv, hitPosition, normal, CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin);
             diffuse = CheckersTextureBoxFilter(uv, ddx_uv, ddy_uv, 25);
@@ -1070,7 +1092,6 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         rayPayload.hitPosition = hitPosition;
         rayPayload.surfaceNormal = normal;
         rayPayload.tHit = RayTCurrent();
-        rayPayload.BLASInstanceIndex = InstanceIndex();
         rayPayload.hitObjectPosition = HitObjectPosition();
         rayPayload.objectNormal = objectNormal;
 
@@ -1079,7 +1100,6 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         float3 ryRaySegment = py - rayPayload.ry.origin;
         rayPayload.rxTHit += length(rxRaySegment);
         rayPayload.ryTHit += length(ryRaySegment);
-        rayPayload.BLASinstanceIndex = InstanceIndex();
 #endif
 
         float3x4 _BLASTransform;

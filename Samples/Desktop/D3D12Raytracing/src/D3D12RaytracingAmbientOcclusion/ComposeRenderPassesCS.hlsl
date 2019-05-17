@@ -212,8 +212,8 @@ float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 toLightRay, i
 // Phong lighting specular component
 float3 CalculateSpecularCoefficient(in float3 hitPosition, in float3 toEyeRay, in float3 toLightRay, in float3 normal, in float specularPower)
 {
-	float3 reflectedToLightRay = normalize(reflect(toLightRay, normal));
-	return pow(saturate(dot(reflectedToLightRay, toEyeRay)), specularPower);
+	float3 reflectedToLightRay = reflect(toLightRay, normal);
+    return pow(saturate(dot(reflectedToLightRay, toEyeRay)), specularPower);
 }
 
 // Phong lighting model = ambient + diffuse + specular components.

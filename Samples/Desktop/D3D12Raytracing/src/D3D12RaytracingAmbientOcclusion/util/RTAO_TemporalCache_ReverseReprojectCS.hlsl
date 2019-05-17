@@ -13,6 +13,8 @@
 #include "..\RaytracingHlslCompat.h"
 #include "..\RaytracingShaderHelper.hlsli"
 
+// ToDo some pixels here and there on mirror boundaries fail temporal reprojection even for static scene/camera
+
 // ToDO pack value and depth beforehand?
 Texture2D<float> g_texInputCachedValue : register(t0);
 Texture2D<float> g_texInputCurrentFrameValue : register(t1);

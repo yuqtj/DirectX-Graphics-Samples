@@ -129,7 +129,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionAndDisocclusionMap, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_RawOneFrame, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
 
@@ -326,8 +326,6 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
         return XMFLOAT2(v.x, v.y);
     };
 
-    // Work
-
 
     // ToDo
     //m_camera.Set(
@@ -344,8 +342,9 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
         {L"Dragon", "Assets\\dragon\\scene.pbrt"},
         {L"House", "Assets\\house\\scene.pbrt"},
         {L"GroundPlane", "Assets\\groundplane\\scene.pbrt"},
-#endif
+
         {L"MirrorQuad", "Assets\\mirrorquad\\scene.pbrt"},
+#endif
     };
 
     ResourceUploadBatch resourceUpload(device);
@@ -421,7 +420,8 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
             cb.diffuse = mesh.m_pMaterial->m_Diffuse.xmFloat3;
             cb.specular = mesh.m_pMaterial->m_Specular.xmFloat3;
             cb.specularPower = 50;
-            cb.isMirror = mesh.m_pMaterial->m_Opacity.r < 0.5f ? 1 : 0;
+            cb.opacity = mesh.m_pMaterial->m_Opacity.xmFloat3;
+            cb.roughness = 0.5f * (mesh.m_pMaterial->m_URoughness + mesh.m_pMaterial->m_VRoughness);
             cb.hasDiffuseTexture = !mesh.m_pMaterial->m_DiffuseTextureFilename.empty();
             cb.hasNormalTexture = !mesh.m_pMaterial->m_NormalMapTextureFilename.empty();
             cb.hasPerVertexTangents = true;
@@ -1623,7 +1623,7 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
     ThrowIfFalse(0 && L"ToDo: fix up null VB SRV");
 
 
-	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), 50, false, false, false, false, MaterialType::Default };
+	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), XMFLOAT3(1, 1, 1), 50, false, false, false, 1, MaterialType::Default };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(planeMaterialCB);
 
@@ -1640,147 +1640,117 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
 
     auto& bottomLevelASGeometry = m_bottomLevelASGeometries[L"Tesselated Geometry"];
     bottomLevelASGeometry.SetName(L"Tesselated Geometry");
-    bottomLevelASGeometry.m_indexFormat = DXGI_FORMAT_R16_UINT; // ToDo use common or add support to shaders 
+    bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat;
     bottomLevelASGeometry.m_ibStrideInBytes = sizeof(Index);
     bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
-    bottomLevelASGeometry.m_vbStrideInBytes = sizeof(DirectX::GeometricPrimitive::VertexType);
+    bottomLevelASGeometry.m_vbStrideInBytes = sizeof(VertexPositionNormalTextureTangent);
 
+    const UINT NumTrees = 1;
     auto& geometries = bottomLevelASGeometry.m_geometries;
-    geometries.resize(1);
+    geometries.resize(NumTrees);
+    
+	vector<GeometricPrimitive::VertexType> dxtk_vertices;
+	vector<uint16_t> dxtk_indices;
+
+    float diameter = 5;
+    float height = 5;
+    size_t tesselation = 7;
+    GeometricPrimitive::CreateCone(dxtk_vertices, dxtk_indices, diameter, height, tesselation, RhCoords);
+    //GeometricPrimitive::CreateTetrahedron(dxtk_vertices, dxtk_indices, diameter, RhCoords);
+    //GeometricPrimitive::CreateTorus(dxtk_vertices, dxtk_indices, diameter, 0.5, 4, RhCoords);
+
+    vector<VertexPositionNormalTextureTangent> vertices;
+    vector<Index> indices;
+
+    for (auto& dxtk_vertex : dxtk_vertices)
+    {
+        VertexPositionNormalTextureTangent vertex =
+        {
+            dxtk_vertex.position,
+            dxtk_vertex.normal,
+            dxtk_vertex.textureCoordinate,
+            XMFLOAT3()
+        };
+        vertices.push_back(vertex);
+    }
+    for (auto& dxtk_index : dxtk_indices)
+    {
+        Index index = dxtk_index;
+        indices.push_back(index);
+    }
+    std::mt19937 m_generatorURNG;  // Uniform random number generator
+    m_generatorURNG.seed(1729);
+    uniform_real_distribution<float> unitSquareDistributionInclusive(0.f, nextafter(1.f, FLT_MAX));
+    function<float()> GetRandomFloat01inclusive = bind(unitSquareDistributionInclusive, ref(m_generatorURNG));
+
+    // Deform the vertices a bit
+    float deformDistance = height * 0.01f;
+    float radius = diameter / 2;
+    for (auto& vertex : vertices)
+    {
+        // Bottom vertices
+        if (vertex.position.y < 0)
+        {
+            float angle = XM_PIDIV2 + asinf(vertex.position.x / radius);    // <0, XM_PI>
+            angle += vertex.position.z < 0 ? XM_PI : 0;                     // <0, XM_2PI>
+            float frequency = 5;
+            vertex.position.y += deformDistance * sinf(frequency * angle);
+        }
+    }
+    
+    auto CalculateNormals = [&](vector<VertexPositionNormalTextureTangent>* pvVertices, vector<Index>& vIndices)
+    {
+        // Since some vertices may be shared across faces,
+        // update a copy of vertex normals while evaluating all the faces.
+        vector<UINT> vertexFaceCountContributions;
+        vertexFaceCountContributions.resize(pvVertices->size(), 0);
+        vector<XMVECTOR> vertexNormalsSum;
+        vertexNormalsSum.resize(pvVertices->size(), XMVectorZero());
+
+        for (UINT i = 0; i < vIndices.size(); i += 3)
+        {
+            UINT indices[3] = { vIndices[i], vIndices[i + 1], vIndices[i + 2] };
+            auto& v0 = (*pvVertices)[indices[0]];
+            auto& v1 = (*pvVertices)[indices[1]];
+            auto& v2 = (*pvVertices)[indices[2]];
+            XMVECTOR normals[3] = {
+                XMVector3Normalize(XMLoadFloat3(&v0.normal)),
+                XMVector3Normalize(XMLoadFloat3(&v1.normal)),
+                XMVector3Normalize(XMLoadFloat3(&v2.normal))
+            };
+
+            XMVECTOR* nSums[3] = { &vertexNormalsSum[indices[0]], &vertexNormalsSum[indices[1]], &vertexNormalsSum[indices[2]] };
+
+            for (UINT i = 0; i < 3; i++)
+            {
+                vertexFaceCountContributions[indices[i]]++;
+            }
+
+            // Calculate the face normal.
+            XMVECTOR v01 = XMLoadFloat3(&v1.position) - XMLoadFloat3(&v0.position);
+            XMVECTOR v02 = XMLoadFloat3(&v2.position) - XMLoadFloat3(&v0.position);
+            XMVECTOR faceNormal = XMVector3Normalize(XMVector3Cross(v01, v02));
+
+            // Add the face normal contribution to all three vertices.
+            for (UINT i = 0; i < 3; i++)
+            {
+                *nSums[i] += faceNormal;
+            }
+        }
+
+        // Update the vertices with normalized normals across all contributing faces.
+        for (UINT i = 0; i < (*pvVertices).size(); i++)
+        {
+            XMStoreFloat3(&(*pvVertices)[i].normal, vertexNormalsSum[i] / static_cast<float>(vertexFaceCountContributions[i]));
+        }
+    };
+
+    CalculateNormals(&vertices, indices);
+
+
     auto& geometry = geometries[0];
 
-#if	TESSELATED_GEOMETRY_BOX_TETRAHEDRON
-	// Plane indices.
-	array<Index, 12> indices =
-	{ {
-		0, 3, 1,
-		1, 3, 2,
-		2, 3, 0,
-
-#if !TESSELATED_GEOMETRY_BOX_TETRAHEDRON_REMOVE_BOTTOM_TRIANGLE
-		0, 1, 2
-#endif
-	} };
-
-	const float edgeLength = 0.707f;
-	const float e2 = edgeLength / 2;
-	// Cube vertices positions and corresponding triangle normals.
-	array<DirectX::VertexPositionNormalTexture, 4> vertices =
-	{ {
-#if 1
-		{ XMFLOAT3(-e2, -e2, -e2), XMFLOAT3(0, 0, 0), XMFLOAT2(FLT_MAX, FLT_MAX) },
-		{ XMFLOAT3(e2, -e2, -e2), XMFLOAT3(0, 0, 0), XMFLOAT2(FLT_MAX, FLT_MAX) },
-		{ XMFLOAT3(0, -e2, e2), XMFLOAT3(0, 0, 0), XMFLOAT2(FLT_MAX, FLT_MAX) },
-		{ XMFLOAT3(0, e2, 0), XMFLOAT3(0, 0, 0), XMFLOAT2(FLT_MAX, FLT_MAX) }
-#else
-		{ XMFLOAT3(e2, -e2, -e2), XMFLOAT3(1, 0, 0), XMFLOAT2(FLT_MAX, FLT_MAX) },
-		{ XMFLOAT3(e2, -e2, e2), XMFLOAT3(1, 0, 0), XMFLOAT2(FLT_MAX, FLT_MAX) },
-		{ XMFLOAT3(-e2, -e2, e2), XMFLOAT3(1, 0, 0), XMFLOAT2(FLT_MAX, FLT_MAX) },
-		{ XMFLOAT3(e2, e2, e2), XMFLOAT3(1,0, 0), XMFLOAT2(FLT_MAX, FLT_MAX) }
-#endif
-		} };
-
-#if 1
-	for (auto& vertex : vertices)
-	{
-		auto& scale = m_boxSize;
-		vertex.position.x *= (m_boxSize.x / e2);
-		vertex.position.y *= (m_boxSize.y / e2);
-		vertex.position.z *= (m_boxSize.z / e2);
-	}
-#endif
-
-	auto Edge = [&](UINT v0, UINT v1)
-	{
-		return XMLoadFloat3(&vertices[v1].position) - XMLoadFloat3(&vertices[v0].position);
-	};
-
-	XMVECTOR faceNormals[4] =
-	{
-		XMVector3Cross(Edge(0, 3), Edge(0, 1)),
-		XMVector3Cross(Edge(1, 3), Edge(1, 2)),
-		XMVector3Cross(Edge(2, 3), Edge(2, 0)),
-		XMVector3Cross(Edge(0, 1), Edge(0, 2))
-	};
-
-	
-#if 1 // ToDo
-	XMStoreFloat3(&vertices[0].normal, XMVector3Normalize(faceNormals[0] + faceNormals[2] + faceNormals[3]));
-	XMStoreFloat3(&vertices[1].normal, XMVector3Normalize(faceNormals[0] + faceNormals[1] + faceNormals[3]));
-	XMStoreFloat3(&vertices[2].normal, XMVector3Normalize(faceNormals[1] + faceNormals[2] + faceNormals[3]));
-#if AO_OVERDOSE_BEND_NORMALS_DOWN
-	XMStoreFloat3(&vertices[3].normal, XMVector3Normalize(faceNormals[0] + faceNormals[1] + faceNormals[2]) * XMVectorSet(1, 0.01f, 1, 0));
-#else
-	XMStoreFloat3(&vertices[3].normal, XMVector3Normalize(faceNormals[0] + faceNormals[1] + faceNormals[2]));
-#endif
-	float a = 2;
-#endif
-#else
-	vector<GeometricPrimitive::VertexType> vertices;
-	vector<Index> indices;
-	switch (SceneArgs::GeometryTesselationFactor)
-    {
-    case 0:
-        // 24 indices
-#if TESSELATED_GEOMETRY_BOX_TETRAHEDRON
-		GeometricPrimitive::CreateTetrahedron(vertices, indices, m_boxSize.x, RhCoords);
-#elif TESSELATED_GEOMETRY_TEAPOT
-		GeometricPrimitive::CreateTeapot(vertices, indices, m_geometryRadius, 10, RhCoords);
-#elif TESSELATED_GEOMETRY_BOX
-		GeometricPrimitive::CreateBox(vertices, indices, m_boxSize, RhCoords);
-#else
-		GeometricPrimitive::CreateOctahedron(vertices, indices, m_geometryRadius, RhCoords);
-#endif
-		break;
-    case 1:
-        // 36 indices
-        GeometricPrimitive::CreateDodecahedron(vertices, indices, m_geometryRadius, RhCoords);
-        break;
-    case 2:
-        // 60 indices
-        GeometricPrimitive::CreateIcosahedron(vertices, indices, m_geometryRadius, RhCoords);
-        break;
-    default:
-        // Tesselation Factor - # Indices:
-        // o 3  - 126
-        // o 4  - 216
-        // o 5  - 330
-        // o 10 - 1260
-        // o 16 - 3681
-        // o 20 - 4920
-        const float Diameter = 2 * m_geometryRadius;
-        GeometricPrimitive::CreateSphere(vertices, indices, Diameter, SceneArgs::GeometryTesselationFactor, RhCoords);
-    }
-#endif
-
-#if TESSELATED_GEOMETRY_TEAPOT
-	XMMATRIX rotation = XMMatrixIdentity();// XMMatrixRotationY(XM_PIDIV2);
-	for (auto& vertex : vertices)
-	{
-		XMStoreFloat3(&vertex.position, XMVector3TransformCoord(XMLoadFloat3(&vertex.position), rotation));
-		XMStoreFloat3(&vertex.normal, XMVector3TransformNormal(XMLoadFloat3(&vertex.normal), rotation));
-	}
-#endif
-#if TESSELATED_GEOMETRY_THIN
-#if TESSELATED_GEOMETRY_BOX_TETRAHEDRON
-	for (auto& vertex : vertices)
-	{
-		if (vertex.position.y > 0)
-		{
-			//vertex.position.y = m_boxSize.y;
-		}
-	}
-#else
-	for (auto& vertex : vertices)
-	{
-		if (vertex.position.y > 0)
-		{
-			vertex.position.x *= 0;
-			vertex.position.z *= 0;
-		}
-	}
-#endif
-#endif
+    // Convert index and vertex buffers to the sample's common format.
 
 	// Index buffer is created with a ByteAddressBuffer SRV. 
 	// ByteAddressBuffer SRV is created with an ElementSize = 0 and NumElements = number of 32 - bit words.
@@ -1795,9 +1765,7 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
     CreateBufferSRV(device, static_cast<UINT>(vertices.size()), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
-    ThrowIfFalse(0 && L"ToDo: fix up null VB SRV");
-
-	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(0.75f, 0.75f, 0.75f), XMFLOAT3(1, 1, 1),  50, false, false, false, false, MaterialType::Default };
+	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(14/255.f, 117/255.f, 0), XMFLOAT3(1, 1, 1), XMFLOAT3(1, 1, 1), 50, false, false, false, 1, MaterialType::Default };
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(materialCB);
     bottomLevelASGeometry.m_geometryInstances.resize(SceneArgs::NumGeometriesPerBLAS, GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
@@ -1842,8 +1810,7 @@ void D3D12RaytracingAmbientOcclusion::LoadSquidRoom()
 
 void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
 {
-
-
+    //BuildTesselatedGeometry();
 
 #if LOAD_PBRT_SCENE
 	LoadPBRTScene();
@@ -1866,6 +1833,9 @@ void D3D12RaytracingAmbientOcclusion::LoadSceneGeometry()
 // Build geometry used in the sample.
 void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
 {
+#if !GENERATE_GRASS
+    return;
+#endif
     auto device = m_deviceResources->GetD3DDevice();
     auto commandList = m_deviceResources->GetCommandList();
     auto commandQueue = m_deviceResources->GetCommandQueue();
@@ -1979,7 +1949,8 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
 
             materialCB.specular = XMFLOAT3(1, 1, 1);
             materialCB.specularPower = 50;
-            materialCB.isMirror = false;
+            materialCB.opacity = XMFLOAT3(1, 1, 1);
+            materialCB.roughness = 0;
             materialCB.hasDiffuseTexture = true;
             materialCB.hasNormalTexture = false;
             materialCB.hasPerVertexTangents = false;    // ToDo calculate these when geometry is generated?
@@ -2023,7 +1994,6 @@ void D3D12RaytracingAmbientOcclusion::InitializeGeometry()
             m_nullTexture.heapIndex, m_cbvSrvUavHeap->DescriptorSize());
     }
 
-    //BuildTesselatedGeometry();
     //BuildPlaneGeometry();   
 
 	// Begin frame.
@@ -2139,9 +2109,10 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
         L"House",
         L"GroundPlane",
 #endif    
+        //L"Tesselated Geometry"
     };
 #else
-    UINT bottomLevelASnames[] = {
+    wstring bottomLevelASnames[] = {
         L"Squid Room" };
 
 #endif
@@ -2151,7 +2122,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
     {
         m_accelerationStructure->AddBottomLevelASInstance(bottomLevelASname);
     }
-
+#if GENERATE_GRASS
     for (UINT i = 0; i < NumGrassPatchesX * NumGrassPatchesZ; i++)
     {
         // Initialize all grass patches to be "inactive" by way of making them to contain only degenerate triangles.
@@ -2164,6 +2135,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
             0.f, 0.f, 0.f, 0.f);
         m_grassInstanceIndices[i] = m_accelerationStructure->AddBottomLevelASInstance(L"Grass Patch LOD 0", UINT_MAX, degenerateTransform);
     }
+#endif
 
     // Initialize the top-level AS.
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;    // ToDo specify via SceneArgs
@@ -4571,6 +4543,9 @@ void GetGrassParameters(GenerateGrassStrawsConstantBuffer_AppParams* params, UIN
 
 void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
 {
+#if !GENERATE_GRASS
+    return;
+#endif
     auto commandList = m_deviceResources->GetCommandList();
     float totalTime = static_cast<float>(m_timer.GetTotalSeconds());
 

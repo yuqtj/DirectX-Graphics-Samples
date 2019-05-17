@@ -9,6 +9,8 @@
 //
 //*********************************************************
 
+// ToDo mark hlsli as C++ headers and allow in build?
+
 #define HLSL
 #include "..\RaytracingHlslCompat.h"
 #include "..\RaytracingShaderHelper.hlsli"
