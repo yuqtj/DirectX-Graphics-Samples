@@ -25,9 +25,6 @@
     <Filter Include="Assets\Shaders\Util">
       <UniqueIdentifier>{f6ae1511-f58a-4af8-a167-b79e11f8c1de}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Assets\Shaders\Assets">
-      <UniqueIdentifier>{ae18df80-754a-4361-baae-440ce51538d8}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Assets\Scene\PBRTParser">
       <UniqueIdentifier>{a353e976-b333-4508-9ef8-ee785fe93db5}</UniqueIdentifier>
     </Filter>
@@ -36,6 +33,12 @@
     </Filter>
     <Filter Include="SSAO\Shaders">
       <UniqueIdentifier>{af9acbca-a1ba-4545-a926-c92c125f398b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Assets\Shaders\Lighting">
+      <UniqueIdentifier>{c977e725-2a30-4742-ac24-f4ece4a6c6df}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Assets\Scene\Assets">
+      <UniqueIdentifier>{ae18df80-754a-4361-baae-440ce51538d8}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -240,6 +243,9 @@
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="packages.config" />
+    <None Include="util\BxDF.hlsli">
+      <Filter>Assets\Shaders\Lighting</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Raytracing.hlsl">

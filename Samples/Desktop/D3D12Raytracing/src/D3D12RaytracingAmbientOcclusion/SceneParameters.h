@@ -93,11 +93,11 @@ public:
         GrassGeometryLOD[2].MaxLODdistance = 120;
         GrassGeometryLOD[3].MaxLODdistance = 200;
 
-        GrassGeometryLOD[1].WindStrength = 0.4f;
-        GrassGeometryLOD[1].WindStrength = 0.16f;
-        GrassGeometryLOD[2].WindStrength = 0.06f;
-        GrassGeometryLOD[3].WindStrength = 0.02f;
-        GrassGeometryLOD[4].WindStrength = 0.01f;
+        GrassGeometryLOD[1].WindStrength = 0.31f;
+        GrassGeometryLOD[1].WindStrength = 0.11f;
+        GrassGeometryLOD[2].WindStrength = 0.05f;
+        GrassGeometryLOD[3].WindStrength = 0.01f;
+        GrassGeometryLOD[4].WindStrength = 0.0f;
 
     }
 };

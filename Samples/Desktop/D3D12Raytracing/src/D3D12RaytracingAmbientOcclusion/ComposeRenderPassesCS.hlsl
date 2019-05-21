@@ -12,6 +12,7 @@
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
+#include "util/BxDF.hlsli"
 
 // Output.
 RWTexture2D<float4> g_renderTarget : register(u0);
@@ -80,7 +81,15 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float3 toEyeRay = normalize(g_CB.cameraPosition.xyz - hitPosition);
             diffuse = RemoveSRGB(diffuse);
             float3 specular = RemoveSRGB(material.specular);
+#if 0
             float3 phongColor = CalculatePhongLighting(surfaceNormal, hitPosition, toEyeRay, visibilityCoefficient, ambientCoef, diffuse, specular, material.specularPower);
+#else
+            bool isVisibleToLight = visibilityCoefficient > 0.99;
+            float3 toLightRay = normalize(g_CB.lightPosition - hitPosition);
+            bool hasSpecular = material.type == MaterialType::Default;
+            bool useLambertDiffuseBRDF = material.type != MaterialType::Default;
+            float3 phongColor = Shade(diffuse, specular, g_CB.lightDiffuseColor.xyz, useLambertDiffuseBRDF, isVisibleToLight, hasSpecular, ambientCoef, material.roughness, surfaceNormal, toEyeRay, toLightRay);
+#endif
             color = float4(phongColor, 1);
 
             // Apply visibility falloff.

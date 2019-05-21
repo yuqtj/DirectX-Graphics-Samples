@@ -468,6 +468,16 @@ namespace PBRTParser
                 lineStream >> lastParsedWord;
             }
         }
+
+        if (materialType == "matte")
+        {
+            material.m_Type = Material::Matte;
+        }
+        else
+        {
+            material.m_Type = Material::Default;
+        }
+
         outputScene.m_Materials[material.m_MaterialName] = material;
     }
 

@@ -976,6 +976,7 @@
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.3</ShaderModel>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.3</ShaderModel>
     </FxCompile>
+    <None Include="util\BxDF.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="util\DXR_abbr_300dpi_4.5pt_rgb.dds">

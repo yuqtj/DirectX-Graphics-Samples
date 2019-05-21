@@ -510,7 +510,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 #endif
 #endif
 	
-    // Approximate interreflections of light from blocking surfaces which are generally not completely dark.
+    // Approximate interreflections of light from blocking surfaces which are generally not completely dark and tend to have similar radiance.
     // Ref: Ch 11.3.3 Accounting for Interreflections, Real-Time Rendering (4th edition).
     // The approximation assumes:
     //      o All surfaces incoming and outgoing radiance is the same 
@@ -1007,7 +1007,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #else // ToDo fix derivatives
         float2 uv = hitPosition.xz / 2;
         float checkers = CheckersTextureBoxFilter(uv, ddx, ddy);
-        material.roughness = (abs(uv.x) < 20 && abs(uv.y) < 20) && (checkers > 0.5) ? 0 : 1;
+        material.opacity = (abs(uv.x) < 20 && abs(uv.y) < 20) && (checkers > 0.5) ? 0 : 1;
 #endif
     }
 
@@ -1061,18 +1061,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #endif
     {
         float3 diffuse;
-        if (material.type == MaterialType::Default)
-        {
-            if (material.hasDiffuseTexture && !CB.useDiffuseFromMaterial)
-            {
-                diffuse = l_texDiffuse.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz;
-            }
-            else
-            {
-                diffuse = material.diffuse;
-            }
-        } 
-        else if (material.type == MaterialType::AnalyticalCheckerboardTexture)
+        if (material.type == MaterialType::AnalyticalCheckerboardTexture)
         {
 #if 0 
             float2 ddx_uv;
@@ -1086,7 +1075,19 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
             float checkers = CheckersTextureBoxFilter(uv, ddx, ddy);
             diffuse = checkers > 0.5 ? float3(50, 68, 90) / 255 : float3(170, 170, 170) / 255;
 #endif
+        } 
+        else
+        {
+            if (material.hasDiffuseTexture && !CB.useDiffuseFromMaterial)
+            {
+                diffuse = l_texDiffuse.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz;
+            }
+            else
+            {
+                diffuse = material.diffuse;
+            }
         }
+        
         rayPayload.hit = true;
         rayPayload.materialInfo = EncodeMaterial16b(materialID, diffuse);
         rayPayload.hitPosition = hitPosition;

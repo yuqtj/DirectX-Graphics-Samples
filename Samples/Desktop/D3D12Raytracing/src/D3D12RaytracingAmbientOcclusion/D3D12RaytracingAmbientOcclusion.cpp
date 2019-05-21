@@ -129,7 +129,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_RawOneFrame, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::PhongLighting, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
 
@@ -335,11 +335,11 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
     //m_camera.fov = 2 * m_pbrtScene.m_Camera.m_FieldOfView;   
 
 
-    PBRTScene pbrtSceneDefinitions[] = { 
-        {L"Spaceship", "Assets\\spaceship\\scene.pbrt"},
-#if !LOAD_ONLY_SPACESHIP 
-        {L"Car", "Assets\\car2\\scene.pbrt"},
+    PBRTScene pbrtSceneDefinitions[] = {
         {L"Dragon", "Assets\\dragon\\scene.pbrt"},
+#if !LOAD_ONLY_ONE_PBRT_MESH 
+        {L"Spaceship", "Assets\\spaceship\\scene.pbrt"},
+        {L"Car", "Assets\\car2\\scene.pbrt"},
         {L"House", "Assets\\house\\scene.pbrt"},
         {L"GroundPlane", "Assets\\groundplane\\scene.pbrt"},
 
@@ -425,7 +425,10 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
             cb.hasDiffuseTexture = !mesh.m_pMaterial->m_DiffuseTextureFilename.empty();
             cb.hasNormalTexture = !mesh.m_pMaterial->m_NormalMapTextureFilename.empty();
             cb.hasPerVertexTangents = true;
-            cb.type = pbrtSceneDefinition.name == L"GroundPlane" ? MaterialType::AnalyticalCheckerboardTexture : MaterialType::Default; // ToDo cleaner?
+            cb.type = pbrtSceneDefinition.name == L"GroundPlane" ? MaterialType::AnalyticalCheckerboardTexture 
+                                                                 : (mesh.m_pMaterial->m_Type == SceneParser::Material::Matte) ? MaterialType::Matte 
+                                                                                                                            : MaterialType::Default; // ToDo cleaner?
+
 
             auto LoadPBRTTexture = [&](auto** ppOutTexture, auto& textureFilename)
             {
@@ -1623,7 +1626,17 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
     ThrowIfFalse(0 && L"ToDo: fix up null VB SRV");
 
 
-	PrimitiveMaterialBuffer planeMaterialCB = { XMFLOAT3(0.24f, 0.4f, 0.4f), XMFLOAT3(1, 1, 1), XMFLOAT3(1, 1, 1), 50, false, false, false, 1, MaterialType::Default };
+    PrimitiveMaterialBuffer planeMaterialCB;
+    planeMaterialCB.diffuse = XMFLOAT3(0.24f, 0.4f, 0.4f);
+    planeMaterialCB.specular = XMFLOAT3(1, 1, 1);
+    planeMaterialCB.opacity = XMFLOAT3(1, 1, 1);
+    planeMaterialCB.specularPower = 50;
+    planeMaterialCB.hasDiffuseTexture = false;
+    planeMaterialCB.hasNormalTexture = false;
+    planeMaterialCB.hasPerVertexTangents = false;
+    planeMaterialCB.roughness = 0.0;
+    planeMaterialCB.type = MaterialType::Matte;
+
 	UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(planeMaterialCB);
 
@@ -1765,8 +1778,13 @@ void D3D12RaytracingAmbientOcclusion::BuildTesselatedGeometry()
     CreateBufferSRV(device, static_cast<UINT>(vertices.size()), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
-	PrimitiveMaterialBuffer materialCB = { XMFLOAT3(14/255.f, 117/255.f, 0), XMFLOAT3(1, 1, 1), XMFLOAT3(1, 1, 1), 50, false, false, false, 1, MaterialType::Default };
-	UINT materialID = static_cast<UINT>(m_materials.size());
+    PrimitiveMaterialBuffer materialCB;
+#if 1
+    ThrowIfFalse(false && L"ToDo");
+#else
+    = { XMFLOAT3(14 / 255.f, 117 / 255.f, 0), XMFLOAT3(1, 1, 1), XMFLOAT3(1, 1, 1), 50, false, false, false, 1, MaterialType::Default };
+#endif
+    UINT materialID = static_cast<UINT>(m_materials.size());
 	m_materials.push_back(materialCB);
     bottomLevelASGeometry.m_geometryInstances.resize(SceneArgs::NumGeometriesPerBLAS, GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
 
@@ -1950,11 +1968,11 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
             materialCB.specular = XMFLOAT3(1, 1, 1);
             materialCB.specularPower = 50;
             materialCB.opacity = XMFLOAT3(1, 1, 1);
-            materialCB.roughness = 0;
+            materialCB.roughness = 0.01f;    // ToDo
             materialCB.hasDiffuseTexture = true;
             materialCB.hasNormalTexture = false;
             materialCB.hasPerVertexTangents = false;    // ToDo calculate these when geometry is generated?
-            materialCB.type = MaterialType::Default;
+            materialCB.type = MaterialType::Matte;
 
             materialID = static_cast<UINT>(m_materials.size());
             m_materials.push_back(materialCB);
@@ -2102,10 +2120,10 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 
 #if LOAD_PBRT_SCENE
     wstring bottomLevelASnames[] = {
-        L"Spaceship",
-#if !LOAD_ONLY_SPACESHIP
-        L"Car",
         L"Dragon",
+#if !LOAD_ONLY_ONE_PBRT_MESH
+        L"Spaceship",
+        L"Car",
         L"House",
         L"GroundPlane",
 #endif    

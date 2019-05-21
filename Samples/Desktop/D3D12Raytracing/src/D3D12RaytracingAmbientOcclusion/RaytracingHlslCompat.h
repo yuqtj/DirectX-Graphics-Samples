@@ -49,7 +49,7 @@
 // ToDo TAO is swimming in reflections
 #if ALLOW_MIRRORS
 // Use anyhit instead??
-#define TURN_MIRRORS_SEETHROUGH 0
+#define TURN_MIRRORS_SEETHROUGH 1
 #endif
 
 #define CAMERA_PRESERVE_UP_ORIENTATION 1
@@ -127,7 +127,7 @@
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
-#define LOAD_ONLY_SPACESHIP 0   // for LOAD_PBRT_SCENE == 1 only
+#define LOAD_ONLY_ONE_PBRT_MESH 0   // for LOAD_PBRT_SCENE == 1 only
 #define GENERATE_GRASS 1
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
@@ -631,6 +631,7 @@ struct PrimitiveConstantBuffer
 
 enum MaterialType {
     Default,
+    Matte,  // Lambertian scattering
     AnalyticalCheckerboardTexture
 };
 

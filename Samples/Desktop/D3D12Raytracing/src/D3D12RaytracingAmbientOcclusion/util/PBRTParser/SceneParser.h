@@ -99,7 +99,14 @@ namespace SceneParser
 
 	struct Material
 	{
+        enum Type
+        {
+            Default,
+            Matte,
+        };
+
 		std::string m_MaterialName;
+        Type m_Type;
 		Vector3 m_Diffuse;
 		Vector3 m_Specular;
 		Vector3 m_Opacity;
