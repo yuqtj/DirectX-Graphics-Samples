@@ -336,10 +336,10 @@ float AnalyticalCheckersGridTexture(in float3 hitPosition, in float3 surfaceNorm
 }
 
 // Fresnel reflectance - schlick approximation.
-float3 FresnelReflectanceSchlick(in float3 I, in float3 N, in float3 f0)
+float3 FresnelReflectanceSchlick(in float3 I, in float3 N, in float3 F0)
 {
     float cosi = saturate(dot(-I, N));
-    return f0 + (1 - f0)*pow(1 - cosi, 5);
+    return F0 + (1 - F0)*pow(1 - cosi, 5);
 }
 
 float3 RemoveSRGB(float3 x)

@@ -49,7 +49,7 @@
 // ToDo TAO is swimming in reflections
 #if ALLOW_MIRRORS
 // Use anyhit instead??
-#define TURN_MIRRORS_SEETHROUGH 1
+#define TURN_MIRRORS_SEETHROUGH 0
 #endif
 
 #define CAMERA_PRESERVE_UP_ORIENTATION 1
@@ -311,30 +311,32 @@ struct Ray
     XMFLOAT3 direction;
 };
 
+struct AmbientOcclusionGBuffer
+{
+    UINT hit; // ToDo compact - use BOOL?
+    float tHit;
+    XMFLOAT3 hitPosition;
+    float obliqueness; // obliqueness of the hit surface ~ sin(incidentAngle)
+    XMFLOAT3 diffuse;               // Diffuse reflectivity of the hit surface.
+    XMFLOAT3 normal;
+    XMFLOAT3 _virtualHitPosition;   // virtual hitPosition in the previous frame.
+                                    // For non-reflected points this is a true world position of a hit.
+                                    // For reflected points, this is a world position of a hit reflected across the reflected surface 
+                                    //   ultimately giving the same screen space coords when projected and the depth corresponding to the ray depth.
+    XMFLOAT3 _normal;               // normal in the previous frame
+};
+
 struct GBufferRayPayload
 {
     // ToDo Having rayRecursionDepth causes DeviceRemoved on recursive trace ray. Check on alignments mismatch?
 #if ALLOW_MIRRORS
     UINT rayRecursionDepth;
 #endif
-	UINT hit; // ToDo compact - use BOOL?
-	XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
-	XMFLOAT3 hitPosition;
-	XMFLOAT3 surfaceNormal;	// ToDo test encoding normal into 2D
-    XMFLOAT3 hitObjectPosition;
-    XMFLOAT3 objectNormal;
-    XMFLOAT3 _virtualHitPosition;  
-                            // virtual hitPosition in the previous frame.
-                            // For non-reflected points this is a true world position of a hit.
-                            // For reflected points, this is a world position of a hit reflected across the reflected surface 
-                            //   ultimately giving the same screen space coords when projected and the depth corresponding to the ray depth.
-
-
-    XMFLOAT3 _normal;       // normal in the previous frame
+    XMFLOAT3 radiance;
+	//XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
+    AmbientOcclusionGBuffer AOGBuffer;
     Ray rx;    // Auxilary camera ray offset by one pixel in x dimension in screen space.
     Ray ry;    // Auxilary camera ray offset by one pixel in y dimension in screen space.
-    float obliqueness; // obliqueness of the hit surface ~ sin(incidentAngle)
-    float tHit;
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
     float rxTHit;
     float ryTHit;
@@ -424,6 +426,7 @@ struct SceneConstantBuffer
     XMMATRIX viewProjection;    // ToDo remove // world to projection matrix with Camera at (0,0,0).
     XMVECTOR cameraPosition;
 	XMVECTOR lightPosition;
+    XMFLOAT3 lightColor;
     XMMATRIX prevViewProj;    // ToDo standardzie proj vs projection
     XMMATRIX prevProjToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
     XMVECTOR prevCameraPosition;
@@ -468,7 +471,7 @@ struct SceneConstantBuffer
 
     float RTAO_TraceRayOffsetAlongNormal;
     float RTAO_TraceRayOffsetAlongRayDirection;
-    float  padding;
+    float  RTAO_minimumBounceCoefficient;  // Minimum bounce coefficient to consider executing a TraceRay for it.
     BOOL useDiffuseFromMaterial;
 };
  
@@ -635,17 +638,20 @@ enum MaterialType {
     AnalyticalCheckerboardTexture
 };
 
+// ToDO use same naming as in PBR Material
 struct PrimitiveMaterialBuffer
 {
-	XMFLOAT3 diffuse;
-	XMFLOAT3 specular;
+	XMFLOAT3 Kd;
+	XMFLOAT3 Ks;
+    XMFLOAT3 Kr;
+    XMFLOAT3 Kt;
     XMFLOAT3 opacity;
-    float specularPower;
+    XMFLOAT3 eta;
+    float roughness;
     // ToDo use a bitmask?
     UINT hasDiffuseTexture; // ToDO use BOOL?
     UINT hasNormalTexture;
     UINT hasPerVertexTangents;
-    float roughness;
     MaterialType type;
     float padding;
 };

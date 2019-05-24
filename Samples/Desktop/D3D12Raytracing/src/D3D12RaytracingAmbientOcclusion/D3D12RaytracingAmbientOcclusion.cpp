@@ -417,17 +417,19 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
             CreateIndexAndVertexBuffers(desc, &geometry);
 
             PrimitiveMaterialBuffer cb;
-            cb.diffuse = mesh.m_pMaterial->m_Diffuse.xmFloat3;
-            cb.specular = mesh.m_pMaterial->m_Specular.xmFloat3;
-            cb.specularPower = 50;
+            cb.Kd = mesh.m_pMaterial->m_Kd.xmFloat3;
+            cb.Ks = mesh.m_pMaterial->m_Ks.xmFloat3;
+            cb.Kr = mesh.m_pMaterial->m_Kr.xmFloat3;
+            cb.Kt = mesh.m_pMaterial->m_Kt.xmFloat3;
             cb.opacity = mesh.m_pMaterial->m_Opacity.xmFloat3;
-            cb.roughness = 0.5f * (mesh.m_pMaterial->m_URoughness + mesh.m_pMaterial->m_VRoughness);
+            cb.eta = mesh.m_pMaterial->m_Eta.xmFloat3;
+            cb.roughness = mesh.m_pMaterial->m_Roughness;
             cb.hasDiffuseTexture = !mesh.m_pMaterial->m_DiffuseTextureFilename.empty();
             cb.hasNormalTexture = !mesh.m_pMaterial->m_NormalMapTextureFilename.empty();
             cb.hasPerVertexTangents = true;
-            cb.type = pbrtSceneDefinition.name == L"GroundPlane" ? MaterialType::AnalyticalCheckerboardTexture 
-                                                                 : (mesh.m_pMaterial->m_Type == SceneParser::Material::Matte) ? MaterialType::Matte 
-                                                                                                                            : MaterialType::Default; // ToDo cleaner?
+            cb.type = pbrtSceneDefinition.name == L"GroundPlane" ? MaterialType::AnalyticalCheckerboardTexture
+                : (mesh.m_pMaterial->m_Type == SceneParser::Material::Matte) ? MaterialType::Matte
+                : MaterialType::Default; // ToDo cleaner?
 
 
             auto LoadPBRTTexture = [&](auto** ppOutTexture, auto& textureFilename)
@@ -463,7 +465,18 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
             UINT materialID = static_cast<UINT>(m_materials.size());
             m_materials.push_back(cb);
 
-            bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle, isVertexAnimated));
+            D3D12_RAYTRACING_GEOMETRY_FLAGS geometryFlags;
+
+            if (cb.opacity.x > 0.99f && cb.opacity.y > 0.99f && cb.opacity.z > 0.99f)
+            {
+                geometryFlags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+            }
+            else
+            {
+                geometryFlags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+            }
+
+            bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle, geometryFlags, isVertexAnimated));
 #if !PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES
             XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(m_geometryTransforms[i].transform3x4), mesh.m_transform);
             geometryInstances.back().transform = m_geometryTransforms.GpuVirtualAddress(0, i);
@@ -831,6 +844,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeScene()
 		m_csComposeRenderPassesCB->lightAmbientColor = XMFLOAT3(0.45f, 0.45f, 0.45f);
 
         float d = 0.6f;
+        m_sceneCB->lightColor = XMFLOAT3(d, d, d);
 		m_csComposeRenderPassesCB->lightDiffuseColor = XMFLOAT3(d, d, d);
     }
 }
@@ -919,6 +933,8 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
         ranges[Slot::FilterWeightSum].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // 1 input filterWeightSum texture
         ranges[Slot::AORayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // 1 input AO ray hit distance texture
         ranges[Slot::FrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // 1 input disocclusion map texture
+        ranges[Slot::Color].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 11); // 1 input color texture
+        ranges[Slot::AODiffuse].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12); // 1 input AO diffuse texture
         
 
 		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
@@ -929,6 +945,8 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
         rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[Slot::FilterWeightSum]);
         rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::AORayHitDistance]);
         rootParameters[Slot::FrameAge].InitAsDescriptorTable(1, &ranges[Slot::FrameAge]);
+        rootParameters[Slot::Color].InitAsDescriptorTable(1, &ranges[Slot::Color]);
+        rootParameters[Slot::AODiffuse].InitAsDescriptorTable(1, &ranges[Slot::AODiffuse]);
 		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(7);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
@@ -1076,6 +1094,9 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         ranges[Slot::AORayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 15);  // 1 output ray hit distance texture
         ranges[Slot::MotionVector].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 17);  // 1 output texture space motion vector.
         ranges[Slot::ReprojectedHitPosition].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 18);  // 1 output texture reprojected hit position
+        ranges[Slot::Color].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 19);  // 1 output texture shaded color
+        ranges[Slot::AODiffuse].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 20);  // 1 output texture AO diffuse
+        
         
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
         ranges[Slot::PartialDepthDerivatives].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 16);  // 1 output partial depth derivative texture
@@ -1102,6 +1123,8 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 #endif
         rootParameters[Slot::MotionVector].InitAsDescriptorTable(1, &ranges[Slot::MotionVector]);
         rootParameters[Slot::ReprojectedHitPosition].InitAsDescriptorTable(1, &ranges[Slot::ReprojectedHitPosition]);
+        rootParameters[Slot::Color].InitAsDescriptorTable(1, &ranges[Slot::Color]);
+        rootParameters[Slot::AODiffuse].InitAsDescriptorTable(1, &ranges[Slot::AODiffuse]);
         
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
@@ -1281,6 +1304,7 @@ UINT texFormatByteSize = 4;
 void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 {
 	auto device = m_deviceResources->GetD3DDevice();
+    auto backbufferFormat = m_deviceResources->GetBackBufferFormat();
 
     // ToDo move depth out of normal resource and switch normal to 16bit precision
     DXGI_FORMAT normalFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;       // ToDo rename to coefficient or avoid using same variable for different types.
@@ -1321,6 +1345,10 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         
         // ToDo use 16bit?
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::ReprojectedHitPosition], initialResourceState, L"GBuffer Reprojected Hit Position");
+
+        CreateRenderTargetResource(device, backbufferFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Color], initialResourceState, L"GBuffer Color");
+
+        CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::AODiffuse], initialResourceState, L"GBuffer AO Diffuse");
 
     }
     
@@ -1627,10 +1655,8 @@ void D3D12RaytracingAmbientOcclusion::BuildPlaneGeometry()
 
 
     PrimitiveMaterialBuffer planeMaterialCB;
-    planeMaterialCB.diffuse = XMFLOAT3(0.24f, 0.4f, 0.4f);
-    planeMaterialCB.specular = XMFLOAT3(1, 1, 1);
+    planeMaterialCB.Kd = XMFLOAT3(0.24f, 0.4f, 0.4f);
     planeMaterialCB.opacity = XMFLOAT3(1, 1, 1);
-    planeMaterialCB.specularPower = 50;
     planeMaterialCB.hasDiffuseTexture = false;
     planeMaterialCB.hasNormalTexture = false;
     planeMaterialCB.hasPerVertexTangents = false;
@@ -1958,17 +1984,16 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
 
             switch (i)
             {
-            case 0: materialCB.diffuse = XMFLOAT3(0.25f, 0.75f, 0.25f); break;
-            case 1: materialCB.diffuse = XMFLOAT3(0.5f, 0.75f, 0.5f); break;
-            case 2: materialCB.diffuse = XMFLOAT3(0.25f, 0.5f, 0.5f); break;
-            case 3: materialCB.diffuse = XMFLOAT3(0.5f, 0.5f, 0.75f); break;
-            case 4: materialCB.diffuse = XMFLOAT3(0.75f, 0.25f, 0.75f); break;
+            case 0: materialCB.Kd = XMFLOAT3(0.25f, 0.75f, 0.25f); break;
+            case 1: materialCB.Kd = XMFLOAT3(0.5f, 0.75f, 0.5f); break;
+            case 2: materialCB.Kd = XMFLOAT3(0.25f, 0.5f, 0.5f); break;
+            case 3: materialCB.Kd = XMFLOAT3(0.5f, 0.5f, 0.75f); break;
+            case 4: materialCB.Kd = XMFLOAT3(0.75f, 0.25f, 0.75f); break;
             }
 
-            materialCB.specular = XMFLOAT3(1, 1, 1);
-            materialCB.specularPower = 50;
+            materialCB.Ks = XMFLOAT3(1, 1, 1);
             materialCB.opacity = XMFLOAT3(1, 1, 1);
-            materialCB.roughness = 0.01f;    // ToDo
+            materialCB.roughness = 0.1f; // ToDO  
             materialCB.hasDiffuseTexture = true;
             materialCB.hasNormalTexture = false;
             materialCB.hasPerVertexTangents = false;    // ToDo calculate these when geometry is generated?
@@ -1981,7 +2006,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
 
         // Create geometry instance.
         bool isVertexAnimated = true;
-        bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle, isVertexAnimated));
+        bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle, D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE, isVertexAnimated));
 
         bottomLevelASGeometry.m_numTriangles = bottomLevelASGeometry.m_geometryInstances[0].ib.count / 3;
     }
@@ -2587,6 +2612,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     m_sceneCB->RTAO_AdaptiveSamplingMinSamples = SceneArgs::RTAOAdaptiveSamplingMinSamples;
     m_sceneCB->RTAO_TraceRayOffsetAlongNormal = SceneArgs::RTAOTraceRayOffsetAlongNormal;
     m_sceneCB->RTAO_TraceRayOffsetAlongRayDirection = SceneArgs::RTAOTraceRayOffsetAlongRayDirection;
+    m_sceneCB->RTAO_minimumBounceCoefficient = 0.01f;   // ToDo
 
     SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
  }
@@ -3403,6 +3429,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MotionVector].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::ReprojectedHitPosition].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Color].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::AODiffuse].resource.Get(), before, after),
 			CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after),
             // ToDo remove
             //CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after) ,
@@ -3427,6 +3455,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GbufferNormalRGB, m_GBufferResources[GBufferResource::SurfaceNormalRGB].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::MotionVector, m_GBufferResources[GBufferResource::MotionVector].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ReprojectedHitPosition, m_GBufferResources[GBufferResource::ReprojectedHitPosition].gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Color, m_GBufferResources[GBufferResource::Color].gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AODiffuse, m_GBufferResources[GBufferResource::AODiffuse].gpuDescriptorWriteAccess);
     
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::PartialDepthDerivatives, m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
@@ -3451,6 +3481,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 #endif
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MotionVector].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::ReprojectedHitPosition].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Color].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::AODiffuse].resource.Get(), before, after),
 		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
@@ -3795,7 +3827,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 	// Bind output RT.
 	// ToDo remove output and rename AOout
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOResourcesOut, AOResources[0].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AORayHitDistance, AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AORayHitDistance, AOResources[AOResource::RayHitDistance].gpuDescriptorWriteAccess);
 
 	// Bind the heaps, acceleration structure and dispatch rays. 
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
@@ -3949,6 +3981,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 		commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
         commandList->SetComputeRootDescriptorTable(Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
         commandList->SetComputeRootDescriptorTable(Slot::AORayHitDistance, m_AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess);
+        commandList->SetComputeRootDescriptorTable(Slot::Color, m_GBufferResources[GBufferResource::Color].gpuDescriptorReadAccess);
+        commandList->SetComputeRootDescriptorTable(Slot::AODiffuse, m_GBufferResources[GBufferResource::AODiffuse].gpuDescriptorReadAccess);
 
 
         UINT TC_readID = (m_temporalCacheReadResourceIndex + 1) % 2;
@@ -4711,6 +4745,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     m_deviceResources->Prepare();
 
     EngineProfiling::BeginFrame(commandList);
+
     {
         // ToDo fix - this dummy and make sure the children are properly enumerated as children in the UI output.
         ScopedTimer _prof(L"Dummy", commandList);
@@ -4724,7 +4759,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
             // Render.
             RenderPass_GenerateGBuffers();
-
+#if 1
             // AO. 
             if (SceneArgs::AOMode == SceneArgs::AOType::RTAO)
             {
@@ -4781,12 +4816,15 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 m_SSAO.ChangeScreenScale(1.f);
                 m_SSAO.Run(m_SSAOCB.GetResource());
             }
+#if 0
 #if TEST_EARLY_EXIT
             RenderPass_TestEarlyExitOVerhead();
 #else
             RenderPass_CalculateVisibility();
 #endif
+#endif
 
+#endif
             D3D12_GPU_DESCRIPTOR_HANDLE AOSRV = SceneArgs::AOMode == SceneArgs::AOType::RTAO ? m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess : SSAOgpuDescriptorReadAccess;
 
             // ToDo cleanup
@@ -4816,7 +4854,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
             CopyRaytracingOutputToBackbuffer(m_enableUI ? D3D12_RESOURCE_STATE_RENDER_TARGET : D3D12_RESOURCE_STATE_PRESENT);
             }
         }
-
  
     // End frame.
     EngineProfiling::EndFrame(commandList);

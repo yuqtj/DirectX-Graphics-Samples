@@ -49,6 +49,7 @@ namespace SceneParser
 
 	struct Vector3
 	{
+        Vector3(float v) : x(v), y(v), z(v) {}
 		Vector3(float nX, float nY, float nZ) : x(nX), y(nY), z(nZ) {}
 		Vector3() : Vector3(0, 0, 0) {}
 
@@ -97,26 +98,93 @@ namespace SceneParser
 		Vector3 m_Up;
 	};
 
+    // PBR material
+    // Ref: https://www.pbrt.org/fileformat-v3.html
 	struct Material
 	{
         enum Type
         {
             Default,
-            Matte,
+            Matte
         };
 
 		std::string m_MaterialName;
         Type m_Type;
-		Vector3 m_Diffuse;
-		Vector3 m_Specular;
-		Vector3 m_Opacity;
-		float m_URoughness;
-		float m_VRoughness;
+        Vector3 m_Kd = 0;                 // The diffuse reflectivity of the surface.
+        Vector3 m_Ks = 0;                 // The specular reflectivity of the surface.
+		Vector3 m_Kr = 0;                 // The reflectivity of the surface.
+		Vector3 m_Kt = 0;                 // The transmissivity of the surface.
+        Vector3 m_Opacity = 1;            // The opacity of the surface. If less than one, "uber" material transmits light without refracting it.
+        Vector3 m_Eta = 1;                // The index of refraction of the object. Exterior is assumed to be vacuum with IOR of 1. 
+        float   m_Roughness = 0;          // Microfacet roughness alpha [0, 1].
 		std::string m_DiffuseTextureFilename;
 		std::string m_SpecularTextureFilename;
 		std::string m_OpacityTextureFilename;
         std::string m_NormalMapTextureFilename;
+
+        void Initialize(std::string type)
+        {
+            if (type == "matte")
+            {
+                m_Type = Type::Matte;
+                m_Kd = 1;
+                m_Ks = 0;
+                m_Roughness = 0.5f;
+            }
+            else
+            {
+                m_Type = Type::Default;
+                m_Kd = 0.25f;
+                m_Ks = 0.25f;
+                m_Roughness = 0.1f;
+            }
+            return;
+
+            // ToDo
+
+            if (type == "glass")
+            {
+                m_Type = Type::Default;
+                m_Eta = 1.5f;
+            }
+            else if (type == "substrate")
+            {
+                m_Type = Type::Default;
+                m_Kd = 0.5f;
+                m_Ks = 0.5f;
+                m_Roughness = 0.1f;
+            }
+            else if (type == "uber")
+            {
+                m_Type = Type::Matte;
+                m_Kd = 0.25f;
+                m_Ks = 0.25f;
+                m_Kr = 0;
+                m_Kt = 0;
+                m_Roughness = 0.1f;
+                m_Eta = 1.5f;
+            }
+            else if (type == "metal")
+            {
+                m_Type = Type::Default;
+                m_Kd = 1;
+                m_Ks = 1;
+            }
+            else if (type == "mirror")
+            {
+                m_Type = Type::Default;
+                m_Kr = 0.9f;
+            }
+            else // Plastic
+            {
+                m_Type = Type::Default;
+                m_Kd = 0.25f;
+                m_Ks = 0.25f;
+                m_Roughness = 0.1f;
+            }
+        }
 	};
+
 
 	struct Vertex
 	{

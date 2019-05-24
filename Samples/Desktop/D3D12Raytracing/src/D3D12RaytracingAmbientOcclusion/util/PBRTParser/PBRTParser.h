@@ -150,6 +150,7 @@ class PBRTParser : public SceneParser::SceneParserClass
         }
 
         float ParseFloat1(std::istream &inStream);
+        bool ParseBool(std::istream &inStream);
         std::string ParseString(std::istream &inStream);
         void ParseExpectedWords(std::istream &inStream, _In_reads_(numWords) std::string *pWords, UINT numWords);
         void ParseExpectedWord(std::istream &inStream, const std::string &word);

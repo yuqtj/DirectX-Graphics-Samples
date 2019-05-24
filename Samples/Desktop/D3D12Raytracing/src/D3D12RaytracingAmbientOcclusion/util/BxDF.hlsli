@@ -29,7 +29,9 @@
 // Roughness - material roughness
 // N - surface normal
 // V - direction to viewer
-// L - incoming "to-light" direction
+// L - incoming "to-light" direction - rename to wi as L is used for radiance
+// T - transmission scale factor (aka transmission color)
+// thetai - incident angle
 
 #ifndef BXDF_HLSL
 #define BXDF_HLSL
@@ -40,6 +42,14 @@ namespace BxDF {
 
     // This namespace implements BTDF for a perfect transmitter that uses a single index of refraction (ior)
     // and iorOut represent air, i.e. 1.
+
+// ToDo move
+
+    bool IsBlack(float3 color)
+    {
+        // ToDo Check greater than small value?
+        return !any(color);
+    }
 
 
     namespace Diffuse {
@@ -54,7 +64,7 @@ namespace BxDF {
 
         namespace Hammon {
 
-            // Sample the value of BRDF
+            // Compute the value of BRDF
             // Ref: Hammon2017
             float3 F(in float3 Albedo, in float Roughness, in float3 N, in float3 V, in float3 L, in float3 Fo)
             {
@@ -85,20 +95,75 @@ namespace BxDF {
         }
     }
 
+    // Fresnel reflectance - schlick approximation.
+    float3 Fresnel(in float3 F0, in float cos_thetai)
+    {
+        return F0 + (1 - F0)*pow(1 - cos_thetai, 5);
+    }
+
     namespace Specular {
+
+        // Perfect/Specular reflection.
+        namespace Reflection {
+        
+            // Calculates L and return BRDF value for that direction.
+            // Assumptions: V and N are in the same hemisphere.
+            float3 Sample_f(in float3 V, out float3 L, in float3 N, in float3 Fo, out float pdf)
+            {
+                L = reflect(-V, N);
+                pdf = 1;
+                float cos_thetai = dot(V, N);
+
+                return Fresnel(Fo, cos_thetai) / cos_thetai;
+            }
+            
+            // Calculate whether a total reflection occurs at given wo and a normal
+            // Ref: eq 27.5, Ray Tracing from the Ground Up
+            BOOL IsTotalInternalReflection(
+                in float3 wo,
+                in float3 normal)
+            {
+                float ior = 1;  // ToDo
+                float eta = ior;
+                float cos_thetai = dot(normal, wo); // Incident angle
+
+                return 1 - 1 * (1 - cos_thetai * cos_thetai) / (eta * eta) < 0;
+            }
+
+        }
+
+        // Perfect/Specular trasmission.
+        namespace Transmission {
+
+            // Calculates transmitted ray wt and return BRDF value for that direction.
+            // Assumptions: V and N are in the same hemisphere.
+            float3 Sample_f(in float3 V, out float3 wt, in float3 N, in float3 T, in float3 Fo, out float pdf)
+            {
+                float ior = 1;
+                wt = -V; // ToDo refract(-V, N, ior);
+                pdf = 1;
+                float cos_thetai = dot(V, N);
+                float3 Fr = Fresnel(Fo, cos_thetai);    // ToDo avoid duplicate fresnel calculations
+
+                return T * (1 - Fr) / cos_thetai;
+            }
+        }
+
         // Ref: Chapter 9.8, RTR
         namespace GGX {
 
-            // Sample the value of BRDF
+            // Compute the value of BRDF
             float3 F(in float Roughness, in float3 N, in float3 V, in float3 L, in float3 Fo)
             {
-                float3 H = normalize(V + L);
+                float3 H = V + L;
                 float NoL = dot(N, L);
                 float NoV = dot(N, V);
                 float3 specular = 0;
+                // ToDo compare to epsilon instead?
                 if (NoL > 0 && NoV > 0 && all(H))
                 {
-                    float a = Roughness * Roughness;
+                    H = normalize(H);
+                    float a = Roughness;        // The roughness has already been remapped to alpha.
                     float3 M = H;               // microfacet normal, equals h, since BRDF is 0 for all m =/= h. Ref: 9.34, RTR
                     float NoM = saturate(dot(N, M));
                     float HoL = saturate(dot(H, L));
@@ -112,7 +177,7 @@ namespace BxDF {
                     // F
                     // Fresnel reflectance - Schlick approximation for F(h,l)
                     // Ref: 9.16, RTR
-                    float3 F = Fo + (1 - Fo) * pow(1 - HoL, 5);
+                    float3 F = Fresnel(Fo , HoL);
 
                     // G
                     // Visibility due to shadowing/masking of a microfacet.
@@ -154,52 +219,118 @@ namespace BxDF {
             //}
         }
     }
-}
 
-
-//float3 ShadeDiffuse
-//switch (materialType)
-//{
-//case MaterialType::Matte:
-//    break;
-//case Default:
-//    break;
-//}
-//
-//
-
-// Calculate a color of the shaded surface.
-float3 Shade(in float3 Albedo, in float3 Fo, in float3 Radiance, in bool useLambertDiffuseBRDF, in bool isVisibleToLight, in bool hasSpecular, in float AmbientCoef, in float Roughness, in float3 N, in float3 V, in float3 L)
-{
-    float NoL = dot(N, L);
-
-    Roughness = max(0.1, Roughness);    // ToDo Roughness of 0.001 loses specular - precision? Is PBR's roughness roughness or alpha?
-    float3 diffuse;
-    float3 directLighting = 0;
-    
-    if (NoL > 0)
+    namespace DirectLighting
     {
-        if (useLambertDiffuseBRDF)
+        // Calculate a color of the shaded surface.
+        // Returns a shaded color 
+        float3 Shade(
+            in MaterialType materialType,
+            in float3 Albedo,
+            in float3 Fo,
+            in float3 Radiance,
+            in float AmbientCoef,
+            in bool inShadow,
+            in float Roughness,
+            in float3 N,
+            in float3 V,
+            in float3 L)
         {
-            diffuse = BxDF::Diffuse::Lambert::F(Albedo);
-        }
-        else
-        {
-            diffuse = BxDF::Diffuse::Hammon::F(Albedo, Roughness, N, V, L, Fo);
-        }
+            float3 directLighting = 0;
 
-        if (isVisibleToLight)
-        {
-            float3 directDiffuse = diffuse;
-            float3 directSpecular = hasSpecular ? BxDF::Specular::GGX::F(Roughness, N, V, L, Fo) : 0;
-            directLighting = NoL * Radiance * (directDiffuse + directSpecular);
+            float NoL = dot(N, L);
+            if (!inShadow && NoL > 0)
+            {
+                // ToDo Check for 0 albedo and skip evaluation
+                Roughness = max(0.1, Roughness);    // ToDo Roughness of 0.001 loses specular - precision? Is PBR's roughness roughness or alpha?
+
+                float3 directDiffuse = 0;
+                if (!IsBlack(Albedo))
+                {
+                    if (materialType == MaterialType::Default)
+                    {
+                        directDiffuse = BxDF::Diffuse::Hammon::F(Albedo, Roughness, N, V, L, Fo);
+                    }
+                    else
+                    {
+                        directDiffuse = BxDF::Diffuse::Lambert::F(Albedo);
+                    }
+                }
+
+                float3 directSpecular = 0;
+                if (materialType == MaterialType::Default)
+                {
+                    directSpecular = BxDF::Specular::GGX::F(Roughness, N, V, L, Fo);
+                }
+
+                directLighting = NoL *  Radiance * (directDiffuse + directSpecular);
+            }
+            
+            // ToDo add default AO to everything and adjust calculated AO?
+
+            return directLighting;
         }
     }
 
-    float3 indirectDiffuse = AmbientCoef * Albedo;
-    float3 indirectLighting = indirectDiffuse;
+    namespace IndirectLighting
+    {
+        // Returns max Ambient color radiance 
+        float3 MaxAmbientRadiance(in float3 Albedo)
+        {
+            return Albedo;
+        }
+    }
 
-    return directLighting + indirectLighting;
+    // Calculate a color of the shaded surface.
+    float3 Shade(
+        in MaterialType materialType,
+        in float3 Albedo,
+        in float3 Fo,
+        in float3 Radiance,
+        in bool isInShadow,
+        in float AmbientCoef,
+        in float Roughness,
+        in float3 N,
+        in float3 V,
+        in float3 L)
+    {
+        float NoL = dot(N, L);
+
+        Roughness = max(0.1, Roughness);    // ToDo Roughness of 0.001 loses specular - precision? Is PBR's roughness roughness or alpha?
+
+        float3 directLighting = 0;
+
+        if (!isInShadow && NoL > 0)
+        {
+            // Diffuse.
+            float3 diffuse;
+            if (materialType == MaterialType::Default)
+            {
+                diffuse = BxDF::Diffuse::Hammon::F(Albedo, Roughness, N, V, L, Fo);
+            }
+            else
+            {
+                diffuse = BxDF::Diffuse::Lambert::F(Albedo);
+            }
+
+            // Specular.
+            float3 directDiffuse = diffuse;
+            float3 directSpecular = 0;
+
+            if (materialType == MaterialType::Default)
+            {
+                directSpecular = BxDF::Specular::GGX::F(Roughness, N, V, L, Fo);
+            }
+
+            directLighting = NoL * Radiance * (directDiffuse + directSpecular);
+        }
+
+        float3 indirectDiffuse = AmbientCoef * Albedo;
+        float3 indirectLighting = indirectDiffuse;
+
+        return directLighting + indirectLighting;
+    }
+
 }
 
 

@@ -20,6 +20,7 @@
 #include "RandomNumberGenerator.hlsli"
 #include "SSAO/GlobalSharedHlslCompat.h" // ToDo remove
 #include "util/AnalyticalTextures.hlsli"
+#include "util/BxDF.hlsli"
 
 #define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS
 
@@ -72,6 +73,8 @@ RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 // ToDo pack motion vector, depth and normal into float4
 RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
 RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18);
+RWTexture2D<float4> g_rtColor : register(u19);
+RWTexture2D<float4> g_rtAODiffuse : register(u20);
 
 ConstantBuffer<SceneConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
@@ -214,6 +217,7 @@ float2 CalculateMotionVector(
 // ToDo cleanup matrix multiplication order
 
 
+
 //***************************************************************************
 //*****------ TraceRay wrappers for radiance and shadow rays. -------********
 //***************************************************************************
@@ -253,7 +257,7 @@ float4 TraceRadianceRay(in Ray ray, in UINT currentRayRecursionDepth)
 
 // Trace a shadow ray and return true if it hits any geometry.
 // ToDo add surface normal and skip tracing a ray for surfaces facing away.
-bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRayRecursionDepth, in float TMax = 10000)
+bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRayRecursionDepth, in bool retrieveTHit = true, in float TMax = 10000)
 {
     if (currentRayRecursionDepth >= MAX_RAY_RECURSION_DEPTH)
     {
@@ -284,10 +288,10 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRay
 #if REPRO_INVISIBLE_WALL
         | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH
 #endif
-        | RAY_FLAG_FORCE_OPAQUE;             // ~skip any hit shaders
+        | RAY_FLAG_CULL_NON_OPAQUE;             // ~skip transparent objeccts
     
     // Skip closest hit shaders of tHit time is not needed.
-    if (!CB.useShadowRayHitTime)
+    if (!retrieveTHit) 
     {
         rayFlags |= RAY_FLAG_SKIP_CLOSEST_HIT_SHADER;
     }
@@ -306,26 +310,51 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRay
     return shadowPayload.tHit > (HitDistanceOnMiss + 0.001f);
 }
 
+bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in float3 N, in UINT currentRayRecursionDepth, in bool retrieveTHit = true, in float TMax = 10000)
+{
+    // Only trace if the surface is facing the target.
+    if (dot(ray.direction, N) > 0)
+    {
+        return TraceShadowRayAndReportIfHit(tHit, ray, currentRayRecursionDepth, retrieveTHit, TMax);
+    }
+    return false;
+}
+
 // Trace a camera ray into the scene.
 // rx, ry - auxilary rays offset in screen space by one pixel in x, y directions.
 GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT currentRayRecursionDepth, float tMin = NEAR_PLANE, float tMax = FAR_PLANE)
 {
-	// Set the ray's extents.
-	RayDesc rayDesc;
-	rayDesc.Origin = ray.origin;
-	rayDesc.Direction = ray.direction;
-	// ToDo update comments about Tmins
-	// Set TMin to a zero value to avoid aliasing artifacts along contact areas.
-	// Note: make sure to enable face culling so as to avoid surface face fighting.
-	// ToDo Tmin - this should be offset along normal.
-	rayDesc.TMin = tMin;
-	rayDesc.TMax = tMax;
+    GBufferRayPayload rayPayload;
+    rayPayload.rayRecursionDepth = currentRayRecursionDepth + 1;
+    rayPayload.radiance = 0;
+    rayPayload.AOGBuffer.hit = 0;
+    rayPayload.AOGBuffer.tHit = 0;
+    rayPayload.AOGBuffer.hitPosition = 0;
+    rayPayload.AOGBuffer.obliqueness = 0;
+    // rayPayload.materialInfo = 0;
+    rayPayload.AOGBuffer.diffuse = 0;
+    rayPayload.AOGBuffer.normal = 0;
+    rayPayload.AOGBuffer._virtualHitPosition = 0;
+    rayPayload.AOGBuffer._normal = 0;
+    rayPayload.rx = rx;
+    rayPayload.ry = ry;
 
-    GBufferRayPayload rayPayload = { 
-#if ALLOW_MIRRORS 
-        currentRayRecursionDepth + 1, 
-#endif
-        false, (uint2)0, (float3)0, (float3)0, (float3)0, (float3)0, (float3)0, (float3)0, rx, ry, 0, 0 };
+    if (currentRayRecursionDepth >= MAX_RAY_RECURSION_DEPTH)
+    {
+        return rayPayload;
+    }
+
+    // Set the ray's extents.
+    RayDesc rayDesc;
+    rayDesc.Origin = ray.origin;
+    rayDesc.Direction = ray.direction;
+    // ToDo update comments about Tmins
+    // Set TMin to a zero value to avoid aliasing artifacts along contact areas.
+    // Note: make sure to enable face culling so as to avoid surface face fighting.
+    // ToDo Tmin - this should be offset along normal.
+    rayDesc.TMin = tMin;
+    rayDesc.TMax = tMax;
+
 	TraceRay(g_scene,
 #if FACE_CULLING
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES
@@ -345,6 +374,7 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in Ray rx, in Ray ry, in UINT curr
 
 // ToDo comment
 // MinHitDistance - minimum hit distance of all AO ray hits.
+// ToDo ensure AO doesn't cast beyond max recursion depth
 float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 DTid, in UINT numSamples, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1))
 {
     numShadowRayHits = 0;
@@ -440,7 +470,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 #if REPRO_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF
         const float tMax = CB.RTAO_maxShadowRayHitTime;
         float tHit;
-        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
+        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, CB.useShadowRayHitTime, tMax))
         {
             // ToDo Setting coef to 1 and then 0.5 below causes device removal. Wth?
             float occlusionCoef = 1;
@@ -461,7 +491,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 #elif REPRO_INVISIBLE_WALL
         const float tMax = CB.RTAO_maxShadowRayHitTime;
         float tHit;
-        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, tMax))
+        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, CB.useShadowRayHitTime, tMax))
         {
             float occlusionCoef = 0;
             float t = tHit / tMax;
@@ -485,7 +515,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
         float RTAO_TraceRayOffsetAlongRayDirection;
         const float tMax = CB.RTAO_maxShadowRayHitTime;
         float tHit;
-        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, CB.RTAO_TraceRayOffsetAlongRayDirection, tMax))
+        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, CB.useShadowRayHitTime, tMax))
         {
             float occlusionCoef = 1;
             if (CB.RTAO_IsExponentialFalloffEnabled)
@@ -525,7 +555,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
         ambientCoef = kA / (1 - rho * (1 - kA));
     }
 
-	return ambientCoef;
+    return ambientCoef;
 }
 
 
@@ -534,6 +564,203 @@ float CalculateAO(in float3 hitPosition, in uint2 DTid, UINT numSamples, in floa
 	uint numShadowRayHits;
     float minHitDistance;
 	return CalculateAO(numShadowRayHits, minHitDistance, DTid, numSamples, hitPosition, surfaceNormal);
+}
+
+
+Ray ReflectedRay(in float3 hitPosition, in float3 incidentDirection, in float3 normal)
+{
+    Ray reflectedRay;
+    float smallValue = 1e-5f;
+    reflectedRay.origin = hitPosition + normal * smallValue;
+    reflectedRay.direction = reflect(incidentDirection, normal);
+
+    return reflectedRay;
+}
+
+// Returns radiance of the traced ray.
+// ToDo standardize variable names
+float3 TraceReflectedGBufferRay(in float3 hitPosition, in float3 wi, in float3 N, in float3 objectNormal, inout GBufferRayPayload rayPayload)
+{
+    float tOffset = 0.001f;
+    float3 adjustedHitPosition = hitPosition + tOffset * N;
+
+
+    // Intersection points of auxilary rays with the current surface
+    // ToDo dedupe - this is already calculated in the closest hit
+    float3 px, py;
+    px = RayPlaneIntersection(adjustedHitPosition, N, rayPayload.rx.origin, rayPayload.rx.direction);
+    py = RayPlaneIntersection(adjustedHitPosition, N, rayPayload.ry.origin, rayPayload.ry.direction);
+
+    // Calculate reflected rx, ry
+    Ray rx = { px, reflect(rayPayload.rx.direction, N) };
+    Ray ry = { py, reflect(rayPayload.ry.direction, N) };
+
+
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+    float3 rxRaySegment = px - rayPayload.rx.origin;
+    float3 ryRaySegment = py - rayPayload.ry.origin;
+    rayPayload.rxTHit += length(rxRaySegment);
+    rayPayload.ryTHit += length(ryRaySegment);
+#endif
+
+    // ToDo offset along surface normal, and adjust tOffset subtraction below.
+    Ray ray = { adjustedHitPosition,  wi };
+
+    float tMin = 0; // NEAR_PLANE ToDo
+    float tMax = 1000;  //  FAR_PLANE - RayTCurrent()
+
+    rayPayload = TraceGBufferRay(ray, rx, ry, rayPayload.rayRecursionDepth, tMin, tMax);
+
+    // Get the current planar mirror in the previous frame.
+    float3x4 _mirrorBLASTransform = g_prevFrameBottomLevelASInstanceTransform[InstanceIndex()];
+    float3 _mirrorHitPosition = mul(_mirrorBLASTransform, float4(hitPosition, 1));
+
+    // Pass the virtual hit position reflected across the current mirror surface upstream 
+    // as if the ray went through the mirror to be able to recursively reflect at correct ray depths and then projecting to the screen.
+    // Skipping normalization as it's not required for the uses of the transformed normal here.
+    float3 _mirrorNormal = mul((float3x3)_mirrorBLASTransform, objectNormal);
+    rayPayload.AOGBuffer._virtualHitPosition = ReflectFrontPointThroughPlane(rayPayload.AOGBuffer._virtualHitPosition, _mirrorHitPosition, _mirrorNormal);
+
+    rayPayload.AOGBuffer.tHit += RayTCurrent() - tOffset; // We have to subtract the added offset for correct tHit. // ToDo
+
+    return rayPayload.radiance;
+}
+
+// Returns radiance of the traced ray.
+// ToDo standardize variable names
+float3 TraceRefractedGBufferRay(in float3 hitPosition, in float3 wt, in float3 N, in float3 objectNormal, inout GBufferRayPayload rayPayload)
+{
+    float tOffset = 0.001f;
+    float3 adjustedHitPosition = hitPosition + tOffset * (-N);
+    
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+    ToDo
+#endif
+
+    // ToDo offset along surface normal, and adjust tOffset subtraction below.
+    Ray ray = { adjustedHitPosition,  wt };
+
+    float tMin = 0; // NEAR_PLANE ToDo
+    float tMax = 1000;  //  FAR_PLANE - RayTCurrent()
+
+    rayPayload = TraceGBufferRay(ray, rayPayload.rx, rayPayload.ry, rayPayload.rayRecursionDepth, tMin, tMax);
+
+    rayPayload.AOGBuffer.tHit += RayTCurrent() - tOffset; // We have to subtract the added offset for corret tHit.
+
+    return rayPayload.radiance;
+}
+
+
+
+bool TraceShadowRayAndReportIfHit(in float3 hitPosition, in float3 direction,  in float3 N, in GBufferRayPayload rayPayload)
+{
+    float tOffset = 0.001f;
+    Ray visibilityRay = { hitPosition + tOffset * N, direction };
+    float dummyTHit;
+    return TraceShadowRayAndReportIfHit(dummyTHit, visibilityRay, N, rayPayload.rayRecursionDepth, false);
+}
+
+
+// Update AO GBuffer with the hit that has the largest diffuse component.
+// Prioritize larger diffuse component hits as it is a direct scale of the AO contribution to the final color value.
+// This doesn't always result in the largest AO contribution as the final color contribution depends on the AO coefficient as well,
+// but this is the best we can do in the GBuffer pass.
+void UpdateAOGBufferOnLargerDiffuseComponent(inout GBufferRayPayload rayPayload, in GBufferRayPayload _rayPayload)
+{
+    if (_rayPayload.AOGBuffer.hit && RGBtoLuminance(rayPayload.AOGBuffer.diffuse) < RGBtoLuminance(_rayPayload.AOGBuffer.diffuse))
+    {
+        rayPayload.AOGBuffer = _rayPayload.AOGBuffer;
+    }
+}
+
+float3 Shade(
+    inout GBufferRayPayload rayPayload,
+    in float3 N,
+    in float3 objectNormal, // ToDo N vs normal
+    in float3 hitPosition,
+    in PrimitiveMaterialBuffer material)
+{
+    float3 V = -WorldRayDirection();
+    float pdf;
+    float3 indirectContribution = 0;
+    float3 L = 0;
+
+
+    const float3 Kd = material.Kd;
+    const float3 Ks = material.Ks;
+    const float3 Kt = material.Kt;
+    const float3 Ko = material.opacity;
+    const float roughness = material.roughness;
+
+    // Direct illumination
+    rayPayload.AOGBuffer.diffuse = material.Kd;    // ToDo use BRDF instead?
+    if (!BxDF::IsBlack(material.Kd) || !BxDF::IsBlack(material.Ks))
+    {
+        // ToDo dedupe wi calculation
+        float3 wi = normalize(CB.lightPosition.xyz - hitPosition);
+        bool isInShadow = TraceShadowRayAndReportIfHit(hitPosition, wi, N, rayPayload);
+
+        L += BxDF::DirectLighting::Shade(
+            // ToDo have a substruct to pass around?
+            material.type,
+            Kd,
+            Ks,
+            CB.lightColor.xyz,
+            0,  // use non-zero ambient coef?
+            isInShadow,
+            material.roughness,
+            N,
+            V,
+            wi);
+    }
+
+    if (material.type == MaterialType::Matte)
+    {
+        return L;
+    }
+
+    // Indirect illumination
+    float3 wi;
+    float3 Fo = Ks;
+    float3 Fr = BxDF::Specular::Reflection::Sample_f(V, wi, N, Fo, pdf);    // Calculates wi
+    float3 Lr, Lt;
+    
+    if (BxDF::Specular::Reflection::IsTotalInternalReflection(V, N))
+    {
+        GBufferRayPayload reflectedRayPayLoad = rayPayload;
+        // Fr == 1 when total internal reflection occurs.
+        L += TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
+
+        UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad);
+    }
+    else // No total internal reflection
+    {
+        // Radiance contribution from reflection.
+        if (length(Fr) >= CB.RTAO_minimumBounceCoefficient)
+        {
+            GBufferRayPayload reflectedRayPayLoad = rayPayload;
+            L += Fr * TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad) * dot(N, wi);
+
+            // Adjust the diffuse by the BRDF for the reflected ray's radiance.
+            reflectedRayPayLoad.AOGBuffer.diffuse *= Fr;
+            UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad);
+        }
+
+        // Radiance contribution from refraction.
+        float3 wt;
+        float3 Ft = BxDF::Specular::Transmission::Sample_f(V, wt, N, Kt, Fo, pdf);    // Calculates wt
+        if (length(Ft) >= CB.RTAO_minimumBounceCoefficient)
+        {
+            GBufferRayPayload refractedRayPayLoad = rayPayload;
+            L = Ft * TraceRefractedGBufferRay(hitPosition, wt, N, objectNormal, refractedRayPayLoad) * dot(-N, wt);
+
+            // Adjust the diffuse by the BRDF for the transmitted ray's radiance.
+            refractedRayPayLoad.AOGBuffer.diffuse *= Ft;
+            UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, refractedRayPayLoad);
+        }
+    }
+
+    return L;
 }
 
 //***************************************************************************
@@ -568,7 +795,7 @@ void MyRayGenShader_Visibility()
         Ray visibilityRay = { hitPosition + 0.001f * surfaceNormal, normalize(CB.lightPosition.xyz - hitPosition) };
 
         float tHit;
-		inShadow = TraceShadowRayAndReportIfHit(tHit, visibilityRay, 0);
+		inShadow = TraceShadowRayAndReportIfHit(tHit, visibilityRay, 0, CB.useShadowRayHitTime);
 	}
 
 	// ToDo add option to be true distance and do contact hardening
@@ -623,24 +850,25 @@ void MyRayGenShader_GBuffer()
 
 	// Write out GBuffer information to rendertargets.
 	// ToDo Test conditional write on all output 
-	g_rtGBufferCameraRayHits[DispatchRaysIndex().xy] = (rayPayload.hit ? 1 : 0);
-    g_rtGBufferMaterialInfo[DispatchRaysIndex().xy] = rayPayload.materialInfo;
+	g_rtGBufferCameraRayHits[DispatchRaysIndex().xy] = (rayPayload.AOGBuffer.hit ? 1 : 0);
+   
+    // g_rtGBufferMaterialInfo[DispatchRaysIndex().xy] = rayPayload.materialInfo;
 
     // ToDo Use calculated hitposition based on distance from GBuffer instead?
-	g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.hitPosition, 0);
+    g_rtGBufferPosition[DispatchRaysIndex().xy] = float4(rayPayload.AOGBuffer.hitPosition, 0);
 
     float rayLength = DISTANCE_ON_MISS;
     float obliqueness = 0;
 
-#if  REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // CB value is incorrect on rayPayload.hit boundaries causing blocky artifacts when within if (hit) block
-    if (rayPayload.hit)
+#if  REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // CB value is incorrect on rayPayload.AOGBuffer.hit boundaries causing blocky artifacts when within if (hit) block
+    if (rayPayload.AOGBuffer.hit)
     {
         float3 raySegment = rayPayload.hitPosition - CB.cameraPosition.xyz;
 #else
 
     // ToDo dedupe
     //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - CB.cameraPosition.xyz, 1);
-    if (rayPayload.hit)
+    if (rayPayload.AOGBuffer.hit)
     {
         // Calculate depth value.
         //float4 homogeneousScreenSpaceHitPosition = mul(viewSpaceHitPosition, CB.viewProjection);
@@ -653,14 +881,14 @@ void MyRayGenShader_GBuffer()
 #if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
         //obliqueness = -dot(rayPayload.surfaceNormal, rayPayload.hitPosition);
 #endif
-        rayLength = rayPayload.tHit;
-        obliqueness = rayPayload.obliqueness;
+        rayLength = rayPayload.AOGBuffer.tHit;
+        obliqueness = rayPayload.AOGBuffer.obliqueness;
     
         // Calculate the motion vector.
         float _depth;
-        float2 motionVector = CalculateMotionVector(rayPayload._virtualHitPosition, _depth);
+        float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth);
         g_rtTextureSpaceMotionVector[DispatchRaysIndex().xy] = motionVector;
-        g_rtReprojectedHitPosition[DispatchRaysIndex().xy] = float4(rayPayload._normal, _depth);
+        g_rtReprojectedHitPosition[DispatchRaysIndex().xy] = float4(rayPayload.AOGBuffer._normal, _depth);
     }
     else
     {
@@ -689,19 +917,19 @@ void MyRayGenShader_GBuffer()
     g_rtPartialDepthDerivatives[DispatchRaysIndex().xy] = ddxy;
 #endif
 #if 1
-    float nonLinearDepth = rayPayload.hit ?
+    float nonLinearDepth = rayPayload.AOGBuffer.hit ?
         (FAR_PLANE + NEAR_PLANE - 2.0 * NEAR_PLANE * FAR_PLANE / linearDepth) / (FAR_PLANE - NEAR_PLANE)
         : 1;
     nonLinearDepth = (nonLinearDepth + 1.0) / 2.0;
     //linearDepth = rayLength = nonLinearDepth;
 #endif
 
-    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(EncodeNormal(rayPayload.surfaceNormal), linearDepth, obliqueness);
+    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(EncodeNormal(rayPayload.AOGBuffer.normal), linearDepth, obliqueness);
 #else
     #if PACK_NORMAL_AND_DEPTH
         obliqueness = rayLength;
     #endif
-    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.surfaceNormal, obliqueness);
+    g_rtGBufferNormal[DispatchRaysIndex().xy] = float4(rayPayload.AOGBuffer.normal, obliqueness);
 #endif
     g_rtGBufferDistance[DispatchRaysIndex().xy] = linearDepth;
 
@@ -711,7 +939,11 @@ void MyRayGenShader_GBuffer()
 
         g_rtGBufferDepth[DispatchRaysIndex().xy] = linearDepth;// nonLinearDepth;
     }
-    g_rtGBufferNormalRGB[DispatchRaysIndex().xy] = rayPayload.hit ? float4(rayPayload.surfaceNormal, 0) : float4(0,0,0,0);
+    // ToDo don't write on no hit?
+    g_rtGBufferNormalRGB[DispatchRaysIndex().xy] = rayPayload.AOGBuffer.hit ? float4(rayPayload.AOGBuffer.normal, 0) : float4(0,0,0,0);
+
+    g_rtAODiffuse[DispatchRaysIndex().xy] = float4(rayPayload.AOGBuffer.diffuse, 0);
+    g_rtColor[DispatchRaysIndex().xy] = float4(rayPayload.radiance, 1);
 }
 
 [shader("raygeneration")]
@@ -907,20 +1139,8 @@ void MyClosestHitShader_ShadowRay(inout ShadowRayPayload rayPayload, in BuiltInT
 [shader("closesthit")]
 void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTriangleIntersectionAttributes attr)
 {
-#if ONLY_SQUID_SCENE_BLAS
 	uint startIndex = PrimitiveIndex() * 3;
 	const uint3 indices = { l_indices[startIndex], l_indices[startIndex + 1], l_indices[startIndex + 2] };
-#else
-	// Get the base index of the triangle's first 16 bit index.
-	uint indexSizeInBytes = 2;
-	uint indicesPerTriangle = 3;
-	uint triangleIndexStride = indicesPerTriangle * indexSizeInBytes;
-
-	uint baseIndex = PrimitiveIndex() * triangleIndexStride;
-
-	// Load up three 16 bit indices for the triangle.
-	const uint3 indices = Load3x16BitIndices(baseIndex, l_indices);
-#endif
 
     // Retrieve vertices for the hit triangle.
     VertexPositionNormalTextureTangent vertices[3] = {
@@ -940,15 +1160,8 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     {
         // Retrieve corresponding vertex normals for the triangle vertices.
         float3 vertexNormals[3] = { vertices[0].normal, vertices[1].normal, vertices[2].normal };
-
-#if FLAT_FACE_NORMALS
-        BuiltInTriangleIntersectionAttributes attrCenter;
-        attrCenter.barycentrics.x = attrCenter.barycentrics.y = 1.f / 3;
-        // ToDo input normals should be normalized already
-        objectNormal = normalize(HitAttribute(vertexNormals, attrCenter));
-#else
         objectNormal = normalize(HitAttribute(vertexNormals, attr));
-#endif
+
 #if !FACE_CULLING
         float orientation = HitKind() == HIT_KIND_TRIANGLE_FRONT_FACE ? 1 : -1;
         objectNormal *= orientation;
@@ -959,14 +1172,8 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         normal = normalize(mul((float3x3)ObjectToWorld3x4(), objectNormal));
     }
 
-    rayPayload.obliqueness = dot(normal, -WorldRayDirection());
-
-#if 0
-    float3 hitPosition = HitAttribute(vertices, attr);
-    
-#else
     float3 hitPosition = HitWorldPosition();
-#endif
+
     float2 ddx = 0;
     float2 ddy = 0;
 
@@ -994,6 +1201,10 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         normal = NormalMap(normal, texCoord, ddx, ddy, vertices, material, attr);
     }
 
+    if (material.hasDiffuseTexture && !CB.useDiffuseFromMaterial)
+    {
+        material.Kd = RemoveSRGB(l_texDiffuse.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz);
+    }
 
     if (material.type == MaterialType::AnalyticalCheckerboardTexture)
     {
@@ -1003,114 +1214,38 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         float2 uv = TexCoords(hitPosition);
 
         CalculateRayDifferentials(ddx_uv, ddy_uv, uv, hitPosition, normal, CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin);
-        diffuse = CheckersTextureBoxFilter(uv, ddx_uv, ddy_uv, 25);
+        material.Kd = CheckersTextureBoxFilter(uv, ddx_uv, ddy_uv, 25);
 #else // ToDo fix derivatives
         float2 uv = hitPosition.xz / 2;
         float checkers = CheckersTextureBoxFilter(uv, ddx, ddy);
-        material.opacity = (abs(uv.x) < 20 && abs(uv.y) < 20) && (checkers > 0.5) ? 0 : 1;
-#endif
-    }
-
-    float reflectanceCoef = material.roughness < 0.99;
-
-#if ALLOW_MIRRORS
-    UINT rayRecursionDepth = rayPayload.rayRecursionDepth;
-    if (dot(1, material.opacity) < 0.9 && rayPayload.rayRecursionDepth < MAX_RAY_RECURSION_DEPTH)
-    {
-        // ToDo offset hitposition, add comment.
-
-        // ToDo TAO needs larger thresholds for rays that passed through, why?
-#if TURN_MIRRORS_SEETHROUGH
-        float tOffset = 0.001f;
-        // Calculate refracted rx, ry
-        // No refraction ,just passing the rays through.
-        Ray rx = rayPayload.rx;
-        Ray ry = rayPayload.ry;
-        Ray ray = { hitPosition + tOffset * WorldRayDirection(), WorldRayDirection() };
-#else
-        float tOffset = 0.001f;
-        // Calculate reflected rx, ry
-        Ray rx = { px, reflect(rayPayload.rx.direction, normal) };
-        Ray ry = { py, reflect(rayPayload.ry.direction, normal) };
-        // ToDo offset along surface normal, and adjust tOffset subtraction below.
-        Ray ray = { hitPosition + tOffset * normal, reflect(WorldRayDirection(), normal) };
-
-        // Adjust the tOffset for the part along the ray direction.
-        //tOffset = dot(tOffset * normal, -  
-#endif
-
-        float tMin = 0; // NEAR_PLANE ToDo
-        float tMax = 1000;  //  FAR_PLANE - RayTCurrent()
-
-        rayPayload = TraceGBufferRay(ray, rx, ry, rayPayload.rayRecursionDepth, tMin, tMax);
-        rayPayload.tHit += RayTCurrent() - tOffset; // We have to subtract the added offset for corret tHit.
-
-#if !TURN_MIRRORS_SEETHROUGH
-        // Get the current planar mirror in the previous frame.
-        float3x4 _mirrorBLASTransform = g_prevFrameBottomLevelASInstanceTransform[InstanceIndex()];
-        float3 _mirrorHitPosition = mul(_mirrorBLASTransform, float4(HitObjectPosition(), 1));
-
-        // Pass the virtual hit position reflected across the current mirror surface upstream 
-        // as if the ray went through the mirror to be able to recursively reflect at correct ray depths and then projecting to the screen.
-        // Skipping normalization as it's not required for the uses of the transformed normal here.
-        float3 _mirrorNormal = mul((float3x3)_mirrorBLASTransform, objectNormal);
-        rayPayload._virtualHitPosition = ReflectFrontPointThroughPlane(rayPayload._virtualHitPosition, _mirrorHitPosition, _mirrorNormal);
-#endif
-    }
-    else
-#endif
-    {
-        float3 diffuse;
-        if (material.type == MaterialType::AnalyticalCheckerboardTexture)
+        if ((abs(uv.x) < 20 && abs(uv.y) < 20) && (checkers > 0.5))
         {
-#if 0 
-            float2 ddx_uv;
-            float2 ddy_uv;
-            float2 uv = hitPosition.xz;
-
-            CalculateRayDifferentials(ddx_uv, ddy_uv, uv, hitPosition, normal, CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin);
-            diffuse = CheckersTextureBoxFilter(uv, ddx_uv, ddy_uv, 25);
-#else // ToDo fix derivatives
-            float2 uv = hitPosition.xz / 2;
-            float checkers = CheckersTextureBoxFilter(uv, ddx, ddy);
-            diffuse = checkers > 0.5 ? float3(50, 68, 90) / 255 : float3(170, 170, 170) / 255;
-#endif
-        } 
-        else
-        {
-            if (material.hasDiffuseTexture && !CB.useDiffuseFromMaterial)
-            {
-                diffuse = l_texDiffuse.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz;
-            }
-            else
-            {
-                diffuse = material.diffuse;
-            }
+            material.Kr = 1;
+            material.Kd = 0;
         }
-        
-        rayPayload.hit = true;
-        rayPayload.materialInfo = EncodeMaterial16b(materialID, diffuse);
-        rayPayload.hitPosition = hitPosition;
-        rayPayload.surfaceNormal = normal;
-        rayPayload.tHit = RayTCurrent();
-        rayPayload.hitObjectPosition = HitObjectPosition();
-        rayPayload.objectNormal = objectNormal;
-
-#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-        float3 rxRaySegment = px - rayPayload.rx.origin;
-        float3 ryRaySegment = py - rayPayload.ry.origin;
-        rayPayload.rxTHit += length(rxRaySegment);
-        rayPayload.ryTHit += length(ryRaySegment);
 #endif
-
-        float3x4 _BLASTransform;
-        rayPayload._virtualHitPosition = GetWorldHitPositionInPreviousFrame(HitObjectPosition(), InstanceIndex(), indices, attr, _BLASTransform);
-
-        // Calculate normal at the hit in the previous frame.
-        // BLAS Transforms in this sample are uniformly scaled so it's OK to directly apply the BLAS transform.
-        // ToDo add a note that the transform is expected to have uniform scaling
-        rayPayload._normal = normalize(mul((float3x3)_BLASTransform, objectNormal));
     }
+
+    rayPayload.AOGBuffer.hit = true;
+    rayPayload.AOGBuffer.tHit = RayTCurrent();
+    rayPayload.AOGBuffer.obliqueness = dot(normal, -WorldRayDirection());
+    rayPayload.AOGBuffer.hitPosition = hitPosition;
+    //rayPayload.materialInfo = EncodeMaterial16b(materialID, diffuse);
+    rayPayload.AOGBuffer.normal = normal;
+    
+    // ToDo calculate motion vector only if the AOGBuffer is not overwritten in Shade.
+    float3x4 _BLASTransform;
+    rayPayload.AOGBuffer._virtualHitPosition = GetWorldHitPositionInPreviousFrame(HitObjectPosition(), InstanceIndex(), indices, attr, _BLASTransform);
+
+    // Calculate normal at the hit in the previous frame.
+    // BLAS Transforms in this sample are uniformly scaled so it's OK to directly apply the BLAS transform.
+    // ToDo add a note that the transform is expected to have uniform scaling
+    rayPayload.AOGBuffer._normal = normalize(mul((float3x3)_BLASTransform, objectNormal));
+
+    // Shade the current hit point, including casting any further rays into the scene 
+    // based on current's surface material properties.
+
+    rayPayload.radiance = Shade(rayPayload, normal, objectNormal, hitPosition, material);
 }
 
 
@@ -1135,11 +1270,9 @@ void MyMissShader_ShadowRay(inout ShadowRayPayload rayPayload)
 [shader("miss")]
 void MyMissShader_GBuffer(inout GBufferRayPayload rayPayload)
 {
-	rayPayload.hit = false;
+	rayPayload.AOGBuffer.hit = false;
 #if USE_ENVIRONMENT_MAP
-    float3 color = g_texEnvironmentMap.SampleLevel(LinearWrapSampler, WorldRayDirection(), 0).xyz;
-    rayPayload.materialInfo = EncodeMaterial16b(0, color);
-    rayPayload.hitPosition = WorldRayDirection();
+    rayPayload.radiance = g_texEnvironmentMap.SampleLevel(LinearWrapSampler, WorldRayDirection(), 0).xyz;
 #endif
 }
 

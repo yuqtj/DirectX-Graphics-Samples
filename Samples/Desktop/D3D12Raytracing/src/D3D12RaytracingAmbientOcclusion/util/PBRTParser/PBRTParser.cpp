@@ -20,7 +20,7 @@
 using namespace SceneParser;
 using namespace std;
 
-#define DISABLE_CAMERA_TRANSFORMS / ToDo remove
+#define DISABLE_CAMERA_TRANSFORMS // ToDo remove
 
 namespace PBRTParser
 {
@@ -35,7 +35,7 @@ namespace PBRTParser
         assert(m_AttributeStack.size() == 0);
     }
 
-	void PBRTParser::Parse(std::string filename, SceneParser::Scene &outputScene, bool bClockwiseWindingORder, bool rhCoords)
+	void PBRTParser::Parse(string filename, SceneParser::Scene &outputScene, bool bClockwiseWindingORder, bool rhCoords)
 	{
 		m_fileStream = ifstream(filename);
 
@@ -222,7 +222,7 @@ namespace PBRTParser
 		}
 	};
 
-    void PBRTParser::ParseWorld(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+    void PBRTParser::ParseWorld(ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         while (fileStream.good())
         {
@@ -281,7 +281,7 @@ namespace PBRTParser
         }
     }
 
-	void PBRTParser::ParseLookAt(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+	void PBRTParser::ParseLookAt(ifstream &fileStream, SceneParser::Scene &outputScene)
 	{
 		char *pTempBuffer = GetLine();
 
@@ -293,7 +293,7 @@ namespace PBRTParser
 		ThrowIfTrue(argCount != 9, L"LookAt arguments not formatted correctly");
 	}
 
-    void PBRTParser::ParseCamera(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+    void PBRTParser::ParseCamera(ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         char *pTempBuffer = GetLine();
 
@@ -313,7 +313,7 @@ namespace PBRTParser
 #endif
     }
 
-    void PBRTParser::ParseFilm(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+    void PBRTParser::ParseFilm(ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         char *pTempBuffer = GetLine();
 
@@ -337,7 +337,7 @@ namespace PBRTParser
         outputScene.m_Film.m_Filename = correctedFileName;
     }
 
-    void PBRTParser::ParseBracketedVector3(std::istream is, float &x, float &y, float &z)
+    void PBRTParser::ParseBracketedVector3(istream is, float &x, float &y, float &z)
     {
         is >> lastParsedWord;
         ThrowIfTrue(lastParsedWord.compare("["), L"Expect '[' at beginning of vector");
@@ -352,7 +352,7 @@ namespace PBRTParser
         ThrowIfTrue(lastParsedWord.compare("]"), L"Expect '[' at beginning of vector");
     }
 
-    float PBRTParser::ParseFloat1(std::istream &inStream)
+    float PBRTParser::ParseFloat1(istream &inStream)
     {
         ParseExpectedWord(inStream, "[");
         float num;
@@ -361,28 +361,44 @@ namespace PBRTParser
         return num;
     }
 
-    std::string PBRTParser::ParseString(std::istream &inStream)
+    string PBRTParser::ParseString(istream &inStream)
     {
         ParseExpectedWord(inStream, "[");
-        std::string word;
+        string word;
         inStream >> word;
         ParseExpectedWord(inStream, "]");
         return word;
     }
 
-    void PBRTParser::ParseMaterial(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+    bool PBRTParser::ParseBool(istream &inStream)
+    {
+        string value = ParseString(inStream);
+
+        if (value == "\"true\"")
+        {
+            return true;
+        }
+        else
+        {
+            ThrowIfFalse(value == "\"false\"", L"Expect \"true\" or \"false\" value");
+            return false;
+        }
+    }
+
+
+    void PBRTParser::ParseMaterial(ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         Material material;
 		material.m_Opacity = Vector3(1, 1, 1);
         char materialName[PBRTPARSER_STRINGBUFFERSIZE];
-        std::string materialType;
+        string materialType;
 
         auto lineStream = GetLineStream();
 
         lineStream >> lastParsedWord;
         material.m_MaterialName = CorrectNameString(lastParsedWord);
-
-        auto pfnParseMaterialColor = [&](std::istream &inStream, Vector3 &color, std::string &textureFileName)
+        bool remapRoughness = true;     // Whether the roughness should be remapped to BRDF's alpha. If false, roughness is used directly for the alpha. 
+        auto pfnParseMaterialColor = [&](istream &inStream, Vector3 &color, string &textureFileName)
         {
             inStream >> lastParsedWord;
             ThrowIfTrue(lastParsedWord.compare("["));
@@ -397,7 +413,7 @@ namespace PBRTParser
             {
                 inStream.clear();
 #
-                std::string textureName;
+                string textureName;
                 inStream >> textureName;
                 textureName = CorrectNameString(textureName);
                 textureFileName = m_TextureNameToFileName[textureName];
@@ -421,6 +437,8 @@ namespace PBRTParser
                     lineStream >> materialType;
                     materialType = CorrectNameString(materialType);
 
+                    material.Initialize(materialType);
+
                     lineStream >> lastParsedWord;
                     ThrowIfTrue(lastParsedWord.compare("]"));
                 }
@@ -434,11 +452,29 @@ namespace PBRTParser
                 lineStream >> lastParsedWord;
                 if (!lastParsedWord.compare("Kd\""))
                 {
-                    pfnParseMaterialColor(lineStream, material.m_Diffuse, material.m_DiffuseTextureFilename);
+                    pfnParseMaterialColor(lineStream, material.m_Kd, material.m_DiffuseTextureFilename);
                 }
                 else if (!lastParsedWord.compare("Ks\""))
                 {
-                    pfnParseMaterialColor(lineStream, material.m_Specular, material.m_SpecularTextureFilename);
+                    pfnParseMaterialColor(lineStream, material.m_Ks, material.m_SpecularTextureFilename);
+                }
+                else if (!lastParsedWord.compare("Kr\""))
+                {
+                    string dummyString;
+                    pfnParseMaterialColor(lineStream, material.m_Kr, dummyString);
+                    ThrowIfFalse(dummyString == "", L"Texture support for Kr is not implemented");
+                }
+                else if (!lastParsedWord.compare("Kt\""))
+                {
+                    string dummyString;
+                    pfnParseMaterialColor(lineStream, material.m_Kt, dummyString);
+                    ThrowIfFalse(dummyString == "", L"Texture support for Kt is not implemented");
+                }
+                else if (!lastParsedWord.compare("eta\""))
+                {
+                    string dummyString;
+                    pfnParseMaterialColor(lineStream, material.m_Eta, dummyString);
+                    ThrowIfFalse(dummyString == "", L"Texture support for eta is not implemented");
                 }
 				else if (!lastParsedWord.compare("opacity\""))
 				{
@@ -454,13 +490,18 @@ namespace PBRTParser
             else if (!lastParsedWord.compare("\"float"))
             {
                 lineStream >> lastParsedWord;
-                if (!lastParsedWord.compare("uroughness\""))
+                if (!lastParsedWord.compare("uroughness\"") ||
+                    !lastParsedWord.compare("vroughness\""))
                 {
-                    material.m_URoughness = ParseFloat1(lineStream);
+                    material.m_Roughness = ParseFloat1(lineStream);
                 }
-                else if (!lastParsedWord.compare("vroughness\""))
+            }
+            else if (!lastParsedWord.compare("\"bool"))
+            {
+                lineStream >> lastParsedWord;
+                if (!lastParsedWord.compare("remaproughness\""))
                 {
-                    material.m_VRoughness = ParseFloat1(lineStream);
+                    remapRoughness = ParseBool(lineStream);
                 }
             }
             else
@@ -469,25 +510,21 @@ namespace PBRTParser
             }
         }
 
-        if (materialType == "matte")
+        if (remapRoughness)
         {
-            material.m_Type = Material::Matte;
-        }
-        else
-        {
-            material.m_Type = Material::Default;
+            material.m_Roughness = material.m_Roughness * material.m_Roughness;
         }
 
         outputScene.m_Materials[material.m_MaterialName] = material;
     }
 
-    void PBRTParser::ParseLightSource(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+    void PBRTParser::ParseLightSource(ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         auto &lineStream = GetLineStream();
         lineStream >> lastParsedWord;
         if (lastParsedWord.compare("infinite"))
         {
-            std::string expectedWords[] = { "\"string", "mapname\"" };
+            string expectedWords[] = { "\"string", "mapname\"" };
             ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
 
             ThrowIfTrue(outputScene.m_EnvironmentMap.m_FileName.size() > 0, L"Multiple environment maps defined");
@@ -495,7 +532,7 @@ namespace PBRTParser
         }
     }
 
-    void PBRTParser::ParseAreaLightSource(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+    void PBRTParser::ParseAreaLightSource(ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         auto &lineStream = GetLineStream();
 
@@ -523,7 +560,7 @@ namespace PBRTParser
         SetCurrentAttributes(Attributes(attribute));
     }
     
-    void PBRTParser::ParseExpectedWords(std::istream &inStream, _In_reads_(numWords) std::string *pWords, UINT numWords)
+    void PBRTParser::ParseExpectedWords(istream &inStream, _In_reads_(numWords) string *pWords, UINT numWords)
     {
         for (UINT i = 0; i < numWords; i++)
         {
@@ -531,18 +568,18 @@ namespace PBRTParser
         }
     }
 
-    void PBRTParser::ParseExpectedWord(std::istream &inStream, const std::string &word)
+    void PBRTParser::ParseExpectedWord(istream &inStream, const string &word)
     {
         inStream >> lastParsedWord;
         ThrowIfTrue(lastParsedWord.compare(word));
     }
 
-    void PBRTParser::ParseTexture(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+    void PBRTParser::ParseTexture(ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         // "float uscale"[20.000000] "float vscale"[20.000000] "rgb tex1"[0.325000 0.310000 0.250000] "rgb tex2"[0.725000 0.710000 0.680000]
         auto &lineStream = GetLineStream();
 
-        std::string textureName;
+        string textureName;
         lineStream >> textureName;
         textureName = CorrectNameString(textureName);
 
@@ -554,7 +591,7 @@ namespace PBRTParser
         {
             float uscale;
             {
-                std::string expectedWords[] = { "\"float", "uscale\"", "[" };
+                string expectedWords[] = { "\"float", "uscale\"", "[" };
                 ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
                 lineStream >> uscale;
                 ParseExpectedWord(lineStream, "]");
@@ -562,7 +599,7 @@ namespace PBRTParser
 
             float vscale;
             {
-                std::string expectedWords[] = { "\"float", "vscale\"", "[" };
+                string expectedWords[] = { "\"float", "vscale\"", "[" };
                 ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
                 lineStream >> vscale;
                 ParseExpectedWord(lineStream, "]");
@@ -570,7 +607,7 @@ namespace PBRTParser
 
             Vector3 col1;
             {
-                std::string expectedWords[] = { "\"rgb", "tex1\"", "[" };
+                string expectedWords[] = { "\"rgb", "tex1\"", "[" };
                 ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
                 lineStream >> col1.r;
                 lineStream >> col1.g;
@@ -580,7 +617,7 @@ namespace PBRTParser
 
             Vector3 col2;
             {
-                std::string expectedWords[] = { "\"rgb", "tex2\"", "[" };
+                string expectedWords[] = { "\"rgb", "tex2\"", "[" };
                 ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
                 lineStream >> col2.r;
                 lineStream >> col2.g;
@@ -588,7 +625,7 @@ namespace PBRTParser
                 ParseExpectedWord(lineStream, "]");
             }
 
-            std::string fileName = GenerateCheckerboardTexture(
+            string fileName = GenerateCheckerboardTexture(
                 textureName,
                 uscale,
                 vscale,
@@ -599,9 +636,9 @@ namespace PBRTParser
         }
         else if (!lastParsedWord.compare("\"imagemap\""))
         {
-            std::string fileName;
+            string fileName;
             {
-                std::string expectedWords[] = { "\"string", "filename\"", "[" };
+                string expectedWords[] = { "\"string", "filename\"", "[" };
                 ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
                 lineStream >> fileName;
                 fileName = CorrectNameString(fileName);
@@ -610,7 +647,7 @@ namespace PBRTParser
 
             // Trilinear setting is ignored, just read past.
             {
-                std::string expectedWords[] = { "\"bool", "trilinear\"", "[" };
+                string expectedWords[] = { "\"bool", "trilinear\"", "[" };
                 ParseExpectedWords(lineStream, expectedWords, ARRAYSIZE(expectedWords));
                 string sBool;
                 lineStream >> sBool;
@@ -625,7 +662,7 @@ namespace PBRTParser
 		}
     }
 
-    std::string PBRTParser::GenerateCheckerboardTexture(std::string fileName, float uScaleFloat, float vScaleFloat, Vector3 color1, Vector3 color2)
+    string PBRTParser::GenerateCheckerboardTexture(string fileName, float uScaleFloat, float vScaleFloat, Vector3 color1, Vector3 color2)
     {
         UINT uScale = (UINT)uScaleFloat;
         UINT vScale = (UINT)vScaleFloat;
@@ -634,7 +671,7 @@ namespace PBRTParser
         UINT textureHeight = vScale * 2;
         UINT CheckerBlockSize = 2;
         
-        std::vector<Vector3> imageData;
+        vector<Vector3> imageData;
         imageData.resize(textureHeight * textureWidth);
         for (UINT y = 0; y < textureHeight; y++)
         {
@@ -646,14 +683,14 @@ namespace PBRTParser
             }
         }
 
-        std::string filenameWithExtension = fileName + ".bmp";
+        string filenameWithExtension = fileName + ".bmp";
         GenerateBMPFile(filenameWithExtension, imageData.data(), textureWidth, textureHeight);
         return filenameWithExtension;
     }
 
-    void PBRTParser::GenerateBMPFile(std::string fileName, _In_reads_(width * height)Vector3 *pImageData, UINT width, UINT height)
+    void PBRTParser::GenerateBMPFile(string fileName, _In_reads_(width * height)Vector3 *pImageData, UINT width, UINT height)
     {
-        std::ofstream bmpFile(fileName, std::ofstream::out | std::ofstream::binary | std::ofstream::app);
+        ofstream bmpFile(fileName, ofstream::out | ofstream::binary | ofstream::app);
         ThrowIfTrue(!bmpFile.is_open() || bmpFile.fail());
 
         unsigned char *img = NULL;
@@ -727,7 +764,7 @@ namespace PBRTParser
     }
 
 
-    void PBRTParser::ParseMesh(std::ifstream &fileStream, SceneParser::Scene &outputScene)
+    void PBRTParser::ParseMesh(ifstream &fileStream, SceneParser::Scene &outputScene)
     {
         Mesh *pMesh;
         if (GetCurrentAttributes().GetType() == Attributes::AreaLight)
@@ -750,16 +787,16 @@ namespace PBRTParser
 
     }
 
-    void PBRTParser::ParseShape(std::ifstream &fileStream, SceneParser::Scene &outputScene, SceneParser::Mesh &mesh)
+    void PBRTParser::ParseShape(ifstream &fileStream, SceneParser::Scene &outputScene, SceneParser::Mesh &mesh)
     {
         fileStream >> lastParsedWord;
         
         if (!lastParsedWord.compare("\"plymesh\""))
         {
-            std::string ExpectedWords[] = { "\"string", "filename\"" };
+            string ExpectedWords[] = { "\"string", "filename\"" };
             ParseExpectedWords(fileStream, ExpectedWords, ARRAYSIZE(ExpectedWords));
 
-            std::string correctedFileName = CorrectNameString(ParseString(fileStream));
+            string correctedFileName = CorrectNameString(ParseString(fileStream));
             PlyParser::PlyParser().Parse(m_relativeDirectory + correctedFileName, mesh);
 
 
@@ -785,7 +822,7 @@ namespace PBRTParser
                     }
                     else
                     {
-                        fileStream.clear(std::ios::goodbit);
+                        fileStream.clear(ios::goodbit);
                         fileStream >> lastParsedWord;
                         ThrowIfTrue(lastParsedWord.compare("]"), L"Expected closing ']' after indices");
                         break;
@@ -818,7 +855,7 @@ namespace PBRTParser
                     }
                     else
                     {
-                        fileStream.clear(std::ios::goodbit);
+                        fileStream.clear(ios::goodbit);
                         fileStream >> lastParsedWord;
                         ThrowIfTrue(lastParsedWord.compare("]"), L"Expected closing ']' after positions");
                         break;
@@ -857,7 +894,7 @@ namespace PBRTParser
                     }
                     else
                     {
-                        fileStream.clear(std::ios::goodbit);
+                        fileStream.clear(ios::goodbit);
                         fileStream >> lastParsedWord;
                         ThrowIfTrue(lastParsedWord.compare("]"), L"Expected closing ']' after positions");
                         break;
@@ -894,7 +931,7 @@ namespace PBRTParser
                     }
                     else
                     {
-                        fileStream.clear(std::ios::goodbit);
+                        fileStream.clear(ios::goodbit);
                         fileStream >> lastParsedWord;
                         ThrowIfTrue(lastParsedWord.compare("]"), L"Expected closing ']' after positions");
                         break;

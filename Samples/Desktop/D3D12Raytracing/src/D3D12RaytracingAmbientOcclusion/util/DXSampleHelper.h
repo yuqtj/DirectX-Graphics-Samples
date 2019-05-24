@@ -895,9 +895,19 @@ public:
 
 	GeometryInstance() : transform(0) {}
 
-	GeometryInstance(const D3DGeometry& geometry, UINT _materialID, D3D12_GPU_DESCRIPTOR_HANDLE _diffuseTexture, D3D12_GPU_DESCRIPTOR_HANDLE _normalTexture, bool _isVertexAnimated = false) : 
+	GeometryInstance(
+        const D3DGeometry& geometry, 
+        UINT _materialID, 
+        D3D12_GPU_DESCRIPTOR_HANDLE _diffuseTexture, 
+        D3D12_GPU_DESCRIPTOR_HANDLE _normalTexture,
+        // Mark the geometry as opaque by default. 
+        // PERFORMANCE TIP: mark geometry as opaque whenever applicable as it can enable important ray processing optimizations.
+        // Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
+        D3D12_RAYTRACING_GEOMETRY_FLAGS _geometryFlags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE,
+        bool _isVertexAnimated = false) : 
         materialID(_materialID), diffuseTexture(_diffuseTexture), normalTexture(_normalTexture), transform(0), isVertexAnimated(_isVertexAnimated)
 	{
+        geometryFlags = _geometryFlags;
 		ib.startIndex = 0;
 		ib.count = static_cast<UINT>(geometry.ib.buffer.resource->GetDesc().Width / sizeof(Index));
 		ib.indexBuffer = geometry.ib.buffer.resource->GetGPUVirtualAddress();
@@ -932,6 +942,7 @@ public:
     bool isVertexAnimated;
     D3D12_GPU_DESCRIPTOR_HANDLE diffuseTexture;
     D3D12_GPU_DESCRIPTOR_HANDLE normalTexture;
+    D3D12_RAYTRACING_GEOMETRY_FLAGS geometryFlags;
 };
 
 

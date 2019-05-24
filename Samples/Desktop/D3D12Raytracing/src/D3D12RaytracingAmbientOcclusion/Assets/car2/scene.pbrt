@@ -9,7 +9,7 @@ WorldBegin
 	Transform [ 1 0 0 0 0 1 0 0 0 0 1 0 -20 -1.034 5.5 1]
 	# MakeNamedMaterial "CarPaint" "string type" [ "substrate" ] "rgb Ks" [ 0.017013 0.017013 0.017013 ] "rgb Kd" [ 0.020939 0.072837 0.003349 ] "bool remaproughness" [ "false" ] "float uroughness" [ 0.001000 ] "float vroughness" [ 0.001000 ] 
 	MakeNamedMaterial "CarPaint" "string type" [ "substrate" ] "rgb Ks" [ 0.017013 0.017013 0.017013 ] "rgb Kd" [ 0.10939 0.36837 0.015349 ] "bool remaproughness" [ "false" ] "float uroughness" [ 0.001000 ] "float vroughness" [ 0.001000 ]
-	MakeNamedMaterial "WindowGlass" "string type" [ "uber" ] "rgb Kd" [ 0.000000 0.000000 0.000000 ] "rgb Ks" [ 0.000000 0.000000 0.000000 ] "rgb opacity" [ 0.000000 0.000000 0.000000 ] 
+	MakeNamedMaterial "WindowGlass" "string type" [ "uber" ] "rgb Kd" [ 0.000000 0.000000 0.000000 ] "rgb Ks" [ 0.000000 0.000000 0.000000 ] "rgb opacity" [ 0.000000 0.000000 0.000000 ] "rgb Kt" [ 1.000000 1.000000 1.000000 ] 
 	# MakeNamedMaterial "Chrome" "string type" [ "metal" ] "rgb eta" [ 4.369683 2.9167S03 1.654701 ] "rgb k" [ 5.206434 4.231365 3.754947 ] "bool remaproughness" [ "false" ] "float uroughness" [ 0.100000 ] "float vroughness" [ 0.100000 ] 
 	MakeNamedMaterial "Chrome" "string type" [ "matte" ] "rgb Kd" [ 0.549 0.556 0.554 ]
 	MakeNamedMaterial "BlackRubber" "string type" [ "substrate" ] "rgb Ks" [ 0.040000 0.040000 0.040000 ] "rgb Kd" [ 0.1 0.1 0.1 ] "float uroughness" [ 0.400000 ] "float vroughness" [ 0.400000 ] "bool remaproughness" [ "false" ] 

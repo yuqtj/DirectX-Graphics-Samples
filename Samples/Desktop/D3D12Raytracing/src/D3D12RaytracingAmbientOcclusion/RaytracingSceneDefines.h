@@ -58,7 +58,9 @@ namespace ComputeShader {
                     FilterWeightSum,
                     AORayHitDistance,
                     FrameAge,   // ToDo use same name as in the shader
-					Count
+                    Color,
+                    AODiffuse,
+                    Count
 				};
 			}
 		}
@@ -117,6 +119,8 @@ namespace GlobalRootSignature {
             PrevFrameBottomLevelASIstanceTransforms,
             MotionVector,
             ReprojectedHitPosition,
+            Color,
+            AODiffuse,
             Count
         };
     }
@@ -200,6 +204,8 @@ namespace GBufferResource {
         PartialDepthDerivatives,
         MotionVector,
         ReprojectedHitPosition,
+        Color,
+        AODiffuse,
 		Count
 	};
 }

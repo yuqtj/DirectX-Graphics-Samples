@@ -223,14 +223,13 @@ void SquidRoomAssets::LoadGeometry(
 
     // Create a shared material.
     PrimitiveMaterialBuffer materialCB;
-    materialCB.diffuse = XMFLOAT3(1, 1, 1);
-    materialCB.specular = XMFLOAT3(1, 1, 1);
+    materialCB.Kd = XMFLOAT3(1, 1, 1);
+    materialCB.Ks = XMFLOAT3(1, 1, 1);
     materialCB.opacity = XMFLOAT3(1, 1, 1);
-    materialCB.specularPower = 50;
     materialCB.hasDiffuseTexture = true;
     materialCB.hasNormalTexture = true;
     materialCB.hasPerVertexTangents = true;
-    materialCB.roughness = 0.0;
+    materialCB.roughness = 0.1f;
     materialCB.type = MaterialType::Default;
 
     UINT size = sizeof(PrimitiveMaterialBuffer);

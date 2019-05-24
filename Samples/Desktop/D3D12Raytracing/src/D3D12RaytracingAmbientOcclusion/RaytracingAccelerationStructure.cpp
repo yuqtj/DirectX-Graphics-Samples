@@ -60,17 +60,10 @@ void BottomLevelAccelerationStructure::UpdateGeometryDescsTransform(D3D12_GPU_VI
 // Build geometry descs for bottom-level AS.
 void BottomLevelAccelerationStructure::BuildGeometryDescs(BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry)
 {
-	// ToDo pass geometry flag from the sample cpp
-	// Mark the geometry as opaque. 
-	// PERFORMANCE TIP: mark geometry as opaque whenever applicable as it can enable important ray processing optimizations.
-	// Note: When rays encounter opaque geometry an any hit shader will not be executed whether it is present or not.
-	D3D12_RAYTRACING_GEOMETRY_FLAGS geometryFlags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
-
 	D3D12_RAYTRACING_GEOMETRY_DESC geometryDescTemplate = {};
 	geometryDescTemplate.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
 	geometryDescTemplate.Triangles.IndexFormat = bottomLevelASGeometry.m_indexFormat;
 	geometryDescTemplate.Triangles.VertexFormat = bottomLevelASGeometry.m_vertexFormat;
-	geometryDescTemplate.Flags = geometryFlags;
 
 	m_geometryDescs.reserve(bottomLevelASGeometry.m_geometryInstances.size());
 
@@ -78,6 +71,7 @@ void BottomLevelAccelerationStructure::BuildGeometryDescs(BottomLevelAcceleratio
 	for (auto& geometry: bottomLevelASGeometry.m_geometryInstances)
 	{
 		auto& geometryDesc = geometryDescTemplate;
+        geometryDescTemplate.Flags = geometry.geometryFlags;
 		geometryDesc.Triangles.IndexBuffer = geometry.ib.indexBuffer;
 		geometryDesc.Triangles.IndexCount = geometry.ib.count;
 		geometryDesc.Triangles.VertexBuffer = geometry.vb.vertexBuffer;
