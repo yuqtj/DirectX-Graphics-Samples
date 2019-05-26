@@ -688,9 +688,9 @@ float3 Shade(
 
     const float3 Kd = material.Kd;
     const float3 Ks = material.Ks;
+    const float3 Kr = material.Kr;
     const float3 Kt = material.Kt;
-    const float3 Ko = material.opacity;
-    const float roughness = material.roughness;
+    const float roughness = max(0.1, material.roughness);    // ToDo Roughness of 0.001 loses specular - precision? 
 
     // Direct illumination
     rayPayload.AOGBuffer.diffuse = material.Kd;    // ToDo use BRDF instead?
@@ -708,55 +708,63 @@ float3 Shade(
             CB.lightColor.xyz,
             0,  // use non-zero ambient coef?
             isInShadow,
-            material.roughness,
+            roughness,
             N,
             V,
             wi);
     }
 
-    if (material.type == MaterialType::Matte)
+    // Specular Indirect Illumination
+    bool isReflective = !BxDF::IsBlack(Kr);
+    bool isTransmissive = !BxDF::IsBlack(Kt);
+    if (isReflective || isTransmissive)
     {
-        return L;
-    }
-
-    // Indirect illumination
-    float3 wi;
-    float3 Fo = Ks;
-    float3 Fr = BxDF::Specular::Reflection::Sample_f(V, wi, N, Fo, pdf);    // Calculates wi
-    float3 Lr, Lt;
-    
-    if (BxDF::Specular::Reflection::IsTotalInternalReflection(V, N))
-    {
-        GBufferRayPayload reflectedRayPayLoad = rayPayload;
-        // Fr == 1 when total internal reflection occurs.
-        L += TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
-
-        UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad);
-    }
-    else // No total internal reflection
-    {
-        // Radiance contribution from reflection.
-        if (length(Fr) >= CB.RTAO_minimumBounceCoefficient)
+        if (isReflective 
+            && (BxDF::Specular::Reflection::IsTotalInternalReflection(V, N) 
+                || material.type == MaterialType::Mirror))
         {
             GBufferRayPayload reflectedRayPayLoad = rayPayload;
-            L += Fr * TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad) * dot(N, wi);
-
-            // Adjust the diffuse by the BRDF for the reflected ray's radiance.
-            reflectedRayPayLoad.AOGBuffer.diffuse *= Fr;
+            float3 wi = reflect(-V, N);
+            L += Kr * TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
             UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad);
         }
-
-        // Radiance contribution from refraction.
-        float3 wt;
-        float3 Ft = BxDF::Specular::Transmission::Sample_f(V, wt, N, Kt, Fo, pdf);    // Calculates wt
-        if (length(Ft) >= CB.RTAO_minimumBounceCoefficient)
+        else // No total internal reflection
         {
-            GBufferRayPayload refractedRayPayLoad = rayPayload;
-            L = Ft * TraceRefractedGBufferRay(hitPosition, wt, N, objectNormal, refractedRayPayLoad) * dot(-N, wt);
+            float3 Fo = Ks;
+            if (isReflective)
+            {
+                float3 wi;
+                float3 Fr = Kr * BxDF::Specular::Reflection::Sample_Fr(V, wi, N, Fo);    // Calculates wi
+  
+                // Radiance contribution from reflection.
+                if (dot(Fr, 1) >= CB.RTAO_minimumBounceCoefficient)
+                {
+                    GBufferRayPayload reflectedRayPayLoad = rayPayload;
 
-            // Adjust the diffuse by the BRDF for the transmitted ray's radiance.
-            refractedRayPayLoad.AOGBuffer.diffuse *= Ft;
-            UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, refractedRayPayLoad);
+                    // Ref: eq 24.4, RTG
+                    L += Fr * TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
+
+                    // Adjust the diffuse by the BRDF for the reflected ray's radiance.
+                    reflectedRayPayLoad.AOGBuffer.diffuse *= Fr;
+                    UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad);
+                }
+            }
+
+            if (isTransmissive)
+            {
+                // Radiance contribution from refraction.
+                float3 wt;
+                float3 Ft = Kt * BxDF::Specular::Transmission::Sample_Ft(V, wt, N, Fo);    // Calculates wt
+                if (dot(Ft, 1) >= CB.RTAO_minimumBounceCoefficient)
+                {
+                    GBufferRayPayload refractedRayPayLoad = rayPayload;
+                    L += Ft * TraceRefractedGBufferRay(hitPosition, wt, N, objectNormal, refractedRayPayLoad);
+
+                    // Adjust the diffuse by the BRDF for the trsansmitted ray's radiance.
+                    refractedRayPayLoad.AOGBuffer.diffuse *= Ft;
+                    UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, refractedRayPayLoad);
+                }
+            }
         }
     }
 

@@ -102,16 +102,11 @@ namespace SceneParser
     // Ref: https://www.pbrt.org/fileformat-v3.html
 	struct Material
 	{
-        enum Type
-        {
-            Default,
-            Matte
-        };
-
 		std::string m_MaterialName;
-        Type m_Type;
+        MaterialType::Type m_Type;
+
         Vector3 m_Kd = 0;                 // The diffuse reflectivity of the surface.
-        Vector3 m_Ks = 0;                 // The specular reflectivity of the surface.
+        Vector3 m_Ks = 0.04;                 // The specular reflectivity of the surface.
 		Vector3 m_Kr = 0;                 // The reflectivity of the surface.
 		Vector3 m_Kt = 0;                 // The transmissivity of the surface.
         Vector3 m_Opacity = 1;            // The opacity of the surface. If less than one, "uber" material transmits light without refracting it.
@@ -126,37 +121,30 @@ namespace SceneParser
         {
             if (type == "matte")
             {
-                m_Type = Type::Matte;
+                m_Type = MaterialType::Matte;
                 m_Kd = 1;
-                m_Ks = 0;
+                m_Ks = 0.04f;
                 m_Roughness = 0.5f;
             }
-            else
+            else if (type == "glass")
             {
-                m_Type = Type::Default;
-                m_Kd = 0.25f;
-                m_Ks = 0.25f;
-                m_Roughness = 0.1f;
-            }
-            return;
-
-            // ToDo
-
-            if (type == "glass")
-            {
-                m_Type = Type::Default;
+                m_Type = MaterialType::Default;
                 m_Eta = 1.5f;
+                m_Kd = 0;
+                m_Kr = 1;
+                m_Kt = 1;
+                m_Opacity = 0;
             }
             else if (type == "substrate")
             {
-                m_Type = Type::Default;
+                m_Type = MaterialType::Default;
                 m_Kd = 0.5f;
                 m_Ks = 0.5f;
                 m_Roughness = 0.1f;
             }
             else if (type == "uber")
             {
-                m_Type = Type::Matte;
+                m_Type = MaterialType::Matte;
                 m_Kd = 0.25f;
                 m_Ks = 0.25f;
                 m_Kr = 0;
@@ -166,18 +154,23 @@ namespace SceneParser
             }
             else if (type == "metal")
             {
-                m_Type = Type::Default;
+                m_Type = MaterialType::Default;
                 m_Kd = 1;
                 m_Ks = 1;
             }
             else if (type == "mirror")
             {
-                m_Type = Type::Default;
+                m_Type = MaterialType::Mirror;
+                m_Ks = 0.9f;
                 m_Kr = 0.9f;
+            }
+            else if (type == "AnalyticalCheckerboard")
+            {
+                m_Type = MaterialType::AnalyticalCheckerboardTexture;
             }
             else // Plastic
             {
-                m_Type = Type::Default;
+                m_Type = MaterialType::Default;
                 m_Kd = 0.25f;
                 m_Ks = 0.25f;
                 m_Roughness = 0.1f;

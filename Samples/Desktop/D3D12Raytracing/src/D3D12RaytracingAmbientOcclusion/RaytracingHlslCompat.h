@@ -623,6 +623,16 @@ struct GenerateGrassStrawsConstantBuffer
 };
 
 
+namespace BxDFType {
+    enum Type {
+        BSDF_DIFFUSE        = 1 << 0,
+        BSDF_SPECULAR       = 1 << 1,
+        BSDF_REFLECTION     = 1 << 2,
+        BSDF_TRANSMISSION   = 1 << 3,
+        BSDF_ALL            = BSDF_DIFFUSE | BSDF_SPECULAR | BSDF_REFLECTION | BSDF_TRANSMISSION
+    };
+}
+
 
 // Attributes per primitive type.
 struct PrimitiveConstantBuffer
@@ -632,11 +642,14 @@ struct PrimitiveConstantBuffer
     UINT     padding[2];
 };
 
-enum MaterialType {
-    Default,
-    Matte,  // Lambertian scattering
-    AnalyticalCheckerboardTexture
-};
+namespace MaterialType {
+    enum Type {
+        Default,
+        Matte,  // Lambertian scattering
+        Mirror,   // Specular reflector that isn't modified by the Fersnel equations.
+        AnalyticalCheckerboardTexture
+    };
+}
 
 // ToDO use same naming as in PBR Material
 struct PrimitiveMaterialBuffer
@@ -652,7 +665,7 @@ struct PrimitiveMaterialBuffer
     UINT hasDiffuseTexture; // ToDO use BOOL?
     UINT hasNormalTexture;
     UINT hasPerVertexTangents;
-    MaterialType type;
+    MaterialType::Type type;
     float padding;
 };
 

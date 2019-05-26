@@ -10,7 +10,7 @@
 //*********************************************************
 
 // Bidirectional transmission distribution function (BTDF).
-// Ref: Ray Tracing from the Ground Up, Suffern
+// Ref: Ray Tracing from the Ground Up (RTG), Suffern
 // Ref: Real-Time Rendering (RTR), Fourth Edition
 // Ref: Real Shading in Unreal Engine 4 (Karis_UE4), Karis2013
 // Ref: PBR Diffuse Lighting for GGX+Smith Microsurfaces, Hammon2017
@@ -108,13 +108,13 @@ namespace BxDF {
         
             // Calculates L and return BRDF value for that direction.
             // Assumptions: V and N are in the same hemisphere.
-            float3 Sample_f(in float3 V, out float3 L, in float3 N, in float3 Fo, out float pdf)
+            // Note: to avoid unnecessary precision issues and for the sake of performance the function doesn't divide by the cos term
+            // so as to nullify the cos term in the rendering equation. Therefore the caller should skip the cos term in the rendering equation.
+            float3 Sample_Fr(in float3 V, out float3 L, in float3 N, in float3 Fo)
             {
                 L = reflect(-V, N);
-                pdf = 1;
-                float cos_thetai = dot(V, N);
-
-                return Fresnel(Fo, cos_thetai) / cos_thetai;
+                float cos_thetai = dot(N, L);
+                return Fresnel(Fo, cos_thetai);
             }
             
             // Calculate whether a total reflection occurs at given wo and a normal
@@ -137,19 +137,20 @@ namespace BxDF {
 
             // Calculates transmitted ray wt and return BRDF value for that direction.
             // Assumptions: V and N are in the same hemisphere.
-            float3 Sample_f(in float3 V, out float3 wt, in float3 N, in float3 T, in float3 Fo, out float pdf)
+            // Note: to avoid unnecessary precision issues and for the sake of performance the function doesn't divide by the cos term
+            // so as to nullify the cos term in the rendering equation. Therefore the caller should skip the cos term in the rendering equation.
+            float3 Sample_Ft(in float3 V, out float3 wt, in float3 N, in float3 Fo)
             {
                 float ior = 1;
                 wt = -V; // ToDo refract(-V, N, ior);
-                pdf = 1;
                 float cos_thetai = dot(V, N);
-                float3 Fr = Fresnel(Fo, cos_thetai);    // ToDo avoid duplicate fresnel calculations
+                float3 Kr = Fresnel(Fo, cos_thetai);    // ToDo avoid duplicate fresnel calculations
 
-                return T * (1 - Fr) / cos_thetai;
+                return (1 - Kr);
             }
         }
 
-        // Ref: Chapter 9.8, RTR
+        // Ref: Chapter 9.8, 
         namespace GGX {
 
             // Compute the value of BRDF
@@ -225,7 +226,7 @@ namespace BxDF {
         // Calculate a color of the shaded surface.
         // Returns a shaded color 
         float3 Shade(
-            in MaterialType materialType,
+            in MaterialType::Type materialType,
             in float3 Albedo,
             in float3 Fo,
             in float3 Radiance,
@@ -242,7 +243,6 @@ namespace BxDF {
             if (!inShadow && NoL > 0)
             {
                 // ToDo Check for 0 albedo and skip evaluation
-                Roughness = max(0.1, Roughness);    // ToDo Roughness of 0.001 loses specular - precision? Is PBR's roughness roughness or alpha?
 
                 float3 directDiffuse = 0;
                 if (!IsBlack(Albedo))
@@ -283,7 +283,7 @@ namespace BxDF {
 
     // Calculate a color of the shaded surface.
     float3 Shade(
-        in MaterialType materialType,
+        in MaterialType::Type materialType,
         in float3 Albedo,
         in float3 Fo,
         in float3 Radiance,

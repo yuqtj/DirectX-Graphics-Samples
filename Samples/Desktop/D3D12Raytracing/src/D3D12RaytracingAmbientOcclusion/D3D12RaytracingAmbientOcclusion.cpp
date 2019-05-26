@@ -427,9 +427,7 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
             cb.hasDiffuseTexture = !mesh.m_pMaterial->m_DiffuseTextureFilename.empty();
             cb.hasNormalTexture = !mesh.m_pMaterial->m_NormalMapTextureFilename.empty();
             cb.hasPerVertexTangents = true;
-            cb.type = pbrtSceneDefinition.name == L"GroundPlane" ? MaterialType::AnalyticalCheckerboardTexture
-                : (mesh.m_pMaterial->m_Type == SceneParser::Material::Matte) ? MaterialType::Matte
-                : MaterialType::Default; // ToDo cleaner?
+            cb.type = mesh.m_pMaterial->m_Type;
 
 
             auto LoadPBRTTexture = [&](auto** ppOutTexture, auto& textureFilename)
@@ -1991,8 +1989,11 @@ void D3D12RaytracingAmbientOcclusion::InitializeGrassGeometry()
             case 4: materialCB.Kd = XMFLOAT3(0.75f, 0.25f, 0.75f); break;
             }
 
-            materialCB.Ks = XMFLOAT3(1, 1, 1);
+            materialCB.Ks = XMFLOAT3(0, 0, 0);
+            materialCB.Kr = XMFLOAT3(0, 0, 0);
+            materialCB.Kt = XMFLOAT3(0, 0, 0);
             materialCB.opacity = XMFLOAT3(1, 1, 1);
+            materialCB.eta = XMFLOAT3(1, 1, 1);
             materialCB.roughness = 0.1f; // ToDO  
             materialCB.hasDiffuseTexture = true;
             materialCB.hasNormalTexture = false;
@@ -2612,7 +2613,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     m_sceneCB->RTAO_AdaptiveSamplingMinSamples = SceneArgs::RTAOAdaptiveSamplingMinSamples;
     m_sceneCB->RTAO_TraceRayOffsetAlongNormal = SceneArgs::RTAOTraceRayOffsetAlongNormal;
     m_sceneCB->RTAO_TraceRayOffsetAlongRayDirection = SceneArgs::RTAOTraceRayOffsetAlongRayDirection;
-    m_sceneCB->RTAO_minimumBounceCoefficient = 0.01f;   // ToDo
+    m_sceneCB->RTAO_minimumBounceCoefficient = 0.0001f;   // ToDo
 
     SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
  }
