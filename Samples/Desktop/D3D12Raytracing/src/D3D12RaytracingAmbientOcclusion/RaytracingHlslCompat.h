@@ -75,7 +75,7 @@
 
 #define PRINT_OUT_TC_MATRICES 0
 #define DEBUG_CAMERA_POS 1
-#define PRINT_OUT_CAMERA_CONFIG 0
+#define PRINT_OUT_CAMERA_CONFIG 1
 
 #define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
 
@@ -128,14 +128,15 @@
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
 #define LOAD_ONLY_ONE_PBRT_MESH 0   // for LOAD_PBRT_SCENE == 1 only
-#define GENERATE_GRASS 1
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000000005
 #define AO_RAY_T_MAX 22
 #define SCENE_SCALE 300     
+#define GENERATE_GRASS 1
 #else
+#define GENERATE_GRASS 0
 #define DISTANCE_FALLOFF 0
 #define AO_RAY_T_MAX 150
 #define SCENE_SCALE 2000
@@ -332,6 +333,11 @@ struct GBufferRayPayload
 #if ALLOW_MIRRORS
     UINT rayRecursionDepth;
 #endif
+
+    // Contribution scaling factor of the traced ray. 
+    // Used to avoid tracing rays with very small contributions.
+    float bounceContribution;  
+
     XMFLOAT3 radiance;
 	//XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
     AmbientOcclusionGBuffer AOGBuffer;
@@ -419,6 +425,8 @@ struct CalculateVariance_BilateralFilterConstantBuffer
 
 
 // ToDo split CB?
+// ToDo capitalize?
+// ToDo padding?
 struct SceneConstantBuffer
 {
     // ToDo rename to world to view matrix and drop (0,0,0) note.
@@ -427,6 +435,7 @@ struct SceneConstantBuffer
     XMVECTOR cameraPosition;
 	XMVECTOR lightPosition;
     XMFLOAT3 lightColor;
+    float defaultAmbientIntensity;
     XMMATRIX prevViewProj;    // ToDo standardzie proj vs projection
     XMMATRIX prevProjToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
     XMVECTOR prevCameraPosition;
@@ -458,6 +467,9 @@ struct SceneConstantBuffer
     // toDo rename shadow to AO?
     float RTAO_maxTheoreticalShadowRayHitTime;  // Max shadow ray hit time used in falloff computation accounting for
                                                 // RTAO_ExponentialFalloffMinOcclusionCutoff and RTAO_maxShadowRayHitTime.
+    UINT  maxRadianceRayRecursionDepth;
+    UINT  maxShadowRayRecursionDepth;
+
 
     BOOL RTAO_IsExponentialFalloffEnabled;               // Apply exponential falloff to AO coefficient based on ray hit distance.    
     float RTAO_exponentialFalloffDecayConstant; 
@@ -516,6 +528,7 @@ struct ComposeRenderPassesConstantBuffer
 
     UINT RTAO_MaxSPP;
     float RTAO_MaxRayHitDistance;   // ToDo standardize ray hit time vs distance
+    float defaultAmbientIntensity;
     float padding3[2];
 };
 

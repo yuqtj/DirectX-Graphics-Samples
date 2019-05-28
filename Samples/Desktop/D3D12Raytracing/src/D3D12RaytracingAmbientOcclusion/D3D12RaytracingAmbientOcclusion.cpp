@@ -104,7 +104,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -146,8 +146,18 @@ namespace SceneArgs
     EnumVar AOMode(L"Render/AO/Mode", AOType::RTAO, AOType::Count, AOTypes);
 #endif
     BoolVar AOEnabled(L"Render/AO/Enabled", true);
-    
 
+    // Default ambient intensity for hitPositions that don't have a calculated Ambient coefficient.
+    // Calculating AO just for a single hitPosition per pixel can cause visible visual differences
+    // in bounces off surfaces that have non-zero Albedo, such as reflection on car paint at sharp angles. 
+    // With default Ambient coefficient added to every hit along the ray, this visual difference is surpressed.
+    NumVar DefaultAmbientIntensity(L"Render/PathTracing/Default ambient intensity", 0.4f, 0, 1, 0.01f);  
+
+    IntVar MaxRadianceRayRecursionDepth(L"Render/PathTracing/Max Radiance Ray recursion depth", 2, 1, MAX_RAY_RECURSION_DEPTH, 1);   // ToDo Replace with 3/4 depth as it adds visible differences on spaceship/car
+    IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 4, 1, MAX_RAY_RECURSION_DEPTH, 1);
+    NumVar RTAO_minimumBounceCoefficient(L"Render/PathTracing/Minimum bounce contribution coefficient", 0.08f, 0, 1, 0.01f);        // Minimum BRDF coefficient to cast a ray for.
+
+    
     // ToDo standardize capitalization
     // ToDo naming down/ up
     const WCHAR* DownsamplingBilateralFilters[GpuKernels::DownsampleValueNormalDepthBilateralFilter::Count] = { L"Point Sampling", L"Depth Weighted", L"Depth Normal Weighted" };
@@ -190,6 +200,7 @@ namespace SceneArgs
 
     NumVar RTAOTraceRayOffsetAlongNormal(L"Render/AO/RTAO/TraceRay/Ray origin offset along surface normal", 0.001f, 0, 0.1f, 0.0001f);
     NumVar RTAOTraceRayOffsetAlongRayDirection(L"Render/AO/RTAO/TraceRay/Ray origin offset fudge along ray direction", 0, 0, 0.1f, 0.0001f);
+   
 
     NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
 
@@ -2132,7 +2143,13 @@ void D3D12RaytracingAmbientOcclusion::InitializeAllBottomLevelAccelerationStruct
     for (auto& bottomLevelASGeometryPair : m_bottomLevelASGeometries)
     {
         auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
-        m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, false, false);
+        bool updateOnBuild = false;
+        // ToDO parametrize?
+        if (bottomLevelASGeometry.GetName().find(L"Grass Patch LOD") != wstring::npos)
+        {
+            updateOnBuild = true;
+        }
+        m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, updateOnBuild, updateOnBuild);
     }
 }
 
@@ -2613,7 +2630,11 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     m_sceneCB->RTAO_AdaptiveSamplingMinSamples = SceneArgs::RTAOAdaptiveSamplingMinSamples;
     m_sceneCB->RTAO_TraceRayOffsetAlongNormal = SceneArgs::RTAOTraceRayOffsetAlongNormal;
     m_sceneCB->RTAO_TraceRayOffsetAlongRayDirection = SceneArgs::RTAOTraceRayOffsetAlongRayDirection;
-    m_sceneCB->RTAO_minimumBounceCoefficient = 0.0001f;   // ToDo
+    m_sceneCB->RTAO_minimumBounceCoefficient = SceneArgs::RTAO_minimumBounceCoefficient;   // ToDo
+    m_sceneCB->defaultAmbientIntensity = SceneArgs::DefaultAmbientIntensity;
+    m_sceneCB->maxRadianceRayRecursionDepth = SceneArgs::MaxRadianceRayRecursionDepth;
+    m_sceneCB->maxShadowRayRecursionDepth = SceneArgs::MaxShadowRayRecursionDepth;
+
 
     SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
  }
@@ -3944,6 +3965,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 		m_csComposeRenderPassesCB->rtDimensions = XMUINT2(m_GBufferWidth, m_GBufferHeight);
         m_csComposeRenderPassesCB->enableAO = SceneArgs::AOEnabled;
         m_csComposeRenderPassesCB->compositionType = static_cast<CompositionType>(static_cast<UINT>(SceneArgs::CompositionMode));
+        m_csComposeRenderPassesCB->defaultAmbientIntensity = SceneArgs::DefaultAmbientIntensity;
 
         // ToDo use a unique CB for compose passes?
         m_csComposeRenderPassesCB->RTAO_UseAdaptiveSampling = SceneArgs::RTAOAdaptiveSampling;

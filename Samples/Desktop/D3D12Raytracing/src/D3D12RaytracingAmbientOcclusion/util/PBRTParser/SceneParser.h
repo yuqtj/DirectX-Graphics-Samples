@@ -106,12 +106,12 @@ namespace SceneParser
         MaterialType::Type m_Type;
 
         Vector3 m_Kd = 0;                 // The diffuse reflectivity of the surface.
-        Vector3 m_Ks = 0.04;                 // The specular reflectivity of the surface.
+        Vector3 m_Ks = 0.04f;                 // The specular reflectivity of the surface.
 		Vector3 m_Kr = 0;                 // The reflectivity of the surface.
 		Vector3 m_Kt = 0;                 // The transmissivity of the surface.
         Vector3 m_Opacity = 1;            // The opacity of the surface. If less than one, "uber" material transmits light without refracting it.
         Vector3 m_Eta = 1;                // The index of refraction of the object. Exterior is assumed to be vacuum with IOR of 1. 
-        float   m_Roughness = 0;          // Microfacet roughness alpha [0, 1].
+        float   m_Roughness = 0.2f;        // Microfacet roughness alpha [0, 1].
 		std::string m_DiffuseTextureFilename;
 		std::string m_SpecularTextureFilename;
 		std::string m_OpacityTextureFilename;
@@ -123,8 +123,8 @@ namespace SceneParser
             {
                 m_Type = MaterialType::Matte;
                 m_Kd = 1;
-                m_Ks = 0.04f;
-                m_Roughness = 0.5f;
+                m_Ks = 0;
+                m_Roughness = 0.2f;
             }
             else if (type == "glass")
             {
@@ -139,14 +139,12 @@ namespace SceneParser
             {
                 m_Type = MaterialType::Default;
                 m_Kd = 0.5f;
-                m_Ks = 0.5f;
                 m_Roughness = 0.1f;
             }
             else if (type == "uber")
             {
                 m_Type = MaterialType::Matte;
                 m_Kd = 0.25f;
-                m_Ks = 0.25f;
                 m_Kr = 0;
                 m_Kt = 0;
                 m_Roughness = 0.1f;
@@ -161,7 +159,6 @@ namespace SceneParser
             else if (type == "mirror")
             {
                 m_Type = MaterialType::Mirror;
-                m_Ks = 0.9f;
                 m_Kr = 0.9f;
             }
             else if (type == "AnalyticalCheckerboard")
@@ -172,7 +169,6 @@ namespace SceneParser
             {
                 m_Type = MaterialType::Default;
                 m_Kd = 0.25f;
-                m_Ks = 0.25f;
                 m_Roughness = 0.1f;
             }
         }

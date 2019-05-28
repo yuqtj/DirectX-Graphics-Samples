@@ -75,6 +75,15 @@ namespace Scene
 
 #if DEBUG_CAMERA_POS
 #if 1
+            // SpaceShip
+            camera.position.at = { -4.69957f, 2.73596f, -18.8503f, 1 };
+            camera.position.up = { 0.333712f, 0.88733f, 0.31823f, 0 };
+            camera.position.eye = { -5.38028f, 3.09481f, -19.4894f, 1 };
+#elif 1// Car side behind
+            camera.position.at = { -14.7492f, 0.735575f, 2.19938f, 1 };
+            camera.position.up = { -0.254448f, 0.961197f, 0.106525f, 0 };
+            camera.position.eye = { -13.8442f, 0.901969f, 1.80731f, 1 };
+#elif 1
             camera.position.at = { -46.0809f, 8.99305f, -30.2576f, 1 };
             camera.position.up = { 0.20296f, 0.959185f, 0.196876f, 0 };
             camera.position.eye = { -46.7962f, 9.16654f, -30.935f, 1 };

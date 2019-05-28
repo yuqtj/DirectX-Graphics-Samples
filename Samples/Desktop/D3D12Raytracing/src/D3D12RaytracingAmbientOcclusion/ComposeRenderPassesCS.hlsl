@@ -67,7 +67,9 @@ void main(uint2 DTid : SV_DispatchThreadID )
         float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
 		float visibilityCoefficient = g_texVisibility[DTid];
-        float ambientCoef = g_CB.enableAO ? g_texAO[DTid] : 1;
+
+        // ToDo rename to enable dynamic AO?
+        float ambientCoef = g_CB.enableAO ? g_texAO[DTid] : g_CB.defaultAmbientIntensity;
 
         // ToDo use switch?
         // Calculate final color.
@@ -84,6 +86,10 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float3 specular = RemoveSRGB(material.Ks);
 #if 1
             float3 phongColor = g_texColor[DTid].xyz;
+         
+            // Subtract the default ambient illuminatation that has already been added to the color in raytrace pass.
+            ambientCoef -= g_CB.defaultAmbientIntensity;
+
             float3 ambientColor = ambientCoef * g_texAODiffuse[DTid].xyz;
             color = float4(phongColor + ambientColor, 1);
 #elif 0
