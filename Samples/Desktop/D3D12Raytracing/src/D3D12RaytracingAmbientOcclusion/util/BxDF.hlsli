@@ -238,12 +238,10 @@ namespace BxDF {
             in float3 L)
         {
             float3 directLighting = 0;
-
+            
             float NoL = dot(N, L);
             if (!inShadow && NoL > 0)
             {
-                // ToDo Check for 0 albedo and skip evaluation
-
                 float3 directDiffuse = 0;
                 if (!IsBlack(Albedo))
                 {
@@ -266,8 +264,6 @@ namespace BxDF {
                 directLighting = NoL *  Radiance * (directDiffuse + directSpecular);
             }
             
-            // ToDo add default AO to everything and adjust calculated AO?
-
             return directLighting;
         }
     }

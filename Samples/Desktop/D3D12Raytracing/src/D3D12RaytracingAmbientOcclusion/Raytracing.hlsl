@@ -256,7 +256,6 @@ float4 TraceRadianceRay(in Ray ray, in UINT currentRayRecursionDepth)
 }
 
 // Trace a shadow ray and return true if it hits any geometry.
-// ToDo add surface normal and skip tracing a ray for surfaces facing away.
 bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRayRecursionDepth, in bool retrieveTHit = true, in float TMax = 10000)
 {
     if (currentRayRecursionDepth >= CB.maxShadowRayRecursionDepth)
@@ -285,10 +284,8 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRay
 #else
         0
 #endif
-#if REPRO_INVISIBLE_WALL
         | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH
-#endif
-        | RAY_FLAG_CULL_NON_OPAQUE;             // ~skip transparent objeccts
+        | RAY_FLAG_CULL_NON_OPAQUE;             // ~skip transparent objects
     
     // Skip closest hit shaders of tHit time is not needed.
     if (!retrieveTHit) 
@@ -666,7 +663,7 @@ float3 TraceRefractedGBufferRay(in float3 hitPosition, in float3 wt, in float3 N
 
 
 
-bool TraceShadowRayAndReportIfHit(in float3 hitPosition, in float3 direction,  in float3 N, in GBufferRayPayload rayPayload)
+bool TraceShadowRayAndReportIfHit(in float3 hitPosition, in float3 direction, in float3 N, in GBufferRayPayload rayPayload)
 {
     float tOffset = 0.001f;
     Ray visibilityRay = { hitPosition + tOffset * N, direction };
@@ -706,13 +703,15 @@ float3 Shade(
     const float3 Kt = material.Kt;
     const float roughness = max(0.1, material.roughness);    // ToDo Roughness of 0.001 loses specular - precision? 
 
+ 
+
     // Direct illumination
     rayPayload.AOGBuffer.diffuse = material.Kd;    // ToDo use BRDF instead?
     if (!BxDF::IsBlack(material.Kd) || !BxDF::IsBlack(material.Ks))
     {
         // ToDo dedupe wi calculation
         float3 wi = normalize(CB.lightPosition.xyz - hitPosition);
-        bool isInShadow = TraceShadowRayAndReportIfHit(hitPosition, wi, N, rayPayload);
+        bool isInShadow = 0;// TraceShadowRayAndReportIfHit(hitPosition, wi, N, rayPayload);
 
         L += BxDF::DirectLighting::Shade(
             // ToDo have a substruct to pass around?
@@ -728,18 +727,25 @@ float3 Shade(
             wi);
     }
 
+    // Ambient Indirect Illumination
+     // Add a default ambient contribution to all hits. 
+     // This will be subtracted for hitPositions with 
+     // calculated Ambient coefficient in the composition pass.
+    L += CB.defaultAmbientIntensity * Kd;
+
     // Specular Indirect Illumination
     bool isReflective = !BxDF::IsBlack(Kr);
     bool isTransmissive = !BxDF::IsBlack(Kt);
     if (isReflective || isTransmissive)
     {
+#if 1
         if (isReflective 
             && (BxDF::Specular::Reflection::IsTotalInternalReflection(V, N) 
                 || material.type == MaterialType::Mirror))
         {
             GBufferRayPayload reflectedRayPayLoad = rayPayload;
             float bounceContribution = dot(Kr, 1) * rayPayload.bounceContribution;
-            if (bounceContribution >= CB.RTAO_minimumBounceCoefficient)
+            if (bounceContribution >= CB.RTAO_minimumFrBounceCoefficient)
             {
                 float3 wi = reflect(-V, N);
                 reflectedRayPayLoad.bounceContribution = bounceContribution;
@@ -748,6 +754,7 @@ float3 Shade(
             }
         }
         else // No total internal reflection
+#endif
         {
             float3 Fo = Ks;
             if (isReflective)
@@ -756,8 +763,8 @@ float3 Shade(
                 float3 wi;
                 float3 Fr = Kr * BxDF::Specular::Reflection::Sample_Fr(V, wi, N, Fo);    // Calculates wi
 
-                float bounceContribution = dot(Fr, 1) * rayPayload.bounceContribution;
-                if (bounceContribution >= CB.RTAO_minimumBounceCoefficient)
+                float bounceContribution = RGBtoLuminance(Fr) * rayPayload.bounceContribution;
+                if (bounceContribution >= CB.RTAO_minimumFrBounceCoefficient)
                 {
                     GBufferRayPayload reflectedRayPayLoad = rayPayload;
                     reflectedRayPayLoad.bounceContribution = bounceContribution;
@@ -767,6 +774,8 @@ float3 Shade(
                     // Adjust the diffuse by the BRDF for the reflected ray's radiance.
                     reflectedRayPayLoad.AOGBuffer.diffuse *= Fr;
                     UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad);
+
+                    //L += float3(0.3f, 0, 0);
                 }
             }
 
@@ -776,8 +785,8 @@ float3 Shade(
                 float3 wt;
                 float3 Ft = Kt * BxDF::Specular::Transmission::Sample_Ft(V, wt, N, Fo);    // Calculates wt
 
-                float bounceContribution = dot(Ft, 1) * rayPayload.bounceContribution;
-                if (bounceContribution >= CB.RTAO_minimumBounceCoefficient)
+                float bounceContribution = RGBtoLuminance(Ft) * rayPayload.bounceContribution;
+                if (bounceContribution >= CB.RTAO_minimumFtBounceCoefficient)
                 {
                     GBufferRayPayload refractedRayPayLoad = rayPayload;
                     refractedRayPayLoad.bounceContribution = bounceContribution;
@@ -787,19 +796,71 @@ float3 Shade(
                     // Adjust the diffuse by the BRDF for the trsansmitted ray's radiance.
                     refractedRayPayLoad.AOGBuffer.diffuse *= Ft;
                     UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, refractedRayPayLoad);
+
+                    //L += float3(0, 0.3f, 0);
                 }
             }
         }
     }
-
-    // Ambient Indirect Illumination
-    // Add a default ambient contribution for all hit objects. 
-    // This will be subtracted for hitPositions that have 
-    // calculated Ambient coefficient in the composition pass.
-    L += CB.defaultAmbientIntensity * Kd;
-
     return L;
 }
+
+
+// Todo test perf gain or remove
+void Shade_AOGBufferOnly(
+    inout GBufferRayPayload rayPayload,
+    in float3 N,
+    in float3 objectNormal, // ToDo N vs normal
+    in float3 hitPosition,
+    in PrimitiveMaterialBuffer material)
+{
+    float3 V = -WorldRayDirection();
+    float pdf;
+    float3 indirectContribution = 0;
+    float3 L = 0;
+
+    const float3 Kd = material.Kd;
+    const float3 Ks = material.Ks;
+    const float3 Kr = material.Kr;
+    const float3 Kt = material.Kt;
+
+    rayPayload.AOGBuffer.diffuse = Kd;    // ToDo use BRDF instead?
+
+    // Specular Indirect Illumination
+    bool isReflective = !BxDF::IsBlack(Kr);
+    bool isTransmissive = !BxDF::IsBlack(Kt);
+    if (isReflective || isTransmissive)
+    {
+        if (isReflective
+            && (BxDF::Specular::Reflection::IsTotalInternalReflection(V, N)
+                || material.type == MaterialType::Mirror))
+        {
+            float3 wi = reflect(-V, N);
+            GBufferRayPayload reflectedRayPayLoad = rayPayload;
+            TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
+            UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad);
+        }
+        else // No total internal reflection
+        {
+            if (isReflective)
+            {
+                float3 wi = reflect(-V, N);
+                GBufferRayPayload reflectedRayPayLoad = rayPayload;
+                TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
+                UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad);
+            }
+
+            if (isTransmissive)
+            {
+                float3 wt = -V;
+                GBufferRayPayload refractedRayPayLoad = rayPayload;
+                TraceRefractedGBufferRay(hitPosition, wt, N, objectNormal, refractedRayPayLoad);
+                UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, refractedRayPayLoad);
+            }
+        }
+    }
+}
+
 
 //***************************************************************************
 //********************------ Ray gen shader.. -------************************
@@ -1177,14 +1238,14 @@ void MyClosestHitShader_ShadowRay(inout ShadowRayPayload rayPayload, in BuiltInT
 [shader("closesthit")]
 void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTriangleIntersectionAttributes attr)
 {
-	uint startIndex = PrimitiveIndex() * 3;
-	const uint3 indices = { l_indices[startIndex], l_indices[startIndex + 1], l_indices[startIndex + 2] };
+    uint startIndex = PrimitiveIndex() * 3;
+    const uint3 indices = { l_indices[startIndex], l_indices[startIndex + 1], l_indices[startIndex + 2] };
 
     // Retrieve vertices for the hit triangle.
     VertexPositionNormalTextureTangent vertices[3] = {
         l_vertices[indices[0]],
         l_vertices[indices[1]],
-        l_vertices[indices[2]]};
+        l_vertices[indices[2]] };
 
     float2 vertexTexCoords[3] = { vertices[0].textureCoordinate, vertices[1].textureCoordinate, vertices[2].textureCoordinate };
     float2 texCoord = HitAttribute(vertexTexCoords, attr);
@@ -1212,28 +1273,29 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 
     float3 hitPosition = HitWorldPosition();
 
-    float2 ddx = 0;
-    float2 ddy = 0;
+    float2 ddx = 1;
+    float2 ddy = 1;
 
+#if 1
     // Calculate auxilary rays' intersection points with the triangle.
     float3 px, py;
     px = RayPlaneIntersection(hitPosition, normal, rayPayload.rx.origin, rayPayload.rx.direction);
     py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
 
-    if (material.hasDiffuseTexture || 
+    if (material.hasDiffuseTexture ||
         (CB.RTAO_UseNormalMaps && material.hasNormalTexture) ||
         (material.type == MaterialType::AnalyticalCheckerboardTexture))
     {
         float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
         float3 tangent = HitAttribute(vertexTangents, attr);
         float3 bitangent = normalize(cross(tangent, normal));
-        
+
         CalculateUVDerivatives(normal, tangent, bitangent, hitPosition, px, py, ddx, ddy);
         // ToDo. Lower by 0.5 to sharpen texture filtering.
         //ddx *= 0.5;
         //ddy *= 0.5;
     }
-
+#endif
     if (CB.RTAO_UseNormalMaps && material.hasNormalTexture)
     {
         normal = NormalMap(normal, texCoord, ddx, ddy, vertices, material, attr);
@@ -1258,8 +1320,12 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         float checkers = CheckersTextureBoxFilter(uv, ddx, ddy);
         if ((abs(uv.x) < 20 && abs(uv.y) < 20) && (checkers > 0.5))
         {
+#if 1
+            material.Kd = float3(21, 33, 45) / 255;
+#else
             material.Kr = 1;
             material.Kd = 0;
+#endif
         }
 #endif
     }
@@ -1270,20 +1336,31 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     rayPayload.AOGBuffer.hitPosition = hitPosition;
     //rayPayload.materialInfo = EncodeMaterial16b(materialID, diffuse);
     rayPayload.AOGBuffer.normal = normal;
-    
-    // ToDo calculate motion vector only if the AOGBuffer is not overwritten in Shade.
-    float3x4 _BLASTransform;
-    rayPayload.AOGBuffer._virtualHitPosition = GetWorldHitPositionInPreviousFrame(HitObjectPosition(), InstanceIndex(), indices, attr, _BLASTransform);
 
-    // Calculate normal at the hit in the previous frame.
-    // BLAS Transforms in this sample are uniformly scaled so it's OK to directly apply the BLAS transform.
-    // ToDo add a note that the transform is expected to have uniform scaling
-    rayPayload.AOGBuffer._normal = normalize(mul((float3x3)_BLASTransform, objectNormal));
+    // Calculate hit position and normal for the current hit in the previous frame.
+    // Note: This is redundant if the AOGBuffer gets overwritten in the Shade function. 
+    // However, delaying this computation to post-Shade which casts additional rays results 
+    // in bigger live state carried across trace calls and thus higher overhead.
+    {
+        float3x4 _BLASTransform;
+        rayPayload.AOGBuffer._virtualHitPosition = GetWorldHitPositionInPreviousFrame(HitObjectPosition(), InstanceIndex(), indices, attr, _BLASTransform);
+
+        // Calculate normal at the hit in the previous frame.
+        // BLAS Transforms in this sample are uniformly scaled so it's OK to directly apply the BLAS transform.
+        // ToDo add a note that the transform is expected to have uniform scaling
+        rayPayload.AOGBuffer._normal = normalize(mul((float3x3)_BLASTransform, objectNormal));
+    }
 
     // Shade the current hit point, including casting any further rays into the scene 
     // based on current's surface material properties.
-
-    rayPayload.radiance = Shade(rayPayload, normal, objectNormal, hitPosition, material);
+    if (CB.doShading)
+    {
+        rayPayload.radiance = Shade(rayPayload, normal, objectNormal, hitPosition, material);
+    }
+    else
+    {
+        Shade_AOGBufferOnly(rayPayload, normal, objectNormal, hitPosition, material);
+    }
 }
 
 

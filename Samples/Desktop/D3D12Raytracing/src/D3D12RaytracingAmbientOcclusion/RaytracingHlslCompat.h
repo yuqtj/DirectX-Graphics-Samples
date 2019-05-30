@@ -100,7 +100,7 @@
 
 #define AO_PROGRESSIVE_SAMPLING 0
 
-#define ENABLE_VSYNC 1
+#define ENABLE_VSYNC 0
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 1  
 #endif
@@ -279,7 +279,7 @@ typedef UINT16 Index;
 // ToDo revise
 // PERFORMANCE TIP: Set max recursion depth as low as needed
 // as drivers may apply optimization strategies for low recursion depths.
-#define MAX_RAY_RECURSION_DEPTH 6    // ~ primary rays + 2 x reflections + shadow rays from reflected geometry. 
+#define MAX_RAY_RECURSION_DEPTH 4    // ~ primary rays + 2 x reflections + shadow rays from reflected geometry.  ToDo
 // ToDo add recursion viz
 
 // ToDo:
@@ -353,12 +353,6 @@ struct ShadowRayPayload
 {
     // ToDo use 1 byte value for true/false?
     float tHit;         // Hit time <0,..> on Hit. -1 on miss.
-};
-
-struct ShadowRayPayloadWithSurfaceInformation
-{
-    // ToDo use 1 byte value for true/false?
-    float tHit;         // Hit time <0,..> on Hit. -1 on miss. 
 };
 
 struct RNGConstantBuffer
@@ -483,8 +477,10 @@ struct SceneConstantBuffer
 
     float RTAO_TraceRayOffsetAlongNormal;
     float RTAO_TraceRayOffsetAlongRayDirection;
-    float  RTAO_minimumBounceCoefficient;  // Minimum bounce coefficient to consider executing a TraceRay for it.
+    float RTAO_minimumFrBounceCoefficient;  // Minimum bounce coefficient for reflection ray to consider executing a TraceRay for it.
+    float RTAO_minimumFtBounceCoefficient;  // Minimum bounce coefficient for transmission ray to consider executing a TraceRay for it.
     BOOL useDiffuseFromMaterial;
+    BOOL doShading;                         // Do shading during path tracing. If false, collects only information needed for AO pass.
 };
  
 // Final render output composition modes.

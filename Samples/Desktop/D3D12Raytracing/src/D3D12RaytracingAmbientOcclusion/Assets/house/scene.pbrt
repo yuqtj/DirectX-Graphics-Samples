@@ -23,7 +23,7 @@ WorldBegin
 	MakeNamedMaterial "Floorboards" "string type" [ "matte" ] "rgb Kd" [ 0.416131 0.391048 0.383141 ] 
 	MakeNamedMaterial "Grey" "string type" [ "matte" ] "rgb Kd" [ 0.080011 0.080011 0.080011 ] 
 	MakeNamedMaterial "Ground" "string type" [ "matte" ] "rgb Kd" [ 0.661862 0.661862 0.661862 ] 
-	MakeNamedMaterial "MirrorMaterial" "string type" [ "mirror" ] "rgb Kd" [ 0.426132 0.426132 0.426132 ]
+	MakeNamedMaterial "MirrorMaterial" "string type" [ "mirror" ] 
 	MakeNamedMaterial "None" "string type" [ "matte" ] "rgb Kd" [ 0.800000 0.800000 0.800000 ] 
 	MakeNamedMaterial "PaleYellow" "string type" [ "matte" ] "rgb Kd" [ 0.273831 0.258563 0.183140 ] 
 	MakeNamedMaterial "Pink" "string type" [ "matte" ] "rgb Kd" [ 0.128991 0.128991 0.128991 ] 
@@ -38,7 +38,7 @@ WorldBegin
 	MakeNamedMaterial "WhitePaint" "string type" [ "matte" ] "rgb Kd" [ 0.800000 0.800000 0.800000 ] 
 	MakeNamedMaterial "YellowDiffuse" "string type" [ "matte" ] "rgb Kd" [ 0.698193 0.603565 0.426615 ] 
 	MakeNamedMaterial "Glass" "string type" [ "glass" ] 
-	MakeNamedMaterial "GarageDoorBase" "string type" [ "matte" ]  "rgb Kd" [ 0.133209 0.133209 0.133209 ] 
+	MakeNamedMaterial "GarageDoorBase" "string type" [ "matte" ]  "rgb Kd" [ 0.233209 0.233209 0.233209 ] 
 	NamedMaterial "WhitePaint" 
 	Shape "plymesh" "string filename" [ "models/Mesh116.ply" ] 
 	Shape "plymesh" "string filename" [ "models/Mesh062.ply" ] 

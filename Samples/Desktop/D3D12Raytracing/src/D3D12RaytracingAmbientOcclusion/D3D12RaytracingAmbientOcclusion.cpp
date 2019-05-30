@@ -104,7 +104,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -154,8 +154,12 @@ namespace SceneArgs
     NumVar DefaultAmbientIntensity(L"Render/PathTracing/Default ambient intensity", 0.4f, 0, 1, 0.01f);  
 
     IntVar MaxRadianceRayRecursionDepth(L"Render/PathTracing/Max Radiance Ray recursion depth", 2, 1, MAX_RAY_RECURSION_DEPTH, 1);   // ToDo Replace with 3/4 depth as it adds visible differences on spaceship/car
-    IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 4, 1, MAX_RAY_RECURSION_DEPTH, 1);
-    NumVar RTAO_minimumBounceCoefficient(L"Render/PathTracing/Minimum bounce contribution coefficient", 0.08f, 0, 1, 0.01f);        // Minimum BRDF coefficient to cast a ray for.
+    IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 3, 1, MAX_RAY_RECURSION_DEPTH, 1);
+
+    // Avoid tracing rays where they have close to zero visual impact.
+    // todo test perf gain or remove.
+    NumVar RTAO_minimumFrBounceCoefficient(L"Render/PathTracing/Minimum BRDF bounce contribution coefficient", 0.03f, 0, 1.01f, 0.01f);        // Minimum BRDF coefficient to cast a ray for.
+    NumVar RTAO_minimumFtBounceCoefficient(L"Render/PathTracing/Minimum BTDF bounce contribution coefficient", 0.00f, 0, 1.01f, 0.01f);        // Minimum BTDF coefficient to cast a ray for.
 
     
     // ToDo standardize capitalization
@@ -2630,7 +2634,8 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     m_sceneCB->RTAO_AdaptiveSamplingMinSamples = SceneArgs::RTAOAdaptiveSamplingMinSamples;
     m_sceneCB->RTAO_TraceRayOffsetAlongNormal = SceneArgs::RTAOTraceRayOffsetAlongNormal;
     m_sceneCB->RTAO_TraceRayOffsetAlongRayDirection = SceneArgs::RTAOTraceRayOffsetAlongRayDirection;
-    m_sceneCB->RTAO_minimumBounceCoefficient = SceneArgs::RTAO_minimumBounceCoefficient;   // ToDo
+    m_sceneCB->RTAO_minimumFrBounceCoefficient = SceneArgs::RTAO_minimumFrBounceCoefficient;   // ToDo
+    m_sceneCB->RTAO_minimumFtBounceCoefficient = SceneArgs::RTAO_minimumFtBounceCoefficient;   // ToDo
     m_sceneCB->defaultAmbientIntensity = SceneArgs::DefaultAmbientIntensity;
     m_sceneCB->maxRadianceRayRecursionDepth = SceneArgs::MaxRadianceRayRecursionDepth;
     m_sceneCB->maxShadowRayRecursionDepth = SceneArgs::MaxShadowRayRecursionDepth;
@@ -3367,6 +3372,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	m_sceneCB->numSamplesToUse = SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension;
     m_sceneCB->numPixelsPerDimPerSet = SceneArgs::AOSampleSetDistributedAcrossPixels;
     m_sceneCB->useDiffuseFromMaterial = SceneArgs::CompositionMode == CompositionType::Diffuse;
+    m_sceneCB->doShading = SceneArgs::CompositionMode == CompositionType::PhongLighting;
 #if CAMERA_JITTER
 
 #if 1
@@ -4415,6 +4421,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
+    // ToDo
     // Calculate reverse projection transform T to the previous frame's screen space coordinates.
     //  xy(t-1) = xy(t) * T     // ToDo check mul order
     // The reverse projection transform consists:
@@ -4622,7 +4629,7 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
     return;
 #endif
     auto commandList = m_deviceResources->GetCommandList();
-    float totalTime = static_cast<float>(m_timer.GetTotalSeconds());
+    float totalTime = 0;// static_cast<float>(m_timer.GetTotalSeconds());
 
     m_currentGrassPatchVBIndex = (m_currentGrassPatchVBIndex + 1) % 2;
 
