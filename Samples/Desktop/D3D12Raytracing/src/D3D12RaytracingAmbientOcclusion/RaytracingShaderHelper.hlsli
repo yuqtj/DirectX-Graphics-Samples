@@ -427,6 +427,21 @@ float3 DecodeNormal(float2 f)
 }
 /***************************************************************/
 
+UINT NormalizedFloat3ToByte3(float3 v)
+{
+    return
+        (UINT(v.x * 255) << 16) +
+        (UINT(v.y * 255) << 8) +
+        UINT(v.z * 255);
+}
+
+float3 Byte3ToNormalizedFloat3(UINT v)
+{
+    return float3(
+        (v >> 16) & 0xff,
+        (v >> 8) & 0xff,
+        v & 0xff) / 255;
+}
 
 
 /***************************************************************/

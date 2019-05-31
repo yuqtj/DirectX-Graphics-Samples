@@ -312,20 +312,24 @@ struct Ray
     XMFLOAT3 direction;
 };
 
+#define USE_UV_DERIVATIVES 0
+#define LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION 0
 struct AmbientOcclusionGBuffer
 {
-    UINT hit; // ToDo compact - use BOOL?
     float tHit;
-    XMFLOAT3 hitPosition;
-    float obliqueness; // obliqueness of the hit surface ~ sin(incidentAngle)
-    XMFLOAT3 diffuse;               // Diffuse reflectivity of the hit surface.
-    XMFLOAT3 normal;
+    XMFLOAT3 hitPosition;           // Position of the hit for which to calculate Ambient coefficient.
+    UINT diffuseByte3;              // Diffuse reflectivity of the hit surface.
+    XMFLOAT2 encodedNormal;         // Normal of the hit surface.
+
+    // Members for Motion Vector calculation.
     XMFLOAT3 _virtualHitPosition;   // virtual hitPosition in the previous frame.
                                     // For non-reflected points this is a true world position of a hit.
                                     // For reflected points, this is a world position of a hit reflected across the reflected surface 
                                     //   ultimately giving the same screen space coords when projected and the depth corresponding to the ray depth.
-    XMFLOAT3 _normal;               // normal in the previous frame
+    XMFLOAT2 _encodedNormal;        // normal in the previous frame
 };
+
+
 
 struct GBufferRayPayload
 {
@@ -333,16 +337,19 @@ struct GBufferRayPayload
 #if ALLOW_MIRRORS
     UINT rayRecursionDepth;
 #endif
-
+#if LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION
     // Contribution scaling factor of the traced ray. 
     // Used to avoid tracing rays with very small contributions.
     float bounceContribution;  
+#endif
 
     XMFLOAT3 radiance;
 	//XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
     AmbientOcclusionGBuffer AOGBuffer;
+#if USE_UV_DERIVATIVES
     Ray rx;    // Auxilary camera ray offset by one pixel in x dimension in screen space.
     Ray ry;    // Auxilary camera ray offset by one pixel in y dimension in screen space.
+#endif
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
     float rxTHit;
     float ryTHit;
