@@ -259,7 +259,7 @@ float4 TraceRadianceRay(in Ray ray, in UINT currentRayRecursionDepth)
 }
 
 // Trace a shadow ray and return true if it hits any geometry.
-bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRayRecursionDepth, in bool retrieveTHit = true, in float TMax = 10000)
+bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRayRecursionDepth, in bool retrieveTHit = true, in float TMax = 10000, in bool acceptFirstHit = false)
 {
     if (currentRayRecursionDepth >= CB.maxShadowRayRecursionDepth)
     {
@@ -289,11 +289,18 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRay
 #endif
         | RAY_FLAG_CULL_NON_OPAQUE;             // ~skip transparent objects
     
+    if (acceptFirstHit || !retrieveTHit)
+    {
+        // Performance TIP: Accept first hit if true hit is not neeeded,
+        // or has minimal to no impact (in AO). The peformance gain can
+        // be substantial.
+        rayFlags |= RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
+    }
+
     // Skip closest hit shaders of tHit time is not needed.
     if (!retrieveTHit) 
     {
-        rayFlags |= RAY_FLAG_SKIP_CLOSEST_HIT_SHADER
-                    | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH; // ToDo test perf gain using this in AO even when retrieving thit
+        rayFlags |= RAY_FLAG_SKIP_CLOSEST_HIT_SHADER; 
     }
 
     TraceRay(g_scene,
@@ -392,8 +399,19 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
     minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
     float occlussionCoefSum = 0;
 
-#if AO_HITPOSITION_BASED_SEED
+    // Calculate coordinate system for the hemisphere.
+    float3 u, v, w;
+    w = surfaceNormal;
+    float3 right = float3(0.0072, 0.999994132f, 0.0034);
+    v = normalize(cross(w, right));
+    u = cross(v, w);
+
 #if AO_SAMPLES_SPREAD_ACCROSS_PIXELS
+
+#if 0
+    uint sampleSetJump = 0;
+    uint sampleJump = 0;// RNG::Random(RNGState, 0, CB.numSampleSets - 1);
+#else
     // Neighboring samples NxN share a sample set.
     // Get a sample set ID and seed shared across neighboring pixels.
     uint numSampleSetsInX = (DispatchRaysDimensions().x + CB.numPixelsPerDimPerSet - 1) / CB.numPixelsPerDimPerSet;
@@ -412,14 +430,18 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 
     // ToDo is RNG being used here any useful?
     uint numPixelsPerSet = CB.numPixelsPerDimPerSet * CB.numPixelsPerDimPerSet;
-    uint sampleJump = (pixeIDPerSet + RNG::Random(RNGState, 0, numPixelsPerSet - 1)) % numPixelsPerSet;
+    uint sampleJump = pixeIDPerSet % numPixelsPerSet;
     sampleJump *= CB.numSamplesToUse;
-
+#endif
 #if AO_PROGRESSIVE_SAMPLING
     sampleJump += numSamples * g_texInputAOFrameAge[DTid];
 #endif
 
+#if AO_SPP_N_MAX == 1
+    uint i = 0;
+#else
     for (uint i = 0; i < numSamples; i++)
+#endif
     {
         // Load a pregenerated random sample from the sample set.
         float3 sample = g_sampleSets[sampleSetJump + sampleJump + i].value;
@@ -430,28 +452,18 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
     uint seed = (DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x) * hash(hitPosition) + CB.seed;
 
 	uint RNGState = RNG::SeedThread(seed);
-	uint sampleSetJump = RNG::Random(RNGState, 0, CB.numSampleSets - 1) * CB.numSamples;
-	uint sampleJump = 0; //RNG::Random(RNGState, 0, CB.numSamples - 1);
+	uint sampleSetJump = RNG::Random(RNGState, 0, CB.numSampleSets - 1) * CB.numSamplesPerSet;
+    uint sampleJump = 0;// RNG::Random(RNGState, 0, CB.numSampleSets - 1);
 
+#if AO_SPP_N_MAX == 1
+    uint i = 0;
+#else
     for (uint i = 0; i < CB.numSamplesToUse; i++)
+#endif
     {
         // Load a pregenerated random sample from the sample set.
-        float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % CB.numSamples].value;
+        float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % CB.numSamplesPerSet].value;
 #endif
-        // Calculate coordinate system for the hemisphere
-        float3 u, v, w;
-        w = surfaceNormal;
-
-        // ToDo is this needed
-        // Break hemisphere coordinate correlation
-        float x = RNG::Random01(RNGState);
-        float y = RNG::Random01(RNGState);
-        float z = RNG::Random01(RNGState);
-        float3 right = normalize(float3(x, y, z) * 2 - 1);
-
-        //float3 right = normalize(float3(0.0072, 1.0, 0.0034));
-        v = normalize(cross(w, right));
-        u = cross(v, w);
 
         float3 rayDirection = sample.x * u + sample.y * v + sample.z * w;
 
@@ -460,73 +472,9 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
         // ToDo remove unnecessary normalize()
         Ray shadowRay = { hitPosition + CB.RTAO_TraceRayOffsetAlongNormal * surfaceNormal, normalize(rayDirection) };
 
-#else
-    uint2 BTid = DTid & 3; // 4x4 BlockThreadID
-    uint RNGState = RNG::SeedThread(CB.seed + (BTid.y << 2 | BTid.x));
-
-    for (uint i = 0; i < CB.numSamplesToUse; i++)
-    {
-        // Compute random normal using cylindrical coordinates
-        float theta = RNG::Random01ex(RNGState) * 6.2831853;
-        float height = RNG::Random01(RNGState) * 2.0 - 1.0;
-        float radius = sqrt(1.0 - height * height);
-        float sinT, cosT; sincos(theta, sinT, cosT);
-        float3 rayDirection = float3(cosT*radius, sinT*radius, height);
-        if (dot(rayDirection, surfaceNormal) < 0.0)
-            rayDirection = -rayDirection;
-
-        Ray shadowRay = { hitPosition + 1e-3 * surfaceNormal, rayDirection };
-#endif
-
-#if REPRO_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF
         const float tMax = CB.RTAO_maxShadowRayHitTime;
         float tHit;
-        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, CB.useShadowRayHitTime, tMax))
-        {
-            // ToDo Setting coef to 1 and then 0.5 below causes device removal. Wth?
-            float occlusionCoef = 1;
-            if (CB.RTAO_IsExponentialFalloffEnabled)
-            {
-                //float t = tHit / tMax;
-                //float lambda = CB.RTAO_exponentialFalloffDecayConstant;
-                occlusionCoef = 0;    // Causes device removal
-                //occlusionCoef = 1 - t;  // Works...
-            }
-            occlussionCoefSum += occlusionCoef;// (1.f - CB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
-
-            numShadowRayHits++;
-        }
-    }
-    float occlusionCoef = saturate(occlussionCoefSum / numSamples);
-    float ambientCoef = 1.f - occlusionCoef;
-#elif REPRO_INVISIBLE_WALL
-        const float tMax = CB.RTAO_maxShadowRayHitTime;
-        float tHit;
-        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, CB.useShadowRayHitTime, tMax))
-        {
-            float occlusionCoef = 0;
-            float t = tHit / tMax;
-            if (CB.RTAO_IsExponentialFalloffEnabled && t >= CB.RTAO_minimumAmbientIllumnination)
-            {
-                float lambda = CB.RTAO_exponentialFalloffDecayConstant;
-                occlusionCoef = 1 - t;// exp(-lambda * t*t);
-            }
-            //occlussionCoefSum += occlusionCoef;// (1.f - CB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
-            occlussionCoefSum = max(occlusionCoef, occlussionCoefSum);// (1.f - CB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
-
-            numShadowRayHits++;
-        }
-    }
-    occlussionCoefSum *= numSamples;
-    float occlusionCoef = saturate(occlussionCoefSum / numSamples);
-    float ambientCoef = 1.f - occlusionCoef;
-#else
-
-        float RTAO_TraceRayOffsetAlongNormal;
-        float RTAO_TraceRayOffsetAlongRayDirection;
-        const float tMax = CB.RTAO_maxShadowRayHitTime;
-        float tHit;
-        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, CB.useShadowRayHitTime, tMax))
+        if (TraceShadowRayAndReportIfHit(tHit, shadowRay, 0, CB.useShadowRayHitTime, tMax, true))
         {
             float occlusionCoef = 1;
             if (CB.RTAO_IsExponentialFalloffEnabled)
@@ -546,9 +494,8 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 #if AO_ANY_HIT_FULL_OCCLUSION
     float ambientCoef = numShadowRayHits > 0 ? 0 : 1;
 #else
-    float occlusionCoef = saturate(occlussionCoefSum / numSamples);
+    float occlusionCoef = saturate(occlussionCoefSum / (float)numSamples);
     float ambientCoef = 1.f - occlusionCoef;
-#endif
 #endif
 	
     // Approximate interreflections of light from blocking surfaces which are generally not completely dark and tend to have similar radiance.
@@ -753,7 +700,7 @@ float ShadowMap(in float3 hitPosition, in float3 N)
         // Clamp epsilon to a fixed range so it doesn't go overboard.
         epsilon = clamp(epsilon, 0, 0.1);
 
-#if 0
+#if 0 // ToDo Doesn't work, return 0, except for testing a 0.
         // Do LessOrEqual comparison of the current depth against the value in the shadow map.
         lightVisibilityCoef = g_texShadowMap.SampleCmpLevelZero(
             ShadowMapSamplerComp,
