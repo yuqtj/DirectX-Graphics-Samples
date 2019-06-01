@@ -2616,6 +2616,8 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 		XMVECTOR prevLightPosition = XMLoadFloat3(&m_csComposeRenderPassesCB->lightPosition);
 		XMStoreFloat3(&m_csComposeRenderPassesCB->lightPosition, XMVector3Transform(prevLightPosition, rotate));
 		m_sceneCB->lightPosition = XMLoadFloat3(&m_csComposeRenderPassesCB->lightPosition);
+
+        m_updateShadowMap = true;
     }
     m_sceneCB->elapsedTime = static_cast<float>(m_timer.GetTotalSeconds());
 
@@ -3778,6 +3780,10 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
 {
+    if (!m_updateShadowMap)
+    {
+        return;
+    }
     auto device = m_deviceResources->GetD3DDevice();
     auto commandList = m_deviceResources->GetCommandList();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
@@ -3843,7 +3849,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
 
     // ToDo add UAV barriers
 
-
+    m_updateShadowMap = false;
     PIXEndEvent(commandList);
 }
 

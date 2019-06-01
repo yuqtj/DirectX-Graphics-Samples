@@ -199,6 +199,7 @@ private:
 
     XMUINT2 c_shadowMapDim = XMUINT2(1024, 1024);
     RWGpuResource m_ShadowMapResource;
+    bool m_updateShadowMap = true;
 
     // ToDo dedupe resources. Does dpeth need to have 2 instances?
     RWGpuResource m_temporalCache[2][TemporalCache::Count]; // ~array[Read/Write ping pong resource][Resources].
