@@ -121,6 +121,8 @@ namespace GlobalRootSignature {
             ReprojectedHitPosition,
             Color,
             AODiffuse,
+            ShadowMapUAV,   // ToDo Standardize nmaming
+            ShadowMapSRV,
             Count
         };
     }
@@ -205,7 +207,7 @@ namespace GBufferResource {
         MotionVector,
         ReprojectedHitPosition,
         Color,
-        AODiffuse,
+        AODiffuse, 
 		Count
 	};
 }

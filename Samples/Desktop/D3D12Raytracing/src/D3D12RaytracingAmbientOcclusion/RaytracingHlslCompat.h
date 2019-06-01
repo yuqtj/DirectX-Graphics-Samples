@@ -434,7 +434,10 @@ struct SceneConstantBuffer
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
     XMMATRIX viewProjection;    // ToDo remove // world to projection matrix with Camera at (0,0,0).
     XMVECTOR cameraPosition;
-	XMVECTOR lightPosition;
+
+    XMMATRIX lightProjectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
+    XMMATRIX lightViewProj;
+    XMVECTOR lightPosition;
     XMFLOAT3 lightColor;
     float defaultAmbientIntensity;
     XMMATRIX prevViewProj;    // ToDo standardzie proj vs projection
@@ -488,6 +491,7 @@ struct SceneConstantBuffer
     float RTAO_minimumFtBounceCoefficient;  // Minimum bounce coefficient for transmission ray to consider executing a TraceRay for it.
     BOOL useDiffuseFromMaterial;
     BOOL doShading;                         // Do shading during path tracing. If false, collects only information needed for AO pass.
+    BOOL useShadowMap;                      // Use shadow map (true). Trace visibility rays (false).
 };
  
 // Final render output composition modes.
@@ -749,6 +753,7 @@ namespace RayGenShaderType {
 		AOFullRes,
         AOQuarterRes,
 		Visibility,
+        ShadowMap,
 		Count
 	};
 }

@@ -40,7 +40,7 @@ const wchar_t* D3D12RaytracingAmbientOcclusion::c_rayGenShaderNames[] =
 {
 	// ToDo reorder
     // ToDo rename visiblity to shadow? standardize naming
-	L"MyRayGenShader_GBuffer", L"MyRayGenShader_AO", L"MyRayGenShaderQuarterRes_AO", L"MyRayGenShader_Visibility"
+	L"MyRayGenShader_GBuffer", L"MyRayGenShader_AO", L"MyRayGenShaderQuarterRes_AO", L"MyRayGenShader_Visibility", L"MyRayGenShader_ShadowMap"
 };
 const wchar_t* D3D12RaytracingAmbientOcclusion::c_closestHitShaderNames[] =
 {
@@ -155,6 +155,8 @@ namespace SceneArgs
 
     IntVar MaxRadianceRayRecursionDepth(L"Render/PathTracing/Max Radiance Ray recursion depth", 2, 1, MAX_RAY_RECURSION_DEPTH, 1);   // ToDo Replace with 3/4 depth as it adds visible differences on spaceship/car
     IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 3, 1, MAX_RAY_RECURSION_DEPTH, 1);
+    
+    BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", true);        // ToDO use enumeration
 
     // Avoid tracing rays where they have close to zero visual impact.
     // todo test perf gain or remove.
@@ -851,7 +853,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeScene()
     {
         // Initialize the lighting parameters.
 		// ToDo remove
-		m_csComposeRenderPassesCB->lightPosition = XMFLOAT3(-20.0f, 40.0f, 20.0f);
+		m_csComposeRenderPassesCB->lightPosition = XMFLOAT3(-20.0f, 60.0f, 20.0f);
 		m_sceneCB->lightPosition = XMLoadFloat3(&m_csComposeRenderPassesCB->lightPosition);
 
 		m_csComposeRenderPassesCB->lightAmbientColor = XMFLOAT3(0.45f, 0.45f, 0.45f);
@@ -1093,7 +1095,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
-		using namespace GlobalRootSignature;
+        using namespace GlobalRootSignature;
 
         // ToDo reorder
         // ToDo use slot index in ranges everywhere
@@ -1109,8 +1111,9 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         ranges[Slot::ReprojectedHitPosition].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 18);  // 1 output texture reprojected hit position
         ranges[Slot::Color].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 19);  // 1 output texture shaded color
         ranges[Slot::AODiffuse].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 20);  // 1 output texture AO diffuse
-        
-        
+        ranges[Slot::ShadowMapUAV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 21);  // 1 output ShadowMap texture
+
+
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
         ranges[Slot::PartialDepthDerivatives].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 16);  // 1 output partial depth derivative texture
 #endif
@@ -1118,13 +1121,14 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         ranges[Slot::EnvironmentMap].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12);  // 1 input environment map texture
         ranges[Slot::FilterWeightSum].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 13);  // 1 input filter weight sum texture
         ranges[Slot::AOFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 14);  // 1 input AO frame age
+        ranges[Slot::ShadowMapSRV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 21);  // 1 ShadowMap texture
 
         CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
         rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
-		rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[Slot::GBufferResources]);
-		rootParameters[Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[Slot::GBufferResourcesIn]);
-		rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[Slot::AOResourcesOut]);
-		rootParameters[Slot::VisibilityResource].InitAsDescriptorTable(1, &ranges[Slot::VisibilityResource]);
+        rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[Slot::GBufferResources]);
+        rootParameters[Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[Slot::GBufferResourcesIn]);
+        rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[Slot::AOResourcesOut]);
+        rootParameters[Slot::VisibilityResource].InitAsDescriptorTable(1, &ranges[Slot::VisibilityResource]);
         rootParameters[Slot::EnvironmentMap].InitAsDescriptorTable(1, &ranges[Slot::EnvironmentMap]);
         rootParameters[Slot::GBufferDepth].InitAsDescriptorTable(1, &ranges[Slot::GBufferDepth]);
         rootParameters[Slot::GbufferNormalRGB].InitAsDescriptorTable(1, &ranges[Slot::GbufferNormalRGB]);
@@ -1138,16 +1142,26 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         rootParameters[Slot::ReprojectedHitPosition].InitAsDescriptorTable(1, &ranges[Slot::ReprojectedHitPosition]);
         rootParameters[Slot::Color].InitAsDescriptorTable(1, &ranges[Slot::Color]);
         rootParameters[Slot::AODiffuse].InitAsDescriptorTable(1, &ranges[Slot::AODiffuse]);
-        
+        rootParameters[Slot::ShadowMapSRV].InitAsDescriptorTable(1, &ranges[Slot::ShadowMapSRV]);
+        rootParameters[Slot::ShadowMapUAV].InitAsDescriptorTable(1, &ranges[Slot::ShadowMapUAV]);
+
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
         rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
         rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(4);
         rootParameters[Slot::PrevFrameBottomLevelASIstanceTransforms].InitAsShaderResourceView(15);
 
-        CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, SAMPLER_FILTER);
+        CD3DX12_STATIC_SAMPLER_DESC staticSamplers[] =
+        {
+            // LinearWrapSampler
+            CD3DX12_STATIC_SAMPLER_DESC(0, SAMPLER_FILTER),
+            // ShadowMapSamplerComp
+            CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT),
+            // ShadowMapSampler
+            CD3DX12_STATIC_SAMPLER_DESC(2, D3D12_FILTER_MIN_MAG_MIP_POINT)
+        };
 
-        CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
+        CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, ARRAYSIZE(staticSamplers), staticSamplers);
 		SerializeAndCreateRootSignature(device, globalRootSignatureDesc, &m_raytracingGlobalRootSignature, L"Global root signature");
     }
 
@@ -1497,6 +1511,11 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     // ToDo render shadows at raytracing dim?
 	m_VisibilityResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
 	CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_VisibilityResource, initialResourceState, L"Visibility");
+
+    
+    m_ShadowMapResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, c_shadowMapDim.x, c_shadowMapDim.y, m_cbvSrvUavHeap.get(), &m_ShadowMapResource, initialResourceState, L"Shadow Map");
+
 
     // ToDo specialize formats instead of using a common one?
     m_varianceResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -2639,6 +2658,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     m_sceneCB->defaultAmbientIntensity = SceneArgs::DefaultAmbientIntensity;
     m_sceneCB->maxRadianceRayRecursionDepth = SceneArgs::MaxRadianceRayRecursionDepth;
     m_sceneCB->maxShadowRayRecursionDepth = SceneArgs::MaxShadowRayRecursionDepth;
+    m_sceneCB->useShadowMap = SceneArgs::UseShadowMap;
 
 
     SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
@@ -3475,7 +3495,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, m_environmentMap.gpuDescriptorHandle);
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::PrevFrameBottomLevelASIstanceTransforms, m_prevFrameBottomLevelASInstanceTransforms.GpuVirtualAddress(frameIndex));
-    
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ShadowMapSRV, m_ShadowMapResource.gpuDescriptorReadAccess);
+
     
 	// Bind output RTs.
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorWriteAccess);
@@ -3752,6 +3773,78 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	}
 
 	PIXEndEvent(commandList);
+}
+
+
+void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
+{
+    auto device = m_deviceResources->GetD3DDevice();
+    auto commandList = m_deviceResources->GetCommandList();
+    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+
+    ScopedTimer _prof(L"Shadow Map", commandList);
+    
+    
+    // ToDo tighten the fov.
+    // reuse the same camera
+    GameCore::Camera lightViewCamera = m_camera;
+
+    XMMATRIX proj;
+    lightViewCamera.fov = 90;
+    lightViewCamera.GetProj(&proj, c_shadowMapDim.x, c_shadowMapDim.y);
+
+    // Calculate view matrix as if the eye was at (0,0,0) to avoid 
+    // precision issues when camera position is too far from (0,0,0).
+    // GenerateCameraRay takes this into consideration in the raytracing shader.
+    XMVECTOR eye = m_sceneCB->lightPosition;
+    XMVECTOR at = XMVectorSetY(eye, 0);         // pointing down
+    XMVECTOR up = XMVectorSet(1, 0, 0, 0);
+    XMMATRIX viewAtOrigin = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(at - eye, 1), up);
+    XMMATRIX viewProjAtOrigin = viewAtOrigin * proj;
+    m_sceneCB->lightProjectionToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProjAtOrigin);
+    
+    // ToDo cleanup
+    XMMATRIX view = XMMatrixLookAtLH(eye, at, up);
+    XMMATRIX viewProj = view * proj;
+    m_sceneCB->lightViewProj = viewProj;
+
+    // Todo same m_sceneCB is copied multiple times.
+    m_sceneCB.CopyStagingToGpu(frameIndex);
+
+    // Transition shadow map resourcee to UAV.
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_ShadowMapResource.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS ));
+
+    commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
+    commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
+
+    // Bind inputs.
+    commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
+
+    // Bind output RT.
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ShadowMapUAV, m_ShadowMapResource.gpuDescriptorWriteAccess);
+
+    // Bind the heaps, acceleration structure and dispatch rays. 
+    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
+
+    DispatchRays(m_rayGenShaderTables[RayGenShaderType::ShadowMap].Get(), c_shadowMapDim.x, c_shadowMapDim.y);
+
+    // Transition shadow resources to shader resource state.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_ShadowMapResource.resource.Get(), before, after),
+            // Make sure the resource is done being written to.
+            CD3DX12_RESOURCE_BARRIER::UAV(m_ShadowMapResource.resource.Get())   
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);   
+    }
+    
+
+    // ToDo add UAV barriers
+
+
+    PIXEndEvent(commandList);
 }
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_TestEarlyExitOVerhead()
@@ -4648,7 +4741,7 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
             D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             D3D12_RESOURCE_BARRIER barriers[] = {
                 CD3DX12_RESOURCE_BARRIER::Transition(grassPatchVB.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::UAV(grassPatchVB.resource.Get())
+                CD3DX12_RESOURCE_BARRIER::UAV(grassPatchVB.resource.Get())  // ToDo
             };
             commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
         }
@@ -4788,6 +4881,8 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
             UpdateAccelerationStructure();
 
             // Render.
+            RenderPass_GenerateShadowMap();
+
             RenderPass_GenerateGBuffers();
 #if 1
             // AO. 

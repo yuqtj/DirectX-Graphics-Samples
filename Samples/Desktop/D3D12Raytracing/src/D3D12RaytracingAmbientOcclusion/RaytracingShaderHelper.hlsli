@@ -427,6 +427,7 @@ float3 DecodeNormal(float2 f)
 }
 /***************************************************************/
 
+// ToDo consider MiNiEngine's packing to full 32 bit extent
 UINT NormalizedFloat3ToByte3(float3 v)
 {
     return

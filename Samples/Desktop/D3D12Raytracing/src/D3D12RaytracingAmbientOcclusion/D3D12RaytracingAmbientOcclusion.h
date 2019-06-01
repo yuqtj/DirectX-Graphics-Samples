@@ -197,6 +197,8 @@ private:
     RWGpuResource m_AOLowResResources[AOResource::Count];   // ToDo remove unused
 	RWGpuResource m_VisibilityResource;
 
+    XMUINT2 c_shadowMapDim = XMUINT2(1024, 1024);
+    RWGpuResource m_ShadowMapResource;
 
     // ToDo dedupe resources. Does dpeth need to have 2 instances?
     RWGpuResource m_temporalCache[2][TemporalCache::Count]; // ~array[Read/Write ping pong resource][Resources].
@@ -281,6 +283,7 @@ private:
 	// Render passes
 	void RenderPass_GenerateGBuffers();
 	void RenderPass_CalculateVisibility();
+    void RenderPass_GenerateShadowMap();
 	void RenderPass_CalculateAmbientOcclusion();
     void RenderPass_BlurAmbientOcclusion();
 	void RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV);
