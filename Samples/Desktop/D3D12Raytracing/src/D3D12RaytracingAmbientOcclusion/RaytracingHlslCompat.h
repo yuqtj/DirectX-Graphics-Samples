@@ -184,7 +184,7 @@ namespace AtrousWaveletTransformFilterCS {
 
 namespace CalculateVariance_Bilateral {
     namespace ThreadGroup {
-        enum Enum { Width = 16, Height = 8, Size = Width * Height };
+        enum Enum { Width = 8, Height = 8, Size = Width * Height };
     }
 }
 
@@ -414,14 +414,16 @@ struct AtrousWaveletTransformFilterConstantBuffer
 struct CalculateVariance_BilateralFilterConstantBuffer
 {
     XMUINT2 textureDim;
-    float depthSigma;
     float normalSigma;
-    float padding;
+    float depthSigma;
 
     BOOL outputMean;
     BOOL useDepthWeights;
     BOOL useNormalWeights;
     UINT kernelWidth;
+
+    UINT kernelRadius;
+    float padding[3];
 };
 
 

@@ -36,9 +36,6 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
     int2 id = int2(DTid) + (int2(row - kernelRadius, col - kernelRadius) );
     if (IsWithinBounds(id, cb.textureDim))
     {
-        const float normalSigma = cb.normalSigma;
-        const float depthSigma = cb.depthSigma;
-
         float iValue = g_inValues[id];
 
         float4 packedValue;
@@ -46,8 +43,8 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
         float iDepth;
         LoadNormalAndDepth(g_inNormalDepth, id, iNormal, iDepth, packedValue);
 
-        float w_d = cb.useDepthWeights ? exp(-abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma)) : 1.f;
-        float w_n = cb.useNormalWeights ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1.f;
+        float w_d = cb.useDepthWeights ? exp(-abs(depth - iDepth) * obliqueness / (cb.depthSigma)) : 1.f;
+        float w_n = cb.useNormalWeights ? pow(max(0, dot(normal, iNormal)), cb.normalSigma) : 1.f;
         float w = w_n * w_d;
         
         float SmallValue = 0.001f;

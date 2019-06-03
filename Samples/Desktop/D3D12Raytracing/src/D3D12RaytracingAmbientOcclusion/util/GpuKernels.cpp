@@ -1638,6 +1638,7 @@ namespace GpuKernels
         m_CB->useDepthWeights = useDepthWeights;
         m_CB->useNormalWeights = useNormalWeights;
         m_CB->kernelWidth = kernelWidth;
+        m_CB->kernelRadius = kernelWidth >> 1;
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
         commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
