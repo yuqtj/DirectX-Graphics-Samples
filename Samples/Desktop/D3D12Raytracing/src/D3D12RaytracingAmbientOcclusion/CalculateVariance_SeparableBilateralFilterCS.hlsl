@@ -26,7 +26,8 @@ RWTexture2D<float> g_outMean : register(u1);
 // Spaced at 4 Byte element widths to avoid bank conflicts on access.
 // Trade precision for speed and pack floats to 16bit.
 // 0.48ms -> 0.313 ms on TitanXp at 1080p.
-#define PACK_OPTIMIZATION 1     
+// 2ms -> 1.1ms on 2080Ti at 4K
+#define PACK_OPTIMIZATION 1
 
 #if PACK_OPTIMIZATION
 groupshared UINT PackedValueObliquenessCache[256];  // 16bit float value and obliqueness.
