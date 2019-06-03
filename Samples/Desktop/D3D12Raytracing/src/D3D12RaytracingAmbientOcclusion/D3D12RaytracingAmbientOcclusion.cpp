@@ -104,7 +104,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -221,7 +221,11 @@ namespace SceneArgs
     BoolVar RTAO_TemporalCache_UseDepthWeights(L"Render/AO/RTAO/Temporal Cache/Use depth weights", true);    // ToDo remove
     BoolVar RTAO_TemporalCache_UseNormalWeights(L"Render/AO/RTAO/Temporal Cache/Use normal weights", true);
     BoolVar RTAO_TemporalCache_ForceUseMinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Force min smoothing factor", false);
-    IntVar RTAO_TemporalCache_VarianceFilterKernelWidth(L"Render/AO/RTAO/Temporal Cache/Variance filter/Kernel width", 7, 3, 11, 2);    // ToDo find lowest good enough width
+
+    const WCHAR* VarianceBilateralFilters[GpuKernels::CalculateVariance::FilterType::Count] = { L"Square", L"Separable" };
+    EnumVar VarianceBilateralFilter(L"Render/GpuKernels/CalculateVariance/Filter", GpuKernels::CalculateVariance::Square, GpuKernels::CalculateVariance::Count, DownsamplingBilateralFilters);
+    IntVar VarianceBilateralFilterKernelWidth(L"Render/GpuKernels/CalculateVariance/Kernel width", 7, 3, 11, 2);    // ToDo find lowest good enough width
+
 
     // ToDo address: Clamping causes rejection of samples in low density areas - such as on ground plane at the end of max ray distance from other objects.
     BoolVar RTAO_TemporalCache_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", true);
@@ -2449,7 +2453,6 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 
 void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
 {
-    float angleToRotateBy = 0;
 	// ToDo 
     switch (key)
     {
@@ -2484,24 +2487,16 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
         m_cameraChangedIndex = 2;
         break;
     case 'O':
-        angleToRotateBy = -10;
+        m_manualCameraRotationAngle = -10;
         break;
     case 'P':
-        angleToRotateBy = 10;
+        m_manualCameraRotationAngle = 10;
         break;
     case 'B':
         m_cameraChangedIndex = 2;
         break;
     default:
         break;
-    }
-
-    // ToDo remove
-    if (fabs(angleToRotateBy) > 0)
-    {
-        m_hasCameraChanged = true;
-        m_cameraChangedIndex = 2;
-        m_camera.RotateAroundYAxis(XMConvertToRadians(angleToRotateBy));
     }
 }
 
@@ -2604,6 +2599,15 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
         //OutputDebugString(L"CameraChanged\n");
 #endif
     }
+    // ToDo remove
+    if (fabs(m_manualCameraRotationAngle) > 0)
+    {
+        m_hasCameraChanged = true;
+        m_cameraChangedIndex = 2;
+        m_camera.RotateAroundYAxis(XMConvertToRadians(m_manualCameraRotationAngle));
+        m_manualCameraRotationAngle = 0;
+    }
+
 
 	UpdateCameraMatrices();
 
@@ -2776,6 +2780,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             m_cbvSrvUavHeap->GetHeap(),
             m_raytracingWidth,
             m_raytracingHeight,
+            static_cast<GpuKernels::CalculateVariance::FilterType>(static_cast<UINT>(SceneArgs::VarianceBilateralFilter)),
             AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
@@ -2792,6 +2797,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after));
     }
+
 
     // ToDo, should the smoothing be applied after each pass?
     // Smoothen the local variance which is prone to error due to undersampled input.
@@ -3170,6 +3176,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             m_cbvSrvUavHeap->GetHeap(),
             width,
             height,
+            static_cast<GpuKernels::CalculateVariance::FilterType>(static_cast<UINT>(SceneArgs::VarianceBilateralFilter)),
             inValueResource.gpuDescriptorReadAccess,
             inNormalDepthResource.gpuDescriptorReadAccess,
             inDepthResource.gpuDescriptorReadAccess,
@@ -4464,6 +4471,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
             m_cbvSrvUavHeap->GetHeap(),
             m_raytracingWidth,
             m_raytracingHeight,
+            static_cast<GpuKernels::CalculateVariance::FilterType>(static_cast<UINT>(SceneArgs::VarianceBilateralFilter)),
             AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
@@ -4474,7 +4482,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
             true,
             SceneArgs::RTAODenoising_Variance_UseDepthWeights,
             SceneArgs::RTAODenoising_Variance_UseNormalWeights,
-            SceneArgs::RTAO_TemporalCache_VarianceFilterKernelWidth);
+            SceneArgs::VarianceBilateralFilterKernelWidth);
 
             D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;

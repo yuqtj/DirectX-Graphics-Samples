@@ -39,6 +39,7 @@ ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> cb : register(
 
 SamplerState LinearSampler : register(s0);
 
+#define DEBUG_OUTPUT 0 // ToDo remove
 
 // ToDo
 // - Fix heavy disocclusion on min/magnifaction. Use bilateraly downsampled mip maps?
@@ -143,8 +144,7 @@ float CalculateAdjustedDepthThreshold(
 }
 
 
-
-float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float2 offset, in uint2 sampleIndices[4], in float cacheDdxy, in uint2 DTid )
+float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float2 offset, in uint2 actualIndex, in uint2 sampleIndices[4], in float cacheDdxy)
 {
     uint4 isWithinBounds = uint4(
         IsWithinBounds(sampleIndices[0], cb.textureDim),
@@ -155,104 +155,16 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
     float4 depthMask = 1;
     if (cb.useDepthWeights)
     {
-        // ToDo improve depth test on zoom in. A lot of pixels get invalidated on the ground plane on close zoom in.
-#if 0
-        // ToDo remove - blurs more/incorrectly
-        float4 depthDiffs = abs(SampleDistances - ActualDistance);
-        float4 depthWeigthsMask = depthDiffs < cb.depthTolerance * ActualDistance;
-
-        // Weight the depths based of smallest difference.
-        float minDepthDiff = min(min(min(depthDiffs.x, depthDiffs.y), depthDiffs.z), depthDiffs.w);
-        depthWeigths = min(depthWeigthsMask * (minDepthDiff + 1e-6) / (depthDiffs + 1e-6), 1);
-#endif
-        float depthThreshold = cb.depthTolerance * ActualDistance;
-
-        depthMask = isWithinBounds &&
-            abs(SampleDistances - ActualDistance) < depthThreshold;
-    }
-
-
-    float4 normalWeights = 1;
-    if (cb.useNormalWeights)
-    {
-        const uint normalExponent = 32;
-        const float minNormalWeight = 1e-3f; // ToDo pass as parameter
-        normalWeights =
-            float4(
-                pow(saturate(dot(ActualNormal, SampleNormals[0])), normalExponent),
-                pow(saturate(dot(ActualNormal, SampleNormals[1])), normalExponent),
-                pow(saturate(dot(ActualNormal, SampleNormals[2])), normalExponent),
-                pow(saturate(dot(ActualNormal, SampleNormals[3])), normalExponent) >= minNormalWeight);
-    }
-
-    float4 bilinearWeights = float4(
-        (1 - offset.x) * (1 - offset.y),
-        offset.x * (1 - offset.y),
-        (1 - offset.x) * offset.y,
-        offset.x * offset.y);
-
-    // ToDo use depth weights instead of mask?
-    // ToDo can we prevent diffusion across plane?
-    float4 weights = bilinearWeights * depthMask * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
-
-    weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo - the environment map depth is lower...
-
-    float weightSum = dot(weights, 1);
-
-    float minWeightSum = 1e-3f; 
-    return weightSum >= minWeightSum ? weights / (dot(weights, 1) + FLT_EPSILON) : 0;
-}
-
-float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float2 offset, in uint2 actualIndex, in uint2 sampleIndices[4], in float cacheDdxy, out float weightSum)
-{
-    uint4 isWithinBounds = uint4(
-        IsWithinBounds(sampleIndices[0], cb.textureDim),
-        IsWithinBounds(sampleIndices[1], cb.textureDim),
-        IsWithinBounds(sampleIndices[2], cb.textureDim),
-        IsWithinBounds(sampleIndices[3], cb.textureDim));
-
-    float4 depthMask = 1;
-    if (cb.useDepthWeights)
-    {
-#if 0
-        float depthThreshold = 1.f;     // ToDo standardize depth vs distance
-        float fEpsilon = 1e-6 * ActualDistance;
-
-
-        // ToDo consider ddxy per dimension or have a 1D max(Ddxy) resource?
-        depthThreshold = max(ddxy.x, ddxy.y);
-        
-        // ToDo correct weights to weigths in the whole project same for treshold and weigth
-        float fScale = 1.f / depthThreshold;
-        float4 depthWeigths = min(1.0 / (fScale * abs(SampleDistances - ActualDistance) + fEpsilon), 1);
-#else
-        float depthThreshold = cacheDdxy;// cb.depthTolerance * ActualDistance; //cacheDdxy;
-
-#if 0
-        float4 clipSpacePos = GetClipSpacePosition(actualIndex + uint2(1,1), ActualDistance);
-        float4 cacheClipSpacePos = mul(clipSpacePos, cb.reverseProjectionTransform);
-        float3 cacheNDCpos = cacheClipSpacePos.xyz;
-        cacheNDCpos /= cacheClipSpacePos.w;                             // Perspective division.
-        cacheNDCpos.y = -cacheNDCpos.y;                                 // Invert Y for DirectX-style coordinates.
-        float cacheLinearDepth = LogToViewDepth(cacheNDCpos.z, cb.zNear, cb.zFar);
-#endif
-        //depthThreshold = abs(cacheLinearDepth - ActualDistance);
-
-        float fMinEpsilon = cb.floatEpsilonDepthTolerance * 512 * FLT_EPSILON; // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations.
-        // ToDo should it be exponential?
-        float fMinDepthScaledEpsilon = cb.depthDistanceBasedDepthTolerance * 48 * 1e-6  * ActualDistance;  // Depth threshold to surpress differences that surface at larger depth from the camera.
+        float depthThreshold = cacheDdxy;
+        float fMinEpsilon = cb.floatEpsilonDepthTolerance * 512 * FLT_EPSILON;                              // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations       
+        float fMinDepthScaledEpsilon = cb.depthDistanceBasedDepthTolerance * 48 * 1e-6  * ActualDistance;   // Depth threshold to surpress differences that surface at larger depth from the camera.
         float fEpsilon = fMinEpsilon + fMinDepthScaledEpsilon;
 
-        // ToDo use exp or mininengine weighting?
         float4 depthWeigths = min((cb.depthSigma * depthThreshold + fEpsilon)/ (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
-        //float4 e_d = min(1 - abs(SampleDistances - ActualDistance) / (cb.depthSigma * depthThreshold + fEpsilon), 0);
-        //float4 depthWeigths = exp(e_d);
-        //float4 e_d = min(1 - abs(depth - iDepth) / (cb.depthSigm * depthThreshold + fEpsilon), 0) : 0;
-        //depthWeigths = exp(e_d);
-#endif
         depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise
-
+#if DEBUG_OUTPUT
         g_texOutputDebug2[actualIndex] = float4(depthWeigths);
+#endif
     }
     
 
@@ -270,23 +182,23 @@ float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal
                 pow(saturate(normalSigma*dot(ActualNormal, SampleNormals[3])), normalExponent) >= minNormalWeight);
     }
 
-    float4 bilinearWeights = float4(
-        (1 - offset.x) * (1 - offset.y),
-        offset.x * (1 - offset.y),
-        (1 - offset.x) * offset.y,
-        offset.x * offset.y);
+    float4 bilinearWeights = 
+        float4(
+            (1 - offset.x) * (1 - offset.y),
+            offset.x * (1 - offset.y),
+            (1 - offset.x) * offset.y,
+            offset.x * offset.y);
 
     // ToDo use depth weights instead of mask?
     // ToDo can we prevent diffusion across plane?
     float4 weights = bilinearWeights * depthMask * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
 
     weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
+    float weightSum = dot(weights, 1);
 
-    //float weightSum = dot(weights, 1);
-    weightSum = dot(weights, 1);
-
-
+#if DEBUG_OUTPUT
     g_texOutputDebug1[actualIndex] = float4(ActualDistance, cacheDdxy, weightSum, 0);
+#endif
 
     float minWeightSum = 1e-3f;
     return weightSum >= minWeightSum ? weights / (dot(weights, 1) + FLT_EPSILON) : 0;
@@ -325,23 +237,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float dummy;
     LoadDepthAndNormal(g_texInputCurrentFrameNormal, DTid, dummy, normal);
   
-#if 0
-    float4 clipSpacePos = GetClipSpacePosition(DTid, linearDepth);
-    
-    // Reverse project into previous frame
-    // ToDo does manually computing current world space pos and skiping invViewProj improve precision?
-    float4 cacheClipSpacePos = mul(clipSpacePos, cb.reverseProjectionTransform);
-
-    float3 cacheNDCpos = cacheClipSpacePos.xyz;
-    cacheNDCpos /= cacheClipSpacePos.w;                             // Perspective division.
-    cacheNDCpos.y = -cacheNDCpos.y;                                 // Invert Y for DirectX-style coordinates.
-    float2 cacheFrameTexturePos = (cacheNDCpos.xy + 1) * 0.5f;      // [-1,1] -> [0, 1]
-#else
     float2 texturePos = (DTid.xy + 0.5f) / float2(cb.textureDim);
     float2 cacheFrameTexturePos = texturePos - g_texInputTextureSpaceMotionVector[DTid];
-#endif
-    // Suffers from loss of precision moving to and back from log representation.
-    //float cacheLinearDepth2 = LogToViewDepth(cacheNDCpos.z, cb.zNear, cb.zFar);
 
 
     int2 topLeftCacheFrameIndex = int2(cacheFrameTexturePos * cb.textureDim - 0.5);
@@ -386,7 +283,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];
     // ToDo should this be done separately for both X and Y dimensions?
     float  ddxy = dot(1, dxdy);
-#if 1
+
     float cacheDdxy = ddxy;
     float4 reprojectedPointNormalANdDepth = g_texInputReprojectedHitPosition[DTid];
     cacheLinearDepth = reprojectedPointNormalANdDepth.w;
@@ -397,92 +294,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
         cacheDdxy = CalculateAdjustedDepthThreshold(ddxy, linearDepth, cacheLinearDepth, normal, _normal);
     }
 
-#elif 1
-    float cacheDdxy = ddxy;
-    cacheLinearDepth = dot(reprojectedViewPosition, cacheCameraDirection);
-
-    float3 reprojectedHitPosition = g_texInputReprojectedHitPosition[DTid].xyz;
-    float3 reprojectedViewPosition = reprojectedHitPosition - (cb.cameraPosition.xyz - cb.prevToCurrentFrameCameraTranslation.xyz);
-    cacheLinearDepth = dot(reprojectedViewPosition, cacheCameraDirection);
-#else
-
-    float4 clipSpacePosDdxy = GetClipSpacePosition(DTid + 1, cb.zNear + FLT_EPSILON + ddxy);
-    //float4 clipSpacePosDdxy = GetClipSpacePosition(DTid + 1, linearDepth + ddxy);
-    float4 cacheClipSpacePosDdxy = mul(clipSpacePosDdxy, cb.reverseProjectionTransform);
-    float3 cacheNDCposDxdxy = cacheClipSpacePosDdxy.xyz;
-    cacheNDCposDxdxy /= cacheClipSpacePosDdxy.w;                                // Perspective division.
-    cacheNDCposDxdxy.y = -cacheNDCposDxdxy.y;                                   // Invert Y for DirectX-style coordinates.
-    float cacheLinearDepthDxdy = LogToViewDepth(cacheNDCposDxdxy.z, cb.zNear, cb.zFar); // Log to linear depth.
-
-    float2 cacheFrameTexturePosDxdy = (cacheNDCposDxdxy.xy + 1) * 0.5f;         // [-1,1] -> [0, 1]
-
-    // Calculate depth derivative in cached frame
-    float cacheDdxy;
-    {
-        // TODo use larger values than FLT_EPSILON to avoid division by 0?
-        cacheDdxy = ddxy;// ToDo reproject adjust - and test camera moving fast upwards over the ground plane
-        g_texOutputDebug1[DTid] = float4(linearDepth, viewPos);
-        g_texOutputDebug2[DTid] = float4(vCacheDepths.x, cacheLinearDepth, ddxy, cacheDdxy);
-    }
-
-    float2 pixelOffset = abs(cacheFrameTexturePos - cacheFrameTexturePosDxdy) * cb.textureDim;
-
-#if 0
-    float3 vCacheHitPositions[4] = float4(
-        g_texInputCachedHitPosition[cacheIndices[0]],   // ToDo this is currentFrames hit position.
-        g_texInputCachedHitPosition[cacheIndices[1]],
-        g_texInputCachedHitPosition[cacheIndices[2]],
-        g_texInputCachedHitPosition[cacheIndices[3]]);
-
-    float3 reprojectedHitPosition = g_texInputReprojectedHitPosition[DTid];
-    if (cb.useWorldSpaceDistance)
-    {
-        // ToDo cleanup
-        vCacheDepths = length(reprojectedHitPosition - vCacheHitPositions);
-        cacheLinearDepth = 0.0f;
-    }
-#endif
-
-    float3 reprojectedViewPosition = reprojectedHitPosition - (cb.cameraPosition + cb.prevToCurrentFrameCameraTranslation);
-    cacheLinearDepth = dot(reprojectedViewPosition, cacheCameraDirection);
-    
-#if 0
-    float4 cacheClipPos[4] = {
-        GetClipSpacePosition(cacheIndices[0], vCacheDepths.x),
-        GetClipSpacePosition(cacheIndices[1], vCacheDepths.y),
-        GetClipSpacePosition(cacheIndices[2], vCacheDepths.z),
-        GetClipSpacePosition(cacheIndices[3], vCacheDepths.w)};
-
-    float4 cacheWorldPos = float4(
-        mul(clipSpacePos, cb.invViewProjAndCameraTranslation),
-        mul(clipSpacePos, cb.invViewProjAndCameraTranslation),
-        mul(clipSpacePos, cb.invViewProjAndCameraTranslation),
-        mul(clipSpacePos, cb.invViewProjAndCameraTranslation));
-#endif
-#endif
-
-    float4 vCacheValues = float4(
-        g_texInputCachedValue[cacheIndices[0]],
-        g_texInputCachedValue[cacheIndices[1]],
-        g_texInputCachedValue[cacheIndices[2]],
-        g_texInputCachedValue[cacheIndices[3]]);
-
-    uint4 vCacheFrameAge = uint4(
-        g_texInputCacheFrameAge[cacheIndices[0]],
-        g_texInputCacheFrameAge[cacheIndices[1]],
-        g_texInputCacheFrameAge[cacheIndices[2]],
-        g_texInputCacheFrameAge[cacheIndices[3]]);
- 
-
     float value = g_texInputCurrentFrameValue[DTid];
     float mergedValue;
-#if 0
-    float4 weights = BilateralResampleWeights(cacheLinearDepth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, cacheIndices, cacheDdxy, DTid);
-#else
-    float weightSum2;
-    float4 weights = BilateralResampleWeights2(cacheLinearDepth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy, weightSum2);
-#endif
 
+    float4 weights = BilateralResampleWeights(cacheLinearDepth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
 
     float weightSum = dot(1, weights);
 
@@ -503,6 +318,21 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint maxFrameAge = 1 / cb.minSmoothingFactor - 1;// minSmoothingFactor;
     if (isCacheValueValid)
     {
+        // ToDo load only the useable values?
+        float4 vCacheValues = float4(
+            g_texInputCachedValue[cacheIndices[0]],
+            g_texInputCachedValue[cacheIndices[1]],
+            g_texInputCachedValue[cacheIndices[2]],
+            g_texInputCachedValue[cacheIndices[3]]);
+
+        uint4 vCacheFrameAge = uint4(
+            g_texInputCacheFrameAge[cacheIndices[0]],
+            g_texInputCacheFrameAge[cacheIndices[1]],
+            g_texInputCacheFrameAge[cacheIndices[2]],
+            g_texInputCacheFrameAge[cacheIndices[3]]);
+
+
+
         isDisoccluded = false;
         float cachedValue = dot(weights, vCacheValues);
 
@@ -511,7 +341,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         // Clamp value to mean +/- std.dev of local neighborhood to surpress ghosting on value changing due to other occluder movements.
         // This will prevent reusing values outside the expected range.
-        // Ref: Salvi2016, Temporal Super-sampling
+        // Ref: Salvi2016, Temporal Super-Sampling
         float frameAgeClamp = 0;
 
         if (cb.clampCachedValues)
@@ -547,7 +377,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
         frameAge = 0;
     }
    
-    //float distToPixelCenter = length((cacheFrameTexturePos * cb.textureDim - 0.5f) - topLeftCacheFrameIndex);
     g_texOutputCachedValue[DTid] = mergedValue;
     g_texOutputCacheFrameAge[DTid] = min(frameAge + 1, maxFrameAge);
 }

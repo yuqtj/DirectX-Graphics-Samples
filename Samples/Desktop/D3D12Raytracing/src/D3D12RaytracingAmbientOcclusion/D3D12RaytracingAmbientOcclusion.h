@@ -98,7 +98,9 @@ private:
     const UINT                          MaxAtrousWaveletTransformFilterInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for calculating ImportanceMap
 
     GpuKernels::CalculateVariance       m_calculateVarianceKernel;
-    const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame = MaxAtrousWaveletTransformFilterInvocationsPerFrame + 1; // +1 for TAO 
+    const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame = 
+                                            MaxAtrousWaveletTransformFilterInvocationsPerFrame 
+                                            + 1; // Temporal Super-Sampling.
 
     GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
     const UINT                          MaxGaussianSmoothingKernelInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for TAO 
@@ -261,6 +263,7 @@ private:
     int m_cameraChangedIndex = 0;
     bool m_hasCameraChanged = true;
 	GameCore::Camera m_camera;
+    float m_manualCameraRotationAngle = 0; // ToDo remove
     GameCore::Camera m_prevFrameCamera;
 	std::unique_ptr<GameCore::CameraController> m_cameraController;
 	

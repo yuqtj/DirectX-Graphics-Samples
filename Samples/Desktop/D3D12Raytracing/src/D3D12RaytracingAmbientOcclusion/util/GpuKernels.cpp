@@ -31,6 +31,7 @@
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_BilateralFilterCS.hlsl.h"
+#include "CompiledShaders\CalculateVariance_SeparableBilateralFilterCS.hlsl.h"
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
 #include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
@@ -1551,15 +1552,31 @@ namespace GpuKernels
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: CalculateVariance");
         }
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
 
+
+        }
         // Create compute pipeline state.
         {
             D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
             descComputePSO.pRootSignature = m_rootSignature.Get();
-            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_BilateralFilterCS), ARRAYSIZE(g_pCalculateVariance_BilateralFilterCS));
+            for (UINT i = 0; i < FilterType::Count; i++)
+            {
+                switch (i)
+                {
+                case Square:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_BilateralFilterCS), ARRAYSIZE(g_pCalculateVariance_BilateralFilterCS));
+                    break;
+                case Separable:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_SeparableBilateralFilterCS), ARRAYSIZE(g_pCalculateVariance_SeparableBilateralFilterCS));
+                    break;
+                }
 
-            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-            m_pipelineStateObject->SetName(L"Pipeline state object: CalculateVariance");
+                ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
+                m_pipelineStateObjects[i]->SetName(L"Pipeline state object: CalculateVariance");
+            }
         }
 
         // Create shader resources.
@@ -1575,6 +1592,7 @@ namespace GpuKernels
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
         UINT height,
+        FilterType filterType,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,  // ToDo standardize Normal vs Normals
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
@@ -1601,7 +1619,7 @@ namespace GpuKernels
         {
             commandList->SetDescriptorHeaps(1, &descriptorHeap);
             commandList->SetComputeRootSignature(m_rootSignature.Get());
-            commandList->SetPipelineState(m_pipelineStateObject.Get());
+            commandList->SetPipelineState(m_pipelineStateObjects[filterType].Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Normal, inputNormalsResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Depth, inputDepthsResourceHandle);

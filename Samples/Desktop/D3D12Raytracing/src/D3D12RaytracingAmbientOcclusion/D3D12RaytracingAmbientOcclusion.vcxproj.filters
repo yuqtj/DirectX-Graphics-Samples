@@ -366,6 +366,9 @@
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
     <FxCompile Include="util\AnalyticalTextures.hlsli" />
+    <FxCompile Include="CalculateVariance_SeparableBilateralFilterCS.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">

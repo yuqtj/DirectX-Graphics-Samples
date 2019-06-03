@@ -434,6 +434,12 @@ namespace GpuKernels
     class CalculateVariance
     {
     public:
+        enum FilterType {
+            Square = 0,
+            Separable,
+            Count
+        };
+
         void Release()
         {
             assert(0 && L"ToDo");
@@ -445,6 +451,7 @@ namespace GpuKernels
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height,
+            FilterType filterType,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
@@ -459,7 +466,7 @@ namespace GpuKernels
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
-        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
         ConstantBuffer<CalculateVariance_BilateralFilterConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
         UINT                                m_CBinstanceID = 0;
     };

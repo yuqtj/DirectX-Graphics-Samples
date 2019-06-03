@@ -400,39 +400,45 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
     float occlussionCoefSum = 0;
 
     // Calculate coordinate system for the hemisphere.
+    // ToDo AO has square alias due to same hemisphere
     float3 u, v, w;
     w = surfaceNormal;
     float3 right = float3(0.0072, 0.999994132f, 0.0034);
     v = normalize(cross(w, right));
     u = cross(v, w);
+    
+    // Calculate offsets to the pregenerated sample set.
+    uint sampleSetJump;     // Offset to the start of the sample set
+    uint sampleJump;        // Offset to the first sample for this pixel within a sample set.
+    {
+        // Neighboring samples NxN share a sample set, but use different samples within a set.
+        // Sharing a sample set lets the pixels in the group get a better coverage of the hemisphere 
+        // than if each pixel used a separate sample set with less samples per set.
+        
+        // Get a common sample set ID and seed shared across neighboring pixels.
+        uint numSampleSetsInX = (DispatchRaysDimensions().x + CB.numPixelsPerDimPerSet - 1) / CB.numPixelsPerDimPerSet;
+        uint2 sampleSetId = DTid / CB.numPixelsPerDimPerSet;
 
-#if AO_SAMPLES_SPREAD_ACCROSS_PIXELS
+        // Get a common hitPosition to adjust the sampleSeed by. 
+        // This breaks noise correlation on camera movement which otherwise results 
+        // in noise pattern swimming across the screen on camera movement.
+        uint2 pixelZeroId = sampleSetId * CB.numPixelsPerDimPerSet;
+        float3 pixelZeroHitPosition = g_texGBufferPositionRT[pixelZeroId].xyz;      // ToDo remove?
+        uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + CB.seed;
+        uint RNGState = RNG::SeedThread(sampleSetSeed);
+        
+        sampleSetJump = RNG::Random(RNGState, 0, CB.numSampleSets - 1) * CB.numSamplesPerSet;
 
-#if 0
-    uint sampleSetJump = 0;
-    uint sampleJump = 0;// RNG::Random(RNGState, 0, CB.numSampleSets - 1);
-#else
-    // Neighboring samples NxN share a sample set.
-    // Get a sample set ID and seed shared across neighboring pixels.
-    uint numSampleSetsInX = (DispatchRaysDimensions().x + CB.numPixelsPerDimPerSet - 1) / CB.numPixelsPerDimPerSet;
-    uint2 sampleSetId = DTid / CB.numPixelsPerDimPerSet;
-    uint2 pixelZeroId = sampleSetId * CB.numPixelsPerDimPerSet;
-    float3 pixelZeroHitPosition = g_texGBufferPositionRT[pixelZeroId].xyz;      // ToDo remove?
+        // Get a pixel ID within the shared set across neighboring pixels.
+        uint2 pixeIDPerSet2D = DTid % CB.numPixelsPerDimPerSet;
+        uint pixeIDPerSet = pixeIDPerSet2D.y * CB.numPixelsPerDimPerSet + pixeIDPerSet2D.x;
 
-    uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + CB.seed;
-
-    uint RNGState = RNG::SeedThread(sampleSetSeed);
-    uint sampleSetJump = RNG::Random(RNGState, 0, CB.numSampleSets - 1) * CB.numSamplesPerSet;
-
-    // Get a pixel ID within the shared set across neighboring pixels.
-    uint2 pixeIDPerSet2D = DTid % CB.numPixelsPerDimPerSet;
-    uint pixeIDPerSet = pixeIDPerSet2D.y * CB.numPixelsPerDimPerSet + pixeIDPerSet2D.x;
-
-    // ToDo is RNG being used here any useful?
-    uint numPixelsPerSet = CB.numPixelsPerDimPerSet * CB.numPixelsPerDimPerSet;
-    uint sampleJump = pixeIDPerSet % numPixelsPerSet;
-    sampleJump *= CB.numSamplesToUse;
-#endif
+        // Randomize starting sample position within a sample set per neighbor group 
+        // to break group to group correlation resulting in square alias.
+        uint numPixelsPerSet = CB.numPixelsPerDimPerSet * CB.numPixelsPerDimPerSet;
+        sampleJump = pixeIDPerSet + RNG::Random(RNGState, 0, numPixelsPerSet - 1);
+        sampleJump *= CB.numSamplesToUse;
+    }
 #if AO_PROGRESSIVE_SAMPLING
     sampleJump += numSamples * g_texInputAOFrameAge[DTid];
 #endif
@@ -444,26 +450,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 #endif
     {
         // Load a pregenerated random sample from the sample set.
-        float3 sample = g_sampleSets[sampleSetJump + sampleJump + i].value;
-#else
-	// Seed:
-	// - DispatchRaysDimensions to break correlation among neighboring pixels.
-	// - hash(hitPosition) to break correlation for the same pixel but differet hitPosition when moving camera/objects.
-    uint seed = (DispatchRaysDimensions().x * DispatchRaysIndex().y + DispatchRaysIndex().x) * hash(hitPosition) + CB.seed;
-
-	uint RNGState = RNG::SeedThread(seed);
-	uint sampleSetJump = RNG::Random(RNGState, 0, CB.numSampleSets - 1) * CB.numSamplesPerSet;
-    uint sampleJump = 0;// RNG::Random(RNGState, 0, CB.numSampleSets - 1);
-
-#if AO_SPP_N_MAX == 1
-    uint i = 0;
-#else
-    for (uint i = 0; i < CB.numSamplesToUse; i++)
-#endif
-    {
-        // Load a pregenerated random sample from the sample set.
-        float3 sample = g_sampleSets[sampleSetJump + (sampleJump + i) % CB.numSamplesPerSet].value;
-#endif
+        float3 sample = g_sampleSets[sampleSetJump + ((sampleJump + i) % CB.numSamplesPerSet)].value;
 
         float3 rayDirection = sample.x * u + sample.y * v + sample.z * w;
 

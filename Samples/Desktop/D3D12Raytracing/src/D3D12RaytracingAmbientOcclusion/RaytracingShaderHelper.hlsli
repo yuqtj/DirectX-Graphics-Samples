@@ -57,7 +57,7 @@ uint2 EncodeMaterial16b(uint materialID, float3 diffuse)
     return result;
 }
 
-uint IsWithinBounds(in uint2 index, in uint2 dimensions)
+uint IsWithinBounds(in int2 index, in uint2 dimensions)
 {
     return index.x >= 0 && index.y >= 0 && index.x < dimensions.x && index.y < dimensions.y;
 }
@@ -152,6 +152,36 @@ float2 ClipSpaceToTexturePosition(in float4 clipSpacePosition)
     float2 texturePosition = (NDCposition.xy + 1) * 0.5f;               // [-1,1] -> [0, 1]
     return texturePosition;
 }
+
+// ToDO remove
+#if 0
+// Retrieves pixel's position in clip space.
+// linearDepth - linear depth in [0, 1] range 
+float4 GetClipSpacePosition(in uint2 DTid, in float linearDepth)
+{
+    // Convert to non-linear depth.
+#if USE_NORMALIZED_Z
+    ToDo
+        float linearDistance = linearDepth * (cb.zFar - cb.zNear) + cb.zNear;
+#else
+    float linearDistance = linearDepth;
+#endif
+
+    // Calculate Normalized Device Coordinates xyz = {[-1,1], [-1,1], [0,-1]}
+    float2 xy = DTid + 0.5f;                            // Center in the middle of the pixel.
+    float2 screenPos = 2 * xy * cb.invTextureDim - 1;   // Convert to [-1, 1].
+    screenPos.y = -screenPos.y;                         // Invert Y for DirectX-style coordinates.
+    float logDepth = ViewToLogDepth(linearDepth, cb.zNear, cb.zFar);
+    float3 ndc = float3(screenPos, logDepth);
+
+    float A = cb.zFar / (cb.zFar - cb.zNear);
+    float B = -cb.zNear * cb.zFar / (cb.zFar - cb.zNear);
+    float w = B / (logDepth - A);
+
+    float4 projPos = float4(ndc, 1) * w;                // Reverse perspective division.
+    return projPos;
+}
+#endif
 
 // Retrieve attribute at a hit position interpolated from vertex attributes using the hit's barycentrics.
 float3 HitAttribute(float3 vertexAttribute[3], BuiltInTriangleIntersectionAttributes attr)
