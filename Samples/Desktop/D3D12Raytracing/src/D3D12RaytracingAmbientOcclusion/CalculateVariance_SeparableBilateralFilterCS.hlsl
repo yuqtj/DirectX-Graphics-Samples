@@ -11,6 +11,7 @@
 
 // ToDo add desc for each kernel
 // Desc: Calculate Variance via Separable Bilateral kernel.
+// Supports kernel radius of up to 4, i.e. kernel 9x9.
 // Uses normal and depth weights.
 // Pitfalls: 
 //  - normal weights may limit number of samples for small round objects

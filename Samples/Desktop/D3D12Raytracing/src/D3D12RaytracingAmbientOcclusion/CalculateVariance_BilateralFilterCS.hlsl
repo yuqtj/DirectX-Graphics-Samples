@@ -8,7 +8,13 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-// ToDo cleanup
+
+// Desc: Calculate Variance via Bilateral kernel.
+// Uses normal and depth weights.
+// Pitfalls: 
+//  - normal weights may limit number of samples for small round objects
+//  - depth weights may limit number of samples for thin objects (i.e. grass).
+
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"

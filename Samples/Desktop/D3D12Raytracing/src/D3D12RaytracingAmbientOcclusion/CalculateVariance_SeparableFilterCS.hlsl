@@ -10,6 +10,7 @@
 //*********************************************************
 
 // Desc: Calculate Variance via Separable kernel.
+// Supports kernel radius of up to 4, i.e. kernel 9x9.
 // Pitfalls: 
 //  - it is not edge aware
 // Performance: 0.126 ms for 7x7 kernel at 1080p on TitanXP.
@@ -157,8 +158,6 @@ void BlurVertically(uint2 DTid, uint topMostIndex)
 }
 
 
-// Do a separable bilateral accumulation of mean and variance
-// Supports kernel radius of up to 4, i.e. kernel widths 9x9.
 [numthreads(CalculateVariance_Bilateral::ThreadGroup::Width, CalculateVariance_Bilateral::ThreadGroup::Height, 1)]
 void main(uint GI : SV_GroupIndex, uint2 GTid : SV_GroupThreadID, uint2 DTid : SV_DispatchThreadID)
 {
