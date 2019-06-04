@@ -34,6 +34,7 @@ RWTexture2D<float> g_outMean : register(u1);
 // Spaced at 4 Byte element widths to avoid bank conflicts on access.
 // Trade precision for speed and pack floats to 16bit.
 // 0.48ms -> 0.313 ms for 7x7 kernel on TitanXp at 1080p.
+// 2ms -> 1.1ms for 7x7 kernel on 2080Ti at 4K
 #define PACK_OPTIMIZATION 1   
 
 #if PACK_OPTIMIZATION
