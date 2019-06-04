@@ -31,6 +31,7 @@
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_BilateralFilterCS.hlsl.h"
+#include "CompiledShaders\CalculateVariance_SeparableFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_SeparableBilateralFilterCS.hlsl.h"
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
 #include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
@@ -1566,11 +1567,14 @@ namespace GpuKernels
             {
                 switch (i)
                 {
-                case Square:
+                case SquareBilateral:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_BilateralFilterCS), ARRAYSIZE(g_pCalculateVariance_BilateralFilterCS));
                     break;
-                case Separable:
+                case SeparableBilateral:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_SeparableBilateralFilterCS), ARRAYSIZE(g_pCalculateVariance_SeparableBilateralFilterCS));
+                    break;
+                case Separable:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_SeparableFilterCS), ARRAYSIZE(g_pCalculateVariance_SeparableFilterCS));
                     break;
                 }
 

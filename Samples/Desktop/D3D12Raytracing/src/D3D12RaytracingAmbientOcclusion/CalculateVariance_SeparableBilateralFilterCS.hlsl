@@ -8,7 +8,15 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-// ToDo cleanup
+
+// ToDo add desc for each kernel
+// Desc: Calculate Variance via Separable Bilateral kernel.
+// Uses normal and depth weights.
+// Pitfalls: 
+//  - normal weights may limit number of samples for small round objects
+//  - depth weights may limit number of samples for thin objects (i.e. grass).
+// Performance: 0.313 ms for 7x7 kernel at 1080p on TitanXP.
+
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
@@ -25,8 +33,8 @@ RWTexture2D<float> g_outMean : register(u1);
 // Group shared memory caches.
 // Spaced at 4 Byte element widths to avoid bank conflicts on access.
 // Trade precision for speed and pack floats to 16bit.
-// 0.48ms -> 0.313 ms on TitanXp at 1080p.
-#define PACK_OPTIMIZATION 1     
+// 0.48ms -> 0.313 ms for 7x7 kernel on TitanXp at 1080p.
+#define PACK_OPTIMIZATION 1   
 
 #if PACK_OPTIMIZATION
 groupshared UINT PackedValueObliquenessCache[256];  // 16bit float value and obliqueness.
@@ -85,8 +93,10 @@ void PrefetchData(uint index, int2 ST)
 float SampleInfluence(in float3 n1, in float3 n2, in float d1, in float d2, in float obliqueness)
 {
     // todo remove check if weights used
+    // Don't use normal weights as small round objects or edges along pixel diagonal will get undersampled
+    // via separable filter.
     float w_n = cb.useNormalWeights ? pow(max(0, dot(n1, n2)), cb.normalSigma) : 1;
-    float w_d = cb.useDepthWeights ? exp(-abs(d1 - d2) * obliqueness / (cb.depthSigma)) : 1;
+    float w_d = cb.useDepthWeights ? exp(-abs(d1 - d2) / (cb.depthSigma)) : 1;
     return w_n * w_d;
 }
 

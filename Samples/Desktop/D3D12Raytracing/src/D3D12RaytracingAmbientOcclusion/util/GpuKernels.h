@@ -435,7 +435,8 @@ namespace GpuKernels
     {
     public:
         enum FilterType {
-            Square = 0,
+            SquareBilateral = 0,
+            SeparableBilateral,
             Separable,
             Count
         };
