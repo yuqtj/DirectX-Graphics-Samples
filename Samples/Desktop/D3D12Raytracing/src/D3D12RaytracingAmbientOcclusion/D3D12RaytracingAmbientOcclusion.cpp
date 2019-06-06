@@ -158,6 +158,9 @@ namespace SceneArgs
     
     BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", true);        // ToDO use enumeration
 
+    IntVar AOTileX(L"Render/AO/Tile X", 1, 1, 128, 1);
+    IntVar AOTileY(L"Render/AO/Tile Y", 1, 1, 128, 1);
+
     // Avoid tracing rays where they have close to zero visual impact.
     // todo test perf gain or remove.
     NumVar RTAO_minimumFrBounceCoefficient(L"Render/PathTracing/Minimum BRDF bounce contribution coefficient", 0.03f, 0, 1.01f, 0.01f);        // Minimum BRDF coefficient to cast a ray for.
@@ -2665,7 +2668,9 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     m_sceneCB->maxRadianceRayRecursionDepth = SceneArgs::MaxRadianceRayRecursionDepth;
     m_sceneCB->maxShadowRayRecursionDepth = SceneArgs::MaxShadowRayRecursionDepth;
     m_sceneCB->useShadowMap = SceneArgs::UseShadowMap;
-
+#if AO_TEST_TILE_COHERENCY
+    m_sceneCB->AOTile = XMUINT2(SceneArgs::AOTileX, SceneArgs::AOTileY);
+#endif
 
     SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
  }

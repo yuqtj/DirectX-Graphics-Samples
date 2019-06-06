@@ -101,6 +101,8 @@
 
 #define AO_PROGRESSIVE_SAMPLING 0
 
+#define AO_TEST_TILE_COHERENCY 0
+
 #define ENABLE_VSYNC 0
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 1  
@@ -495,6 +497,10 @@ struct SceneConstantBuffer
     BOOL useDiffuseFromMaterial;
     BOOL doShading;                         // Do shading during path tracing. If false, collects only information needed for AO pass.
     BOOL useShadowMap;                      // Use shadow map (true). Trace visibility rays (false).
+
+#if AO_TEST_TILE_COHERENCY
+    XMUINT2 AOTile;
+#endif
 };
  
 // Final render output composition modes.

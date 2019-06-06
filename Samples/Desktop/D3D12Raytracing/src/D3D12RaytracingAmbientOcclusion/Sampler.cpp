@@ -89,7 +89,9 @@ void Sampler::Reset(UINT numSamples, UINT numSampleSets, HemisphereDistribution:
             auto last = first + m_numSamples;
             
             iota(first, last, 0u); // Fill with 0, 1, ..., m_numSamples - 1            
+#if !AO_TEST_TILE_COHERENCY
             shuffle(first, last, m_generatorURNG);  // ToDo comment
+#endif
         }
     }
 };
