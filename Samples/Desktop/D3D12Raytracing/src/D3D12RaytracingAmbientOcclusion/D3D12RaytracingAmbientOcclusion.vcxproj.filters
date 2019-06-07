@@ -372,6 +372,9 @@
     <FxCompile Include="CalculateVariance_SeparableFilterCS.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="SortRays_128x64rayGroupCS.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">

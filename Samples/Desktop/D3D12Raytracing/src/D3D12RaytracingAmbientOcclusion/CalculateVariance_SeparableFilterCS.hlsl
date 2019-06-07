@@ -10,9 +10,11 @@
 //*********************************************************
 
 // Desc: Calculate Variance via Separable kernel.
-// Pitfalls: 
-//  - it is not edge aware
-// Performance: 0.126 ms for 7x7 kernel at 1080p on TitanXP.
+// Pitfalls: // ToDo rename drawback 
+//  - it is not edge aware.
+// Performance: 
+// 0.126ms for 7x7 kernel at 1080p on TitanXP.
+// 0.368ms for 7x7 kernel at 4K on 2080Ti.
 
 #define HLSL
 #include "RaytracingHlslCompat.h"
@@ -31,8 +33,10 @@ RWTexture2D<float> g_outMean : register(u1);
 // Group shared memory caches.
 // Spaced at 4 Byte element widths to avoid bank conflicts on access.
 // Trade precision for speed and pack floats to 16bit.
-// 0.137ms -> 0.126 ms for 7x7 kernel on TitanXp at 1080p.
-#define PACK_OPTIMIZATION 1   
+// 0.137ms -> 0.126ms for 7x7 kernel at 1080p on TitanXp.
+// 0.59ms -> 0.368ms for 7x7 kernel at 4K on 2080Ti.
+#define PACK_OPTIMIZATION 0
+// ToDo pack mean and variance ouputs to 2x16bit
 
 #if PACK_OPTIMIZATION
 groupshared UINT PackedValueObliquenessCache[256];  // 16bit float value and obliqueness.

@@ -8,7 +8,12 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-// ToDo cleanup
+
+
+// Desc: Calculate Variance via Bilateral kernel.
+// Uses normal and depth weights.
+// Performance: 2.8 ms for 7x7 kernel at 4K on 2080Ti.
+
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"

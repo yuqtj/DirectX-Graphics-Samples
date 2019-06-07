@@ -74,11 +74,19 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 1
+#if 0 // Top-down spaceship front rod - long ray distances
+    camera.position.at = { -4.02726f, 1.08747f, -14.9725f, 1 };
+    camera.position.up = { 0.0153231f, -0.232894f, -0.972375f, 0 };
+    camera.position.eye = { -4.02189f, 2.08023f, -15.0949f, 1 };
+#elif 1
             // SpaceShip
             camera.position.at = { -4.69957f, 2.73596f, -18.8503f, 1 };
             camera.position.up = { 0.333712f, 0.88733f, 0.31823f, 0 };
             camera.position.eye = { -5.38028f, 3.09481f, -19.4894f, 1 };
+#elif 1 // Grass shot - short ray distances
+            camera.position.at = { -4.14706f, 1.13742f, -18.0755f, 1 };
+            camera.position.up = { -0.0265382f, 0.874558f, -0.484183f, 0 };
+            camera.position.eye = { -4.08963f, 1.52135f, -17.1536f, 1 };
 #elif 1// Car side behind
             camera.position.at = { -14.7492f, 0.735575f, 2.19938f, 1 };
             camera.position.up = { -0.254448f, 0.961197f, 0.106525f, 0 };

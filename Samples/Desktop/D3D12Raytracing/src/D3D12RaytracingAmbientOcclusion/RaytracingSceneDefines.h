@@ -113,6 +113,9 @@ namespace GlobalRootSignature {
             GbufferNormalRGB,
             AORayHitDistance,
             AOFrameAge,
+            AORayDirectionOriginDepthHitSRV,
+            AORayDirectionOriginDepthHitUAV,
+            AORayGroupThreadOffsets,
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
             PartialDepthDerivatives,
 #endif
@@ -199,7 +202,7 @@ namespace GBufferResource {
 		Hit = 0,		// Geometry hit or not.
 		Material,		// Material of the object hit ~ {MaterialID, texCoord}.
 		HitPosition,	// 3D position of hit.
-		SurfaceNormal,	// 3D normal at a hit and dot(normal, rayDir) in W,
+		SurfaceNormal,	// 3D normal at a hit and dot(normal, rayDir) in W, ToDo rename to encoded or sth
         Distance,       // Length along ray of hit. // ToDo update (depth?)
         Depth,          // Non-linear depth of the hit. // ToDo remove
         SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate remove Surface prefix

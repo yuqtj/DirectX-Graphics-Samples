@@ -563,5 +563,39 @@ namespace GpuKernels
         D3DTexture                          m_windTexture;
     };
 
+    class SortRays
+    {
+    public:
+        // ToDo remove
+        enum FilterType {
+            Default = 0,
+            Count
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList4* commandList,
+            float binDepthSize,
+            UINT width,
+            UINT height,
+            FilterType type,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputThreadGroupIndexOffsetsResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputDebugResourceHandle);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
+
+        ConstantBuffer<SortRaysConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
+    };
+
 }
 

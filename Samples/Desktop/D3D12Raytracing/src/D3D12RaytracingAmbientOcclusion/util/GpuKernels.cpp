@@ -37,6 +37,7 @@
 #include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
 #include "CompiledShaders\GenerateGrassStrawsCS.hlsl.h"
+#include "CompiledShaders\SortRays_128x64rayGroupCS.hlsl.h"
 
 using namespace std;
 
@@ -1617,7 +1618,7 @@ namespace GpuKernels
 
         // ToDo move out or rename
         // ToDo add spaces to names?
-        ScopedTimer _prof(L"CalculateVariance_Bilateral", commandList);
+        ScopedTimer _prof(L"CalculateVariance_Bilateral", commandList); // ToDo update name
 
         // Set pipeline state.
         {
@@ -2051,4 +2052,105 @@ namespace GpuKernels
         }
     }
 
+
+
+    namespace RootSignature {
+        namespace SortRays {
+            namespace Slot {
+                enum Enum {
+                    Output = 0,
+                    Input,
+                    OutputDebug,
+                    ConstantBuffer,
+                    Count
+                };
+            }
+        }
+    }
+
+    void SortRays::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::SortRays;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
+            ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
+            ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+            ranges[Slot::OutputDebug].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // 1 output texture
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
+            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
+            rootParameters[Slot::OutputDebug].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug]);
+            rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: Sort Rays");
+        }
+
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+
+            for (UINT i = 0; i < FilterType::Count; i++)
+            {
+                switch (i)
+                {
+                case Default:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pSortRays_128x64rayGroupCS), ARRAYSIZE(g_pSortRays_128x64rayGroupCS));
+                    break;
+                }
+
+                ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
+                m_pipelineStateObjects[i]->SetName(L"Pipeline state object: Sort Rays");
+            }
+        }
+
+        // Create shader resources
+        {
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: Sort Rays");
+        }
+    }
+
+    // Blurs input resource with a Gaussian filter.
+    // width, height - dimensions of the input resource.
+    void SortRays::Execute(
+        ID3D12GraphicsCommandList4* commandList,
+        float binDepthSize,
+        UINT width,
+        UINT height,
+        FilterType type,
+        ID3D12DescriptorHeap* descriptorHeap,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputThreadGroupIndexOffsetsResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputDebugResourceHandle)
+    {
+        using namespace RootSignature::SortRays;
+        using namespace SortRays;
+
+        ScopedTimer _prof(L"Sort Rays", commandList);
+
+        m_CB->dim = XMUINT2(width, height);
+        m_CB->nullItem = UINT_MAX;
+        m_CB->binDepthSize = binDepthSize;
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
+
+        // Set pipeline state.
+        {
+            commandList->SetDescriptorHeaps(1, &descriptorHeap);
+            commandList->SetComputeRootSignature(m_rootSignature.Get());
+            commandList->SetComputeRootDescriptorTable(Slot::Input, inputRayDirectionOriginDepthResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Output, outputThreadGroupIndexOffsetsResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputDebug, outputDebugResourceHandle);
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
+            commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
+        }
+
+        // Dispatch.
+        XMUINT2 groupSize(CeilDivide(width, RayGroup::Width), CeilDivide(height, RayGroup::Height));
+        commandList->Dispatch(groupSize.x, groupSize.y, 1);
+    }
 }

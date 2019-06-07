@@ -334,7 +334,6 @@ struct AmbientOcclusionGBuffer
 
 struct GBufferRayPayload
 {
-    // ToDo Having rayRecursionDepth causes DeviceRemoved on recursive trace ray. Check on alignments mismatch?
 #if ALLOW_MIRRORS
     UINT rayRecursionDepth;
 #endif
@@ -426,6 +425,44 @@ struct CalculateVariance_BilateralFilterConstantBuffer
     float padding[3];
 };
 
+struct SortRaysConstantBuffer
+{
+    XMUINT2 dim;
+
+    // A sort key that will end up at the end of the list; to be used to pad
+    // lists in LDS.
+    //   Descending:  0x00000000
+    //   Ascending:   0xffffffff
+    // Also used by the ShouldSwap() function to invert ordering.
+    UINT nullItem;
+
+    // Depth for a bin within which to sort further based on direction.
+    float binDepthSize;
+};
+
+#define RTAO_RAY_SORT_1DRAYTRACE 1
+
+#define RTAO_RAY_SORT_NO_SMEM 0
+#if RTAO_RAY_SORT_NO_SMEM
+namespace SortRays {
+    namespace ThreadGroup {
+        enum Enum { Width = 256, Height = 128, Size = Width * Height };
+    }
+    namespace RayGroup {
+        enum Enum { Width = ThreadGroup::Width, Height = 2 * ThreadGroup::Height, Size = Width * Height };
+    }
+}
+#else
+namespace SortRays {
+    namespace ThreadGroup {
+        enum Enum { Width = 128, Height = 8, Size = Width * Height };
+    }
+
+    namespace RayGroup {
+        enum Enum { NumElementPairsPerThread = 4, Width = ThreadGroup::Width, Height = NumElementPairsPerThread * 2 * ThreadGroup::Height, Size = Width * Height };
+    }
+}
+#endif
 
 
 // ToDo split CB?
@@ -441,8 +478,10 @@ struct SceneConstantBuffer
     XMMATRIX lightProjectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
     XMMATRIX lightViewProj;
     XMVECTOR lightPosition;
+
     XMFLOAT3 lightColor;
     float defaultAmbientIntensity;
+
     XMMATRIX prevViewProj;    // ToDo standardzie proj vs projection
     XMMATRIX prevProjToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
     XMVECTOR prevCameraPosition;
@@ -476,7 +515,7 @@ struct SceneConstantBuffer
                                                 // RTAO_ExponentialFalloffMinOcclusionCutoff and RTAO_maxShadowRayHitTime.
     UINT  maxRadianceRayRecursionDepth;
     UINT  maxShadowRayRecursionDepth;
-
+    float padding;   //ToDo remove
 
     BOOL RTAO_IsExponentialFalloffEnabled;               // Apply exponential falloff to AO coefficient based on ray hit distance.    
     float RTAO_exponentialFalloffDecayConstant; 
@@ -492,9 +531,14 @@ struct SceneConstantBuffer
     float RTAO_TraceRayOffsetAlongRayDirection;
     float RTAO_minimumFrBounceCoefficient;  // Minimum bounce coefficient for reflection ray to consider executing a TraceRay for it.
     float RTAO_minimumFtBounceCoefficient;  // Minimum bounce coefficient for transmission ray to consider executing a TraceRay for it.
+    
     BOOL useDiffuseFromMaterial;
     BOOL doShading;                         // Do shading during path tracing. If false, collects only information needed for AO pass.
     BOOL useShadowMap;                      // Use shadow map (true). Trace visibility rays (false).
+    BOOL RTAO_UseSortedRays;
+    
+    XMUINT2 raytracingDim;
+    float padding2[2];
 };
  
 // Final render output composition modes.
@@ -754,6 +798,7 @@ namespace RayGenShaderType {
 	enum Enum {
 		GBuffer = 0,
 		AOFullRes,
+        AOSortedRays,
         AOQuarterRes,
 		Visibility,
         ShadowMap,

@@ -119,6 +119,7 @@ private:
 
     GpuKernels::WriteValueToTexture     m_writeValueToTexture;
     GpuKernels::GenerateGrassPatch      m_grassGeometryGenerator;
+    GpuKernels::SortRays                m_raySorter;
 
 
     D3D12_GPU_DESCRIPTOR_HANDLE m_nullVertexBufferGPUhandle;
@@ -198,6 +199,11 @@ private:
 	RWGpuResource m_AOResources[AOResource::Count];
     RWGpuResource m_AOLowResResources[AOResource::Count];   // ToDo remove unused
 	RWGpuResource m_VisibilityResource;
+
+
+    RWGpuResource m_AORayDirectionOriginDepthHit;
+    RWGpuResource m_sortedRayGroupThreadOffsets;
+    RWGpuResource m_sortedRayGroupDebug;
 
     XMUINT2 c_shadowMapDim = XMUINT2(1024, 1024);
     RWGpuResource m_ShadowMapResource;
