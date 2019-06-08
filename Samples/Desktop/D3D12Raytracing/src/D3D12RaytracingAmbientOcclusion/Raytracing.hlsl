@@ -458,7 +458,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 
         // ToDo remove unnecessary normalize()
         float3 rayDirection = normalize(sample.x * u + sample.y * v + sample.z * w);
-
+        //rayDirection = float3(0, 1, 0);
         if (CB.RTAO_UseSortedRays)
         {
             uint2 DTid = DispatchRaysIndex().xy;
@@ -1057,7 +1057,9 @@ void MyRayGenShader_AO()
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
 #if COMPRES_NORMALS
-        float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[DTid].xy);
+        float4 normalDepth = g_texGBufferNormal[DTid];
+        float3 surfaceNormal = DecodeNormal(normalDepth.xy);
+        float linearDepth = normalDepth.z;
 #else
 		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
 #endif
@@ -1092,7 +1094,7 @@ void MyRayGenShader_AO()
                 numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
             }
         }
-		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, DTid, numSamples, hitPosition, surfaceNormal, surfaceAlbedo);
+		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, DTid, numSamples, hitPosition, surfaceNormal, surfaceAlbedo, linearDepth);
 	}
     else
     {

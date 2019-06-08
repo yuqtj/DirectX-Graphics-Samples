@@ -31,7 +31,6 @@
 // to the sort efficiency is minimal and secondary, it will just order same 
 // depth/normal signature rays in the sort order.
 
-// ToDo test 64KB available on NV Pascal & Turing
 // ToDo test hard coded ascending w/o CB.nullItem
 
 #define HLSL
@@ -44,8 +43,8 @@ RWTexture2D<uint4> g_outDebug : register(u1);  // Thread group per-pixel index o
 
 ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
 
-#define INDEX_HASH_BITS 14          // ~ Up to 16384 indices
-#define NORMAL_KEY_HASH_BITS_1D 3
+#define INDEX_HASH_BITS 13          // ~ Up to 8192 indices
+#define NORMAL_KEY_HASH_BITS_1D 4
 #define DEPTH_KEY_HASH_BITS (32 - (INDEX_HASH_BITS + 2 * NORMAL_KEY_HASH_BITS_1D))
 #define NUM_ELEMENTS SortRays::RayGroup::Size
 #define NUM_THREADS SortRays::ThreadGroup::Size
@@ -130,9 +129,13 @@ uint InsertZeroBit(uint Value, uint BitIdx)
 // (effectively a negation) or leave the bits alone.  When the the NullItem is
 // 0, we are sorting descending, so when A < B, they should swap.  For an
 // ascending sort, ~A < ~B should swap.
-bool ShouldSwap(uint A, uint B)
+bool ShouldSwap(in uint A, in uint B)
 {
+#if RTAO_RAY_SORT_SORT_BY_SRCINDEX
     return (A ^ CB.nullItem) < (B ^ CB.nullItem);
+#else
+    return ((A ^ CB.nullItem)>> INDEX_HASH_BITS) < ((B ^ CB.nullItem) >> INDEX_HASH_BITS);
+#endif
 }
 
 void BitonicSort(uint GI)
@@ -156,9 +159,12 @@ void BitonicSort(uint GI)
                 uint A = SortKeys[Index1];
                 uint B = SortKeys[Index2];
 
+#if RTAO_RAY_SORT_SORT_BY_SRCINDEX
                 if ((A < B) != ((Index1 & k) == 0))
-                {
-                    // Swap the keys
+#else
+                if (((A >> INDEX_HASH_BITS) < (B >> INDEX_HASH_BITS)) != ((Index1 & k) == 0))
+#endif
+                {   // Swap the keys
                     SortKeys[Index1] = B;
                     SortKeys[Index2] = A;
                 }
@@ -176,7 +182,8 @@ void StoreKeyIndex(in uint2 pixel, in uint element)
         uint sortKey = SortKeys[element];
 
         uint srcGI = (sortKey & ((1 << INDEX_HASH_BITS) - 1));
-        g_outSortedThreadGroupIndices[pixel] = uint2(srcGI % SortRays::RayGroup::Width, srcGI / SortRays::RayGroup::Width);
+        uint2 srcIndex = uint2(srcGI % SortRays::RayGroup::Width, srcGI / SortRays::RayGroup::Width);
+        g_outSortedThreadGroupIndices[pixel] = srcIndex;
 
 #if 1
         const uint RayDirectionMask = (1 << NORMAL_KEY_HASH_BITS_1D) - 1;
@@ -184,9 +191,50 @@ void StoreKeyIndex(in uint2 pixel, in uint element)
             (sortKey >> INDEX_HASH_BITS) & RayDirectionMask,
             (sortKey >> (INDEX_HASH_BITS + NORMAL_KEY_HASH_BITS_1D)) & RayDirectionMask);
 
-        g_outDebug[pixel] = uint4(rayDir, 0, 0);
+        g_outDebug[pixel] = uint4(rayDir, srcIndex);
 #endif
     }
+}
+
+// Ref: https://stackoverflow.com/questions/3137266/how-to-de-interleave-bits-unmortonizing
+// Extracts even bits and compacts them.
+uint CompactEvenBits(uint x)
+{
+    x = x & 0x55555555;
+    x = (x | (x >> 1)) & 0x33333333;
+    x = (x | (x >> 2)) & 0x0F0F0F0F;
+    x = (x | (x >> 4)) & 0x00FF00FF;
+    x = (x | (x >> 8)) & 0x0000FFFF;
+    return x;
+}
+
+// Calculates a 2D index (x-axis major)
+// from a 1D morton code index.
+uint2 DeMortonize2D(uint x)
+{
+    return uint2(
+        CompactEvenBits(x),
+        CompactEvenBits(x >> 1));
+}
+
+// Expands even bits by inserting zero inbetween each bit.
+uint expandBits(uint x)
+{
+    x = (x | (x << 16)) & 0x0000FFFF;
+    x = (x | (x << 8)) & 0x00FF00FF;
+    x = (x | (x << 4)) & 0xF0F0F0F0F;
+    x = (x | (x << 2)) & 0x33333333;
+    x = (x | (x << 1)) & 0x55555555;
+    return x;
+}
+
+// Ref: https://devblogs.nvidia.com/thinking-parallel-part-iii-tree-construction-gpu/
+// Calculates a 30-bit Morton code (x-axis major) for a given 2D index.
+uint Morton2D(uint2 index)
+{
+    uint x = expandBits(index.x);
+    uint y = expandBits(index.y);
+    return x | (y << 1);
 }
 
 
@@ -194,7 +242,8 @@ void StoreKeyIndex(in uint2 pixel, in uint element)
 void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
 {
     // Item index of the start of this group.
-    uint2 GroupStart = Gid * uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
+    uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
+    uint2 GroupStart = Gid * RayGroupDim;
     
     // Load inputs.
     {
@@ -202,7 +251,19 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
         uint element = GI;
         for (uint i = 0; i < 2 * NUM_ELEMENT_PAIRS_PER_THREAD; i++)
         {
+#if RTAO_RAY_SORT_ENUMERATE_ELEMENT_ID_IN_MORTON_CODE
+            if (IsWithinBounds(GroupStart + RayGroupDim - 1, CB.dim))
+            {
+                uint2 offset = pixel - GroupStart;
+                FillSortKey(pixel, Morton2D(offset));
+            }
+            else
+            {
+                FillSortKey(pixel, element);
+            }
+#else
             FillSortKey(pixel, element);
+#endif
             pixel.y += SortRays::ThreadGroup::Height;
             element += SortRays::ThreadGroup::Size;
         }
@@ -217,10 +278,44 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
         // ToDo morton code swizzle SM before outputting
         uint2 pixel = GroupStart + GTid;
         uint element = GI;
+
+#if RTAO_RAY_SORT_MORTON_MIRROR
+        bool2 mirrorOrder = (Gid >> 1) & 1;
+        uint id = dot(Gid & 1, uint2(1,2));
+#endif
         for (uint i = 0; i < 2 * NUM_ELEMENT_PAIRS_PER_THREAD; i++)
         {
+#if RTAO_RAY_SORT_STORE_RAYS_IN_MORTON_ORDER_X_MAJOR
+            uint2 morton2DIndex = DeMortonize2D(element);            
+    #if RTAO_RAY_SORT_MORTON_MIRROR
+            uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
+            switch (id)
+            {
+            case 0: pixel = GroupStart + morton2DIndex; 
+                break;
+            case 1: pixel = GroupStart + uint2((SortRays::RayGroup::Width - 1) - morton2DIndex.x, morton2DIndex.y); 
+                break;
+            case 2: pixel = GroupStart + uint2(morton2DIndex.x, (SortRays::RayGroup::Height - 1) - morton2DIndex.y);
+                break;
+            case 3: pixel = GroupStart + uint2(
+                        (SortRays::RayGroup::Width - 1) - morton2DIndex.x, 
+                        (SortRays::RayGroup::Height - 1) - morton2DIndex.y);
+                break;
+            }
+    #else
+            pixel = GroupStart + morton2DIndex;
+    #endif
+            StoreKeyIndex(pixel, element);
+
+#else
+    #if RTAO_RAY_SORT_Y_AXIS_MAJOR
+            pixel = GroupStart + uint2(element / SortRays::RayGroup::Height, element % SortRays::RayGroup::Height);
+            StoreKeyIndex(pixel, element);
+    #else
             StoreKeyIndex(pixel, element);
             pixel.y += SortRays::ThreadGroup::Height;
+    #endif
+#endif
             element += SortRays::ThreadGroup::Size;
         }
     }

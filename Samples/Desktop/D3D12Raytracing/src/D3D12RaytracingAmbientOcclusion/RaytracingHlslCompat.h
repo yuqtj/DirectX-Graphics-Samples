@@ -440,7 +440,12 @@ struct SortRaysConstantBuffer
     float binDepthSize;
 };
 
+#define RTAO_RAY_SORT_SORT_BY_SRCINDEX 1
 #define RTAO_RAY_SORT_1DRAYTRACE 1
+#define RTAO_RAY_SORT_ENUMERATE_ELEMENT_ID_IN_MORTON_CODE 0
+#define RTAO_RAY_SORT_STORE_RAYS_IN_MORTON_ORDER_X_MAJOR 0
+#define RTAO_RAY_SORT_MORTON_MIRROR 0
+#define RTAO_RAY_SORT_Y_AXIS_MAJOR 0
 
 #define RTAO_RAY_SORT_NO_SMEM 0
 #if RTAO_RAY_SORT_NO_SMEM
@@ -455,7 +460,7 @@ namespace SortRays {
 #else
 namespace SortRays {
     namespace ThreadGroup {
-        enum Enum { Width = 128, Height = 8, Size = Width * Height };
+        enum Enum { Width = 64, Height = 16, Size = Width * Height };
     }
 
     namespace RayGroup {

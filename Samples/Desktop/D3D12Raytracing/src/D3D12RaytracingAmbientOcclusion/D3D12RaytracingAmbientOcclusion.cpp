@@ -104,7 +104,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -174,7 +174,7 @@ namespace SceneArgs
 
 
     BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", true);
-    NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 1.0f, 0.1f, 10.f, 0.01f);
+    NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 0.1f, 0.01f, 10.f, 0.01f);
 
     /*
     // Grass geometry
@@ -4040,7 +4040,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
                 CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupThreadOffsets.resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::UAV(m_sortedRayGroupThreadOffsets.resource.Get()),
-                CD3DX12_RESOURCE_BARRIER::UAV(m_sortedRayGroupDebug.resource.Get())  // ToDo
+                //CD3DX12_RESOURCE_BARRIER::UAV(m_sortedRayGroupDebug.resource.Get())  // ToDo
             };
             commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
         }
