@@ -568,7 +568,8 @@ namespace GpuKernels
     public:
         // ToDo remove
         enum FilterType {
-            Default = 0,
+            BitonicSort = 0,
+            CountingSort,
             Count
         };
 

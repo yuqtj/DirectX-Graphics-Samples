@@ -185,7 +185,7 @@ void StoreKeyIndex(in uint2 pixel, in uint element)
         uint2 srcIndex = uint2(srcGI % SortRays::RayGroup::Width, srcGI / SortRays::RayGroup::Width);
         g_outSortedThreadGroupIndices[pixel] = srcIndex;
 
-#if 1
+#if 0
         const uint RayDirectionMask = (1 << NORMAL_KEY_HASH_BITS_1D) - 1;
         uint2 rayDir = uint2(
             (sortKey >> INDEX_HASH_BITS) & RayDirectionMask,

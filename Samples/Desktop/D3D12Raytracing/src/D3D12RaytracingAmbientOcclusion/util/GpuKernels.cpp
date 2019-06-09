@@ -38,6 +38,7 @@
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
 #include "CompiledShaders\GenerateGrassStrawsCS.hlsl.h"
 #include "CompiledShaders\SortRays_128x64rayGroupCS.hlsl.h"
+#include "CompiledShaders\CountingSort_SortRays_128x64rayGroupCS.hlsl.h"
 
 using namespace std;
 
@@ -2098,8 +2099,12 @@ namespace GpuKernels
             {
                 switch (i)
                 {
-                case Default:
+
+                case BitonicSort:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pSortRays_128x64rayGroupCS), ARRAYSIZE(g_pSortRays_128x64rayGroupCS));
+                    break;
+                case CountingSort:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCountingSort_SortRays_128x64rayGroupCS), ARRAYSIZE(g_pCountingSort_SortRays_128x64rayGroupCS));
                     break;
                 }
 
