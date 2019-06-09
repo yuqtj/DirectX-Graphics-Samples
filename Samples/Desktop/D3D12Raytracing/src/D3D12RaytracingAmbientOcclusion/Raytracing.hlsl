@@ -407,10 +407,14 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
     // ToDo AO has square alias due to same hemisphere
     float3 u, v, w;
     w = surfaceNormal;
+#if 0
+    w = float3(0, 1, 0);
+#endif
     float3 right = float3(0.0072, 0.999994132f, 0.0034);
     v = normalize(cross(w, right));
     u = cross(v, w);
     
+
     // Calculate offsets to the pregenerated sample set.
     uint sampleSetJump;     // Offset to the start of the sample set
     uint sampleJump;        // Offset to the first sample for this pixel within a sample set.

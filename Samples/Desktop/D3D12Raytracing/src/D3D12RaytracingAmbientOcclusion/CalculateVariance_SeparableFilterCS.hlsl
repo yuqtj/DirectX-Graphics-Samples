@@ -161,8 +161,6 @@ void BlurVertically(uint2 DTid, uint topMostIndex)
 }
 
 
-// Do a separable bilateral accumulation of mean and variance
-// Supports kernel radius of up to 4, i.e. kernel widths 9x9.
 [numthreads(CalculateVariance_Bilateral::ThreadGroup::Width, CalculateVariance_Bilateral::ThreadGroup::Height, 1)]
 void main(uint GI : SV_GroupIndex, uint2 GTid : SV_GroupThreadID, uint2 DTid : SV_DispatchThreadID)
 {

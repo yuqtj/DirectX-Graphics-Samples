@@ -9,9 +9,11 @@
 //
 //*********************************************************
 
-
 // Desc: Calculate Variance via Bilateral kernel.
 // Uses normal and depth weights.
+// Pitfalls: 
+//  - normal weights may limit number of samples for small round objects
+//  - depth weights may limit number of samples for thin objects (i.e. grass).
 // Performance: 2.8 ms for 7x7 kernel at 4K on 2080Ti.
 
 #define HLSL
