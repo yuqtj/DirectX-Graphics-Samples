@@ -10,6 +10,12 @@
 //*********************************************************
 
 // Desc: Counting Sort. ToDo
+// Algorithm:
+// - Calculates histograms for the key hashes
+// - Calculates a prefix sum of the histograms
+// - Scatter writes the ray source index offsets based on its hash and the prefix sum for the hash key into SMEM cache
+// - Linearly spills source index offsets from SMEM cache into VRAM
+
 
 #define HLSL
 #include "RaytracingHlslCompat.h"
@@ -180,6 +186,7 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
             uint2 pixel = GroupStart + srcIndex;
             if (IsWithinBounds(pixel, CB.dim))
             {
+                // ToDo double check ray groups overflowing dimensions are properly handled
                 float4 normalDepthHit = g_inRayDirectionOriginDepthHit[pixel];
                 //bool hit = normalDepthHit.w;
 
