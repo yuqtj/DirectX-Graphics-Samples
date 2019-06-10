@@ -520,8 +520,6 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     m_animateCamera(false),
     m_animateLight(false),
     m_animateScene(false),
-    m_missShaderTableStrideInBytes(UINT_MAX),
-    m_hitGroupShaderTableStrideInBytes(UINT_MAX),
     m_isGeometryInitializationRequested(true),
     m_isASinitializationRequested(true),
 	m_isSceneInitializationRequested(false),
@@ -530,6 +528,12 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     m_numFramesSinceASBuild(0),
 	m_isCameraFrozen(false)
 {
+
+    for (UINT i = 0; i < RaytracingType::Count; i++)
+    {
+        m_missShaderTableStrideInBytes[i] = UINT_MAX;
+        m_hitGroupShaderTableStrideInBytes[i] = UINT_MAX;
+    }
     g_pSample = this;
     UpdateForSizeChange(width, height);
 	m_generatorURNG.seed(1729);
@@ -1077,7 +1081,8 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 
 #if ENABLE_RAYTRACING
 	// Build shader tables, which define shaders and their local root arguments.
-    BuildShaderTables();
+    BuildShaderTables(RaytracingType::Pathtracing);
+    BuildShaderTables(RaytracingType::AmbientOcclusion);
 #endif
 
     InitializeAccelerationStructures();
@@ -1211,38 +1216,54 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 // DXIL library
 // This contains the shaders and their entrypoints for the state object.
 // Since shaders are not considered a subobject, they need to be passed in via DXIL library subobjects.
-void D3D12RaytracingAmbientOcclusion::CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline)
+void D3D12RaytracingAmbientOcclusion::CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly)
 {
     auto lib = raytracingPipeline->CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
     D3D12_SHADER_BYTECODE libdxil = CD3DX12_SHADER_BYTECODE((void *)g_pRaytracing, ARRAYSIZE(g_pRaytracing));
     lib->SetDXILLibrary(&libdxil);
     // Use default shader exports for a DXIL library/collection subobject ~ surface all shaders.
+
+    // ToDo cleanup
+    if (shadowOnly)
+    {
+        lib->DefineExport(c_rayGenShaderNames[RayGenShaderType::AOFullRes]);
+        lib->DefineExport(c_rayGenShaderNames[RayGenShaderType::AOSortedRays]);
+        lib->DefineExport(c_rayGenShaderNames[RayGenShaderType::ShadowMap]);
+        lib->DefineExport(c_rayGenShaderNames[RayGenShaderType::Visibility]);
+        lib->DefineExport(c_closestHitShaderNames[RayType::Shadow]);
+        lib->DefineExport(c_missShaderNames[RayType::Shadow]);
+    }
 }
 
 // Hit groups
 // A hit group specifies closest hit, any hit and intersection shaders 
 // to be executed when a ray intersects the geometry.
-void D3D12RaytracingAmbientOcclusion::CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline)
+void D3D12RaytracingAmbientOcclusion::CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly)
 {
     // Triangle geometry hit groups
     {
         for (UINT rayType = 0; rayType < RayType::Count; rayType++)
         {
-            auto hitGroup = raytracingPipeline->CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-            
-			if (c_closestHitShaderNames[rayType])
-			{
-				hitGroup->SetClosestHitShaderImport(c_closestHitShaderNames[rayType]);
-			}
-            hitGroup->SetHitGroupExport(c_hitGroupNames_TriangleGeometry[rayType]);
-            hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+            // ToDo cleanup
+            if (!shadowOnly || rayType == RayType::Shadow)
+            {
+                auto hitGroup = raytracingPipeline->CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+
+                if (c_closestHitShaderNames[rayType])
+                {
+
+                    hitGroup->SetClosestHitShaderImport(c_closestHitShaderNames[rayType]);
+                }
+                hitGroup->SetHitGroupExport(c_hitGroupNames_TriangleGeometry[rayType]);
+                hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+            }
         }
     }
 }
 
 // Local root signature and shader association
 // This is a root signature that enables a shader to have unique arguments that come from shader tables.
-void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline)
+void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly)
 {
     // Ray gen and miss shaders in this sample are not using a local root signature and thus one is not associated with them.
 
@@ -1254,7 +1275,14 @@ void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12
         // Shader association
         auto rootSignatureAssociation = raytracingPipeline->CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
         rootSignatureAssociation->SetSubobjectToAssociate(*localRootSignature);
-        rootSignatureAssociation->AddExports(c_hitGroupNames_TriangleGeometry);
+        if (shadowOnly)
+        {
+            rootSignatureAssociation->AddExport(c_hitGroupNames_TriangleGeometry[RayType::Shadow]);
+        }
+        else
+        {
+            rootSignatureAssociation->AddExports(c_hitGroupNames_TriangleGeometry);
+        }
     }
 }
 
@@ -1264,56 +1292,112 @@ void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12
 void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
 {
     auto device = m_deviceResources->GetD3DDevice();
+    // Pathracing state object.
+    {
+        // ToDo review
+        // Create 18 subobjects that combine into a RTPSO:
+        // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
+        // Default association applies to every exported shader entrypoint that doesn't have any of the same type of subobject associated with it.
+        // This simple sample utilizes default shader association except for local root signature subobject
+        // which has an explicit association specified purely for demonstration purposes.
+        // 1 - DXIL library
+        // 8 - Hit group types - 4 geometries (1 triangle, 3 aabb) x 2 ray types (ray, shadowRay)
+        // 1 - Shader config
+        // 6 - 3 x Local root signature and association
+        // 1 - Global root signature
+        // 1 - Pipeline config
+        CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
 
-    // ToDo review
-    // Create 18 subobjects that combine into a RTPSO:
-    // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
-    // Default association applies to every exported shader entrypoint that doesn't have any of the same type of subobject associated with it.
-    // This simple sample utilizes default shader association except for local root signature subobject
-    // which has an explicit association specified purely for demonstration purposes.
-    // 1 - DXIL library
-    // 8 - Hit group types - 4 geometries (1 triangle, 3 aabb) x 2 ray types (ray, shadowRay)
-    // 1 - Shader config
-    // 6 - 3 x Local root signature and association
-    // 1 - Global root signature
-    // 1 - Pipeline config
-    CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
+        // DXIL library
+        CreateDxilLibrarySubobject(&raytracingPipeline);
 
-    // DXIL library
-    CreateDxilLibrarySubobject(&raytracingPipeline);
+        // Hit groups
+        CreateHitGroupSubobjects(&raytracingPipeline);
 
-    // Hit groups
-    CreateHitGroupSubobjects(&raytracingPipeline);
+        // Shader config
+        // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
+        auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
+        UINT payloadSize = static_cast<UINT>(max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload)));		// ToDo revise
 
-    // Shader config
-    // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
-    auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-    UINT payloadSize = static_cast<UINT>(max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload)));		// ToDo revise
+        UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics
+        shaderConfig->Config(payloadSize, attributeSize);
 
-    UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics
-    shaderConfig->Config(payloadSize, attributeSize);
+        // Local root signature and shader association
+        // This is a root signature that enables a shader to have unique arguments that come from shader tables.
+        CreateLocalRootSignatureSubobjects(&raytracingPipeline);
 
-    // Local root signature and shader association
-    // This is a root signature that enables a shader to have unique arguments that come from shader tables.
-    CreateLocalRootSignatureSubobjects(&raytracingPipeline);
+        // Global root signature
+        // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
+        auto globalRootSignature = raytracingPipeline.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
+        globalRootSignature->SetRootSignature(m_raytracingGlobalRootSignature.Get());
 
-    // Global root signature
-    // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
-    auto globalRootSignature = raytracingPipeline.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
-    globalRootSignature->SetRootSignature(m_raytracingGlobalRootSignature.Get());
+        // Pipeline config
+        // Defines the maximum TraceRay() recursion depth.
+        auto pipelineConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
+        // PERFOMANCE TIP: Set max recursion depth as low as needed
+        // as drivers may apply optimization strategies for low recursion depths.
+        UINT maxRecursionDepth = MAX_RAY_RECURSION_DEPTH;
+        pipelineConfig->Config(maxRecursionDepth);
 
-    // Pipeline config
-    // Defines the maximum TraceRay() recursion depth.
-    auto pipelineConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
-    // PERFOMANCE TIP: Set max recursion depth as low as needed
-    // as drivers may apply optimization strategies for low recursion depths.
-    UINT maxRecursionDepth = MAX_RAY_RECURSION_DEPTH;
-    pipelineConfig->Config(maxRecursionDepth);
+        PrintStateObjectDesc(raytracingPipeline);
 
-    PrintStateObjectDesc(raytracingPipeline);
+        // Create the state object.
+        ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObjects[RaytracingType::Pathtracing])), L"Couldn't create DirectX Raytracing state object.\n");
+    }
 
-    // Create the state object.
-    ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object.\n");
+    // Ambient Occlusion state object.
+    {
+        // ToDo review
+        // Create 18 subobjects that combine into a RTPSO:
+        // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
+        // Default association applies to every exported shader entrypoint that doesn't have any of the same type of subobject associated with it.
+        // This simple sample utilizes default shader association except for local root signature subobject
+        // which has an explicit association specified purely for demonstration purposes.
+        // 1 - DXIL library
+        // 8 - Hit group types - 4 geometries (1 triangle, 3 aabb) x 2 ray types (ray, shadowRay)
+        // 1 - Shader config
+        // 6 - 3 x Local root signature and association
+        // 1 - Global root signature
+        // 1 - Pipeline config
+        CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
+
+        bool loadShadowShadersOnly = true;
+        // DXIL library
+        CreateDxilLibrarySubobject(&raytracingPipeline, loadShadowShadersOnly);
+
+        // Hit groups
+        CreateHitGroupSubobjects(&raytracingPipeline, loadShadowShadersOnly);
+
+        // Shader config
+        // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
+        auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
+        UINT payloadSize = static_cast<UINT>(sizeof(ShadowRayPayload));		// ToDo revise
+
+        UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics
+        shaderConfig->Config(payloadSize, attributeSize);
+
+        // Local root signature and shader association
+        // This is a root signature that enables a shader to have unique arguments that come from shader tables.
+        CreateLocalRootSignatureSubobjects(&raytracingPipeline, loadShadowShadersOnly);
+
+        // Global root signature
+        // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
+        auto globalRootSignature = raytracingPipeline.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
+        globalRootSignature->SetRootSignature(m_raytracingGlobalRootSignature.Get());
+
+        // Pipeline config
+        // Defines the maximum TraceRay() recursion depth.
+        auto pipelineConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
+        // PERFOMANCE TIP: Set max recursion depth as low as needed
+        // as drivers may apply optimization strategies for low recursion depths.
+        UINT maxRecursionDepth = 1;
+        pipelineConfig->Config(maxRecursionDepth);
+
+        PrintStateObjectDesc(raytracingPipeline);
+
+        // Create the state object.
+        ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObjects[RaytracingType::AmbientOcclusion])), L"Couldn't create DirectX Raytracing state object.\n");
+    }
 }
 
 // Create a 2D output texture for raytracing.
@@ -2257,7 +2341,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 
 // Build shader tables.
 // This encapsulates all shader records - shaders and the arguments for their local root signatures.
-void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
+void D3D12RaytracingAmbientOcclusion::BuildShaderTables(RaytracingType::Enum raytracingType)
 {
 	auto device = m_deviceResources->GetD3DDevice();
 
@@ -2270,29 +2354,60 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 
 	auto GetShaderIDs = [&](auto* stateObjectProperties)
 	{
-		for (UINT i = 0; i < RayGenShaderType::Count; i++)
-		{
-			rayGenShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_rayGenShaderNames[i]);
-			shaderIdToStringMap[rayGenShaderIDs[i]] = c_rayGenShaderNames[i];
+        for (UINT i = 0; i < RayGenShaderType::Count; i++)
+        {
+            // ToDo cleanup
+            if (raytracingType == RaytracingType::Pathtracing ||
+                i == RayGenShaderType::AOFullRes ||
+                i == RayGenShaderType::AOSortedRays ||
+                i == RayGenShaderType::ShadowMap ||
+                i == RayGenShaderType::Visibility)
+            {
+                rayGenShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_rayGenShaderNames[i]);
+                shaderIdToStringMap[rayGenShaderIDs[i]] = c_rayGenShaderNames[i];
+            }
+            else
+            {
+                rayGenShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_rayGenShaderNames[RayGenShaderType::AOFullRes]);
+                shaderIdToStringMap[rayGenShaderIDs[i]] = c_rayGenShaderNames[RayGenShaderType::AOFullRes];
+            }
 		}
 
 		for (UINT i = 0; i < RayType::Count; i++)
 		{
-			missShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_missShaderNames[i]);
-			shaderIdToStringMap[missShaderIDs[i]] = c_missShaderNames[i];
+            if (raytracingType == RaytracingType::Pathtracing ||
+                i == RayType::Shadow)
+            {
+                missShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_missShaderNames[i]);
+                shaderIdToStringMap[missShaderIDs[i]] = c_missShaderNames[i];
+            }
+            else
+            {
+                missShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_missShaderNames[RayType::Shadow]);
+                shaderIdToStringMap[missShaderIDs[i]] = c_missShaderNames[RayType::Shadow];
+            }
 		}
 
 		for (UINT i = 0; i < RayType::Count; i++)
 		{
-			hitGroupShaderIDs_TriangleGeometry[i] = stateObjectProperties->GetShaderIdentifier(c_hitGroupNames_TriangleGeometry[i]);
-			shaderIdToStringMap[hitGroupShaderIDs_TriangleGeometry[i]] = c_hitGroupNames_TriangleGeometry[i];
+            if (raytracingType == RaytracingType::Pathtracing ||
+                i == RayType::Shadow)
+            {
+                hitGroupShaderIDs_TriangleGeometry[i] = stateObjectProperties->GetShaderIdentifier(c_hitGroupNames_TriangleGeometry[i]);
+                shaderIdToStringMap[hitGroupShaderIDs_TriangleGeometry[i]] = c_hitGroupNames_TriangleGeometry[i];
+            }
+            else
+            {
+                hitGroupShaderIDs_TriangleGeometry[i] = stateObjectProperties->GetShaderIdentifier(c_hitGroupNames_TriangleGeometry[RayType::Shadow]);
+                shaderIdToStringMap[hitGroupShaderIDs_TriangleGeometry[i]] = c_hitGroupNames_TriangleGeometry[RayType::Shadow];
+            }
 		}
 	};
 
 	// Get shader identifiers.
 	UINT shaderIDSize;
 	ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
-	ThrowIfFailed(m_dxrStateObject.As(&stateObjectProperties));
+	ThrowIfFailed(m_dxrStateObjects[raytracingType].As(&stateObjectProperties));
 	GetShaderIDs(stateObjectProperties.Get());
 	shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 
@@ -2326,10 +2441,10 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 
 		for (UINT i = 0; i < RayGenShaderType::Count; i++)
 		{
-			ShaderTable rayGenShaderTable(device, numShaderRecords, shaderRecordSize, L"RayGenShaderTable");
-			rayGenShaderTable.push_back(ShaderRecord(rayGenShaderIDs[i], shaderIDSize, nullptr, 0));
-			rayGenShaderTable.DebugPrint(shaderIdToStringMap);
-			m_rayGenShaderTables[i] = rayGenShaderTable.GetResource();
+            ShaderTable rayGenShaderTable(device, numShaderRecords, shaderRecordSize, L"RayGenShaderTable");
+            rayGenShaderTable.push_back(ShaderRecord(rayGenShaderIDs[i], shaderIDSize, nullptr, 0));
+            rayGenShaderTable.DebugPrint(shaderIdToStringMap);
+            m_rayGenShaderTables[raytracingType][i] = rayGenShaderTable.GetResource();
 		}
 	}
 
@@ -2341,11 +2456,11 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 		ShaderTable missShaderTable(device, numShaderRecords, shaderRecordSize, L"MissShaderTable");
 		for (UINT i = 0; i < RayType::Count; i++)
 		{
-			missShaderTable.push_back(ShaderRecord(missShaderIDs[i], shaderIDSize, nullptr, 0));
+            missShaderTable.push_back(ShaderRecord(missShaderIDs[i], shaderIDSize, nullptr, 0));
 		}
 		missShaderTable.DebugPrint(shaderIdToStringMap);
-		m_missShaderTableStrideInBytes = missShaderTable.GetShaderRecordSize();
-		m_missShaderTable = missShaderTable.GetResource();
+		m_missShaderTableStrideInBytes[raytracingType] = missShaderTable.GetShaderRecordSize();
+		m_missShaderTable[raytracingType] = missShaderTable.GetResource();
 	}
 
 	// ToDo remove
@@ -2469,8 +2584,8 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
             }
         }
         hitGroupShaderTable.DebugPrint(shaderIdToStringMap);
-        m_hitGroupShaderTableStrideInBytes = hitGroupShaderTable.GetShaderRecordSize();
-        m_hitGroupShaderTable = hitGroupShaderTable.GetResource();
+        m_hitGroupShaderTableStrideInBytes[raytracingType] = hitGroupShaderTable.GetShaderRecordSize();
+        m_hitGroupShaderTable[raytracingType] = hitGroupShaderTable.GetResource();
     }
 }
 
@@ -2722,7 +2837,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructure()
     }
 }
 
-void D3D12RaytracingAmbientOcclusion::DispatchRays(ID3D12Resource* rayGenShaderTable, uint32_t width, uint32_t height)
+void D3D12RaytracingAmbientOcclusion::DispatchRays(RaytracingType::Enum raytracingType, ID3D12Resource* rayGenShaderTable, uint32_t width, uint32_t height)
 {
 	auto commandList = m_deviceResources->GetCommandList();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
@@ -2730,18 +2845,18 @@ void D3D12RaytracingAmbientOcclusion::DispatchRays(ID3D12Resource* rayGenShaderT
     ScopedTimer _prof(L"DispatchRays", commandList);
 
 	D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
-	dispatchDesc.HitGroupTable.StartAddress = m_hitGroupShaderTable->GetGPUVirtualAddress();
-	dispatchDesc.HitGroupTable.SizeInBytes = m_hitGroupShaderTable->GetDesc().Width;
-	dispatchDesc.HitGroupTable.StrideInBytes = m_hitGroupShaderTableStrideInBytes;
-	dispatchDesc.MissShaderTable.StartAddress = m_missShaderTable->GetGPUVirtualAddress();
-	dispatchDesc.MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
-	dispatchDesc.MissShaderTable.StrideInBytes = m_missShaderTableStrideInBytes;
+	dispatchDesc.HitGroupTable.StartAddress = m_hitGroupShaderTable[raytracingType]->GetGPUVirtualAddress();
+	dispatchDesc.HitGroupTable.SizeInBytes = m_hitGroupShaderTable[raytracingType]->GetDesc().Width;
+	dispatchDesc.HitGroupTable.StrideInBytes = m_hitGroupShaderTableStrideInBytes[raytracingType];
+	dispatchDesc.MissShaderTable.StartAddress = m_missShaderTable[raytracingType]->GetGPUVirtualAddress();
+	dispatchDesc.MissShaderTable.SizeInBytes = m_missShaderTable[raytracingType]->GetDesc().Width;
+	dispatchDesc.MissShaderTable.StrideInBytes = m_missShaderTableStrideInBytes[raytracingType];
 	dispatchDesc.RayGenerationShaderRecord.StartAddress = rayGenShaderTable->GetGPUVirtualAddress();
 	dispatchDesc.RayGenerationShaderRecord.SizeInBytes = rayGenShaderTable->GetDesc().Width;
 	dispatchDesc.Width = width != 0 ? width : m_GBufferWidth;
 	dispatchDesc.Height = height != 0 ? height : m_GBufferHeight;
 	dispatchDesc.Depth = 1;
-	commandList->SetPipelineState1(m_dxrStateObject.Get());
+	commandList->SetPipelineState1(m_dxrStateObjects[raytracingType].Get());
 
 	commandList->DispatchRays(&dispatchDesc);
 };
@@ -3544,7 +3659,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::PartialDepthDerivatives, m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
 #endif	
 	// Dispatch Rays.
-    DispatchRays(m_rayGenShaderTables[RayGenShaderType::GBuffer].Get());
+    DispatchRays(RaytracingType::Pathtracing, m_rayGenShaderTables[RaytracingType::Pathtracing][RayGenShaderType::GBuffer].Get());
 
 	// Transition GBuffer resources to shader resource state.
 	{
@@ -3796,7 +3911,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	// Bind the heaps, acceleration structure and dispatch rays. 
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
 
-    DispatchRays(m_rayGenShaderTables[RayGenShaderType::Visibility].Get());
+    DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RaytracingType::AmbientOcclusion][RayGenShaderType::Visibility].Get());
     
 	// Transition shadow resources to shader resource state.
 	{
@@ -3863,7 +3978,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
     // Bind the heaps, acceleration structure and dispatch rays. 
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
 
-    DispatchRays(m_rayGenShaderTables[RayGenShaderType::ShadowMap].Get(), c_shadowMapDim.x, c_shadowMapDim.y);
+    DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RaytracingType::AmbientOcclusion][RayGenShaderType::ShadowMap].Get(), c_shadowMapDim.x, c_shadowMapDim.y);
 
     // Transition shadow resources to shader resource state.
     {
@@ -3970,9 +4085,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
             CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::HitCount].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Coefficient].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
-             CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupThreadOffsets.resource.Get(), before, after),
-             CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
-              CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepthHit.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupThreadOffsets.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepthHit.resource.Get(), before, after),
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -4000,7 +4115,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 	// Bind the heaps, acceleration structure and dispatch rays. 
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
 
-    DispatchRays(m_rayGenShaderTables[RayGenShaderType::AOFullRes].Get(), m_raytracingWidth, m_raytracingHeight);
+    DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RaytracingType::AmbientOcclusion][RayGenShaderType::AOFullRes].Get(), m_raytracingWidth, m_raytracingHeight);
 
     // ToDo Remove
     //DispatchRays(m_rayGenShaderTables[SceneArgs::QuarterResAO ? RayGenShaderType::AOQuarterRes : RayGenShaderType::AOFullRes].Get(),
@@ -4077,9 +4192,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
             commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
 
 #if RTAO_RAY_SORT_1DRAYTRACE
-            DispatchRays(m_rayGenShaderTables[RayGenShaderType::AOSortedRays].Get(), m_raytracingWidth * m_raytracingHeight, 1 );
+            DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RaytracingType::AmbientOcclusion][RayGenShaderType::AOSortedRays].Get(), m_raytracingWidth * m_raytracingHeight, 1 );
 #else
-            DispatchRays(m_rayGenShaderTables[RayGenShaderType::AOSortedRays].Get(), m_raytracingWidth, m_raytracingHeight);
+            DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RaytracingType::AmbientOcclusion][RayGenShaderType::AOSortedRays].Get(), m_raytracingWidth, m_raytracingHeight);
 #endif
         }
     }
@@ -4445,25 +4560,29 @@ void D3D12RaytracingAmbientOcclusion::ReleaseDeviceDependentResources()
 {
     EngineProfiling::ReleaseDevice();
 
-	if (m_enableUI)
-	{
-		m_uiLayer.reset();
-	}
+    if (m_enableUI)
+    {
+        m_uiLayer.reset();
+    }
 
     m_raytracingGlobalRootSignature.Reset();
     ResetComPtrArray(&m_raytracingLocalRootSignature);
-    m_dxrStateObject.Reset();
+    ResetComPtrArray(&m_dxrStateObjects);
 
     m_raytracingGlobalRootSignature.Reset();
     ResetComPtrArray(&m_raytracingLocalRootSignature);
 
-	m_cbvSrvUavHeap.release();
+    m_cbvSrvUavHeap.release();
     m_csHemisphereVisualizationCB.Release();
-    
+
     m_raytracingOutput.resource.Reset();
-	ResetComPtrArray(&m_rayGenShaderTables);
-    m_missShaderTable.Reset();
-    m_hitGroupShaderTable.Reset();
+
+    for (UINT i = 0; i < RaytracingType::Count; i++)
+    {
+        ResetComPtrArray(&m_rayGenShaderTables[i]);
+        m_missShaderTable[i].Reset();
+        m_hitGroupShaderTable[i].Reset();
+    }
 }
 
 void D3D12RaytracingAmbientOcclusion::RecreateD3D()
