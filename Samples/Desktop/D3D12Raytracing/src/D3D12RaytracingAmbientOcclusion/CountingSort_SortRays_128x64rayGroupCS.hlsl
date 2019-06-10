@@ -35,8 +35,8 @@ ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
 groupshared uint KeyCounts[NUM_PING_PONG_BUFFERS][NUM_KEYS];
 
 // Sorted source indices for each ray, packed as two 2D 8bit indices
-// Hi bits: even indices
-// Lo bits: odd indices
+// Hi bits: odd indices
+// Lo bits: even indices
 groupshared uint SrcIndices[NUM_ELEMENTS / 2];
 
 
