@@ -45,12 +45,12 @@ ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
 
 #define INDEX_HASH_BITS 13          // ~ Up to 8192 indices
 #define NORMAL_KEY_HASH_BITS_1D 4
-#define DEPTH_KEY_HASH_BITS (32 - (INDEX_HASH_BITS + 2 * NORMAL_KEY_HASH_BITS_1D))
+#define DEPTH_KEY_HASH_BITS 2
 #define NUM_ELEMENTS SortRays::RayGroup::Size
 #define NUM_THREADS SortRays::ThreadGroup::Size
 #define NUM_ELEMENTS_PER_THREAD (2 * SortRays::RayGroup::NumElementPairsPerThread)
 
-#define NUM_KEYS (1 << (2*NORMAL_KEY_HASH_BITS_1D))
+#define NUM_KEYS (1 << (2*NORMAL_KEY_HASH_BITS_1D + DEPTH_KEY_HASH_BITS))
 
 
 // Counts of inputs for each key.
@@ -83,7 +83,8 @@ uint CreateHashKey(in float3 normal, in float linearDepth)
     //  - Hi bits: depthKeyHash
     //  - Mid bits: normalKeyHashes Y and X
     //  - Low bits: source data thread group index
-    return   (normalKeyHash.y << (NORMAL_KEY_HASH_BITS_1D ))
+    return   (depthKeyHash << (2 * NORMAL_KEY_HASH_BITS_1D))
+            + (normalKeyHash.y << (NORMAL_KEY_HASH_BITS_1D ))
             + normalKeyHash.x;
 }
 
@@ -198,24 +199,18 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
     ZeroOutKeys(GI);
 
     CalculateKeyCountHistograms(Gid, GI);
-    
- /*   for (uint key = GI; key < NUM_KEYS; key += NUM_THREADS)
-    {
-        KeyCounts[0][key] = 1;
-    }
-    GroupMemoryBarrierWithGroupSync();*/
 
     ExclusivePrefixSum(GI);
-
-    //uint p = (uint(log2(NUM_KEYS)) & 1) ^ 1;
-    //DebugPrintOutHistograms(Gid, GI, p);
-    //return;
 
     // Write the sorted indices to memory.
     {
         uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
         uint2 GroupStart = Gid * RayGroupDim;
+        uint2 RayGroupEnd = min(GroupStart + RayGroupDim, CB.dim);
+        RayGroupDim = RayGroupEnd - GroupStart;
+
         uint p = (uint(log2(NUM_KEYS)) & 1) ^ 1;    // index of a buffer last written to in prefix sum.
+
         for (uint i = GI; i < NUM_ELEMENTS; i += NUM_THREADS)
         {
             uint2 srcIndex = uint2(i % SortRays::RayGroup::Width, i / SortRays::RayGroup::Width);
@@ -233,7 +228,14 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
 
                     uint index;
                     InterlockedAdd(KeyCounts[p][key], 1, index);
-                    uint2 outPixel = GroupStart + uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
+                    uint2 destIndex = uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
+
+                    // ToDo clip RayGroups if they go out of bounds.
+
+                    // Flip order so that buckets are countinuous when reading the sorted rays
+                    // row by row within ray group and then row by row ray groups
+                    destIndex = (Gid.x & 1) ? (RayGroupDim - 1) - destIndex: destIndex;
+                    uint2 outPixel = GroupStart + destIndex;
 
                     g_outSortedThreadGroupIndices[outPixel] = srcIndex;
 #if 0

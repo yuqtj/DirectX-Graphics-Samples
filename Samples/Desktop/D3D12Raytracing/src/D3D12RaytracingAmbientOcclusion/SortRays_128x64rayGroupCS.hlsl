@@ -1,3 +1,14 @@
+
+#if 0
+#define HLSL
+#include "RaytracingHlslCompat.h"
+#include "RaytracingShaderHelper.hlsli"
+
+[numthreads(SortRays::ThreadGroup::Width, SortRays::ThreadGroup::Height, 1)]
+void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+}
+#else
 //*********************************************************
 //
 // Copyright (c) Microsoft. All rights reserved.
@@ -320,3 +331,4 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
         }
     }
 }
+#endif
