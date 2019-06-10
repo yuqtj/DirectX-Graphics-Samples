@@ -461,6 +461,7 @@ namespace SortRays {
 }
 #else
 
+#define RTAO_RAY_SORT_PING_PONG_MASKED 0
 #define RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM 1
 
 namespace SortRays {
@@ -469,9 +470,9 @@ namespace SortRays {
     }
 
 #if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM
-#define RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM_PACK_INDICES 0
+#define RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM_PACK_INDICES 1
     namespace RayGroup {
-        enum Enum { NumElementPairsPerThread = 2, Width = ThreadGroup::Width, Height = NumElementPairsPerThread * 2 * ThreadGroup::Height, Size = Width * Height };
+        enum Enum { NumElementPairsPerThread = 4, Width = ThreadGroup::Width, Height = NumElementPairsPerThread * 2 * ThreadGroup::Height, Size = Width * Height };
     }
 #else
     namespace RayGroup {

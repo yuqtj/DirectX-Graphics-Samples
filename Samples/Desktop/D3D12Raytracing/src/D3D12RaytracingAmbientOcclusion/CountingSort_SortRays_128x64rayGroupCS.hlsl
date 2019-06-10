@@ -56,7 +56,11 @@ ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
 // Counts of inputs for each key.
 // Stored as two ping-pong buffers.
 #define NUM_PING_PONG_BUFFERS 2
+#if RTAO_RAY_SORT_PING_PONG_MASKED
+groupshared uint KeyCounts[NUM_KEYS];
+#else
 groupshared uint KeyCounts[NUM_PING_PONG_BUFFERS][NUM_KEYS];
+#endif
 #if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM
 
 #if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM_PACK_INDICES
@@ -118,7 +122,11 @@ void AddKeyCount(uint bufferID, uint2 pixel)
             float3 normal = DecodeNormal(normalDepthHit.xy);
             float linearDepth = normalDepthHit.z;
             uint key = CreateHashKey(normal, linearDepth);
+#if RTAO_RAY_SORT_PING_PONG_MASKED
+            InterlockedAdd(KeyCounts[key], 1 << (bufferID * 16));
+#else
             InterlockedAdd(KeyCounts[bufferID][key], 1);
+#endif
         }
     }
 }
@@ -268,10 +276,12 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
                     // ToDo destIndex = (Gid.x & 1) ? (RayGroupDim - 1) - destIndex : destIndex;
                     uint2 outPixel = GroupStart + destIndex;
                     g_outSortedThreadGroupIndices[outPixel] = srcIndex;
-#endif
+
 #if 0
-                    g_outDebug[outPixel] = uint4(key, 0, srcIndex);
+                    g_outDebug[outPixel] = uint4(index, 0, srcIndex);
 #endif
+#endif
+
                 }
             }
         }
@@ -284,13 +294,17 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
 #if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM_PACK_INDICES
             uint packedSrcIndex = SrcIndices[index/2];
             bool useHiBits = index & 1;
-            packedSrcIndex = useHiBits ? (packedSrcIndex >> 16) : packedSrcIndex;
+            packedSrcIndex = useHiBits ? (packedSrcIndex >> 16) : (packedSrcIndex & 0xffff);
 #else
             uint packedSrcIndex = SrcIndices[index];
 #endif
-            uint2 srcIndex = uint2(packedSrcIndex & 0xff, packedSrcIndex >> 8);
+            uint2 srcIndex = uint2(packedSrcIndex & 0xff, (packedSrcIndex >> 8));
             uint2 outPixel = GroupStart + uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
             g_outSortedThreadGroupIndices[outPixel] = srcIndex;
+
+#if 0
+            g_outDebug[outPixel] = uint4(index, 0, srcIndex);
+#endif
         }
 #endif
     }
