@@ -1,4 +1,4 @@
-
+// ToDo remove
 #if 0
 #define HLSL
 #include "RaytracingHlslCompat.h"

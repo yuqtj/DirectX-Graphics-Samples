@@ -1368,11 +1368,16 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
         // Hit groups
         CreateHitGroupSubobjects(&raytracingPipeline, loadShadowShadersOnly);
 
+#define AO_4B_RAYPAYLOAD 0
+
         // Shader config
         // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
         auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
+#if AO_4B_RAYPAYLOAD
         UINT payloadSize = static_cast<UINT>(sizeof(ShadowRayPayload));		// ToDo revise
-
+#else
+        UINT payloadSize = static_cast<UINT>(max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload)));		// ToDo revise
+#endif
         UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics
         shaderConfig->Config(payloadSize, attributeSize);
 
