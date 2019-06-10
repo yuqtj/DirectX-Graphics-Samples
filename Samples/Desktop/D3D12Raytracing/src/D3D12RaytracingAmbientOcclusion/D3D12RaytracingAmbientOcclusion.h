@@ -80,7 +80,7 @@ private:
 	const UINT MaxGeometryTransforms = 10000;       // ToDo lower / remove?
 
 	// DirectX Raytracing (DXR) attributes
-	ComPtr<ID3D12StateObject> m_dxrStateObject;
+	ComPtr<ID3D12StateObject> m_dxrStateObjects[RaytracingType::Count];
 
 	// Compute resources.
 	Samplers::MultiJittered m_randomSampler;
@@ -253,12 +253,12 @@ private:
 	static const wchar_t* c_closestHitShaderNames[RayType::Count];
 	static const wchar_t* c_missShaderNames[RayType::Count];
 
-	ComPtr<ID3D12Resource> m_rayGenShaderTables[RayGenShaderType::Count];
-	UINT m_rayGenShaderTableRecordSizeInBytes;
-	ComPtr<ID3D12Resource> m_hitGroupShaderTable;
-	UINT m_hitGroupShaderTableStrideInBytes;
-	ComPtr<ID3D12Resource> m_missShaderTable;
-	UINT m_missShaderTableStrideInBytes;
+	ComPtr<ID3D12Resource> m_rayGenShaderTables[RaytracingType::Count][RayGenShaderType::Count];
+	UINT m_rayGenShaderTableRecordSizeInBytes[RaytracingType::Count];
+	ComPtr<ID3D12Resource> m_hitGroupShaderTable[RaytracingType::Count];
+	UINT m_hitGroupShaderTableStrideInBytes[RaytracingType::Count];
+	ComPtr<ID3D12Resource> m_missShaderTable[RaytracingType::Count];
+	UINT m_missShaderTableStrideInBytes[RaytracingType::Count];
 
 	// Application state
 	StepTimer m_timer;
@@ -316,7 +316,7 @@ private:
     void UpdateGridGeometryTransforms();
     void InitializeScene();
 	void UpdateAccelerationStructure();
-	void DispatchRays(ID3D12Resource* rayGenShaderTable, uint32_t width=0, uint32_t height=0);
+	void DispatchRays(RaytracingType::Enum raytracingType, ID3D12Resource* rayGenShaderTable, uint32_t width=0, uint32_t height=0);
 	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
     void ApplyAtrousWaveletTransformFilter();
     void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
@@ -348,9 +348,9 @@ private:
     void ReleaseWindowSizeDependentResources();
     void RenderRNGVisualizations();
     void CreateRootSignatures();
-    void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+    void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly = false);
+    void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly = false);
+    void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly = false);
     void CreateRaytracingPipelineStateObject();
     void CreateDescriptorHeaps();
     void CreateRaytracingOutputResource();
@@ -363,7 +363,7 @@ private:
 	void GenerateBottomLevelASInstanceTransforms();
     void InitializeAllBottomLevelAccelerationStructures();
     void InitializeAccelerationStructures();
-    void BuildShaderTables();
+    void BuildShaderTables(RaytracingType::Enum raytracingType);
     void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
     void CalculateFrameStats();
 	//float NumCameraRaysPerSecondNumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimeManager.GetAverageMS(GpuTimers::Raytracing_GBuffer), m_raytracingWidth, m_raytracingHeight); }

@@ -50,13 +50,21 @@ ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
 #define NUM_THREADS SortRays::ThreadGroup::Size
 #define NUM_ELEMENTS_PER_THREAD (2 * SortRays::RayGroup::NumElementPairsPerThread)
 
-#define NUM_KEYS (1 << (2*NORMAL_KEY_HASH_BITS_1D + DEPTH_KEY_HASH_BITS))
+#define NUM_KEYS (1 << (DEPTH_KEY_HASH_BITS + 2*NORMAL_KEY_HASH_BITS_1D))
 
 
 // Counts of inputs for each key.
 // Stored as two ping-pong buffers.
 #define NUM_PING_PONG_BUFFERS 2
 groupshared uint KeyCounts[NUM_PING_PONG_BUFFERS][NUM_KEYS];
+#if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM
+
+#if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM_PACK_INDICES
+groupshared uint SrcIndices[NUM_ELEMENTS / 2];
+#else
+groupshared uint SrcIndices[NUM_ELEMENTS];
+#endif
+#endif
 
 // Create a hash key from a normal and depth. 
 // The hash key also embeds source pixel thread group index to lower SM cost.
@@ -103,9 +111,9 @@ void AddKeyCount(uint bufferID, uint2 pixel)
     if (IsWithinBounds(pixel, CB.dim))
     {
         float4 normalDepthHit = g_inRayDirectionOriginDepthHit[pixel];
-        bool hit = normalDepthHit.w;
+        //bool hit = normalDepthHit.z;
 
-        if (hit)
+        //if (hit)
         {
             float3 normal = DecodeNormal(normalDepthHit.xy);
             float linearDepth = normalDepthHit.z;
@@ -202,6 +210,17 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
 
     ExclusivePrefixSum(GI);
 
+    //uint p = (uint(log2(NUM_KEYS)) & 1) ^ 1;
+    //DebugPrintOutHistograms(Gid, GI, p);
+    //return;
+
+#if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM && RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM_PACK_INDICES
+    for (uint index = GI; index < NUM_ELEMENTS / 2; index += NUM_THREADS)
+    {
+        SrcIndices[index] = 0;
+    }
+    GroupMemoryBarrierWithGroupSync();
+#endif
     // Write the sorted indices to memory.
     {
         uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
@@ -218,9 +237,9 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
             if (IsWithinBounds(pixel, CB.dim))
             {
                 float4 normalDepthHit = g_inRayDirectionOriginDepthHit[pixel];
-                bool hit = normalDepthHit.w;
+                //bool hit = normalDepthHit.w;
 
-                if (hit)
+                //if (hit)
                 {
                     float3 normal = DecodeNormal(normalDepthHit.xy);
                     float linearDepth = normalDepthHit.z;
@@ -228,21 +247,51 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
 
                     uint index;
                     InterlockedAdd(KeyCounts[p][key], 1, index);
+                    
+#if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM
+                    // To avoid costly scatter writes to VRAM, cache indices into SMEM instead.
+#if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM_PACK_INDICES
+                    bool useHiBits = index & 1;
+                    uint packedSrcIndex = (srcIndex.x << (useHiBits * 16)) 
+                                        + (srcIndex.y << (useHiBits * 16 + 8));
+                    InterlockedXor(SrcIndices[index / 2], packedSrcIndex);
+#else
+                    SrcIndices[index] = srcIndex.x + (srcIndex.y << 8);
+#endif
+#else
                     uint2 destIndex = uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
 
                     // ToDo clip RayGroups if they go out of bounds.
 
                     // Flip order so that buckets are countinuous when reading the sorted rays
                     // row by row within ray group and then row by row ray groups
-                    destIndex = (Gid.x & 1) ? (RayGroupDim - 1) - destIndex: destIndex;
+                    // ToDo destIndex = (Gid.x & 1) ? (RayGroupDim - 1) - destIndex : destIndex;
                     uint2 outPixel = GroupStart + destIndex;
-
                     g_outSortedThreadGroupIndices[outPixel] = srcIndex;
+#endif
 #if 0
                     g_outDebug[outPixel] = uint4(key, 0, srcIndex);
 #endif
                 }
             }
         }
+#if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM
+        GroupMemoryBarrierWithGroupSync();
+
+        // Sequentially spill cached indices into VRAM.
+        for (uint index = GI; index < NUM_ELEMENTS; index += NUM_THREADS)
+        {
+#if RTAO_RAY_SORT_LINEARIZE_WRITE_TO_VRAM_PACK_INDICES
+            uint packedSrcIndex = SrcIndices[index/2];
+            bool useHiBits = index & 1;
+            packedSrcIndex = useHiBits ? (packedSrcIndex >> 16) : packedSrcIndex;
+#else
+            uint packedSrcIndex = SrcIndices[index];
+#endif
+            uint2 srcIndex = uint2(packedSrcIndex & 0xff, packedSrcIndex >> 8);
+            uint2 outPixel = GroupStart + uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
+            g_outSortedThreadGroupIndices[outPixel] = srcIndex;
+        }
+#endif
     }
 }

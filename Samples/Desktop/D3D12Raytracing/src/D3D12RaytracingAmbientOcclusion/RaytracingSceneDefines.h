@@ -84,6 +84,13 @@ namespace ComputeShader {
 namespace CSType = ComputeShader::Type;
 namespace CSRootSignature = ComputeShader::RootSignature;
 
+namespace RaytracingType {
+    enum Enum {
+        Pathtracing = 0,
+        AmbientOcclusion,
+        Count
+    };
+}
 
 namespace DownsampleFilter {
 	enum Enum {
