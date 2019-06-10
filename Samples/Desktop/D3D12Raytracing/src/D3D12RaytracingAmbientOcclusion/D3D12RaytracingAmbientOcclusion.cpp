@@ -1528,7 +1528,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     
     
     m_sortedRayGroupThreadOffsets.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R16G16_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupThreadOffsets, initialResourceState, L"Sorted Ray Group Offsets");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupThreadOffsets, initialResourceState, L"Sorted Ray Group Offsets");
 
     m_sortedRayGroupDebug.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
     CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupDebug, initialResourceState, L"Sorted Ray Group Offsets");
@@ -1536,7 +1536,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
     // ToDo use 8 bit format
     m_AORayDirectionOriginDepthHit.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, normalFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AORayDirectionOriginDepthHit, initialResourceState, L"AO Rays Direction, Origin Depth and Hit");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AORayDirectionOriginDepthHit, initialResourceState, L"AO Rays Direction, Origin Depth and Hit");
 
     
     m_ShadowMapResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;

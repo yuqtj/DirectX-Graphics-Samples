@@ -102,9 +102,9 @@ void AddKeyCount(uint bufferID, uint2 pixel)
     if (IsWithinBounds(pixel, CB.dim))
     {
         float4 normalDepthHit = g_inRayDirectionOriginDepthHit[pixel];
-        bool hit = normalDepthHit.w;
+        //bool hit = normalDepthHit.z;
 
-        if (hit)
+        //if (hit)
         {
             float3 normal = DecodeNormal(normalDepthHit.xy);
             float linearDepth = normalDepthHit.z;
@@ -223,9 +223,9 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
             if (IsWithinBounds(pixel, CB.dim))
             {
                 float4 normalDepthHit = g_inRayDirectionOriginDepthHit[pixel];
-                bool hit = normalDepthHit.w;
+                //bool hit = normalDepthHit.w;
 
-                if (hit)
+                //if (hit)
                 {
                     float3 normal = DecodeNormal(normalDepthHit.xy);
                     float linearDepth = normalDepthHit.z;
