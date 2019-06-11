@@ -171,8 +171,10 @@ void ExclusivePrefixSum(uint GI)
     }
 }
 
-// Prefix sum for up to 1024 elements and 32+ wavelane architectures
-// Todo support general case and N elements
+// Prefix sum.
+// Requirements: 
+//  - NUM_KEYS <= 1024
+//  - WaveGetLaneCount() >= 32
 void PrefixSum(uint GI)
 {
     // PrefixSum
@@ -185,7 +187,7 @@ void PrefixSum(uint GI)
     }
     GroupMemoryBarrierWithGroupSync();
 
-    // PostfixSum
+    // Calculate PostfixSum across waves
     uint NumWaves = NUM_KEYS / WaveGetLaneCount() - 1;
     for (uint i = GI; i < NumWaves; i += NUM_THREADS)
     {
@@ -198,58 +200,14 @@ void PrefixSum(uint GI)
     }
     GroupMemoryBarrierWithGroupSync();
 
-
-    // Add the postfix sums
+    // Add the wave level postfix sums to lanes.
     for (uint j = GI + WaveGetLaneCount(); j < NUM_KEYS; j += NUM_THREADS)
     {
         uint prefixSum = KeyCounts[0][j / WaveGetLaneCount() - 1];
         KeyCounts[1][j] += prefixSum;
     }
     GroupMemoryBarrierWithGroupSync();
-
-    //for (uint s = 1, p = 1; s < NUM_KEYS; s *= WaveGetLaneCount(), p ^= 1)
-    //{
-    //    for (uint key = GI; key < NUM_KEYS; key += NUM_THREADS)
-    //    {
-    //        uint count = KeyCounts[0][key];
-    //        uint offset = WavePrefixSum(count);
-
-    //        KeyCounts[p][key / WaveGetLaneCount()] = count;
-    //    }
-    //    GroupMemoryBarrierWithGroupSync();
-
-    //GroupMemoryBarrierWithGroupSync();
-
-    //// Prefix sum.
-    //// ToDo support non-pow 2 NUM_KEYS
-    //for (uint p = 1, k = 1; k < NUM_KEYS; k <<= 1, p ^= 1)
-    //{
-    //    for (uint key = GI; key < NUM_KEYS; key += NUM_THREADS)
-    //    {
-    //        uint sum = KeyCounts[p][key];
-    //        if (key >= k)
-    //        {
-    //            sum += KeyCounts[p][key - k];
-    //        }
-    //        KeyCounts[p ^ 1][key] = sum;
-    //    }
-    //    GroupMemoryBarrierWithGroupSync();
-    //}
 }
-
-
-void DebugPrintOutHistograms(uint2 Gid, uint GI, uint bufferId)
-{
-    uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
-    uint2 GroupStart = Gid * RayGroupDim;
-
-    for (uint i = GI; i < NUM_KEYS; i += NUM_THREADS)
-    {
-        uint2 pixel = GroupStart + uint2(i % SortRays::RayGroup::Width, i / SortRays::RayGroup::Width);
-        g_outDebug[pixel].xyz = uint3(KeyCounts[0][i], KeyCounts[1][i], KeyCounts[bufferId][i]);
-    }
-}
-
 
 // Write the sorted indices to shared memory to avoid costly scatter write to VRAM.
 // These can then be later linearly spilled to VRAM.
