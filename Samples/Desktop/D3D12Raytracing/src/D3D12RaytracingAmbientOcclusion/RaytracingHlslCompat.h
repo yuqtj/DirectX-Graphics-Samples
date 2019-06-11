@@ -467,9 +467,16 @@ namespace SortRays {
         enum Enum { Width = 64, Height = 16, Size = Width * Height };
     }
 
+
+    // ToDo comment ray group's heigh can only go up to 64 as the most significant bit is used to test if the cached value is valid.
     namespace RayGroup {
         enum Enum { NumElementPairsPerThread = 4, Width = ThreadGroup::Width, Height = NumElementPairsPerThread * 2 * ThreadGroup::Height, Size = Width * Height };
     }
+#ifndef HLSL
+    static_assert( RayGroup::Width < 128 
+                && RayGroup::Height < 256
+                && RayGroup::Size <= 8192, "Ray group dimensions are outside the supported limits set by the Counting Sort shader.");
+#endif
 }
 #endif
 
