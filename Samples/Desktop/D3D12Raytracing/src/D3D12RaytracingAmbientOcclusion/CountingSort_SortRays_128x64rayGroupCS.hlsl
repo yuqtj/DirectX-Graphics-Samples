@@ -9,13 +9,15 @@
 //
 //*********************************************************
 
-// Desc: Counting Sort.
-// Algorithm:
-// - Calculates histograms for the key hashes
-// - Calculates a prefix sum of the histograms
-// - Scatter writes the ray source index offsets based on its hash and the prefix sum for the hash key into SMEM cache
-// - Linearly spills source index offsets from SMEM cache into VRAM
-// Supports RayGroups of up to 8K rays with Ray Group XY dimensions up to {64, 128}.
+// Desc: Counting Sort of rays based on their linear depth and direction.
+// Supports:
+// - Up to {8K rays per ray group + 12 bit hash key} | {4K rays per ray group + 13 bit hash key}
+// - Max Ray Group dimensions: 256
+// Rays can be disabled by setting their depth to less than 0. Such rays will get moved
+// to the end of the sorted ray group and have a source index offset of [0xff, 0xff]. 
+// Performance:
+//  2080 Ti, 1spp@4K, 128x64 ray groups, 10 bit hash key: 0.235ms
+//  2080 Ti, 1spp@4K, 128x64 ray groups, 12 bit hash key: 0.275ms
 
 
 #define HLSL
@@ -30,26 +32,57 @@ ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
 
 #define NORMAL_KEY_HASH_BITS_1D 4
 #define DEPTH_KEY_HASH_BITS 2
-#define NUM_ELEMENTS SortRays::RayGroup::Size
+#define NUM_RAYS SortRays::RayGroup::Size
 #define NUM_THREADS SortRays::ThreadGroup::Size
 
-#define KEY_NUM_BITS (DEPTH_KEY_HASH_BITS + 2*NORMAL_KEY_HASH_BITS_1D)
-
-#if KEY_NUM_BITS > 14
-Key can have only up to 14 bits as the 15th bit is used to signify
-the cached key value is a valid key.
+#define MAX_RAYS 8192
+#if MAX_RAYS > 8192
+The shader supports up to 8192 input rays.
 #endif
 
-#define NUM_KEYS (1 << KEY_NUM_BITS)
+//********************************************************************
+// Hash Key
+//  - a hash calculated from normal and depth of a ray
+//  - max values:
+//      12 bits(4096) for 8K rays.
+//      13 bits(8192) for 4K rays.
+// The 15th and 16th bits are reserved:
+// - 15th bit - key for invalid ray. These rays will get sorted to the end.
+// - 16th bit - invalid key. To handle when a key is replaced by Source Ray index in SMCache.
+#define KEY_NUM_BITS (DEPTH_KEY_HASH_BITS + 2*NORMAL_KEY_HASH_BITS_1D)
+#if (KEY_NUM_BITS > 13) || (KEY_NUM_BITS > 12 && MAX_RAYS > 4096)
+Key bit size is out of supported limits.
+#endif
 
-#define CACHE_KEYS 1
+// Hash key for an invalid/disabled ray. 
+// These rays will get sorted to the end and 
+// have the same value set for source index.
+#define INVALID_RAY_KEY 0x7fff 
+#define NUMBER_OF_INVALID_RAY_KEYS 1
+#define INVALID_RAY_SOURCE_INDEX_OFFSET 0xffff
+#define NUM_KEYS ((1 << KEY_NUM_BITS) + NUMBER_OF_INVALID_RAY_KEYS)
+//********************************************************************
 
-// Counts of inputs for each key.
+
+//********************************************************************
+// Ray Count SMEM cache.
+// Supports up to 16 bit (64K) ray counts per bin.
+// Used for:
+//  - to store number of binned rays. 
+//  - as an intermediate cache for prefix sum computations.
+// Stores 16bit values, with two values per entry.
+// - Hi bits: odd indices
+// - Lo bits: even indices
 // Stored as two ping-pong buffers.
 #define NUM_PING_PONG_BUFFERS 2
-groupshared uint KeyCounts[NUM_PING_PONG_BUFFERS][NUM_KEYS];
+#define NUM_KEY_COUNT_ARRAY_ELEMENTS ((NUM_KEYS + 1) / 2)
+#define KEY_COUNT_CACHE_SIZE (NUM_PING_PONG_BUFFERS * NUM_KEY_COUNT_ARRAY_ELEMENTS)
+groupshared uint KeyCounts[NUM_PING_PONG_BUFFERS][NUM_KEY_COUNT_ARRAY_ELEMENTS];
+//********************************************************************
 
-// SMCache stores 16 bit values, two values per 32bit entry:
+
+//********************************************************************
+// SMCache stores 16 bit values, two 16bit values per 32bit entry:
 // - Hi bits: odd indices
 // - Lo bits: even indices
 // SMCache is used for two mutually exclusive and temporally overlapping purposes
@@ -60,16 +93,22 @@ groupshared uint KeyCounts[NUM_PING_PONG_BUFFERS][NUM_KEYS];
 //   The key is generated first, but the source indices overwrite it later, while
 //   the key may still be needer by another thread. 
 //   Therefore the most significant bit is used
-//   to denote whether the stored hashed key is still valid. If the key is no longer
-//   valid, it is regenerated again. 
+//   to denote whether the stored hashed key is still valid. 
+//   If the key is no longer valid, it is regenerated again. 
 //   To lower the collision and keep as many cached keys, the cache
 //   is extended to the remaining shader memory limit and the keys
-//   are stored at an offset. This way, only the first 2*OFFSET keys
-//   will be replaced by the source indices.
-#define SMCACHE_KEY_OFFSET 2048
-#define SMCACHE_SIZE  (NUM_ELEMENTS / 2 + SMCACHE_KEY_OFFSET)
-// Sorted source indices for each ray, packed as two 2D 8bit indices
+//   are stored at an offset. This way, the last 2 * offset
+//   keys won't be invalidated.
+//
+//  Optimization tip:
+//   Use as little rays and as little hash key bit size to leave 
+//   as much room as possible for hashed keys.
+#define SMCACHE_SIZE 8192 - KEY_COUNT_CACHE_SIZE
+#define SMCACHE_KEY_OFFSET (SMCACHE_SIZE - (MAX_RAYS + 1) / 2)
 groupshared uint SMCache[SMCACHE_SIZE];
+//********************************************************************
+
+
 
 // Create a hash key from a normal and depth. 
 // Ref: Ray Reordering Techniques for GPU Ray-Cast Ambient Occlusion
@@ -101,7 +140,7 @@ uint CreateHashKey(in float3 normal, in float linearDepth)
 
 void InitializeSharedMemory(uint GI)
 {
-    for (uint key = GI; key < NUM_KEYS; key += NUM_THREADS)
+    for (uint key = GI; key < NUM_KEY_COUNT_ARRAY_ELEMENTS; key += NUM_THREADS)
     {
         KeyCounts[0][key] = 0;
     }
@@ -113,26 +152,60 @@ void InitializeSharedMemory(uint GI)
     GroupMemoryBarrierWithGroupSync();
 }
 
+uint AddToKeyCounts(in uint bufferID, in uint key, in uint countToAdd)
+{
+    uint useHiBits = key & 1;
+    uint packedCount = countToAdd << (useHiBits * 16);
+    uint newValue;
+    InterlockedAdd(KeyCounts[bufferID][key / 2], packedCount, newValue);
+    
+    return (newValue >> (useHiBits * 16)) & 0xffff;
+}
+
+void SetKeyCount(in uint bufferID, in uint key, in uint countToSet)
+{
+    uint useHiBits = key & 1;
+
+    // Zero out the key so that XOR cam next set the prefix sum.
+    uint countBitsToZeroOut = useHiBits ? 0x0000ffff : 0xffff0000;
+    uint packedCount = countToSet << (useHiBits * 16);
+    InterlockedAnd(KeyCounts[bufferID][key / 2], countBitsToZeroOut);
+    InterlockedXor(KeyCounts[bufferID][key / 2], packedCount);
+}
+
+uint GetKeyCount(in uint bufferID, in uint key)
+{
+    bool useHiBits = key & 1;
+    uint packedCount = KeyCounts[bufferID][key / 2];
+    return (packedCount >> (useHiBits * 16)) & 0xffff;
+}
+
+
 void AddKeyCount(uint bufferID, uint2 pixel, uint index)
 {
     if (IsWithinBounds(pixel, CB.dim))
     {
         float4 normalDepthHit = g_inRayDirectionOriginDepthHit[pixel];
-        //bool hit = normalDepthHit.z;
+        bool isRayValid = normalDepthHit.z >= 0;
 
-        //if (hit)
+        uint key;
+        if (isRayValid)
         {
             float3 normal = DecodeNormal(normalDepthHit.xy);
             float linearDepth = normalDepthHit.z;
-            uint key = CreateHashKey(normal, linearDepth);
-#if CACHE_KEYS
-            bool useHiBits = index & 1;
-            uint encodedKey = key | 0x8000;   // Denote this being valid key entry with the most significant bit.
-            uint packedKey = encodedKey << (useHiBits * 16);
-            InterlockedXor(SMCache[index / 2 + SMCACHE_KEY_OFFSET], packedKey);
-#endif
-            InterlockedAdd(KeyCounts[bufferID][key], 1);
+            key = CreateHashKey(normal, linearDepth);
         }
+        else
+        {
+            key = INVALID_RAY_KEY;
+        }
+
+        bool useHiBits = index & 1;
+        uint encodedKey = key | 0x8000;   // Denote this being valid key entry with the most significant bit.
+        uint packedKey = encodedKey << (useHiBits * 16);
+        InterlockedXor(SMCache[index / 2 + SMCACHE_KEY_OFFSET], packedKey);
+
+        AddToKeyCounts(bufferID, key, 1);
     }
 }
 
@@ -143,7 +216,7 @@ void CalculateKeyCountHistograms(uint2 Gid, uint GI)
     uint2 GroupStart = Gid * RayGroupDim;
     uint outBufferID = 0;
 
-    for (uint i = GI; i < NUM_ELEMENTS; i += NUM_THREADS)
+    for (uint i = GI; i < NUM_RAYS; i += NUM_THREADS)
     {
         uint2 pixel = GroupStart + uint2(i % SortRays::RayGroup::Width, i / SortRays::RayGroup::Width);
         AddKeyCount(outBufferID, pixel, i);
@@ -151,66 +224,42 @@ void CalculateKeyCountHistograms(uint2 Gid, uint GI)
     GroupMemoryBarrierWithGroupSync();
 }
 
-void ExclusivePrefixSum(uint GI)
-{
-    // For exclusive sum, initial value is equal to that of preceding neighbor.
-    for (int key = GI; key < NUM_KEYS; key += NUM_THREADS)
-    {
-        KeyCounts[1][key] = key > 0 ? KeyCounts[0][key - 1] : 0;
-    }
-    GroupMemoryBarrierWithGroupSync();
-    
-    // Prefix sum.
-    // ToDo support non-pow 2 NUM_KEYS
-    for (uint p = 1, k = 1; k < NUM_KEYS; k <<= 1, p ^= 1)
-    {
-        for (uint key = GI; key < NUM_KEYS; key += NUM_THREADS)
-        {
-            uint sum = KeyCounts[p][key];
-            if (key >= k)
-            {
-                sum += KeyCounts[p][key - k];
-            }
-            KeyCounts[p ^ 1][key] = sum;
-        }
-        GroupMemoryBarrierWithGroupSync();
-    }
-}
-
 // Prefix sum.
 // Requirements: 
-//  - NUM_KEYS <= 1024
-//  - WaveGetLaneCount() >= 32
+//  - NUM_KEYS <= WaveGetLaneCount() ^ 2
+//    To support smaller waves or more keys, the implementation needs 
+//    to be extended to have more iterations levels.
 void PrefixSum(uint GI)
 {
-    // PrefixSum
+    // PrefixSum at the lane level.
     for (uint key = GI; key < NUM_KEYS; key += NUM_THREADS)
     {
-        uint count = KeyCounts[0][key];
+        uint count = GetKeyCount(0, key);
         uint prefixSum = WavePrefixSum(count);
 
-        KeyCounts[1][key] = prefixSum;
+        SetKeyCount(1, key, prefixSum);
     }
     GroupMemoryBarrierWithGroupSync();
 
-    // Calculate PostfixSum across waves
-    uint NumWaves = NUM_KEYS / WaveGetLaneCount() - 1;
-    for (uint i = GI; i < NumWaves; i += NUM_THREADS)
+    // PostfixSum for last lane at each wave, except the last.
+    uint NumWaves = NUM_KEYS / WaveGetLaneCount();
+    for (uint i = GI; i < NumWaves - 1; i += NUM_THREADS)
     {
         uint lastPrevWaveIndex = (i + 1) * WaveGetLaneCount() - 1;
-
-        uint count = KeyCounts[1][lastPrevWaveIndex];
+        uint count = GetKeyCount(1, lastPrevWaveIndex);
         uint postfixSum = count + WavePrefixSum(count);
-
-        KeyCounts[0][i] = postfixSum;
+        
+        SetKeyCount(0, i, postfixSum);
     }
     GroupMemoryBarrierWithGroupSync();
 
-    // Add the wave level postfix sums to lanes.
+    // Add the last lane wave level postfix sum to lane values of subsequent wave.
     for (uint j = GI + WaveGetLaneCount(); j < NUM_KEYS; j += NUM_THREADS)
     {
-        uint prefixSum = KeyCounts[0][j / WaveGetLaneCount() - 1];
-        KeyCounts[1][j] += prefixSum;
+        uint index = j / WaveGetLaneCount() - 1; // Get the last value of the previous wave segment.
+        uint prefixSum = GetKeyCount(0, index);
+        
+        AddToKeyCounts(1, j, prefixSum);
     }
     GroupMemoryBarrierWithGroupSync();
 }
@@ -224,9 +273,9 @@ void ScatterWriteSortedIndicesToSharedMemory(uint2 Gid, uint GI)
     uint2 RayGroupEnd = min(GroupStart + RayGroupDim, CB.dim);
     RayGroupDim = RayGroupEnd - GroupStart;
 
-    uint p = 1;// (uint(log2(NUM_KEYS)) & 1) ^ 1;    // index of a buffer last written to in prefix sum.
+    uint p = 1;   // index of a buffer last written to in prefix sum.
 
-    for (uint i = GI; i < NUM_ELEMENTS; i += NUM_THREADS)
+    for (uint i = GI; i < NUM_RAYS; i += NUM_THREADS)
     {
         uint2 srcIndex = uint2(i % SortRays::RayGroup::Width, i / SortRays::RayGroup::Width);
         uint2 pixel = GroupStart + srcIndex;
@@ -238,30 +287,32 @@ void ScatterWriteSortedIndicesToSharedMemory(uint2 Gid, uint GI)
                 // First, see if the cached key is stil valid.
                 bool useHiBits = i & 1;
                 uint packedKey = SMCache[i / 2 + SMCACHE_KEY_OFFSET];
-                uint encodedKey = useHiBits ? (packedKey >> 16) : (packedKey & 0xffff);
+                uint encodedKey = (packedKey >> (useHiBits * 16)) & 0xffff;
                 bool isValidKey = encodedKey & 0x8000;
 
                 if (isValidKey)
                 {
-                    key = encodedKey & 0x7fff;// ~0x8000;
+                    key = encodedKey & 0x7fff;
                 }
-                else  // The cached key has been already replaced with srcIndex. Regenerate it.
+                else  // The cached key has been already replaced with the ray's source index. Regenerate the key.
                 {
                     float4 normalDepthHit = g_inRayDirectionOriginDepthHit[pixel];
-                    //bool hit = normalDepthHit.w;
+                    bool isValidRay = normalDepthHit.z >= 0;
 
-                    //if (hit)
+                    if (isValidRay)
                     {
                         float3 normal = DecodeNormal(normalDepthHit.xy);
                         float linearDepth = normalDepthHit.z;
                         key = CreateHashKey(normal, linearDepth);
                     }
+                    else
+                    {
+                        key = INVALID_RAY_KEY;
+                    }
                 }
             }
-
-            uint index;
-            InterlockedAdd(KeyCounts[p][key], 1, index);
-
+            
+            uint index = AddToKeyCounts(p, key, 1);
             // To avoid costly scatter writes to VRAM, cache indices into SMEM here instead.
             uint useHiBits = index & 1;
             uint packedSrcIndex = (srcIndex.y << (useHiBits * 16))
@@ -286,7 +337,7 @@ void SpillCachedIndicesToVRAM(uint2 Gid, uint GI)
     uint2 GroupStart = Gid * RayGroupDim;
 
     // Sequentially spill cached indices into VRAM.
-    for (uint index = GI; index < NUM_ELEMENTS; index += NUM_THREADS)
+    for (uint index = GI; index < NUM_RAYS; index += NUM_THREADS)
     {
         uint packedSrcIndex = SMCache[index / 2];
         bool useHiBits = index & 1;
@@ -301,9 +352,14 @@ void SpillCachedIndicesToVRAM(uint2 Gid, uint GI)
 [numthreads(SortRays::ThreadGroup::Width, SortRays::ThreadGroup::Height, 1)]
 void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
 {
+    // Algorithm:
+    // - Calculates histograms for the key hashes
+    // - Calculates a prefix sum of the histograms
+    // - Scatter writes the ray source index offsets based on its hash and the prefix sum for the hash key into SMEM cache
+    // - Linearly spills source index offsets from SMEM cache into VRAM
+
     InitializeSharedMemory(GI);
     CalculateKeyCountHistograms(Gid, GI);
-    //ExclusivePrefixSum(GI); 
     PrefixSum(GI);
     ScatterWriteSortedIndicesToSharedMemory(Gid, GI);
     SpillCachedIndicesToVRAM(Gid, GI);
