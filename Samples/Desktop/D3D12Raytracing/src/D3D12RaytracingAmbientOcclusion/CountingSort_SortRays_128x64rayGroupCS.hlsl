@@ -9,7 +9,7 @@
 //
 //*********************************************************
 
-// Desc: Counting Sort of rays based on their linear depth and direction.
+// Desc: Counting Sort of rays based on their origin depth and direction.
 // Supports:
 // - Up to {8K rays per ray group + 12 bit hash key} | {4K rays per ray group + 13 bit hash key}
 // - Max Ray Group dimensions: 64x256
@@ -36,17 +36,16 @@
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
 
-Texture2D<float4> g_inRayDirectionOriginDepthHit : register(t0);
+Texture2D<float4> g_inRayDirectionOriginDepth : register(t0);    // R11G11B10 texture. Note this format doesn't store negative values.
 RWTexture2D<uint2> g_outSortedThreadGroupIndices : register(u0);  // Thread group per-pixel index offsets within each 128x64 pixel group.
 RWTexture2D<uint4> g_outDebug : register(u1);  // Thread group per-pixel index offsets within each 128x64 pixel group.
 
 ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
 
-#define RAY_DIRECTION_KEY_HASH_BITS_1D 4
-#define DEPTH_KEY_HASH_BITS 2
+#define RAY_DIRECTION_HASH_KEY_BITS_1D 4
+#define DEPTH_HASH_KEY_BITS 2   // ToDo test using 2 bits for RayGroupQuadrant
 #define NUM_RAYS SortRays::RayGroup::Size
 #define NUM_THREADS SortRays::ThreadGroup::Size
-
 #define MIN_VALID_RAY_DEPTH FLT_10BIT_MIN
 #define MAX_RAYS 8192
 #if MAX_RAYS > 8192
@@ -69,7 +68,7 @@ namespace SMem
     namespace Size
     {
         enum {
-            Histogram = 1 << (2 * RAY_DIRECTION_KEY_HASH_BITS_1D + DEPTH_KEY_HASH_BITS),
+            Histogram = 1 << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D + DEPTH_HASH_KEY_BITS),
             Key8b = 4096,
             Key16b = 8192,
         };
@@ -78,13 +77,15 @@ namespace SMem
     {
         enum {
             Histogram = 0,
+            HistogramTemp = Size::Histogram, 
             Key8b = 4096,
             Key16b = 8192,
             Depth16b = 0,
             WaveDepthMin = 0,
             WaveDepthMax = MAX_WAVES,
             WaveDepthSum = 2 * MAX_WAVES,
-            WaveValidRayCount = 3 * MAX_WAVES
+            WaveValidRayCount = 3 * MAX_WAVES,
+            RayIndex = Size::Histogram
         };
     }
 }
@@ -99,7 +100,7 @@ namespace SMem
 // The 15th and 16th bits are reserved:
 // - 15th bit == (1) - invalid ray. These rays will get sorted to the end.
 // - 16th bit == (1) - invalid key. To handle when a key is replaced by Source Ray index in SMEM.
-#define KEY_NUM_BITS (DEPTH_KEY_HASH_BITS + 2*RAY_DIRECTION_KEY_HASH_BITS_1D)
+#define KEY_NUM_BITS (DEPTH_HASH_KEY_BITS + 2*RAY_DIRECTION_HASH_KEY_BITS_1D)
 #if (KEY_NUM_BITS > 13) || (KEY_NUM_BITS > 12 && MAX_RAYS > 4096)
 Key bit size is out of supported limits.
 #endif
@@ -107,9 +108,10 @@ Key bit size is out of supported limits.
 // Hash key for an invalid/disabled ray. 
 // These rays will get sorted to the end and 
 // have the same value set for source index.
-#define INVALID_RAY_KEY 0x7fff 
+#define INVALID_16BIT_KEY_VALUE 0x8000
+#define INVALID_RAY_KEY 0x4000 
+#define INVALID_RAY_ORIGIN_DEPTH 0
 #define NUMBER_OF_INVALID_RAY_KEYS 1
-#define INVALID_RAY_SOURCE_INDEX_OFFSET 0xffff
 #define NUM_KEYS ((1 << KEY_NUM_BITS) + NUMBER_OF_INVALID_RAY_KEYS)
 //********************************************************************
 
@@ -124,8 +126,6 @@ Key bit size is out of supported limits.
 // Stored as two ping-pong buffers.
 // - Hi bits: odd ping-pong buffer ID
 // - Lo bits: even ping-pong buffer ID
-#define NUM_KEY_COUNT_ARRAY_ELEMENTS ((NUM_KEYS + 1) / 2)
-groupshared uint KeyCounts[NUM_KEYS];
 //********************************************************************
 
 // ToDo use single cache array;
@@ -168,34 +168,8 @@ groupshared uint KeyCounts[NUM_KEYS];
 groupshared uint SMEM[SMCACHE_SIZE];
 //********************************************************************
 
-uint AddToKeyCounts(in uint bufferID, in uint key, in uint countToAdd)
-{
-    uint useHiBits = bufferID & 1;
-    uint packedCount = countToAdd << (useHiBits * 16);
-    uint newValue;
-    InterlockedAdd(KeyCounts[key], packedCount, newValue);
 
-    return (newValue >> (useHiBits * 16)) & 0xffff;
-}
-
-void SetKeyCount(in uint bufferID, in uint key, in uint countToSet)
-{
-    uint useHiBits = bufferID & 1;
-
-    // Zero out the key so that XOR cam next set the prefix sum.
-    uint countBitsToZeroOut = useHiBits ? 0x0000ffff : 0xffff0000;
-    uint packedCount = countToSet << (useHiBits * 16);
-    InterlockedAnd(KeyCounts[key], countBitsToZeroOut);
-    InterlockedXor(KeyCounts[key], packedCount);
-}
-
-uint GetKeyCount(in uint bufferID, in uint key)
-{
-    bool useHiBits = bufferID & 1;
-    uint packedCount = KeyCounts[key];
-    return (packedCount >> (useHiBits * 16)) & 0xffff;
-}
-
+//********************************************************************
 // Store a 16 bit value in the Shared Memory.
 // The 16 bit value is stored in 32bit value range <0, 8K)
 // in layered fashion to avoid bank conflicts on subsequent 
@@ -217,33 +191,33 @@ void Store16bitUintInSMem(in uint index16b, in uint value, in uint indexOffset32
 {
     uint offsetIndex = indexOffset32b + index16b;
     bool useHi16Bits = offsetIndex >= SMCACHE_SIZE;
-    uint cacheIndex = offsetIndex - useHi16Bits * (SMCACHE_SIZE - offsetIndex);
-    uint packedValue = (value & 0xffff) << (useHi16Bits * 16);
+    uint smemIndex = offsetIndex - useHi16Bits * (SMCACHE_SIZE - offsetIndex);
 
+    uint packedValue = (value & 0xffff) << (useHi16Bits * 16);
     // To set a value via XOR, the target bits need to be zeroed out first.
     uint bitsToZeroOut = useHi16Bits ? 0x0000ffff : 0xffff0000;
-    InterlockedAnd(SMEM[cacheIndex], bitsToZeroOut);
-    InterlockedXor(SMEM[cacheIndex], packedValue);
+    InterlockedAnd(SMEM[smemIndex], bitsToZeroOut);
+    InterlockedXor(SMEM[smemIndex], packedValue);
 }
 
 void Store16bitFloatInSMem(in uint index16b, in float value, in uint indexOffset32b = 0)
 {
     uint encoded16bitFloat = f32tof16(value);
-    Store16bitValueInSMem(index16b, encoded16bitFloat, indexOffset32b);
+    Store16bitUintInSMem(index16b, encoded16bitFloat, indexOffset32b);
 }
 
-uint Load16bitUintFromSMem(in uint index, in uint indexOffset = 0)
+uint Load16bitUintFromSMem(in uint index16b, in uint indexOffset32b = 0)
 {
     uint offsetIndex = indexOffset32b + index16b;
-    bool useHi16Bits = offsetIndex >= SMCACHE_SIZE;
-    uint cacheIndex = offsetIndex - useHi16Bits * (SMCACHE_SIZE - offsetIndex);
-    uint packedValue = SMEM[cacheIndex];
-    return (packedValue >> (useHiBits * 16)) & 0xffff; 
+    bool useHi16Bits = indexOffset32b >= SMCACHE_SIZE;
+    uint smemIndex = offsetIndex - useHi16Bits * (SMCACHE_SIZE - offsetIndex);
+    uint packedValue = SMEM[smemIndex];
+    return (packedValue >> (useHi16Bits * 16)) & 0xffff;
 }
 
-float Load16bitFloatFromSMem(in uint index, in uint indexOffset = 0)
+float Load16bitFloatFromSMem(in uint index16b, in uint indexOffset32b = 0)
 {
-    uint encoded16bitFloat = Load16bitUintFromSMem(index, indexOffset);
+    uint encoded16bitFloat = Load16bitUintFromSMem(index16b, indexOffset32b);
     return f16tof32(encoded16bitFloat);
 }
 
@@ -251,14 +225,17 @@ uint AddTo16bitValueInSMem(in uint index16b, in uint value, in uint indexOffset3
 {
     uint offsetIndex = indexOffset32b + index16b;
     bool useHi16Bits = offsetIndex >= SMCACHE_SIZE;
-    uint cacheIndex = offsetIndex - useHi16Bits * (SMCACHE_SIZE - offsetIndex);
-    uint packedValue = (value & 0xffff) << (useHiBits * 16);
+    uint smemIndex = offsetIndex - useHi16Bits * (SMCACHE_SIZE - offsetIndex);
+    uint packedValue = (value & 0xffff) << (useHi16Bits * 16);
     uint newValue;
-    InterlockedAdd(KeyCounts[key], packedValue, newValue);
+    InterlockedAdd(SMEM[smemIndex], packedValue, newValue);
 
-    return (newValue >> (useHiBits * 16)) & 0xffff;
+    return (newValue >> (useHi16Bits * 16)) & 0xffff;
 }
+//********************************************************************
 
+
+//********************************************************************
 // Store an 8 bit value in the Shared Memory.
 // The 8bit value is stored in 32bit value range <indexOffset32b, 8K)
 // in layered fashion to avoid bank conflicts on subsequent 
@@ -280,100 +257,80 @@ void Store8bitUintInLow16bitSMem(in uint index8b, in uint value, in uint indexOf
 {
     uint offsetIndex = indexOffset32b + index8b;
     bool useHi8Bits = offsetIndex >= SMCACHE_SIZE;
-    uint cacheIndex = offsetIndex - useHi8Bits * (SMCACHE_SIZE - offsetIndex);
+    uint smemIndex = offsetIndex - useHi8Bits * (SMCACHE_SIZE - offsetIndex);
     uint packedValue = (value & 0xff) << (useHi8Bits * 8);
 
     // To set a value via XOR, the target bits need to be zeroed out first.
-    uint bitsToZeroOut = useHi8Bits ? 0xffff00ff : 0xffffff00);
-    InterlockedAnd(SMEM[cacheIndex], bitsToZeroOut);
-    InterlockedXor(SMEM[cacheIndex], packedValue);
+    uint bitsToZeroOut = useHi8Bits ? 0xffff00ff : 0xffffff00;
+    InterlockedAnd(SMEM[smemIndex], bitsToZeroOut);
+    InterlockedXor(SMEM[smemIndex], packedValue);
 }
 
-uint Load8bitUintFromLow16bitSMem(in uint index, in uint indexOffset32b = 0)
+uint Load8bitUintFromLow16bitSMem(in uint index8b, in uint indexOffset32b = 0)
 {
     uint offsetIndex = indexOffset32b + index8b;
     bool useHi8Bits = offsetIndex >= SMCACHE_SIZE;
-    uint cacheIndex = offsetIndex - useHi8Bits * (SMCACHE_SIZE - offsetIndex);
-    uint packedValue = SMEM[cacheIndex];
+    uint smemIndex = offsetIndex - useHi8Bits * (SMCACHE_SIZE - offsetIndex);
+    uint packedValue = SMEM[smemIndex];
     return (packedValue >> (useHi8Bits * 8)) & 0xff;
 }
+//********************************************************************
 
-void SetCacheDepthValue(in uint rayIndex, in float depth)
-{
-    uint encodedDepth = f32tof16(depth);
-    Store16bitValueInSMem(i, in uint value, in uint indexOffset32b = 0)
 
-    // Store first NUM_KEYS rays in KeyCounts Buffer IS 1 cache
-    if (rayIndex < NUM_KEYS)
-    {
-        SetKeyCount(1, rayIndex, encodedDepth);
-    }
-    else // Store the rest in SMEM.
-    {
-        Store16bitValueInSMem(rayIndex - NUM_KEYS, encodedDepth);
-    }
-}
-
-float GetCachedDepthValue(in uint rayIndex)
-{
-    uint encodedDepth;
-    // Store first NUM_KEYS rays in KeyCounts Buffer IS 1 cache
-    if (rayIndex < NUM_KEYS)
-    {
-        encodedDepth = GetKeyCount(1, rayIndex);
-    }
-    else // Store the rest in SMEM.
-    {
-        encodedDepth = Get16bitValueFromSMem(rayIndex - NUM_KEYS);
-    }
-    return f16tof32(encodedDepth);
-}
-
-void InitializeSharedMemory(uint GI)
+void InitializeSharedMemory(in uint GI)
 {
     for (uint i = GI; i < SMCACHE_SIZE; i += NUM_THREADS)
     {
-        SMEM[key] = 0;
+        SMEM[i] = 0;
     }
     GroupMemoryBarrierWithGroupSync();
 }
 
-// Create a hash key from a normal . 
-uint CreateNormalHashKey(in float3 normal)
+// Create a hash key from a ray direction. 
+uint CreateRayDirectionHashKey(in float3 rayDirection)
 {
     //ToDo test quantization of octnormal instead.
 
-    // Convert cartesian coordinate normal to spherical coordinates.
-    float azimuthAngle = atan2(normal.y, normal.x);
-    float polarAngle = acos(normal.z);
+    // Convert the vector from cartesian to spherical coordinates.
+    float azimuthAngle = atan2(rayDirection.y, rayDirection.x);
+    float polarAngle = acos(rayDirection.z);
 
     // Normalize to <0,1>.
-    float2 normalKey = float2(
-        (azimuthAngle / (2 * PI)),
+    float2 rayDirectionKey = float2((azimuthAngle / (2 * PI)),
         polarAngle / PI);
 
     // Calculate hashes.
-    const uint NormalKeyHashBins1D = 1 << NORMAL_KEY_HASH_BITS_1D;
-    uint2 normalKeyHash = min(NormalKeyHashBins1D * normalKey, NormalKeyHashBins1D - 1);
+    const uint NormalHashKeyBins1D = 1 << RAY_DIRECTION_HASH_KEY_BITS_1D;
+    uint2 rayDirectionHashKey = min(NormalHashKeyBins1D * rayDirectionKey, NormalHashKeyBins1D - 1);
 
-    return (normalKeyHash.y << (NORMAL_KEY_HASH_BITS_1D))
-        + normalKeyHash.x;
+    return   (rayDirectionHashKey.y << RAY_DIRECTION_HASH_KEY_BITS_1D)
+            + rayDirectionHashKey.x;
 }
 
-uint CreateDepthHashKey(in float linearDepth, in float2 rayGroupMinMaxDepth)
+// Create a hash key from a ray origin depth. 
+uint CreateDepthHashKey(in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
 {
-    float relativeDepth = linearDepth - rayGroupMinMaxDepth.x;
+    // ToDo test log depth quantization
+    float relativeDepth = rayOriginDepth - rayGroupMinMaxDepth.x;
     float rayGroupDepthRange = rayGroupMinMaxDepth.y - rayGroupMinMaxDepth.x;
-    const uint DepthKeyHashBins = 1 << DEPTH_KEY_HASH_BITS;
-    float binDepthSize = max(rayGroupDepthRange / DepthKeyHashBins, CB.binDepthSize);
-    uint depthKeyHash = min(linearDepth / binDepthSize, DepthKeyHashBins - 1);
+    const uint DepthHashKeyBins = 1 << DEPTH_HASH_KEY_BITS;
+    float binDepthSize = max(rayGroupDepthRange / DepthHashKeyBins, CB.binDepthSize);
+    uint depthHashKey = min(rayOriginDepth / binDepthSize, DepthHashKeyBins - 1);
 
-    return depthKeyHash;
+    return depthHashKey;
+}
+
+uint CreateRayHashKey(in float3 rayDirection, in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
+{
+    uint rayDirectionHashKey = CreateRayDirectionHashKey(rayDirection);
+    uint rayOriginDepthHashKey = CreateDepthHashKey(rayOriginDepth, rayGroupMinMaxDepth);
+    return  rayDirectionHashKey +
+            (rayOriginDepthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D));
 }
 
 
 // Calculate ray direction hash keys and cache depths.
-void CalculatePartialRayDirectionHashKeyAndCacheDepth(uint2 Gid, uint GI)
+void CalculatePartialRayDirectionHashKeyAndCacheDepth(in uint2 Gid, in uint GI)
 {
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 GroupStart = Gid * RayGroupDim;
@@ -383,58 +340,57 @@ void CalculatePartialRayDirectionHashKeyAndCacheDepth(uint2 Gid, uint GI)
         uint2 pixel = GroupStart + uint2(i % SortRays::RayGroup::Width, i / SortRays::RayGroup::Width);
         if (IsWithinBounds(pixel, CB.dim))
         {
-            float4 rayDirectionDepthHit = g_inRayDirectionOriginDepthHit[pixel];
-            float depth = rayDirectionDepthHit.z;
-            bool isRayValid = depth >= MIN_VALID_RAY_DEPTH;
+            float3 rayDirectionOriginDepth = g_inRayDirectionOriginDepth[pixel].xyz;
+            float rayOriginDepth = rayDirectionOriginDepth.z;
+            bool isRayValid = rayOriginDepth >= MIN_VALID_RAY_DEPTH;
 
             // The ray direction hash key doesn't need to store if the ray value is valid for now, 
             // as there's no space when storing it as 8bit. The reason the hash from 
             // ray direction needs to be stored as 8 bit is to leave room in Shared Memory 
             // for Ray Origin Depth Min Max reduction values. Once that is computed, 
-            // depth hash can be computed and the final 16bit hash key will reserve 
+            // ray origin depth hash can be computed and the final 16bit hash key will reserve 
             // bits for invalid rays. Until then the ray origin depth is used to identify
             // invalid rays.        
             uint rayDirectionHashKey = 0;
             if (isRayValid)
             {
-                float3 rayDirection = DecodeNormal(rayDirectionDepthHit.xy);
+                float3 rayDirection = DecodeNormal(rayDirectionOriginDepth.xy);
                 rayDirectionHashKey = CreateRayDirectionHashKey(rayDirection);
 
             }
 
             // Cache the depth.
-            Store16bitFloatInSMem(i, depth, SMem::Offset:Depth16b);
+            Store16bitFloatInSMem(i, rayOriginDepth, SMem::Offset::Depth16b);
 
             // Cache the key.
-            Store8bitUintInLow16bitSMem(i, key, SMem::Offset:Key8b);
+            Store8bitUintInLow16bitSMem(i, rayDirectionHashKey, SMem::Offset::Key8b);
         }
     }
     GroupMemoryBarrierWithGroupSync();
 }
 
-// Calculate Ray Origin Depth Min Max.
-float2 CalculateRayGroupMinMaxDepth(uint GI)
+// Calculate depth min max range of all rays within the ray group.
+float2 CalculateRayGroupMinMaxDepth(in uint GI)
 {
     // Reduce all ray values to per wave values.
     for (uint i = GI; i < NUM_RAYS; i += NUM_THREADS)
     {
-        uint key = Load8bitValueFromLow16bitSMem(i, SMem::Offset:Key8b);
-        float depth = Load16bitFloatFromSMem(i, SMem::Offset:Depth16b);
-        bool isValidRay = depth != INVALID_RAY_DEPTH;
+        float rayOriginDepth = Load16bitFloatFromSMem(i, SMem::Offset::Depth16b);
+        bool isValidRay = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH;
         
-        float waveDepthMin = WaveActiveMin(isValidRay ? depth : FLT_MAX);
-        float waveDepthMax = WaveActiveMax(isValidRay ? depth : 0);
-        float waveDepthSum = WaveActiveSum(isValidRay ? depth : 0);
+        float waveDepthMin = WaveActiveMin(isValidRay ? rayOriginDepth : FLT_MAX);
+        float waveDepthMax = WaveActiveMax(isValidRay ? rayOriginDepth : 0);
+        float waveDepthSum = WaveActiveSum(isValidRay ? rayOriginDepth : 0);
         uint waveValidRayCount = WaveActiveSum(isValidRay);
 
         if (WaveGetLaneIndex() == 0)
         {
             uint waveIndex = i / WaveGetLaneCount();
 
-            Store16bitFloatInSMem(waveIndex, waveDepthMin, SMem::Offset:WaveDepthMin);
-            Store16bitFloatInSMem(waveIndex, waveDepthMax, SMem::Offset:WaveDepthMax);
-            Store16bitFloatInSMem(waveIndex, waveDepthSum, SMem::Offset:WaveDepthSum);
-            Store16bitUintInSMem(waveIndex, waveValidRayCount, SMem::Offset:WaveValidRayCount);
+            Store16bitFloatInSMem(waveIndex, waveDepthMin, SMem::Offset::WaveDepthMin);
+            Store16bitFloatInSMem(waveIndex, waveDepthMax, SMem::Offset::WaveDepthMax);
+            Store16bitFloatInSMem(waveIndex, waveDepthSum, SMem::Offset::WaveDepthSum);
+            Store16bitUintInSMem(waveIndex, waveValidRayCount, SMem::Offset::WaveValidRayCount);
         }
     }
     GroupMemoryBarrierWithGroupSync();
@@ -449,10 +405,10 @@ float2 CalculateRayGroupMinMaxDepth(uint GI)
             break;
         }
 
-        float depthMin = Load16bitFloatFromSMem(GI, SMem::Offset:WaveDepthMin);
-        float depthMax = Load16bitFloatFromSMem(GI, SMem::Offset:WaveDepthMax);
-        float depthSum = Load16bitFloatFromSMem(GI, SMem::Offset:WaveDepthSum);
-        uint validRayCount = Load16bitUintFromSMem(GI, SMem::Offset:WaveValidRayCount);
+        float depthMin = Load16bitFloatFromSMem(GI, SMem::Offset::WaveDepthMin);
+        float depthMax = Load16bitFloatFromSMem(GI, SMem::Offset::WaveDepthMax);
+        float depthSum = Load16bitFloatFromSMem(GI, SMem::Offset::WaveDepthSum);
+        uint validRayCount = Load16bitUintFromSMem(GI, SMem::Offset::WaveValidRayCount);
 
         float waveDepthMin = WaveActiveMin(depthMin);
         float waveDepthMax = WaveActiveMax(depthMax);
@@ -463,25 +419,26 @@ float2 CalculateRayGroupMinMaxDepth(uint GI)
         {
             uint waveIndex = GI / WaveGetLaneCount();
 
-            Store16bitFloatInSMem(waveIndex, waveDepthMin, SMem::Offset:WaveDepthMin);
-            Store16bitFloatInSMem(waveIndex, waveDepthMax, SMem::Offset:WaveDepthMax);
-            Store16bitFloatInSMem(waveIndex, waveDepthSum, SMem::Offset:WaveDepthSum);
-            Store16bitUintInSMem(waveIndex, waveValidRayCount, SMem::Offset:WaveValidRayCount);
+            Store16bitFloatInSMem(waveIndex, waveDepthMin, SMem::Offset::WaveDepthMin);
+            Store16bitFloatInSMem(waveIndex, waveDepthMax, SMem::Offset::WaveDepthMax);
+            Store16bitFloatInSMem(waveIndex, waveDepthSum, SMem::Offset::WaveDepthSum);
+            Store16bitUintInSMem(waveIndex, waveValidRayCount, SMem::Offset::WaveValidRayCount);
         }
         GroupMemoryBarrierWithGroupSync();
     }
 
     // ToDo test perf if only first thread computes the value and stores it and waits
-    float depthMin = Load16bitFloatFromSMem(0, SMem::Offset:WaveDepthMin);
-    float depthMax = Load16bitFloatFromSMem(0, SMem::Offset:WaveDepthMax);
-    float depthSum = Load16bitFloatFromSMem(0, SMem::Offset:WaveDepthSum);
-    uint validRayCount = Load16bitUintFromSMem(0, SMem::Offset:WaveValidRayCount);
+    float depthMin = Load16bitFloatFromSMem(0, SMem::Offset::WaveDepthMin);
+    float depthMax = Load16bitFloatFromSMem(0, SMem::Offset::WaveDepthMax);
+    float depthSum = Load16bitFloatFromSMem(0, SMem::Offset::WaveDepthSum);
+    uint validRayCount = Load16bitUintFromSMem(0, SMem::Offset::WaveValidRayCount);
 
     // If validRayCount is ever 0, and thus producing bad value, 
     // it's ok as the depth values won't end up being used.
     // ToDo double check this
     float depthMean = depthSum / validRayCount;
 
+    // ToDo test perf overhead of conservativeDepthMax calculation
     // The Max is calculated as the min of the max depth and the 
     // min reflected around the mean. This helps prevent depth range
     //  unnecessarily large when there's only a small number of rays far away.
@@ -494,58 +451,51 @@ float2 CalculateRayGroupMinMaxDepth(uint GI)
 }
 
 // Combine the depth hash key with the ray direction hash keys and update the key histograms.
-FinalizeHashKeyAndCalculateKeyHistogram(uint GI)
+void FinalizeHashKeyAndCalculateKeyHistogram(in uint GI, in float2 rayGroupMinMaxDepth)
 {
     for (uint i = GI; i < NUM_RAYS; i += NUM_THREADS)
     {
-        bool useHi8Bits = i >= 4096;
-        uint encodedKey = Get8bitValueFromSMem(i + SMCACHE_KEY_OFFSET, useHi8Bits);
-        bool isValidKey = encodedKey & 0x8000;
+        float rayOriginDepth = Load16bitFloatFromSMem(i, SMem::Offset::Depth16b);
+        bool isValidRay = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH;
+        uint rayDirectionHashKey = Load8bitUintFromLow16bitSMem(i, SMem::Offset::Key8b);
+        uint hashKey = INVALID_16BIT_KEY_VALUE;
 
-        if (isValidKey)
+        if (isValidRay)
         {
-            float depth = GetCachedDepthValue(i);
-            uint depthHashKey = CreateDepthHashKey(depth, rayGroupMinMaxDepth);
+            uint depthHashKey = CreateDepthHashKey(rayOriginDepth, rayGroupMinMaxDepth);
+            hashKey = rayDirectionHashKey + 
+                     (depthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D));
 
-            key += depthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D)
-
-                // Update the key histograms.
-                AddTo16bitValueInSMem()
-                AddToKeyCounts(bufferID, encodedKey, 1);
+            // Increase histogram bin count.
+            AddTo16bitValueInSMem(hashKey, 1, SMem::Offset::Histogram);
         }
+
         // Cache the key.
-#if SMCACHE_INTERLEAVE_EVEN_ODD_INDICES
-        bool useHiBits = index & 1;
-        uint packedKey = encodedKey << (useHiBits * 16);
-        InterlockedXor(SMEM[index / 2 + SMCACHE_KEY_OFFSET], packedKey);
-#else
-        Store16bitValueInSMem(i + SMCACHE_KEY_OFFSET, encodedKey);
-#endif
+        Store16bitUintInSMem(i, hashKey, SMem::Offset::Key16b);
     }
     GroupMemoryBarrierWithGroupSync();
 }
 
-void GenerateHashKeysAndKeyHistogram(uint2 Gid, uint GI)
+void GenerateHashKeysAndKeyHistogram(in uint2 Gid, in uint GI, out float2 rayGroupMinMaxDepth)
 {
     CalculatePartialRayDirectionHashKeyAndCacheDepth(Gid, GI);
-    float2 minMaxDepth = GetRayGroupMinMaxDepth(GI);
-    FinalizeHashKeyAndCalculateKeyHistogram(GI);
+    rayGroupMinMaxDepth = CalculateRayGroupMinMaxDepth(GI);
+    FinalizeHashKeyAndCalculateKeyHistogram(GI, rayGroupMinMaxDepth);
 }
 
 // Prefix sum.
 // Requirements: 
 //  - NUM_KEYS <= WaveGetLaneCount() ^ 2
-//    To support smaller waves or more keys, the implementation needs 
-//    to be extended to have more iterations levels.
-void PrefixSum(uint GI)
+//    ToDo support up to 4K key bins
+void PrefixSum(in uint GI)
 {
     // PrefixSum at the lane level.
     for (uint key = GI; key < NUM_KEYS; key += NUM_THREADS)
     {
-        uint count = GetKeyCount(0, key);
+        uint count = Load16bitUintFromSMem(key, SMem::Offset::Histogram);
         uint prefixSum = WavePrefixSum(count);
 
-        SetKeyCount(1, key, prefixSum);
+        Store16bitUintInSMem(key, prefixSum, SMem::Offset::HistogramTemp);
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -554,10 +504,10 @@ void PrefixSum(uint GI)
     for (uint i = GI; i < NumWaves - 1; i += NUM_THREADS)
     {
         uint lastPrevWaveIndex = (i + 1) * WaveGetLaneCount() - 1;
-        uint count = GetKeyCount(1, lastPrevWaveIndex);
+        uint count = Load16bitUintFromSMem(key, SMem::Offset::HistogramTemp);
         uint postfixSum = count + WavePrefixSum(count);
-        
-        SetKeyCount(0, i, postfixSum);
+
+        Store16bitUintInSMem(i, postfixSum, SMem::Offset::Histogram);
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -565,57 +515,60 @@ void PrefixSum(uint GI)
     for (uint j = GI + WaveGetLaneCount(); j < NUM_KEYS; j += NUM_THREADS)
     {
         uint index = j / WaveGetLaneCount() - 1; // Get the last value of the previous wave segment.
-        uint prefixSum = GetKeyCount(0, index);
-        
-        AddToKeyCounts(1, j, prefixSum);
+        uint prefixSum = Load16bitUintFromSMem(index, SMem::Offset::Histogram);
+
+        AddTo16bitValueInSMem(j, 1, SMem::Offset::HistogramTemp);
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    // Copy the final prefixSums to the primary histogram cache 
+    // as the HistogramTemp cache gets repurposed after this.
+    for (key = GI; key < NUM_KEYS; key += NUM_THREADS)
+    {
+        uint prefixSum = Load16bitUintFromSMem(key, SMem::Offset::HistogramTemp);
+        Store16bitUintInSMem(key, prefixSum, SMem::Offset::Histogram);
     }
     GroupMemoryBarrierWithGroupSync();
 }
 
 // Write the sorted indices to shared memory to avoid costly scatter write to VRAM.
 // These can then be later linearly spilled to VRAM.
-void ScatterWriteSortedIndicesToSharedMemory(uint2 Gid, uint GI)
+void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2 rayGroupMinMaxDepth)
 {
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 GroupStart = Gid * RayGroupDim;
     uint2 RayGroupEnd = min(GroupStart + RayGroupDim, CB.dim);
     RayGroupDim = RayGroupEnd - GroupStart;
-
-    uint p = 1;   // index of a buffer last written to in prefix sum.
-
+    
     for (uint i = GI; i < NUM_RAYS; i += NUM_THREADS)
     {
-        uint2 srcIndex = uint2(i % SortRays::RayGroup::Width, i / SortRays::RayGroup::Width);
-        uint2 pixel = GroupStart + srcIndex;
+        uint2 rayIndex = uint2(i % SortRays::RayGroup::Width, i / SortRays::RayGroup::Width);
+        uint2 pixel = GroupStart + rayIndex;
         if (IsWithinBounds(pixel, CB.dim))
         {
             // Get the key for the corresponding pixel.
             uint key;
+            bool isValidRay = false;
             {
                 // First, see if the cached key is stil valid.
-#if SMCACHE_INTERLEAVE_EVEN_ODD_INDICES
-                bool useHiBits = i & 1;
-                uint packedKey = SMEM[i / 2 + SMCACHE_KEY_OFFSET];
-                uint encodedKey = (packedKey >> (useHiBits * 16)) & 0xffff;
-#else
-                uint encodedKey = Get16bitValueFromSMem(i + SMCACHE_KEY_OFFSET);
-#endif
-                bool isValidKey = encodedKey & 0x8000;
+                uint encodedKey = Load16bitUintFromSMem(i, SMem::Offset::Key16b);
+                bool isValidKey = encodedKey & INVALID_16BIT_KEY_VALUE;
 
                 if (isValidKey)
                 {
-                    key = encodedKey & 0x7fff;
+                    isValidRay = !(encodedKey & INVALID_RAY_KEY);
+                    key = encodedKey & ~INVALID_16BIT_KEY_VALUE;
                 }
                 else  // The cached key has been already replaced with the ray's source index. Regenerate the key.
                 {
-                    float4 rayDirectionDepthHit = g_inRayDirectionOriginDepthHit[pixel];
-                    bool isValidRay = rayDirectionDepthHit.z >= 0;
+                    float3 rayDirectionOriginDepth = g_inRayDirectionOriginDepth[pixel].xyz;
+                    float rayOriginDepth = rayDirectionOriginDepth.z;
+                    isValidRay = rayOriginDepth != 0;
 
                     if (isValidRay)
                     {
-                        float3 rayDirection = DecodeNormal(rayDirectionDepthHit.xy);
-                        float linearDepth = rayDirectionDepthHit.z;
-                        key = CreateHashKey(rayDirection, linearDepth);
+                        float3 rayDirection = DecodeNormal(rayDirectionOriginDepth.xy);
+                        key = CreateRayHashKey(rayDirection, rayOriginDepth, rayGroupMinMaxDepth);
                     }
                     else
                     {
@@ -624,23 +577,14 @@ void ScatterWriteSortedIndicesToSharedMemory(uint2 Gid, uint GI)
                 }
             }
             
-            uint index = AddToKeyCounts(p, key, 1);
+            uint index = AddTo16bitValueInSMem(key, 1, SMem::Offset::Histogram);
             // To avoid costly scatter writes to VRAM, cache indices into SMem here instead.
-#if SMCACHE_INTERLEAVE_EVEN_ODD_INDICES
-            uint useHiBits = index & 1;
-            uint packedSrcIndex = (srcIndex.y << (useHiBits * 16))
-                + (srcIndex.x << (useHiBits * 16 + 8));
-
-            // Zero out the key so that XOR cam next set the srcIndex.
-            uint keyBitsToZeroOut = useHiBits ? 0x0000ffff : 0xffff0000;
-            InterlockedAnd(SMEM[index / 2], keyBitsToZeroOut);
-            InterlockedXor(SMEM[index / 2], packedSrcIndex);
-#else
-            uint packedSrcIndex = srcIndex.y + (srcIndex.x << 8);
-            Store16bitValueInSMem(index, packedSrcIndex);
-#endif
+            uint encodedRayIndex = isValidRay ? rayIndex.y + (rayIndex.x << 8) // Denote any keystored
+                                              : INVALID_RAY_KEY;
+            encodedRayIndex |= INVALID_16BIT_KEY_VALUE;     // Denote the target value doesn't represent a key no more.
+            Store16bitUintInSMem(index, encodedRayIndex, SMem::Offset::RayIndex);
 #if 0
-            g_outDebug[outPixel] = uint4(index, 0, srcIndex);
+            g_outDebug[outPixel] = uint4(index, 0, encodedRayIndex);
 #endif
         }
     }
@@ -648,7 +592,7 @@ void ScatterWriteSortedIndicesToSharedMemory(uint2 Gid, uint GI)
 }
 
 
-void SpillCachedIndicesToVRAM(uint2 Gid, uint GI)
+void SpillCachedIndicesToVRAM(in uint2 Gid, in uint GI)
 {
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 GroupStart = Gid * RayGroupDim;
@@ -656,13 +600,7 @@ void SpillCachedIndicesToVRAM(uint2 Gid, uint GI)
     // Sequentially spill cached indices into VRAM.
     for (uint index = GI; index < NUM_RAYS; index += NUM_THREADS)
     {
-#if SMCACHE_INTERLEAVE_EVEN_ODD_INDICES
-        uint packedSrcIndex = SMEM[index / 2];
-        bool useHiBits = index & 1;
-        packedSrcIndex = useHiBits ? (packedSrcIndex >> 16) : (packedSrcIndex & 0xffff);
-#else
-        uint packedSrcIndex = Get16bitValueFromSMem(index);
-#endif
+        uint packedSrcIndex = Load16bitUintFromSMem(index, SMem::Offset::RayIndex);
 
         uint2 srcIndex = uint2(packedSrcIndex >> 8, packedSrcIndex & 0xff);
         uint2 outPixel = GroupStart + uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
@@ -674,8 +612,10 @@ void SpillCachedIndicesToVRAM(uint2 Gid, uint GI)
 void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
 {
     InitializeSharedMemory(GI);
-    GenerateHashKeysAndKeyHistogram(Gid, GI);
+
+    float2 rayGroupMinMaxDepth;
+    GenerateHashKeysAndKeyHistogram(Gid, GI, rayGroupMinMaxDepth);
     PrefixSum(GI);
-    ScatterWriteSortedIndicesToSharedMemory(Gid, GI);
+    ScatterWriteSortedIndicesToSharedMemory(Gid, GI, rayGroupMinMaxDepth);
     SpillCachedIndicesToVRAM(Gid, GI);
 }

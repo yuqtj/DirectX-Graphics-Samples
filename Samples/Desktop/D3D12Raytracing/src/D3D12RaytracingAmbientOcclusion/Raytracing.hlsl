@@ -59,7 +59,7 @@ TextureCube<float4> g_texEnvironmentMap : register(t12);
 Texture2D<float> g_filterWeightSum : register(t13);
 Texture2D<uint> g_texInputAOFrameAge : register(t14);
 Texture2D<float> g_texShadowMap : register(t21);
-Texture2D<float4> g_texORaysDirectionOriginDepthHit : register(t22);
+Texture2D<float4> g_texAORaysDirectionOriginDepthHit : register(t22);
 Texture2D<uint2> g_texAORayGroupThreadOffsets : register(t23);
 
 
@@ -80,7 +80,7 @@ RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18);
 RWTexture2D<float4> g_rtColor : register(u19);
 RWTexture2D<float4> g_rtAODiffuse : register(u20);
 RWTexture2D<float> g_rtShadowMap : register(u21);
-RWTexture2D<float4> g_rtAORaysDirectionOriginDepthHit : register(u22);
+RWTexture2D<float4> g_rtAORaysDirectionOriginDepth : register(u22);
 
 ConstantBuffer<SceneConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
@@ -466,7 +466,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
         if (CB.RTAO_UseSortedRays)
         {
             uint2 DTid = DispatchRaysIndex().xy;
-            g_rtAORaysDirectionOriginDepthHit[DTid] = float4(EncodeNormal(rayDirection), linearDepth, true);
+            g_rtAORaysDirectionOriginDepth[DTid] = float4(EncodeNormal(rayDirection), linearDepth, 0);
         }
 
         // ToDo hitPosition adjustment - fix crease artifacts
@@ -1104,7 +1104,7 @@ void MyRayGenShader_AO()
     {
         if (CB.RTAO_UseSortedRays)
         {
-            g_rtAORaysDirectionOriginDepthHit[DTid] = float4(0, 0, 0, false);
+            g_rtAORaysDirectionOriginDepth[DTid] = float4(0, 0, 0, 0);
         }
     }
 
@@ -1126,11 +1126,14 @@ void MyRayGenShader_AO()
     }
 }
 
+
+#define INVALID_RAY_KEY 0x40 
+
 [shader("raygeneration")]
 void MyRayGenShader_AO_sortedRays()
 {
 #if RTAO_RAY_SORT_1DRAYTRACE
-    uint index1D = DispatchRaysIndex().x;   // 696514
+    uint index1D = DispatchRaysIndex().x; 
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
 
     // Calculate 2D DTid from a 1D index where
@@ -1164,25 +1167,33 @@ void MyRayGenShader_AO_sortedRays()
     uint2 rayGroupBase = rayGroupIndex * rayGroupDim;
     uint2 rayGroupThreadIndex = g_texAORayGroupThreadOffsets[DTid];
     uint2 rayIndex = rayGroupBase + rayGroupThreadIndex;
+    
+
+    uint numShadowRayHits = 0;
+    float ambientCoef = 1;  // ToDo 1 or 0?
+    float occlussionCoefSum = 0;
+    float minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
+    uint numSamples = 1;
+
+    bool isValidRay = rayGroupThreadIndex.x != INVALID_RAY_KEY;
+    if (isValidRay)
+    {
+
+
 #else
     uint2 DTid = DispatchRaysIndex().xy;
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 rayGroupBase = (DTid / rayGroupDim) * rayGroupDim;
     uint2 rayGroupThreadIndex = g_texAORayGroupThreadOffsets[DTid];
     uint2 rayIndex = rayGroupBase + rayGroupThreadIndex;
+    ToDo
 #endif
 
-    //    bool hit = g_texGBufferPositionHits[DTid] > 0;
-    uint numShadowRayHits = 0;
-    float ambientCoef = 1;  // ToDo 1 or 0?
-    float occlussionCoefSum = 0;
-    float minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
-    uint numSamples = 1;
-    float4 rayDirectionOriginHit = g_texORaysDirectionOriginDepthHit[rayIndex];
-    bool hit = rayDirectionOriginHit.w;
-    if (hit)
-    {
-        float3 rayDirection = DecodeNormal(rayDirectionOriginHit.xy);
+        //    bool hit = g_texGBufferPositionHits[DTid] > 0;
+        float3 rayDirectionOrigin = g_texAORaysDirectionOriginDepthHit[rayIndex].xyz;
+        float rayOriginDepth = rayDirectionOrigin.z;
+
+        float3 rayDirection = DecodeNormal(rayDirectionOrigin.xy);
         float3 hitPosition = g_texGBufferPositionRT[rayIndex].xyz;
 
         // ToDo remove?
