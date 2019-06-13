@@ -1127,7 +1127,7 @@ void MyRayGenShader_AO()
 }
 
 
-#define INVALID_RAY_KEY 0x40 
+#define INVALID_RAY_KEY_8b 0x40 
 
 [shader("raygeneration")]
 void MyRayGenShader_AO_sortedRays()
@@ -1175,7 +1175,7 @@ void MyRayGenShader_AO_sortedRays()
     float minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
     uint numSamples = 1;
 
-    bool isValidRay = rayGroupThreadIndex.x != INVALID_RAY_KEY;
+    bool isValidRay = rayGroupThreadIndex.x != INVALID_RAY_KEY_8b;
     if (isValidRay)
     {
 
