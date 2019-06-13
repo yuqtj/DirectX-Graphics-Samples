@@ -61,6 +61,9 @@ namespace HashKey {
     };
 }
 
+#define MIN_WAVE_LANE_COUNT 16
+#define MAX_WAVES (MAX_RAYS + MIN_WAVE_LANE_COUNT - 1) / MIN_WAVE_LANE_COUNT
+
 namespace SMem
 {
     namespace Size
@@ -78,6 +81,10 @@ namespace SMem
             Key8b = 4096,
             Key16b = 8192,
             Depth16b = 0,
+            WaveDepthMin = 0,
+            WaveDepthMax = MAX_WAVES,
+            WaveDepthSum = 2 * MAX_WAVES,
+            WaveValidRayCount = 3 * MAX_WAVES
         };
     }
 }
@@ -405,8 +412,8 @@ void CalculatePartialRayDirectionHashKeyAndCacheDepth(uint2 Gid, uint GI)
     GroupMemoryBarrierWithGroupSync();
 }
 
-// Depth Min Max reduction.
-float2 GetRayGroupMinMaxDepth(uint GI)
+// Calculate Ray Origin Depth Min Max.
+float2 CalculateRayGroupMinMaxDepth(uint GI)
 {
     // Reduce all ray values to per wave values.
     for (uint i = GI; i < NUM_RAYS; i += NUM_THREADS)
@@ -416,6 +423,7 @@ float2 GetRayGroupMinMaxDepth(uint GI)
         bool isValidRay = depth != INVALID_RAY_DEPTH;
         
         float waveDepthMin = WaveActiveMin(isValidRay ? depth : FLT_MAX);
+        float waveDepthMax = WaveActiveMax(isValidRay ? depth : 0);
         float waveDepthSum = WaveActiveSum(isValidRay ? depth : 0);
         uint waveValidRayCount = WaveActiveSum(isValidRay);
 
@@ -424,6 +432,9 @@ float2 GetRayGroupMinMaxDepth(uint GI)
             uint waveIndex = i / WaveGetLaneCount();
 
             Store16bitFloatInSMem(waveIndex, waveDepthMin, SMem::Offset:WaveDepthMin);
+            Store16bitFloatInSMem(waveIndex, waveDepthMax, SMem::Offset:WaveDepthMax);
+            Store16bitFloatInSMem(waveIndex, waveDepthSum, SMem::Offset:WaveDepthSum);
+            Store16bitUintInSMem(waveIndex, waveValidRayCount, SMem::Offset:WaveValidRayCount);
         }
     }
     GroupMemoryBarrierWithGroupSync();
@@ -438,24 +449,48 @@ float2 GetRayGroupMinMaxDepth(uint GI)
             break;
         }
 
-        uint encodedWaveMinMaxDepth = Get16bitValueFromSMem(GI + SMCACHE_WAVE_MIN_MAX_DEPTH_OFFSET);
-        float2 waveMinMaxDepth = HalfToFloat2(encodedWaveMinMaxDepth);
+        float depthMin = Load16bitFloatFromSMem(GI, SMem::Offset:WaveDepthMin);
+        float depthMax = Load16bitFloatFromSMem(GI, SMem::Offset:WaveDepthMax);
+        float depthSum = Load16bitFloatFromSMem(GI, SMem::Offset:WaveDepthSum);
+        uint validRayCount = Load16bitUintFromSMem(GI, SMem::Offset:WaveValidRayCount);
 
-        waveMinMaxDepth.x = WaveActiveMin(waveMinMaxDepth.x);
-        waveMinMaxDepth.y = WaveActiveMax(waveMinMaxDepth.y);
+        float waveDepthMin = WaveActiveMin(depthMin);
+        float waveDepthMax = WaveActiveMax(depthMax);
+        float waveDepthSum = WaveActiveSum(depthSum);
+        uint waveValidRayCount = WaveActiveSum(validRayCount);
 
         if (WaveGetLaneIndex() == 0)
         {
-            uint encodedWaveMinMaxDepth = Float2ToHalf(waveMinMaxDepth);
-            uint waveIndex = i / WaveGetLaneCount();
+            uint waveIndex = GI / WaveGetLaneCount();
 
-            Store16bitValueInSMem(waveIndex + SMCACHE_WAVE_MIN_MAX_DEPTH_OFFSET, encodedWaveMinMaxDepth);
+            Store16bitFloatInSMem(waveIndex, waveDepthMin, SMem::Offset:WaveDepthMin);
+            Store16bitFloatInSMem(waveIndex, waveDepthMax, SMem::Offset:WaveDepthMax);
+            Store16bitFloatInSMem(waveIndex, waveDepthSum, SMem::Offset:WaveDepthSum);
+            Store16bitUintInSMem(waveIndex, waveValidRayCount, SMem::Offset:WaveValidRayCount);
         }
         GroupMemoryBarrierWithGroupSync();
     }
 
-    uint encodedWaveMinMaxDepth = Get16bitValueFromSMem(0 + SMCACHE_WAVE_MIN_MAX_DEPTH_OFFSET);
-    return HalfToFloat2(encodedWaveMinMaxDepth);
+    // ToDo test perf if only first thread computes the value and stores it and waits
+    float depthMin = Load16bitFloatFromSMem(0, SMem::Offset:WaveDepthMin);
+    float depthMax = Load16bitFloatFromSMem(0, SMem::Offset:WaveDepthMax);
+    float depthSum = Load16bitFloatFromSMem(0, SMem::Offset:WaveDepthSum);
+    uint validRayCount = Load16bitUintFromSMem(0, SMem::Offset:WaveValidRayCount);
+
+    // If validRayCount is ever 0, and thus producing bad value, 
+    // it's ok as the depth values won't end up being used.
+    // ToDo double check this
+    float depthMean = depthSum / validRayCount;
+
+    // The Max is calculated as the min of the max depth and the 
+    // min reflected around the mean. This helps prevent depth range
+    //  unnecessarily large when there's only a small number of rays far away.
+    // Given the limited depth hash bin size, it's prefereed to prioritize
+    // more depth quanization precision for the closer ray origin depths. 
+    float reflectedDepthMin = depthMean + (depthMean - depthMin);
+    float conservativeDepthMax = min(reflectedDepthMin, depthMax);
+
+    return float2(depthMin, depthMax);
 }
 
 // Combine the depth hash key with the ray direction hash keys and update the key histograms.
