@@ -40,6 +40,12 @@
     <Filter Include="Assets\Scene\Assets">
       <UniqueIdentifier>{ae18df80-754a-4361-baae-440ce51538d8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Assets\Shaders\RTAO">
+      <UniqueIdentifier>{3e9c06c8-1987-4ed4-852d-eded31cb2030}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Assets\Shaders\RTAO\Ray Sorting">
+      <UniqueIdentifier>{5d4b03bc-b257-4e03-b514-11b7bb60d5a6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -246,6 +252,9 @@
     <None Include="util\BxDF.hlsli">
       <Filter>Assets\Shaders\Lighting</Filter>
     </None>
+    <None Include="RaySorting.hlsli">
+      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Raytracing.hlsl">
@@ -372,11 +381,11 @@
     <FxCompile Include="CalculateVariance_SeparableFilterCS.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="SortRays_128x64rayGroupCS.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="CountingSort_SortRays_128x64rayGroupCS.hlsl">
-      <Filter>Assets\Shaders</Filter>
+      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
+    </FxCompile>
+    <FxCompile Include="SortRays_128x64rayGroupCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

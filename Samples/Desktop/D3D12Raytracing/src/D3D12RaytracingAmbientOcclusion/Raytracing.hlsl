@@ -60,7 +60,7 @@ Texture2D<float> g_filterWeightSum : register(t13);
 Texture2D<uint> g_texInputAOFrameAge : register(t14);
 Texture2D<float> g_texShadowMap : register(t21);
 Texture2D<float4> g_texAORaysDirectionOriginDepthHit : register(t22);
-Texture2D<uint2> g_texAORayGroupThreadOffsets : register(t23);
+Texture2D<uint2> g_texAORayGroupIndexOffsets : register(t23);
 
 
 // ToDo remove AOcoefficient and use AO hits instead?
@@ -1127,7 +1127,7 @@ void MyRayGenShader_AO()
 }
 
 
-#define INVALID_RAY_KEY_8b 0x40 
+#include "RaySorting.hlsli"
 
 [shader("raygeneration")]
 void MyRayGenShader_AO_sortedRays()
@@ -1165,8 +1165,8 @@ void MyRayGenShader_AO_sortedRays()
     
     uint2 DTid = rayGroupIndex * rayGroupDim + rayThreadIndex;
     uint2 rayGroupBase = rayGroupIndex * rayGroupDim;
-    uint2 rayGroupThreadIndex = g_texAORayGroupThreadOffsets[DTid];
-    uint2 rayIndex = rayGroupBase + rayGroupThreadIndex;
+    uint2 rayGroupRayIndex = g_texAORayGroupIndexOffsets[DTid];
+    uint2 rayIndex = rayGroupBase + rayGroupRayIndex;
     
 
     uint numShadowRayHits = 0;
@@ -1175,16 +1175,14 @@ void MyRayGenShader_AO_sortedRays()
     float minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
     uint numSamples = 1;
 
-    bool isValidRay = rayGroupThreadIndex.x != INVALID_RAY_KEY_8b;
-    if (isValidRay)
+    if (IsActiveRay(rayGroupRayIndex))
     {
-
 
 #else
     uint2 DTid = DispatchRaysIndex().xy;
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 rayGroupBase = (DTid / rayGroupDim) * rayGroupDim;
-    uint2 rayGroupThreadIndex = g_texAORayGroupThreadOffsets[DTid];
+    uint2 rayGroupRayIndex = g_texAORayGroupIndexOffsets[DTid];
     uint2 rayIndex = rayGroupBase + rayGroupThreadIndex;
     ToDo
 #endif

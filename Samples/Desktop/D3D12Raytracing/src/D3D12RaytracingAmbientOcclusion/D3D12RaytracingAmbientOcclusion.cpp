@@ -361,11 +361,11 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 
     PBRTScene pbrtSceneDefinitions[] = {
         {L"Dragon", "Assets\\dragon\\scene.pbrt"},
+        {L"GroundPlane", "Assets\\groundplane\\scene.pbrt"},
 #if !LOAD_ONLY_ONE_PBRT_MESH 
         {L"Spaceship", "Assets\\spaceship\\scene.pbrt"},
         {L"Car", "Assets\\car2\\scene.pbrt"},
         {L"House", "Assets\\house\\scene.pbrt"},
-        {L"GroundPlane", "Assets\\groundplane\\scene.pbrt"},
 
         {L"MirrorQuad", "Assets\\mirrorquad\\scene.pbrt"},
 #endif
@@ -2303,11 +2303,11 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 #if LOAD_PBRT_SCENE
     wstring bottomLevelASnames[] = {
         L"Dragon",
+        L"GroundPlane",
 #if !LOAD_ONLY_ONE_PBRT_MESH
         L"Spaceship",
         L"Car",
         L"House",
-        L"GroundPlane",
 #endif    
         //L"Tesselated Geometry"
     };
