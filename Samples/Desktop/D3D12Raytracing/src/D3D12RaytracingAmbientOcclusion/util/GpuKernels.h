@@ -568,8 +568,7 @@ namespace GpuKernels
     public:
         // ToDo remove
         enum FilterType {
-            BitonicSort = 0,
-            CountingSort,
+            CountingSort = 0,
             Count
         };
 
@@ -585,6 +584,7 @@ namespace GpuKernels
             UINT width,
             UINT height,
             FilterType type,
+            bool useOctahedralDirectionQuantization,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputSourceToSortedRayIndexResourceHandle,

@@ -384,9 +384,6 @@
     <FxCompile Include="CountingSort_SortRays_128x64rayGroupCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </FxCompile>
-    <FxCompile Include="SortRays_128x64rayGroupCS.hlsl">
-      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
-    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">

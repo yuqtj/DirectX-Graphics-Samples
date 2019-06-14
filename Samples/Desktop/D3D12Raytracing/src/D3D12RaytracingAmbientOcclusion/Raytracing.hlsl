@@ -1177,7 +1177,6 @@ void MyRayGenShader_AO_sortedRays()
 
     if (IsActiveRay(rayGroupRayIndex))
     {
-
 #else
     uint2 DTid = DispatchRaysIndex().xy;
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
@@ -1251,6 +1250,22 @@ void MyRayGenShader_AO_sortedRays()
         }
     }
 
+#if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
+    g_rtAOcoefficient[DTid] = ambientCoef;
+#if GBUFFER_AO_COUNT_AO_HITS
+    // ToDo test perf impact of writing this
+    g_rtAORayHits[DTid] = numShadowRayHits;
+#endif
+
+    if (CB.useShadowRayHitTime)
+    {
+#if USE_NORMALIZED_Z
+        minHitDistance *= 1 / (CB.Zmax - CB.Zmin); // ToDo pass by CB? 
+#endif
+        //g_rtAORayHitDistance[DTid] = minHitDistance;
+        g_rtAORayHitDistance[DTid] = minHitDistance;
+    }
+#else
     g_rtAOcoefficient[rayIndex] = ambientCoef;
 #if GBUFFER_AO_COUNT_AO_HITS
     // ToDo test perf impact of writing this
@@ -1265,6 +1280,7 @@ void MyRayGenShader_AO_sortedRays()
         //g_rtAORayHitDistance[DTid] = minHitDistance;
         g_rtAORayHitDistance[rayIndex] = minHitDistance;
     }
+#endif
 }
 
 

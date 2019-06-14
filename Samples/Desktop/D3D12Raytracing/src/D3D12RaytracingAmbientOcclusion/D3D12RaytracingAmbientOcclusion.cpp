@@ -178,6 +178,7 @@ namespace SceneArgs
 
     BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", true);
     NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 0.1f, 0.01f, 10.f, 0.01f);
+    BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
     /*
     // Grass geometry
@@ -4156,6 +4157,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
             m_raytracingHeight,
             GpuKernels::SortRays::FilterType::CountingSort,
             //GpuKernels::SortRays::FilterType::BitonicSort,
+            SceneArgs::RTAORaySortingUseOctahedralRayDirectionQuantization,
             m_cbvSrvUavHeap->GetHeap(),
             m_AORayDirectionOriginDepthHit.gpuDescriptorReadAccess,
             m_sourceToSortedRayIndex.gpuDescriptorWriteAccess,

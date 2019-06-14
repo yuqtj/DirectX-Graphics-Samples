@@ -37,7 +37,6 @@
 #include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
 #include "CompiledShaders\GenerateGrassStrawsCS.hlsl.h"
-#include "CompiledShaders\SortRays_128x64rayGroupCS.hlsl.h"
 #include "CompiledShaders\CountingSort_SortRays_128x64rayGroupCS.hlsl.h"
 
 using namespace std;
@@ -2102,10 +2101,6 @@ namespace GpuKernels
             {
                 switch (i)
                 {
-
-                case BitonicSort:
-                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pSortRays_128x64rayGroupCS), ARRAYSIZE(g_pSortRays_128x64rayGroupCS));
-                    break;
                 case CountingSort:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCountingSort_SortRays_128x64rayGroupCS), ARRAYSIZE(g_pCountingSort_SortRays_128x64rayGroupCS));
                     break;
@@ -2130,6 +2125,7 @@ namespace GpuKernels
         UINT width,
         UINT height,
         FilterType type,
+        bool useOctahedralDirectionQuantization,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputSourceToSortedRayIndexResourceHandle,
@@ -2142,7 +2138,7 @@ namespace GpuKernels
         ScopedTimer _prof(L"Sort Rays", commandList);
 
         m_CB->dim = XMUINT2(width, height);
-        m_CB->nullItem = UINT_MAX;
+        m_CB->useOctahedralDirectionQuantization = useOctahedralDirectionQuantization;
         m_CB->binDepthSize = binDepthSize;
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);

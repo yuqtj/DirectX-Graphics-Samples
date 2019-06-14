@@ -431,12 +431,7 @@ struct SortRaysConstantBuffer
 {
     XMUINT2 dim;
 
-    // A sort key that will end up at the end of the list; to be used to pad
-    // lists in LDS.
-    //   Descending:  0x00000000
-    //   Ascending:   0xffffffff
-    // Also used by the ShouldSwap() function to invert ordering.
-    UINT nullItem;
+    BOOL useOctahedralDirectionQuantization;
 
     // Depth for a bin within which to sort further based on direction.
     float binDepthSize;

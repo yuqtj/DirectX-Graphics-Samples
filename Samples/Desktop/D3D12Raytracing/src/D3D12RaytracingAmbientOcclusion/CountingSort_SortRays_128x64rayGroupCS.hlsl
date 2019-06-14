@@ -318,17 +318,27 @@ void InitializeSharedMemory(in uint GI)
 }
 
 // Create a hash key from a ray direction. 
-uint CreateRayDirectionHashKey(in float3 rayDirection)
+uint CreateRayDirectionHashKey(in float2 encodedRayDirection)
 {
-    //ToDo test quantization of octnormal instead.
+    float2 rayDirectionKey;
+    if (CB.useOctahedralDirectionQuantization)
+    {
+        rayDirectionKey = encodedRayDirection;
+    }
+    else // Spherical coordinates.
+    {
+        float3 rayDirection = DecodeNormal(encodedRayDirection.xy);
 
-    // Convert the vector from cartesian to spherical coordinates.
-    float azimuthAngle = atan2(rayDirection.y, rayDirection.x);
-    float polarAngle = acos(rayDirection.z);
+        // Convert the vector from cartesian to spherical coordinates.
+        float azimuthAngle = atan2(rayDirection.y, rayDirection.x);
+        float polarAngle = acos(rayDirection.z);
 
-    // Normalize to <0,1>.
-    float2 rayDirectionKey = float2((azimuthAngle / (2 * PI)),
-        polarAngle / PI);
+        // Normalize to <0,1>.
+        rayDirectionKey = 
+            float2(
+                (azimuthAngle / (2 * PI)),
+                polarAngle / PI);
+    }
 
     // Calculate hashes.
     const uint NormalHashKeyBins1D = 1 << RAY_DIRECTION_HASH_KEY_BITS_1D;
@@ -351,9 +361,9 @@ uint CreateDepthHashKey(in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
     return depthHashKey;
 }
 
-uint CreateRayHashKey(in float3 rayDirection, in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
+uint CreateRayHashKey(in float2 encodedRayDirection, in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
 {
-    uint rayDirectionHashKey = CreateRayDirectionHashKey(rayDirection);
+    uint rayDirectionHashKey = CreateRayDirectionHashKey(encodedRayDirection);
     uint rayOriginDepthHashKey = CreateDepthHashKey(rayOriginDepth, rayGroupMinMaxDepth);
     return  rayDirectionHashKey +
             (rayOriginDepthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D));
@@ -385,8 +395,8 @@ void CalculatePartialRayDirectionHashKeyAndCacheDepth(in uint2 Gid, in uint GI)
             uint rayDirectionHashKey = 0;
             if (isRayValid)     // ToDo test remove perf
             {
-                float3 rayDirection = DecodeNormal(rayDirectionOriginDepth.xy);
-                rayDirectionHashKey = CreateRayDirectionHashKey(rayDirection);
+                float2 encodedRayDirection = rayDirectionOriginDepth.xy;
+                rayDirectionHashKey = CreateRayDirectionHashKey(encodedRayDirection);
             }
 
             // Cache the depth.
@@ -673,8 +683,8 @@ void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2
 
                     if (isRayValid)
                     {
-                        float3 rayDirection = DecodeNormal(rayDirectionOriginDepth.xy);
-                        key = CreateRayHashKey(rayDirection, rayOriginDepth, rayGroupMinMaxDepth);
+                        float2 encodedRayDirection = rayDirectionOriginDepth.xy;
+                        key = CreateRayHashKey(encodedRayDirection, rayOriginDepth, rayGroupMinMaxDepth);
                     }
                     else
                     {
