@@ -1137,7 +1137,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         
         ranges[Slot::ShadowMapSRV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 21);  // 1 ShadowMap texture
         ranges[Slot::AORayDirectionOriginDepthHitSRV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 22);  // 1 AO ray direction and origin depth texture
-        ranges[Slot::AORayGroupThreadOffsets].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 23);  // 1 input AO ray group thread offsets
+        ranges[Slot::AOSourceToSortedRayIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 23);  // 1 input AO ray group thread offsets
 
         CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
         rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
@@ -1152,7 +1152,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::AORayHitDistance]);
         rootParameters[Slot::AOFrameAge].InitAsDescriptorTable(1, &ranges[Slot::AOFrameAge]);
         rootParameters[Slot::AORayDirectionOriginDepthHitSRV].InitAsDescriptorTable(1, &ranges[Slot::AORayDirectionOriginDepthHitSRV]);
-        rootParameters[Slot::AORayGroupThreadOffsets].InitAsDescriptorTable(1, &ranges[Slot::AORayGroupThreadOffsets]);
+        rootParameters[Slot::AOSourceToSortedRayIndex].InitAsDescriptorTable(1, &ranges[Slot::AOSourceToSortedRayIndex]);
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
         rootParameters[Slot::PartialDepthDerivatives].InitAsDescriptorTable(1, &ranges[Slot::PartialDepthDerivatives]);
 #endif
@@ -1616,11 +1616,15 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 	CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_VisibilityResource, initialResourceState, L"Visibility");
     
     
-    m_sortedRayGroupThreadOffsets.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupThreadOffsets, initialResourceState, L"Sorted Ray Group Offsets");
-
+    m_sourceToSortedRayIndex.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sourceToSortedRayIndex, initialResourceState, L"Source To Sorted Ray Index");
+    
+    m_sortedToSourceRayIndex.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedToSourceRayIndex, initialResourceState, L"Sorted To Source Ray Index");
+    
+    
     m_sortedRayGroupDebug.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupDebug, initialResourceState, L"Sorted Ray Group Offsets");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupDebug, initialResourceState, L"Sorted Ray Group Debug");
 
 
     // ToDo use 8 bit format
@@ -4090,7 +4094,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
             CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::HitCount].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Coefficient].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupThreadOffsets.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_sourceToSortedRayIndex.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndex.resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepthHit.resource.Get(), before, after),
         };
@@ -4153,7 +4158,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
             //GpuKernels::SortRays::FilterType::BitonicSort,
             m_cbvSrvUavHeap->GetHeap(),
             m_AORayDirectionOriginDepthHit.gpuDescriptorReadAccess,
-            m_sortedRayGroupThreadOffsets.gpuDescriptorWriteAccess,
+            m_sourceToSortedRayIndex.gpuDescriptorWriteAccess,
+            m_sortedToSourceRayIndex.gpuDescriptorWriteAccess,
             m_sortedRayGroupDebug.gpuDescriptorWriteAccess);
 
         // Transition the output to SRV state. 
@@ -4161,10 +4167,11 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
             D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
             D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupThreadOffsets.resource.Get(), before, after),
+                CD3DX12_RESOURCE_BARRIER::Transition(m_sourceToSortedRayIndex.resource.Get(), before, after),
+                CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndex.resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::UAV(m_sortedRayGroupThreadOffsets.resource.Get()),
-                //CD3DX12_RESOURCE_BARRIER::UAV(m_sortedRayGroupDebug.resource.Get())  // ToDo
+                CD3DX12_RESOURCE_BARRIER::UAV(m_sourceToSortedRayIndex.resource.Get()),
+                CD3DX12_RESOURCE_BARRIER::UAV(m_sortedToSourceRayIndex.resource.Get())
             };
             commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
         }
@@ -4186,7 +4193,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
             UINT TC_readID = m_temporalCacheReadResourceIndex;
             commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOFrameAge, m_temporalCache[TC_readID][TemporalCache::FrameAge].gpuDescriptorReadAccess);
             commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AORayDirectionOriginDepthHitSRV, m_AORayDirectionOriginDepthHit.gpuDescriptorReadAccess);
-            commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AORayGroupThreadOffsets, m_sortedRayGroupThreadOffsets.gpuDescriptorReadAccess);
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOSourceToSortedRayIndex, m_sourceToSortedRayIndex.gpuDescriptorReadAccess);
 
             // Bind output RT.
             // ToDo remove output and rename AOout

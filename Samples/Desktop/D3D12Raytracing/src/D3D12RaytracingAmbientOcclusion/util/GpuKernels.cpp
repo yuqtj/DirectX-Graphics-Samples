@@ -2059,7 +2059,8 @@ namespace GpuKernels
         namespace SortRays {
             namespace Slot {
                 enum Enum {
-                    Output = 0,
+                    OutputSourceToSortedRayIndex = 0,
+                    OutputSortedToSourceRayIndex,
                     Input,
                     OutputDebug,
                     ConstantBuffer,
@@ -2077,12 +2078,14 @@ namespace GpuKernels
 
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
-            ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-            ranges[Slot::OutputDebug].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // 1 output texture
+            ranges[Slot::OutputSourceToSortedRayIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+            ranges[Slot::OutputSortedToSourceRayIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // 1 output texture
+            ranges[Slot::OutputDebug].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // 1 output texture
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
-            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
+            rootParameters[Slot::OutputSourceToSortedRayIndex].InitAsDescriptorTable(1, &ranges[Slot::OutputSourceToSortedRayIndex]);
+            rootParameters[Slot::OutputSortedToSourceRayIndex].InitAsDescriptorTable(1, &ranges[Slot::OutputSortedToSourceRayIndex]);
             rootParameters[Slot::OutputDebug].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
@@ -2129,7 +2132,8 @@ namespace GpuKernels
         FilterType type,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputThreadGroupIndexOffsetsResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputSourceToSortedRayIndexResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputSortedToSourceRayIndexResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputDebugResourceHandle)
     {
         using namespace RootSignature::SortRays;
@@ -2148,7 +2152,8 @@ namespace GpuKernels
             commandList->SetDescriptorHeaps(1, &descriptorHeap);
             commandList->SetComputeRootSignature(m_rootSignature.Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputRayDirectionOriginDepthResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::Output, outputThreadGroupIndexOffsetsResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputSourceToSortedRayIndex, outputSourceToSortedRayIndexResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputSortedToSourceRayIndex, outputSortedToSourceRayIndexResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug, outputDebugResourceHandle);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
             commandList->SetPipelineState(m_pipelineStateObjects[type].Get());

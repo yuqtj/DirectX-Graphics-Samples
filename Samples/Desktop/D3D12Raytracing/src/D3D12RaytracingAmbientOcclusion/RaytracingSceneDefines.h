@@ -122,7 +122,7 @@ namespace GlobalRootSignature {
             AOFrameAge,
             AORayDirectionOriginDepthHitSRV,
             AORayDirectionOriginDepthHitUAV,
-            AORayGroupThreadOffsets,
+            AOSourceToSortedRayIndex,
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
             PartialDepthDerivatives,
 #endif

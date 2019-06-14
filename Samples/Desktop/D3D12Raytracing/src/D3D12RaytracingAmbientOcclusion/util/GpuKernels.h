@@ -587,7 +587,8 @@ namespace GpuKernels
             FilterType type,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputThreadGroupIndexOffsetsResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputSourceToSortedRayIndexResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputSortedToSourceRayIndexResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputDebugResourceHandle);
 
     private:

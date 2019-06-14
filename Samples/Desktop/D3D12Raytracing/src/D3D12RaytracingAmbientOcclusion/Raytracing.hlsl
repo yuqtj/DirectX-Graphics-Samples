@@ -60,7 +60,7 @@ Texture2D<float> g_filterWeightSum : register(t13);
 Texture2D<uint> g_texInputAOFrameAge : register(t14);
 Texture2D<float> g_texShadowMap : register(t21);
 Texture2D<float4> g_texAORaysDirectionOriginDepthHit : register(t22);
-Texture2D<uint2> g_texAORayGroupIndexOffsets : register(t23);
+Texture2D<uint2> g_texAOSourceToSortedRayIndex : register(t23);
 
 
 // ToDo remove AOcoefficient and use AO hits instead?
@@ -1165,7 +1165,7 @@ void MyRayGenShader_AO_sortedRays()
     
     uint2 DTid = rayGroupIndex * rayGroupDim + rayThreadIndex;
     uint2 rayGroupBase = rayGroupIndex * rayGroupDim;
-    uint2 rayGroupRayIndex = g_texAORayGroupIndexOffsets[DTid];
+    uint2 rayGroupRayIndex = g_texAOSourceToSortedRayIndex[DTid];
     uint2 rayIndex = rayGroupBase + rayGroupRayIndex;
     
 
@@ -1182,7 +1182,7 @@ void MyRayGenShader_AO_sortedRays()
     uint2 DTid = DispatchRaysIndex().xy;
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 rayGroupBase = (DTid / rayGroupDim) * rayGroupDim;
-    uint2 rayGroupRayIndex = g_texAORayGroupIndexOffsets[DTid];
+    uint2 rayGroupRayIndex = g_texAOSourceToSortedRayIndex[DTid];
     uint2 rayIndex = rayGroupBase + rayGroupThreadIndex;
     ToDo
 #endif
