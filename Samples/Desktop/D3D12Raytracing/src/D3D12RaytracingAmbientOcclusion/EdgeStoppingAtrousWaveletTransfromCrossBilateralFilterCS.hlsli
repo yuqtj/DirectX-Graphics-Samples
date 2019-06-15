@@ -222,6 +222,7 @@ void AddFilterContribution(
         //float e_d = depthSigma > 0.01f  ? min(1 - abs(depth - iDepth) / (1 * depthThreshold), 0) : 0;
         //fload e_d = depth abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance
         // ToD revise "1 - "
+        // ToDo should be depthSigma ^ 2
         float e_d = depthSigma > 0.01f ? min(1 - abs(depth - iDepth) / (depthSigma * depthThreshold + fEpsilon), 0) : 0;
         float w_d = exp(e_d);
 

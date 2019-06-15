@@ -86,7 +86,7 @@ namespace SMem
         enum {
             Histogram = 0,
             HistogramTemp = Size::Histogram,    // <= 4096
-            Key8b = 4096,
+            Key8b = Size::Histogram,
             Key16b = 8192,
             Depth16b = 8192,
             WaveDepthMin = 0,
@@ -99,6 +99,9 @@ namespace SMem
     }
 }
 
+#if MAX_RAYS > 8192
+The shader supports up to 8192 input rays.
+#endif
 
 //********************************************************************
 // Hash Key
@@ -113,6 +116,11 @@ namespace SMem
 #if (KEY_NUM_BITS > 13) || (KEY_NUM_BITS > 12 && MAX_RAYS > 4096)
 Key bit size is out of supported limits.
 #endif
+#if (RAY_DIRECTION_HASH_KEY_BITS_1D > 4)
+Ray direction hash key can only go up to 8 bits for both direction axes since
+its stored in 8bit format.
+#endif
+
 
 #define INVALID_16BIT_KEY_BIT 0x8000      // A value used to denote if the SMEM entry is a 16bit key value or not.
 #define INVALID_RAY_ORIGIN_DEPTH 0
@@ -361,12 +369,38 @@ uint CreateDepthHashKey(in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
     return depthHashKey;
 }
 
-uint CreateRayHashKey(in float2 encodedRayDirection, in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
+// Create a hash key from a ray index. 
+uint CreateIndexHashKey(in uint2 rayIndex)
+{
+    const uint IndexHashKeyBins = 1 << INDEX_HASH_KEY_BITS;
+    uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
+#if 0
+    uint indexHashKey = rayIndex.y / (RayGroupDim.y / 4);
+#else
+    uint indexHashKey = ((rayIndex.y >= RayGroupDim.y / 2) << 1) + (rayIndex.x >= RayGroupDim.x / 2);
+#endif
+    return ((indexHashKey >> (2 - INDEX_HASH_KEY_BITS)) & (IndexHashKeyBins - 1));
+}
+
+uint CreateRayHashKey(in uint2 rayIndex, in uint rayDirectionHashKey, in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
+{
+    uint rayOriginDepthHashKey = CreateDepthHashKey(rayOriginDepth, rayGroupMinMaxDepth);
+    uint rayIndexHashKey = CreateIndexHashKey(rayIndex);
+
+    return  (rayOriginDepthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D + INDEX_HASH_KEY_BITS))
+            + (rayDirectionHashKey << (INDEX_HASH_KEY_BITS))
+            + rayIndexHashKey;
+}
+
+uint CreateRayHashKey(in uint2 rayIndex, in float2 encodedRayDirection, in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
 {
     uint rayDirectionHashKey = CreateRayDirectionHashKey(encodedRayDirection);
     uint rayOriginDepthHashKey = CreateDepthHashKey(rayOriginDepth, rayGroupMinMaxDepth);
-    return  rayDirectionHashKey +
-            (rayOriginDepthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D));
+    uint rayIndexHashKey = CreateIndexHashKey(rayIndex);
+
+    return  (rayOriginDepthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D + INDEX_HASH_KEY_BITS))
+            + (rayDirectionHashKey << (INDEX_HASH_KEY_BITS))
+            + rayIndexHashKey;
 }
 
 
@@ -563,9 +597,8 @@ void FinalizeHashKeyAndCalculateKeyHistogram(in uint GI, in float2 rayGroupMinMa
 
         if (isRayValid)
         {
-            uint depthHashKey = CreateDepthHashKey(rayOriginDepth, rayGroupMinMaxDepth);
-            hashKey = rayDirectionHashKey + 
-                     (depthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D));
+            uint2 rayIndex = uint2(ray % SortRays::RayGroup::Width, ray / SortRays::RayGroup::Width);
+            hashKey = CreateRayHashKey(rayIndex, rayDirectionHashKey, rayOriginDepth, rayGroupMinMaxDepth);
 
             // Increase histogram bin count.
             AddTo16bitValueInSMem(hashKey, 1, SMem::Offset::Histogram);
@@ -587,9 +620,9 @@ void GenerateHashKeysAndKeyHistogram(in uint2 Gid, in uint GI, out float2 rayGro
 
 // Prefix sum.
 // Requirements: 
-//  - NUM_KEYS <= WaveGetLaneCount() ^ 2
+//  -       <= WaveGetLaneCount() ^ 2
 //    ToDo support up to 4K key bins
-void PrefixSum(in uint GI)
+void PrefixSum2(in uint GI)
 {
     // PrefixSum at the lane level.
     for (uint key = GI; key < NUM_KEYS; key += NUM_THREADS)
@@ -632,6 +665,239 @@ void PrefixSum(in uint GI)
     }
     GroupMemoryBarrierWithGroupSync();
 }
+
+#if 1
+// Prefix sum 
+// Assumes power of 2 input size.
+// Ref: https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch39.html
+void PrefixSum(in uint GI)
+{
+    uint NumIterations = log2(NUM_KEYS);
+
+    // Up-sweep / reduce phase
+    for (uint d = 0; d < NumIterations; d++)
+    {
+        uint step = pow(2, d + 1);
+        uint NumSteps = NUM_KEYS / step;
+        for (uint j = GI; j < NumSteps; j += NUM_THREADS)
+        {
+            uint k = j * step;
+            uint i1 = k + step / 2 - 1;
+            uint i2 = k + step - 1;
+
+            uint v1 = Load16bitUintFromSMem(i1, SMem::Offset::Histogram);
+            uint v2 = Load16bitUintFromSMem(i2, SMem::Offset::Histogram);
+            uint sum = v1 + v2;
+
+            Store16bitUintInSMem(i2, sum, SMem::Offset::Histogram);
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    // Down-sweep
+    Store16bitUintInSMem(NUM_KEYS - 1, 0, SMem::Offset::Histogram);
+    GroupMemoryBarrierWithGroupSync();
+    for (int p = NumIterations - 1; p >= 0 ; p--)
+    {
+        uint step = pow(2, p + 1);
+        uint NumSteps = NUM_KEYS / step;
+        for (uint j = GI; j < NumSteps; j += NUM_THREADS)
+        {
+            uint k = j * step;
+            uint i1 = k + step / 2 - 1;
+            uint i2 = k + step - 1;
+
+            uint v1 = Load16bitUintFromSMem(i1, SMem::Offset::Histogram);
+            uint v2 = Load16bitUintFromSMem(i2, SMem::Offset::Histogram);
+
+            uint sum = v1 + v2;
+
+            Store16bitUintInSMem(i1, v2, SMem::Offset::Histogram);
+            Store16bitUintInSMem(i2, sum, SMem::Offset::Histogram);
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+}
+
+#elif 1 // Reduced memory bank conflicts.
+// Prefix sum 
+// Assumes power of 2 input size.
+// Ref: https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch39.html
+void PrefixSum(in uint GI)
+{
+    uint NumIterations = log2(NUM_KEYS);
+
+    // Up-sweep / reduce phase
+    for (uint d = 0; d < NumIterations; d++)
+    {
+        uint step = pow(2, d + 1);
+        uint NumSteps = NUM_KEYS / step;
+        for (uint j = GI; j < NumSteps; j += NUM_THREADS)
+        {
+            uint k = j * step;
+            uint i1 = k + step / 2 - 1;
+            uint i2 = k + step - 1;
+
+            uint v1 = Load16bitUintFromSMem(i1, SMem::Offset::Histogram);
+            uint v2 = Load16bitUintFromSMem(i2, SMem::Offset::Histogram);
+            uint sum = v1 + v2;
+
+            Store16bitUintInSMem(i2, sum, SMem::Offset::Histogram);
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    // Down-sweep
+    Store16bitUintInSMem(NUM_KEYS - 1, 0, SMem::Offset::Histogram);
+    GroupMemoryBarrierWithGroupSync();
+    for (int p = NumIterations - 1; p >= 0; p--)
+    {
+        uint step = pow(2, p + 1);
+        uint NumSteps = NUM_KEYS / step;
+        for (uint j = GI; j < NumSteps; j += NUM_THREADS)
+        {
+            uint k = j * step;
+            uint i1 = k + step / 2 - 1;
+            uint i2 = k + step - 1;
+
+            uint v1 = Load16bitUintFromSMem(i1, SMem::Offset::Histogram);
+            uint v2 = Load16bitUintFromSMem(i2, SMem::Offset::Histogram);
+
+            uint sum = v1 + v2;
+
+            Store16bitUintInSMem(i1, v2, SMem::Offset::Histogram);
+            Store16bitUintInSMem(i2, sum, SMem::Offset::Histogram);
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+}
+
+#else // wave intrinsics
+// Prefix sum 
+// Assumes power of 2 input size.
+void PrefixSumWave(in uint GI)
+{
+    // Calculate PrefixSum per wave + add prev wave last lane value
+    {
+        // Initalize to:
+        //  - 0 for the 1st wave.
+        //  - to the last prev wave lane value for 2nd+ waves.
+        for (uint i = GI; i < NUM_KEYS; i += NUM_THREADS)
+        {
+            uint waveIndex = i / WaveGetLaneCount();
+            uint value = 0;
+
+            if (waveIndex > 0)
+            {
+                uint lastPrevWaveLaneIndex = waveIndex * WaveGetLaneCount() - 1;
+                if (WaveGetLaneIndex() == 0)
+                {
+                    value = Load16bitUintFromSMem(lastPrevWaveLaneIndex, SMem::Offset::Histogram);
+                }
+                value = WaveReadLaneFirst(value);
+            }
+
+            Store16bitUintInSMem(i, value, SMem::Offset::HistogramTemp);
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        // Add the prefixSum across waves at the lane level.
+        for (i = GI; i < NUM_KEYS; i += NUM_THREADS)
+        {
+            uint count = Load16bitUintFromSMem(i, SMem::Offset::Histogram);
+            uint prefixSum = WavePrefixSum(count);
+
+            AddTo16bitValueInSMem(i, prefixSum, SMem::Offset::HistogramTemp);
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    // Prefix sum the last lane values for each wave across all waves.
+    {
+        // Initialize the array with per-wave prefix sums
+        uint NumWaves = NUM_KEYS / WaveGetLaneCount();
+        for (uint waveIndex = GI; waveIndex < NumWaves; waveIndex += NUM_THREADS)
+        {
+            uint lastPrevWaveLaneIndex = (waveIndex + 1) * WaveGetLaneCount() - 1;
+            uint wavePrefixSum = Load16bitUintFromSMem(lastPrevWaveLaneIndex, SMem::Offset::HistogramTemp);
+            Store16bitUintInSMem(waveIndex, wavePrefixSum, SMem::Offset::Histogram);
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        // Calculated PrefixSum via Up and DownSweep in-place.
+        // Ref: https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch39.html
+
+        // Up-sweep / reduce phase
+        uint NumIterations = log2(NUM_KEYS);
+        for (uint d = 0; d < NumIterations; d++)
+        {
+            uint step = pow(2, d + 1);
+            uint NumSteps = NUM_KEYS / step;
+            for (uint j = GI; j < NumSteps; j += NUM_THREADS)
+            {
+                uint k = j * step;
+                uint i1 = k + step / 2 - 1;
+                uint i2 = k + step - 1;
+
+                uint v1 = Load16bitUintFromSMem(i1, SMem::Offset::Histogram);
+                uint v2 = Load16bitUintFromSMem(i2, SMem::Offset::Histogram);
+                uint sum = v1 + v2;
+
+                Store16bitUintInSMem(i2, sum, SMem::Offset::Histogram);
+            }
+            GroupMemoryBarrierWithGroupSync();
+        }
+
+        // Down-sweep
+        Store16bitUintInSMem(NUM_KEYS - 1, 0, SMem::Offset::Histogram);
+        GroupMemoryBarrierWithGroupSync();
+        for (int p = NumIterations - 1; p >= 0; p--)
+        {
+            uint step = pow(2, p + 1);
+            uint NumSteps = NUM_KEYS / step;
+            for (uint j = GI; j < NumSteps; j += NUM_THREADS)
+            {
+                uint k = j * step;
+                uint i1 = k + step / 2 - 1;
+                uint i2 = k + step - 1;
+
+                uint v1 = Load16bitUintFromSMem(i1, SMem::Offset::Histogram);
+                uint v2 = Load16bitUintFromSMem(i2, SMem::Offset::Histogram);
+
+                uint sum = v1 + v2;
+
+                Store16bitUintInSMem(i1, v2, SMem::Offset::Histogram);
+                Store16bitUintInSMem(i2, sum, SMem::Offset::Histogram);
+            }
+            GroupMemoryBarrierWithGroupSync();
+        }
+    }
+
+    // Add PrefixSum at the wave level to the lane level.
+    for (uint i = GI; i < NUM_KEYS; i += NUM_THREADS)
+    {
+        uint waveIndex = i / WaveGetLaneCount();
+        uint wavePrefixSum;
+        if (WaveGetLaneIndex() == 0)
+        {
+            wavePrefixSum = Load16bitUintFromSMem(waveIndex, SMem::Offset::Histogram);
+        }
+        wavePrefixSum = WaveReadLaneFirst(wavePrefixSum);
+
+        AddTo16bitValueInSMem(i, wavePrefixSum, SMem::Offset::HistogramTemp);
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    // Copy the final prefixSums to the primary histogram cache 
+    // as the HistogramTemp cache memory area gets repurposed after this.
+    for (i = GI; i < NUM_KEYS; i += NUM_THREADS)
+    {
+        uint prefixSum = Load16bitUintFromSMem(i, SMem::Offset::HistogramTemp);
+        Store16bitUintInSMem(i, prefixSum, SMem::Offset::Histogram);
+    }
+    GroupMemoryBarrierWithGroupSync();
+}
+#endif
 
 // Flattens a [64,128] ray index into 13 bit flat index.
 // Preserves inactive ray 8th bit information of y coordinate in the 14th bit of the flattened index.
@@ -684,7 +950,7 @@ void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2
                     if (isRayValid)
                     {
                         float2 encodedRayDirection = rayDirectionOriginDepth.xy;
-                        key = CreateRayHashKey(encodedRayDirection, rayOriginDepth, rayGroupMinMaxDepth);
+                        key = CreateRayHashKey(rayIndex, encodedRayDirection, rayOriginDepth, rayGroupMinMaxDepth);
                     }
                     else
                     {
