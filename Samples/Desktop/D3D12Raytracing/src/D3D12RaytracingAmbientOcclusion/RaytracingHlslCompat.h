@@ -651,7 +651,7 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     BOOL useWorldSpaceDistance;
     float minStdDevTolerance;
     float frameAgeAdjustmentDueClamping;
-    float padding;
+    BOOL usePacked32bitNormalDepth;
 };
 
 struct CalculatePartialDerivativesConstantBuffer

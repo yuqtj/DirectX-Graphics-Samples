@@ -521,6 +521,7 @@ namespace GpuKernels
             float depthDistanceBasedDepthTolerance,
             float depthSigma,
             bool useWorldSpaceDistance,
+            bool usePacked32bitNormalDepth,
             RWGpuResource debugResources[2],
             const XMVECTOR& currentFrameCameraPosition,
             const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,

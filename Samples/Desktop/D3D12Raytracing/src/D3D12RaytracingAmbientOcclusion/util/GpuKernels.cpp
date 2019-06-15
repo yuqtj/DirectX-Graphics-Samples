@@ -1793,6 +1793,7 @@ namespace GpuKernels
         float depthDistanceBasedDepthTolerance,
         float depthSigma,
         bool useWorldSpaceDistance,
+        bool usePacked32bitNormalDepth,
         RWGpuResource debugResources[2],
         const XMVECTOR& currentFrameCameraPosition,
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
@@ -1829,6 +1830,7 @@ namespace GpuKernels
         m_CB->prevToCurrentFrameCameraTranslation = prevToCurrentFrameCameraTranslation;
         m_CB->prevProjectionToWorldWithCameraEyeAtOrigin = XMMatrixTranspose(prevProjectionToWorldWithCameraEyeAtOrigin);
         m_CB->useWorldSpaceDistance = useWorldSpaceDistance;
+        m_CB->usePacked32bitNormalDepth = usePacked32bitNormalDepth;
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 

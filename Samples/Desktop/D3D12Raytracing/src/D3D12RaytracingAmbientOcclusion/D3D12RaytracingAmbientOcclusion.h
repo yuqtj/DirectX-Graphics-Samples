@@ -201,7 +201,7 @@ private:
 	RWGpuResource m_VisibilityResource;
 
 
-    RWGpuResource m_AORayDirectionOriginDepthHit;
+    RWGpuResource m_AORayDirectionOriginDepth;
     RWGpuResource m_sourceToSortedRayIndex;                 // Index of the ray in the sorted array given a source index.
     RWGpuResource m_sortedToSourceRayIndex;     // Index of the ray in the source (screen space) array given a sorted index.
     RWGpuResource m_sortedRayGroupDebug;

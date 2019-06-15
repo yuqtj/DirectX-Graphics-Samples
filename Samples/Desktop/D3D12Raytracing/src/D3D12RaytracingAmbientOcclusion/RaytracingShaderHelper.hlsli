@@ -183,6 +183,61 @@ float4 GetClipSpacePosition(in uint2 DTid, in float linearDepth)
     float4 projPos = float4(ndc, 1) * w;                // Reverse perspective division.
     return projPos;
 }
+
+#if 0
+// Retrieves pixel's position in world space.
+// linearDepth - linear depth in [0, 1] range   // ToDo
+float3 CalculateWorldPositionFromLinearDepth(in uint2 DTid, in float linearDepth)
+{
+    // Convert to non-linear depth.
+#if USE_NORMALIZED_Z
+    float linearDistance = linearDepth * (cb.zFar - cb.zNear) + cb.zNear;
+#else
+    float linearDistance = linearDepth;
+#endif
+    float logDepth = cb.zFar / (cb.zFar - cb.zNear) - cb.zFar * cb.zNear
+
+        // Calculate Normalized Device Coordinates xyz = { [-1,1], [-1,1], [0,-1] }
+        float2 xy = DTid + 0.5f;                            // Center in the middle of the pixel.
+        float2 screenPos = 2 * xy * cb.invTextureDim - 1;   // Convert to [-1, 1]
+        //screenPos.y = -screenPos.y;                       // Invert Y for DirectX-style coordinates.
+        float3 ndc = float3(screenPos, logDepth);
+
+        float4 viewPosition = mul(float4(ndc, 1), cb.invProj);
+        //viewPosition /= viewPosition.w; // Perspective division
+        float4 worldPosition = mul(viewPosition, cb.invView);
+
+        return worldPosition.xyz;
+}
+#else
+// Retrieves pixel's position in clip space.
+// linearDepth - linear depth in [0, 1] range   // ToDo
+float4 GetClipSpacePosition(in uint2 DTid, in float linearDepth)
+{
+    // Convert to non-linear depth.
+#if USE_NORMALIZED_Z
+    ToDo
+        float linearDistance = linearDepth * (cb.zFar - cb.zNear) + cb.zNear;
+#else
+    float linearDistance = linearDepth;
+#endif
+
+    // Calculate Normalized Device Coordinates xyz = {[-1,1], [-1,1], [0,-1]}
+    float2 xy = DTid + 0.5f;                            // Center in the middle of the pixel.
+    float2 screenPos = 2 * xy * cb.invTextureDim - 1;   // Convert to [-1, 1].
+    screenPos.y = -screenPos.y;                         // Invert Y for DirectX-style coordinates.
+    float logDepth = ViewToLogDepth(linearDepth, cb.zNear, cb.zFar);
+    float3 ndc = float3(screenPos, logDepth);
+
+    float A = cb.zFar / (cb.zFar - cb.zNear);
+    float B = -cb.zNear * cb.zFar / (cb.zFar - cb.zNear);
+    float w = B / (logDepth - A);
+
+    float4 projPos = float4(ndc, 1) * w;                // Reverse perspective division.
+    return projPos;
+}
+#endif
+
 #endif
 
 // Retrieve attribute at a hit position interpolated from vertex attributes using the hit's barycentrics.
