@@ -46,6 +46,9 @@
     <Filter Include="Assets\Shaders\RTAO\Ray Sorting">
       <UniqueIdentifier>{5d4b03bc-b257-4e03-b514-11b7bb60d5a6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Assets\Shaders\RTAO\VarianceMean">
+      <UniqueIdentifier>{2fbe6f49-be73-41a0-8fdc-29d6b38db505}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -365,9 +368,6 @@
     <FxCompile Include="util\RTAO_TemporalCache_ReverseReprojectCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="CalculateVariance_BilateralFilterCS.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="util\WriteValueToTextureCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
@@ -375,14 +375,23 @@
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
     <FxCompile Include="util\AnalyticalTextures.hlsli" />
-    <FxCompile Include="CalculateVariance_SeparableBilateralFilterCS.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="CalculateVariance_SeparableFilterCS.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="CountingSort_SortRays_128x64rayGroupCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
+    </FxCompile>
+    <FxCompile Include="CalculateVariance_BilateralFilterCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
+    </FxCompile>
+    <FxCompile Include="CalculateVariance_SeparableBilateralFilterCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
+    </FxCompile>
+    <FxCompile Include="CalculateVariance_SeparableFilterCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
+    </FxCompile>
+    <FxCompile Include="CalculateMeanVariance_SeparableFilterCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
+    </FxCompile>
+    <FxCompile Include="util\GaussianFilterRG3x3CS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

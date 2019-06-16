@@ -256,6 +256,7 @@ namespace GpuKernels
     public:
         enum FilterType {
             Filter3X3 = 0,
+            FilterRG3X3,
             Count
         };
 
@@ -350,7 +351,6 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputSmoothedVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,   // ToDo standardize depth vs distance
@@ -358,6 +358,7 @@ namespace GpuKernels
             float valueSigma,
             float depthSigma,
             float normalSigma,
+            TextureResourceFormatRGB::Type normalDepthResourceFormat,
             UINT kernelStepShifts[5],
             UINT numFilterPasses = 5,
             Mode filterMode = OutputFilteredValue,
@@ -471,6 +472,32 @@ namespace GpuKernels
         ConstantBuffer<CalculateVariance_BilateralFilterConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
         UINT                                m_CBinstanceID = 0;
     };
+
+    class CalculateMeanVariance
+    {
+    public:
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList4* commandList,
+            ID3D12DescriptorHeap* descriptorHeap,
+            UINT width,
+            UINT height,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputMeanVarianceResourceHandle,
+            UINT kernelWidth);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        ConstantBuffer<CalculateMeanVarianceConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
+        UINT                                m_CBinstanceID = 0;
+    };
+
        
     class RTAO_TemporalCache_ReverseReproject
     {
@@ -489,8 +516,12 @@ namespace GpuKernels
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalDepthResourceHandle,
+#if PACK_MEAN_VARIANCE
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanVarianceResourceHandle,
+#else
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanResourceHandle,
+#endif
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameLinearDepthDerivativeResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalDepthResourceHandle,
@@ -518,7 +549,7 @@ namespace GpuKernels
             float depthDistanceBasedDepthTolerance,
             float depthSigma,
             bool useWorldSpaceDistance,
-            TextureResourceFormatRGB::Type depthNormalResourceFormat,
+            TextureResourceFormatRGB::Type normalDepthResourceFormat,
             RWGpuResource debugResources[2],
             const XMVECTOR& currentFrameCameraPosition,
             const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,

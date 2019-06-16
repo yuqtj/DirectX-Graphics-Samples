@@ -26,6 +26,7 @@
 #include "CompiledShaders\UpsampleBilateralFilter2x2CS.hlsl.h"
 #include "CompiledShaders\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl.h"
 #include "CompiledShaders\GaussianFilter3x3CS.hlsl.h"
+#include "CompiledShaders\GaussianFilterRG3x3CS.hlsl.h"
 #include "CompiledShaders\PerPixelMeanSquareErrorCS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Box3x3CS.hlsl.h"
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian3x3CS.hlsl.h"
@@ -33,6 +34,7 @@
 #include "CompiledShaders\CalculateVariance_BilateralFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_SeparableFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_SeparableBilateralFilterCS.hlsl.h"
+#include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS.hlsl.h"
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
 #include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
@@ -952,6 +954,9 @@ namespace GpuKernels
                 case Filter3X3:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pGaussianFilter3x3CS), ARRAYSIZE(g_pGaussianFilter3x3CS));
                     break;
+                case FilterRG3X3:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pGaussianFilterRG3x3CS), ARRAYSIZE(g_pGaussianFilterRG3x3CS));
+                    break;
                 }
 
                 ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
@@ -1127,7 +1132,7 @@ namespace GpuKernels
                     Input,
                     Normals,
                     Depths,
-                    Variance,
+                    Variance,       // ToDo remove
                     SmoothedVariance,
                     ConstantBuffer,
                     RayHitDistance,
@@ -1248,7 +1253,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
+        // ToDo document this assumes variance in the X component of the passed in resource.
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputSmoothedVarianceResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
@@ -1256,6 +1261,7 @@ namespace GpuKernels
         float valueSigma,
         float depthSigma,
         float normalSigma,
+        TextureResourceFormatRGB::Type normalDepthResourceFormat,
         UINT kernelStepShifts[5],
         UINT numFilterPasses,
         Mode filterMode,
@@ -1336,6 +1342,15 @@ namespace GpuKernels
             CB->varianceSigmaScaleOnSmallKernels = varianceSigmaScaleOnSmallKernels;
             CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
             CB->textureDim = resourceDim;
+
+            switch (normalDepthResourceFormat)
+            {
+            case TextureResourceFormatRGB::R32G32B32A32_FLOAT: CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(32); break;
+            case TextureResourceFormatRGB::R16G16B16A16_FLOAT: CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16); break;
+            case TextureResourceFormatRGB::R11G11B10_FLOAT: CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(10); break;
+            default: ThrowIfFalse(false, L"Invalid resource format specified.");
+            }
+
             
             CB.CopyStagingToGpu(m_CBinstanceID + i);
         }
@@ -1656,6 +1671,107 @@ namespace GpuKernels
         }
     }
 
+
+    namespace RootSignature {
+        namespace CalculateMeanVariance {
+            namespace Slot {
+                enum Enum {
+                    OutputMeanVariance = 0,
+                    Input,
+                    ConstantBuffer,
+                    Count
+                };
+            }
+        }
+    }
+
+    // ToDo move type to execute
+    void CalculateMeanVariance::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::CalculateMeanVariance;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
+            ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
+            ranges[Slot::OutputMeanVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output mean and variance 
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
+            rootParameters[Slot::OutputMeanVariance].InitAsDescriptorTable(1, &ranges[Slot::OutputMeanVariance]);
+            rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: CalculateMeanVariance");
+        }
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+
+
+        }
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {}; 
+            descComputePSO.pRootSignature = m_rootSignature.Get(); 
+            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateMeanVariance_SeparableFilterCS), ARRAYSIZE(g_pCalculateMeanVariance_SeparableFilterCS));
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: CalculateMeanVariance");
+        }
+
+        // Create shader resources.
+        {
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: CalculateMeanVariance");
+        }
+    }
+
+    // ToDo add option to allow input, output being the same
+    // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
+    void CalculateMeanVariance::Execute(
+        ID3D12GraphicsCommandList4* commandList,
+        ID3D12DescriptorHeap* descriptorHeap,
+        UINT width,
+        UINT height,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputMeanVarianceResourceHandle,
+        UINT kernelWidth)
+    {
+        using namespace RootSignature::CalculateMeanVariance;
+        using namespace CalculateMeanVarianceFilter;
+
+        // ToDo replace asserts with runtime fails?
+        // ToDo pass kernel radius instead
+        assert((kernelWidth & 1) == 1 && L"KernelWidth must be an odd number so that width == radius + 1 + radius");
+
+        // ToDo move out or rename
+        // ToDo add spaces to names?
+        ScopedTimer _prof(L"CalculateMeanVariance", commandList); // ToDo update name
+
+        // Set pipeline state.
+        {
+            commandList->SetDescriptorHeaps(1, &descriptorHeap);
+            commandList->SetComputeRootSignature(m_rootSignature.Get());
+            commandList->SetPipelineState(m_pipelineStateObject.Get());
+            commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputMeanVariance, outputMeanVarianceResourceHandle);
+        }
+
+        // Update the Constant Buffer.
+        m_CB->textureDim = XMUINT2(width, height);
+        m_CB->kernelWidth = kernelWidth;
+        m_CB->kernelRadius = kernelWidth >> 1;
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
+        commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
+
+
+        // Dispatch.
+        {
+            XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
+            commandList->Dispatch(groupSize.x, groupSize.y, 1);
+        }
+    }
+
     namespace RootSignature {
         namespace RTAO_TemporalCache_ReverseReproject {
             namespace Slot {
@@ -1753,9 +1869,13 @@ namespace GpuKernels
         UINT height,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalDepthResourceHandle, 
+#if PACK_MEAN_VARIANCE
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanVarianceResourceHandle,
+#else
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameVarianceResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanResourceHandle,
+#endif
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameLinearDepthDerivativeResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalDepthResourceHandle,
@@ -1783,7 +1903,7 @@ namespace GpuKernels
         float depthDistanceBasedDepthTolerance,
         float depthSigma,
         bool useWorldSpaceDistance,
-        TextureResourceFormatRGB::Type depthNormalResourceFormat,
+        TextureResourceFormatRGB::Type normalDepthResourceFormat,
         RWGpuResource debugResources[2],
         const XMVECTOR& currentFrameCameraPosition,
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
@@ -1821,7 +1941,7 @@ namespace GpuKernels
         m_CB->prevProjectionToWorldWithCameraEyeAtOrigin = XMMatrixTranspose(prevProjectionToWorldWithCameraEyeAtOrigin);
         m_CB->useWorldSpaceDistance = useWorldSpaceDistance;
 
-        switch (depthNormalResourceFormat)
+        switch (normalDepthResourceFormat)
         {
         case TextureResourceFormatRGB::R32G32B32A32_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(32); break;
         case TextureResourceFormatRGB::R16G16B16A16_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16); break;
@@ -1841,8 +1961,12 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputCachedNormalDepth, inputTemporalCacheNormalDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameNormalDepth, inputCurrentFrameNormalDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCacheFrameAge, inputTemporalCacheFrameAgeResourceHandle);
+#if PACK_MEAN_VARIANCE
+            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameMean, inputCurrentFrameMeanVarianceResourceHandle);
+#else
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameMean, inputCurrentFrameMeanResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameVariance, inputCurrentFrameVarianceResourceHandle); 
+#endif
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameLinearDepthDerivative, inputCurrentFrameLinearDepthDerivativeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputTextureSpaceMotionVector, inputTextureSpaceMotionVectorResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputReprojectedNormalDepth, inputReprojectedNormalDepthResourceHandle);

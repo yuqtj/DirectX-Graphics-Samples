@@ -16,8 +16,7 @@
 
 Texture2D<float> g_inValues : register(t0); // ToDo input is 3841x2161 instead of 2160p..
 
-Texture2D<float4> g_inNormal : register(t1);
-Texture2D<float> g_inDepth : register(t2);
+Texture2D<float4> g_inNormalDepth : register(t1);
 Texture2D<float> g_inVariance : register(t4);   // ToDo remove
 Texture2D<float> g_inSmoothedVariance : register(t5);   // ToDo rename
 Texture2D<float> g_inHitDistance : register(t6);   // ToDo remove?
@@ -80,7 +79,11 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
         }
 #endif
     }
-    return depthThreshold;
+
+    float depthFloatPrecision = 1.25f * FloatPrecision(distance, g_CB.DepthNumMantissaBits);
+
+
+    return max(depthThreshold, depthFloatPrecision);
 }
 
 void AddFilterContribution(
@@ -167,21 +170,9 @@ void AddFilterContribution(
         }
 
         // ToDo standardize index vs id
-#if COMPRES_NORMALS
-        float4 normalBufValue = g_inNormal[id];
-        
-        float4 normal4 = float4(DecodeNormal(normalBufValue.xy), normalBufValue.z);
-        float iObliqueness = normalBufValue.w;
-#else
-        float4 normal4 = g_inNormal[id];
-#endif 
-        float3 iNormal = normal4.xyz;
-
-#if PACK_NORMAL_AND_DEPTH
-        float iDepth = normal4.w;
-#else
-        float iDepth = g_inDepth[id];
-#endif
+        float4 packedNormalDepth = g_inNormalDepth[id];
+        float3 iNormal = DecodeNormal(packedNormalDepth.xy);
+        float iDepth = packedNormalDepth.z;
 
         // Ref: SVGF
         float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1;
@@ -266,29 +257,10 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         return;
 
     // Initialize values to the current pixel / center filter kernel value.
-#if COMPRES_NORMALS
-    float4 normalBufValue = g_inNormal[DTid];
-    float4 normal4 = float4(DecodeNormal(normalBufValue.xy), normalBufValue.z);
-#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
-    float obliqueness = normalBufValue.w;    // ToDO review
-#else
-    float obliqueness = normalBufValue.w;// max(0.0001f, pow(normalBufValue.w, 10));    // ToDO review
-#endif
-#else
-    float4 normal4 = g_inNormal[DTid];
-    #if PACK_NORMAL_AND_DEPTH
-        float obliqueness = 1;
-    #else
-        float obliqueness = max(0.0001f, pow(normal4.w, 10));
-    #endif
-#endif
-    float3 normal = normal4.xyz;
-
-#if PACK_NORMAL_AND_DEPTH
-    float depth = normal4.w;
-#else
-    float depth = g_inDepth[DTid];
-#endif
+    float4 packedNormalDepth = g_inNormalDepth[DTid];
+    float3 normal = DecodeNormal(packedNormalDepth.xy);
+    float depth = packedNormalDepth.z;
+    float obliqueness = 1;  // ToDo remove
 
     float value = 0;
     if (g_CB.outputFilteredValue)

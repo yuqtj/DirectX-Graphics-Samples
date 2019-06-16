@@ -1666,6 +1666,13 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     m_smoothedMeanResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
     CreateRenderTargetResource(device, varianceTexFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_smoothedMeanResource, initialResourceState, L"Smoothed Mean");
 
+    DXGI_FORMAT meanVarianceTexFormat = DXGI_FORMAT_R16G16_FLOAT;       // ToDo 8 bit suffers from loss of precision and clamps too much.
+    m_meanVarianceResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, meanVarianceTexFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_meanVarianceResource, initialResourceState, L"Mean Variance");
+    m_smoothedMeanVarianceResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, meanVarianceTexFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_smoothedMeanVarianceResource, initialResourceState, L"Smoothed Mean Variance");
+
+
     // ToDo move
     for (UINT i = 0; i < c_MaxDenoisingScaleLevels; i++)
     {
@@ -1727,7 +1734,8 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 	// ToDo move?
 	m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
     m_atrousWaveletTransformFilter.Initialize(device, ATROUS_DENOISER_MAX_PASSES, FrameCount, MaxAtrousWaveletTransformFilterInvocationsPerFrame);
-    m_calculateVarianceKernel.Initialize(device, FrameCount, MaxCalculateVarianceKernelInvocationsPerFrame);
+    m_calculateVarianceKernel.Initialize(device, FrameCount, MaxCalculateVarianceKernelInvocationsPerFrame); 
+    m_calculateMeanVarianceKernel.Initialize(device, FrameCount, MaxCalculateVarianceKernelInvocationsPerFrame);
     m_calculatePartialDerivativesKernel.Initialize(device, FrameCount);
     m_gaussianSmoothingKernel.Initialize(device, FrameCount, MaxGaussianSmoothingKernelInvocationsPerFrame);
 	m_downsampleBoxFilter2x2Kernel.Initialize(device, FrameCount);
@@ -2932,7 +2940,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
     // Transition Smoothed AO to UAV.
     {
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -3026,14 +3034,19 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::NormalDepthLowPrecision].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
-            m_varianceResource.gpuDescriptorReadAccess,
+#if PACK_MEAN_VARIANCE
+            m_smoothedMeanVarianceResource.gpuDescriptorReadAccess,
+#else
             m_smoothedVarianceResource.gpuDescriptorReadAccess,
+#endif
             AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
             &AOResources[AOResource::Smoothed],
             SceneArgs::AODenoiseValueSigma,
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
+            // ToDo rename this to be global normalDepth
+            static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(SceneArgs::RTAO_TemporalCache_NormalDepthResourceFormat)),
             offsets,
             SceneArgs::AtrousFilterPasses,
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
@@ -3059,6 +3072,9 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
 // Ref: Delbracio et al. 2014, Boosting Monte Carlo Rendering by Ray Histogram Fusion
 void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilter()
 {
+#if 1 
+    ThrowIfFalse(false, L"ToDo");
+#else
     auto commandList = m_deviceResources->GetCommandList();
 
     RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
@@ -3322,6 +3338,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
             }
         }
     }
+#endif
 }
 
 // ToDo move out
@@ -3346,6 +3363,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
     UINT width = static_cast<UINT>(desc.Width);
     UINT height = static_cast<UINT>(desc.Height);
 
+#if 0
     // Calculate local variance.
     {
         ScopedTimer _prof(L"CalculateVariance", commandList);
@@ -3397,6 +3415,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
+#endif
 
 #if RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS
     UINT offsets[5] = {
@@ -3423,7 +3442,6 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             inValueResource.gpuDescriptorReadAccess,
             inNormalDepthResource.gpuDescriptorReadAccess,
             inDepthResource.gpuDescriptorReadAccess,
-            varianceResource->gpuDescriptorReadAccess,
             smoothedVarianceResource->gpuDescriptorReadAccess,
             inRayHitDistanceResource.gpuDescriptorReadAccess,
             inPartialDistanceDerivativesResource.gpuDescriptorReadAccess,
@@ -3431,6 +3449,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             SceneArgs::AODenoiseValueSigma,
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
+            static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(SceneArgs::RTAO_TemporalCache_NormalDepthResourceFormat)),
             offsets,
             SceneArgs::AtrousFilterPasses,
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
@@ -3479,14 +3498,18 @@ void D3D12RaytracingAmbientOcclusion::CalculateAdaptiveSamplingCounts()
             AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::NormalDepthLowPrecision].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
-            m_varianceResource.gpuDescriptorReadAccess,
+#if PACK_MEAN_VARIANCE
+            m_smoothedMeanVarianceResource.gpuDescriptorReadAccess,
+#else
             m_smoothedVarianceResource.gpuDescriptorReadAccess,
+#endif
             AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
             &AOResources[AOResource::FilterWeightSum],
             SceneArgs::AODenoiseValueSigma,
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
+            static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(SceneArgs::RTAO_TemporalCache_NormalDepthResourceFormat)),
             offsets,
             1,
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputPerPixelFilterWeightSum,
@@ -4714,6 +4737,63 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         //m_temporalCacheFrameAge = 0;
     }
 
+#if PACK_MEAN_VARIANCE
+    // ToDo reuse calculated variance for both TAO and denoising.
+    // Transition all output resources to UAV state.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_meanVarianceResource.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedMeanVarianceResource.resource.Get(), before, after),
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+    }
+
+    // ToDO Should use separable box filter instead?. Bilateral doesn't work for pixels that don't
+    // have anycontribution with bilateral - their variance will be zero. Or set a variance to non-zero in that case?
+    // Calculate local mean and variance.
+    {
+        ScopedTimer _prof(L"Calculate Mean and Variance", commandList);
+        m_calculateMeanVarianceKernel.Execute(
+            commandList,
+            m_cbvSrvUavHeap->GetHeap(),
+            m_raytracingWidth,
+            m_raytracingHeight,
+            AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
+            m_meanVarianceResource.gpuDescriptorWriteAccess,
+            SceneArgs::VarianceBilateralFilterKernelWidth);
+
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_meanVarianceResource.resource.Get(), before, after),
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+    }
+
+    // Smoothen the local variance which is prone to error due to undersampled input.
+    {
+        {
+            ScopedTimer _prof(L"Mean Variance Smoothing", commandList);
+            m_gaussianSmoothingKernel.Execute(
+                commandList,
+                m_raytracingWidth,
+                m_raytracingHeight,
+                GpuKernels::GaussianFilter::FilterRG3X3,
+                m_cbvSrvUavHeap->GetHeap(),
+                m_meanVarianceResource.gpuDescriptorReadAccess,
+                m_smoothedMeanVarianceResource.gpuDescriptorWriteAccess);
+        }
+    }
+
+    D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    D3D12_RESOURCE_BARRIER barriers[] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedMeanVarianceResource.resource.Get(), before, after),
+    };
+    commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+#else
     // ToDo reuse calculated variance for both TAO and denoising.
     // Transition all output resources to UAV state.
     {
@@ -4794,6 +4874,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
+#endif
 
     // ToDo
     // Calculate reverse projection transform T to the previous frame's screen space coordinates.
@@ -4886,8 +4967,12 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_cbvSrvUavHeap->GetHeap(),
         valueResource->gpuDescriptorReadAccess,
         GBufferResources[GBufferResource::NormalDepthLowPrecision].gpuDescriptorReadAccess,
+#if PACK_MEAN_VARIANCE
+        m_smoothedMeanVarianceResource.gpuDescriptorReadAccess,
+#else
         m_smoothedVarianceResource.gpuDescriptorReadAccess,
         m_smoothedMeanResource.gpuDescriptorReadAccess,
+#endif
         GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
         m_temporalCache[TC_readID][TemporalCache::AO].gpuDescriptorReadAccess,
         m_temporalCache[0][TemporalCache::NormalDepth].gpuDescriptorReadAccess,

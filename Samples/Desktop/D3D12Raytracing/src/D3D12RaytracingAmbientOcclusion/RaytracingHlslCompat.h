@@ -60,6 +60,7 @@
 #define ADD_INVERTED_FACE 0
 #define CORRECT_NORMALS 0
 
+#define PACK_MEAN_VARIANCE 1
 #define CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN 0
 
 //#define SAMPLER_FILTER D3D12_FILTER_MIN_MAG_MIP_LINEAR
@@ -170,7 +171,7 @@
 
 
 // ToDo separate per-vertex attributes from VB
-
+// ToDo dedupe the ones matching default
 // ToDo move
 namespace ReduceSumCS {
 	namespace ThreadGroup {
@@ -185,6 +186,12 @@ namespace AtrousWaveletTransformFilterCS {
 }
 
 namespace CalculateVariance_Bilateral {
+    namespace ThreadGroup {
+        enum Enum { Width = 8, Height = 8, Size = Width * Height };
+    }
+}
+
+namespace CalculateMeanVarianceFilter {
     namespace ThreadGroup {
         enum Enum { Width = 8, Height = 8, Size = Width * Height };
     }
@@ -404,7 +411,7 @@ struct AtrousWaveletTransformFilterConstantBuffer
     UINT maxKernelWidth;
     float varianceSigmaScaleOnSmallKernels;
     bool usingBilateralDownsampledBuffers;
-    UINT padding;
+    UINT DepthNumMantissaBits;
 
     UINT kernelWidth;
     UINT padding2[3];
@@ -425,6 +432,14 @@ struct CalculateVariance_BilateralFilterConstantBuffer
 
     UINT kernelRadius;
     float padding[3];
+};
+
+
+struct CalculateMeanVarianceConstantBuffer
+{
+    XMUINT2 textureDim;
+    UINT kernelWidth;
+    UINT kernelRadius;
 };
 
 struct SortRaysConstantBuffer

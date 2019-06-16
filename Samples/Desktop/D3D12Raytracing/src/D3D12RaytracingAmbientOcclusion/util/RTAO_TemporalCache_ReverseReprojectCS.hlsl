@@ -23,7 +23,11 @@ Texture2D<float4> g_texInputCurrentFrameNormalDepth : register(t3);
 Texture2D<float4> g_texInputReprojectedNormalDepth : register(t4); // ToDo standardize naming across files
 Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t5); // ToDo standardize naming across files
 Texture2D<uint> g_texInputCacheFrameAge : register(t6);
+#if PACK_MEAN_VARIANCE
+Texture2D<float2> g_texInputCurrentFrameMeanVariance : register(t7);
+#else
 Texture2D<float> g_texInputCurrentFrameMean : register(t7);
+#endif
 Texture2D<float> g_texInputCurrentFrameVariance : register(t8);
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t9); // ToDo standardize naming across files
 
@@ -95,9 +99,9 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         float depthThreshold = cacheDdxy;
         // Using exact precision values fails the depth test on some views, particularly at smaller resolutions.
         // Scale the tolerance a bit.
-        float floatPrecision = 1.25f * FloatPrecision(ActualDistance, cb.DepthNumMantissaBits);
+        float depthFloatPrecision = 1.25f * FloatPrecision(ActualDistance, cb.DepthNumMantissaBits);
        
-        float depthTolerance = max(cb.depthSigma * depthThreshold, floatPrecision);
+        float depthTolerance = max(cb.depthSigma * depthThreshold, depthFloatPrecision);
         float4 depthWeigths = min(depthTolerance / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
         depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise
 #if DEBUG_OUTPUT
@@ -270,8 +274,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         if (cb.clampCachedValues)
         {
+#if PACK_MEAN_VARIANCE
+            float2 localMeanVariance = g_texInputCurrentFrameMeanVariance[DTid];
+            float localMean = localMeanVariance.y;
+            float localVariance = localMeanVariance.x;
+#else
             float localMean = g_texInputCurrentFrameMean[DTid];
             float localVariance = g_texInputCurrentFrameVariance[DTid];
+#endif
             float localStdDev = max(cb.stdDevGamma * sqrt(localVariance), cb.minStdDevTolerance);
             float prevCachedValue = cachedValue;
             cachedValue = clamp(cachedValue, localMean - localStdDev, localMean + localStdDev); 

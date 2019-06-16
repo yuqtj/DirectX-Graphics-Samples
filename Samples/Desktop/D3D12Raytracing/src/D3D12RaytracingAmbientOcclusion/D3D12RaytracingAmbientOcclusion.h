@@ -98,6 +98,7 @@ private:
     const UINT                          MaxAtrousWaveletTransformFilterInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for calculating ImportanceMap
 
     GpuKernels::CalculateVariance       m_calculateVarianceKernel;
+    GpuKernels::CalculateMeanVariance   m_calculateMeanVarianceKernel;
     const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame = 
                                             MaxAtrousWaveletTransformFilterInvocationsPerFrame 
                                             + 1; // Temporal Super-Sampling.
@@ -218,6 +219,8 @@ private:
     RWGpuResource m_smoothedVarianceResource;
     RWGpuResource m_meanResource;
     RWGpuResource m_smoothedMeanResource;
+    RWGpuResource m_meanVarianceResource;
+    RWGpuResource m_smoothedMeanVarianceResource;
 
     // Multi-scale
     // ToDo Cleanup
