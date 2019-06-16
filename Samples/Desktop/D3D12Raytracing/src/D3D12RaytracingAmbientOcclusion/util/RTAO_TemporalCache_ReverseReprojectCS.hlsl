@@ -101,11 +101,14 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         float floatPrecision = 1.25f * FloatPrecision(ActualDistance, cb.DepthNumMantissaBits);
        
         float depthTolerance = max(cb.depthSigma * depthThreshold, floatPrecision);
-        float4 depthWeigths = min(depthTolerance/ (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
+        float4 depthWeigths = min(depthTolerance / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
         depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise
 #if DEBUG_OUTPUT
         g_texOutputDebug2[actualIndex] = float4(depthWeigths);
 #endif
+        // ToDo handle invalid distances, i.e disabled pixels?
+        //weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
+
     }
     
 
@@ -115,12 +118,13 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         const uint normalExponent = 32;
         const float minNormalWeight = 1e-3f; // ToDo pass as parameter
         float normalSigma = 1.1;        // ToDo remove/finetune/document. There's some less than 1 weights even for same/very similar  normals (i.e. house wall tiles)(due to low bit format?)
-        normalWeights =
-            float4(
-                pow(saturate(normalSigma*dot(ActualNormal, SampleNormals[0])), normalExponent),
-                pow(saturate(normalSigma*dot(ActualNormal, SampleNormals[1])), normalExponent),
-                pow(saturate(normalSigma*dot(ActualNormal, SampleNormals[2])), normalExponent),
-                pow(saturate(normalSigma*dot(ActualNormal, SampleNormals[3])), normalExponent) >= minNormalWeight);
+        
+        float4 NdotSampleN = float4(
+            dot(ActualNormal, SampleNormals[0]),
+            dot(ActualNormal, SampleNormals[1]),
+            dot(ActualNormal, SampleNormals[2]),
+            dot(ActualNormal, SampleNormals[3]));
+        normalWeights = pow(saturate(normalSigma*NdotSampleN), normalExponent) >= minNormalWeight;
     }
 
     float4 bilinearWeights = 
@@ -132,17 +136,9 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
 
     // ToDo use depth weights instead of mask?
     // ToDo can we prevent diffusion across plane?
-    float4 weights = bilinearWeights * depthMask * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
+    float4 weights = isWithinBounds * bilinearWeights * depthMask * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
 
-    weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
-    float weightSum = dot(weights, 1);
-
-#if DEBUG_OUTPUT
-    g_texOutputDebug1[actualIndex] = float4(ActualDistance, cacheDdxy, weightSum, 0);
-#endif
-
-    float minWeightSum = 1e-3f;
-    return weightSum >= minWeightSum ? weights / (dot(weights, 1) + FLT_EPSILON) : 0;
+    return weights;
 }
 
 
@@ -156,10 +152,6 @@ void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texInde
         depth = encodedNormalAndDepth.z;
         normal = DecodeNormal(encodedNormalAndDepth.xy);
     }
-    // ToDo remove
-#if !COMPRES_NORMALS || !PACK_NORMAL_AND_DEPTH
-    Not supported
-#endif
 }
 
 
@@ -194,6 +186,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float3 cacheNormals[4]; 
     float4 vCacheDepths;
     {
+        [unroll]
         for (int i = 0; i < 4; i++)
         {
             float dummy;
@@ -202,8 +195,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
 
 #if 0
-
-
     // Calculate linear depth in the cache frame.
     // We avoid converting depth between linear and log as log depth loses a lot of precision very quickly as depth increases.
     float3 viewPos = ScreenPosToWorldPos(DTid, linearDepth, cb.textureDim, cb.zNear, float3(0,0,0), cb.projectionToWorldWithCameraEyeAtOrigin);
@@ -240,17 +231,23 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float mergedValue;
 
     float4 weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
-
     float weightSum = dot(1, weights);
 
+
+#if DEBUG_OUTPUT
+    g_texOutputDebug1[actualIndex] = float4(ActualDistance, cacheDdxy, weightSum, 0);
+#endif
+
+#if 0
     // ToDo dedupe with GetClipSpacePosition()...
     float2 xy = DTid + 0.5f;                            // Center in the middle of the pixel.
     float2 currentFrameTexturePos = xy * cb.invTextureDim;
 
     float aspectRatio = cb.textureDim.x / cb.textureDim.y;
     float maxScreenSpaceReprojectionDistance = 0.01;// cb.minSmoothingFactor * 0.1f; // ToDo
-    // ToDo scale this based on depth?
-    //float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
+     ToDo scale this based on depth?
+    float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
+#endif
 
     bool isCacheValueValid = weightSum > 1e-3f; // ToDo
     //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
@@ -261,25 +258,11 @@ void main(uint2 DTid : SV_DispatchThreadID)
     if (isCacheValueValid)
     {
         isDisoccluded = false;
-#if 1
-        // ToDo load only the useable values?
+
         float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         uint4 vCacheFrameAge = g_texInputCacheFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-#else
-        // ToDo load only the useable values?
-        float4 vCacheValues = float4(
-            g_texInputCachedValue[cacheIndices[0]],
-            g_texInputCachedValue[cacheIndices[1]],
-            g_texInputCachedValue[cacheIndices[2]],
-            g_texInputCachedValue[cacheIndices[3]]);
 
-        uint4 vCacheFrameAge = uint4(
-            g_texInputCacheFrameAge[cacheIndices[0]],
-            g_texInputCacheFrameAge[cacheIndices[1]],
-            g_texInputCacheFrameAge[cacheIndices[2]],
-            g_texInputCacheFrameAge[cacheIndices[3]]);
-
-#endif
+        weights /= weightSum;   // Normalize the weights.
         float cachedValue = dot(weights, vCacheValues);
         float cacheFrameAge = dot(weights, vCacheFrameAge);
         frameAge = round(cacheFrameAge);

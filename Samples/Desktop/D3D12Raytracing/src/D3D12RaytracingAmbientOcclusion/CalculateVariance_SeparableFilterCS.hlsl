@@ -23,9 +23,12 @@
 
 // ToDo remove unused
 Texture2D<float> g_inValues : register(t0);
+
+// ToDo remove
 Texture2D<float> g_inDepth : register(t1);  // ToDo use from normal tex directly
 Texture2D<float4> g_inNormalDepthObliqueness : register(t2);
 
+// ToDo combine
 RWTexture2D<float> g_outVariance : register(u0);
 RWTexture2D<float> g_outMean : register(u1);
 
@@ -39,12 +42,10 @@ RWTexture2D<float> g_outMean : register(u1);
 // ToDo pack mean and variance ouputs to 2x16bit
 
 #if PACK_OPTIMIZATION
-groupshared UINT PackedValueObliquenessCache[256];  // 16bit float value and obliqueness.
+groupshared float VCache[256];
 groupshared UINT PackedResultCache[256];            // 16bit float valueSum, squaredValueSum.
 
 #else
-groupshared float VCache[256];
-groupshared float OCache[256];
 
 groupshared float ValueSumCache[256];
 groupshared float SquaredValueSumCache[256];
@@ -54,15 +55,7 @@ ConstantBuffer<CalculateVariance_BilateralFilterConstantBuffer> cb: register(b0)
 
 void LoadToSharedMemory(UINT smemIndex, int2 pixel)
 {
-    float value = g_inValues[pixel];
-    float4 packedValue = g_inNormalDepthObliqueness[pixel];
-    float obliqueness = max(0.0001f, pow(packedValue.w, 10));
-#if PACK_OPTIMIZATION
-    PackedValueObliquenessCache[smemIndex] = Float2ToHalf(float2(value, obliqueness));
-#else
-    VCache[smemIndex] = value;
-    OCache[smemIndex] = obliqueness;
-#endif
+    VCache[smemIndex] = g_inValues[pixel];
 }
 
 void PrefetchData(uint index, int2 ST)
@@ -79,13 +72,6 @@ void BlurHorizontally(uint leftMostIndex)
 {
     // Load the reference values for the current pixel.
     UINT Cid = leftMostIndex + cb.kernelRadius;
-#if PACK_OPTIMIZATION
-    float2 refUnpackedValueObliquenessCache = HalfToFloat2(PackedValueObliquenessCache[Cid]);
-    float obliqueness = refUnpackedValueObliquenessCache.y;
-#else
-    float obliqueness = OCache[Cid];
-#endif
-
     UINT numWeights = 0;
     float valueSum = 0;
     float squaredValueSum = 0;
@@ -94,12 +80,7 @@ void BlurHorizontally(uint leftMostIndex)
     for (UINT c = 0; c < cb.kernelWidth; c++)
     {
         UINT ID = leftMostIndex + c;
-#if PACK_OPTIMIZATION
-        float2 unpackedValueObliquenessCache = HalfToFloat2(PackedValueObliquenessCache[ID]);
-        float value = unpackedValueObliquenessCache.x;
-#else
         float value = VCache[ID];
-#endif
 
         valueSum += value;
         squaredValueSum += value * value;
@@ -117,12 +98,6 @@ void BlurVertically(uint2 DTid, uint topMostIndex)
 {
     // Load the reference values for the current pixel.
     UINT Cid = topMostIndex + cb.kernelRadius * 16;
-#if PACK_OPTIMIZATION
-    float2 refUnpackedValueObliquenessCache = HalfToFloat2(PackedValueObliquenessCache[Cid]);
-    float obliqueness = refUnpackedValueObliquenessCache.y;
-#else
-    float obliqueness = OCache[Cid];
-#endif
 
     float valueSum = 0;
     float squaredValueSum = 0;

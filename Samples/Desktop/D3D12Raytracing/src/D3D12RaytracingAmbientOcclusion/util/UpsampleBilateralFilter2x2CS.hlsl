@@ -32,11 +32,6 @@ void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texInde
     float4 encodedNormalAndDepth = inNormalDepthTexture[texIndex];
     depth = encodedNormalAndDepth.z;
     normal = DecodeNormal(encodedNormalAndDepth.xy);
-
-    // ToDo remove
-#if !COMPRES_NORMALS || !PACK_NORMAL_AND_DEPTH
-    Not supported
-#endif
 }
 
 // ToDo comment
