@@ -1704,7 +1704,7 @@ namespace GpuKernels
             ranges[Slot::InputTextureSpaceMotionVector].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10);// 1 input texture space motion vector from previous to current frame
             ranges[Slot::InputCacheHitPosition].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12);// 1 input texture space motion vector from previous to current frame
             ranges[Slot::InputReprojectedHitPosition].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 11);// 1 input texture space motion vector from previous to current frame
-            
+
             ranges[Slot::OutputCachedValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);        // 1 output temporal cache value
             ranges[Slot::OutputFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);           // 1 output temporal cache frame age
             ranges[Slot::OutputDebug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);           // 1 output temporal cache frame age
@@ -1730,9 +1730,11 @@ namespace GpuKernels
             rootParameters[Slot::OutputDebug2].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug2]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
-            CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER);
+            CD3DX12_STATIC_SAMPLER_DESC staticSamplers[] = {
+                CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER),
+                CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP) };
 
-            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &staticSampler);
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, ARRAYSIZE(staticSamplers), staticSamplers);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: RTAO_TemporalCache_ReverseReproject");
         }
 
@@ -1773,7 +1775,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheHitPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputReprojectedHitPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheFrameAgeResourceHandle,   
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheFrameAgeResourceHandle,
         float minSmoothingFactor,
         const XMMATRIX& invView,
         const XMMATRIX& invProj,
@@ -1793,7 +1795,7 @@ namespace GpuKernels
         float depthDistanceBasedDepthTolerance,
         float depthSigma,
         bool useWorldSpaceDistance,
-        bool usePacked32bitNormalDepth,
+        RGBResourceFormats::Type depthNormalResourceFormat,
         RWGpuResource debugResources[2],
         const XMVECTOR& currentFrameCameraPosition,
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
@@ -1830,7 +1832,15 @@ namespace GpuKernels
         m_CB->prevToCurrentFrameCameraTranslation = prevToCurrentFrameCameraTranslation;
         m_CB->prevProjectionToWorldWithCameraEyeAtOrigin = XMMatrixTranspose(prevProjectionToWorldWithCameraEyeAtOrigin);
         m_CB->useWorldSpaceDistance = useWorldSpaceDistance;
-        m_CB->usePacked32bitNormalDepth = usePacked32bitNormalDepth;
+
+        switch (depthNormalResourceFormat)
+        {
+        case RGBResourceFormats::R32G32B32A32_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(32); break;
+        case RGBResourceFormats::R16G16B16A16_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16); break;
+        case RGBResourceFormats::R11G11B10_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(10); break;
+        default: ThrowIfFalse(false, L"Invalid resource format specified.");
+        }
+
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 

@@ -552,6 +552,7 @@ struct SceneConstantBuffer
     float padding2[2];
 };
  
+// ToDo use namespace?
 // Final render output composition modes.
 enum CompositionType {
     PhongLighting = 0,
@@ -566,6 +567,28 @@ enum CompositionType {
     DisocclusionMap,
     Count
 };
+
+namespace RGBResourceFormats
+{
+    enum Type {
+        R32G32B32A32_FLOAT = 0,
+        R16G16B16A16_FLOAT,
+        R11G11B10_FLOAT,
+        Count
+    };
+#ifndef HLSL
+    inline DXGI_FORMAT ToDXGIFormat(UINT type)
+    {
+        switch (type)
+        {
+        case R32G32B32A32_FLOAT: return DXGI_FORMAT_R32G32B32A32_FLOAT;
+        case R16G16B16A16_FLOAT: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case R11G11B10_FLOAT: return DXGI_FORMAT_R11G11B10_FLOAT;
+        }
+        return DXGI_FORMAT_UNKNOWN;
+    }
+#endif
+}
 
 // ToDo compress
 // ToDo explain padding
@@ -627,16 +650,16 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;
     XMVECTOR prevToCurrentFrameCameraTranslation;   // ToDo include this in one of the projection matrices?
     XMMATRIX prevProjectionToWorldWithCameraEyeAtOrigin;
-    
+
     BOOL  forceUseMinSmoothingFactor;  // ToDo remove?
-    float minSmoothingFactor;       
+    float minSmoothingFactor;
     float zNear; // ToDo take these from transform matrix directly?
     float zFar;
 
     // ToDo pix missinterprets the format
     XMUINT2 textureDim;
     XMFLOAT2 invTextureDim; // ToDo test what impact passing inv tex dim makes
-    
+
     // ToDo moving this 4Bs above XMFLOATs causes issues
     float depthTolerance;
     BOOL useDepthWeights;
@@ -651,7 +674,7 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     BOOL useWorldSpaceDistance;
     float minStdDevTolerance;
     float frameAgeAdjustmentDueClamping;
-    BOOL usePacked32bitNormalDepth;
+    UINT DepthNumMantissaBits;      // Number of Mantissa Bits in the floating format of the input depth resources format.
 };
 
 struct CalculatePartialDerivativesConstantBuffer

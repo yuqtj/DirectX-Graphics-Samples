@@ -38,6 +38,7 @@ RWTexture2D<float4> g_texOutputDebug2 : register(u3);
 ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> cb : register(b0);
 
 SamplerState LinearSampler : register(s0);
+SamplerState ClampSampler : register(s1);
 
 #define DEBUG_OUTPUT 0 // ToDo remove
 
@@ -95,11 +96,12 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
     if (cb.useDepthWeights)
     {
         float depthThreshold = cacheDdxy;
-        float fMinEpsilon = cb.floatEpsilonDepthTolerance * 512 * FLT_EPSILON;                              // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations       
-        float fMinDepthScaledEpsilon = cb.depthDistanceBasedDepthTolerance * 48 * 1e-6  * ActualDistance;   // Depth threshold to surpress differences that surface at larger depth from the camera.
-        float fEpsilon = fMinEpsilon + fMinDepthScaledEpsilon;
-
-        float4 depthWeigths = min((cb.depthSigma * depthThreshold + fEpsilon)/ (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
+        // Using exact precision values fails the depth test on some views, particularly at smaller resolutions.
+        // Scale the tolerance a bit.
+        float floatPrecision = 1.25f * FloatPrecision(ActualDistance, cb.DepthNumMantissaBits);
+       
+        float depthTolerance = max(cb.depthSigma * depthThreshold, floatPrecision);
+        float4 depthWeigths = min(depthTolerance/ (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
         depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise
 #if DEBUG_OUTPUT
         g_texOutputDebug2[actualIndex] = float4(depthWeigths);
@@ -170,14 +172,14 @@ float GetLinearDepth(float3 viewPosition, float3 forwardCameraRay)
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
-
-    float linearDepth = g_texInputCurrentFrameDepth[DTid];
-  
-    float2 texturePos = (DTid.xy + 0.5f) / float2(cb.textureDim);
+    float2 texturePos = (DTid.xy + 0.5f) * cb.invTextureDim;
     float2 cacheFrameTexturePos = texturePos - g_texInputTextureSpaceMotionVector[DTid];
-
-
+    
     int2 topLeftCacheFrameIndex = int2(cacheFrameTexturePos * cb.textureDim - 0.5);
+
+    // ToDo why this doesn't match cacheFrameTexturePos??
+    float2 adjustedCacheFrameTexturePos = (topLeftCacheFrameIndex + 0.5) * cb.invTextureDim;
+
     float2 cachePixelOffset = cacheFrameTexturePos * cb.textureDim - topLeftCacheFrameIndex - 0.5;
 
     const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
@@ -189,20 +191,18 @@ void main(uint2 DTid : SV_DispatchThreadID)
         topLeftCacheFrameIndex + srcIndexOffsets[3] };
     // ToDo conditional loads if really needed?
     // ToDo use gather
-    float3 cacheNormals[4];
+    float3 cacheNormals[4]; 
+    float4 vCacheDepths;
     {
         for (int i = 0; i < 4; i++)
         {
             float dummy;
-            LoadDepthAndNormal(g_texInputCachedNormal, cacheIndices[i], dummy, cacheNormals[i]);
+            LoadDepthAndNormal(g_texInputCachedNormal, cacheIndices[i], vCacheDepths[i], cacheNormals[i]);
         }
     }
 
-    float4 vCacheDepths = float4(
-        g_texInputCachedDepth[cacheIndices[0]],
-        g_texInputCachedDepth[cacheIndices[1]],
-        g_texInputCachedDepth[cacheIndices[2]],
-        g_texInputCachedDepth[cacheIndices[3]]);
+#if 0
+
 
     // Calculate linear depth in the cache frame.
     // We avoid converting depth between linear and log as log depth loses a lot of precision very quickly as depth increases.
@@ -214,30 +214,32 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float3 cameraDirection = GenerateForwardCameraRayDirection(cb.projectionToWorldWithCameraEyeAtOrigin);
     float3 cacheCameraDirection = GenerateForwardCameraRayDirection(cb.prevProjectionToWorldWithCameraEyeAtOrigin);
     float cacheLinearDepth = dot(viewPos, cacheCameraDirection);
-
+#endif
 
     float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];
     // ToDo should this be done separately for both X and Y dimensions?
     float  ddxy = dot(1, dxdy);
 
     float cacheDdxy = ddxy;
-    float4 reprojectedPointNormalANdDepth = g_texInputReprojectedHitPosition[DTid];
-    cacheLinearDepth = reprojectedPointNormalANdDepth.w;
-    float3 _normal = reprojectedPointNormalANdDepth.xyz;
+    float3 _normal;
+    float _depth;
+    LoadDepthAndNormal(g_texInputReprojectedHitPosition, DTid, _depth, _normal);
+
 
     if (cb.useWorldSpaceDistance)
     {
         float3 normal;
         float dummy;
+        float linearDepth = g_texInputCurrentFrameDepth[DTid];
         LoadDepthAndNormal(g_texInputCurrentFrameNormal, DTid, dummy, normal);
 
-        cacheDdxy = CalculateAdjustedDepthThreshold(ddxy, linearDepth, cacheLinearDepth, normal, _normal);
+        cacheDdxy = CalculateAdjustedDepthThreshold(ddxy, linearDepth, _depth, normal, _normal);
     }
 
     float value = g_texInputCurrentFrameValue[DTid];
     float mergedValue;
 
-    float4 weights = BilateralResampleWeights(cacheLinearDepth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
+    float4 weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
 
     float weightSum = dot(1, weights);
 
@@ -248,7 +250,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float aspectRatio = cb.textureDim.x / cb.textureDim.y;
     float maxScreenSpaceReprojectionDistance = 0.01;// cb.minSmoothingFactor * 0.1f; // ToDo
     // ToDo scale this based on depth?
-    float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
+    //float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
 
     bool isCacheValueValid = weightSum > 1e-3f; // ToDo
     //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
@@ -258,6 +260,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint maxFrameAge = 1 / cb.minSmoothingFactor - 1;// minSmoothingFactor;
     if (isCacheValueValid)
     {
+        isDisoccluded = false;
+#if 1
+        // ToDo load only the useable values?
+        float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+        uint4 vCacheFrameAge = g_texInputCacheFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+#else
         // ToDo load only the useable values?
         float4 vCacheValues = float4(
             g_texInputCachedValue[cacheIndices[0]],
@@ -271,11 +279,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
             g_texInputCacheFrameAge[cacheIndices[2]],
             g_texInputCacheFrameAge[cacheIndices[3]]);
 
-
-
-        isDisoccluded = false;
+#endif
         float cachedValue = dot(weights, vCacheValues);
-
         float cacheFrameAge = dot(weights, vCacheFrameAge);
         frameAge = round(cacheFrameAge);
 

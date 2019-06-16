@@ -1232,3 +1232,17 @@ inline XMFLOAT3 CalculateTangent(const XMFLOAT3& p0, const XMFLOAT3& p1, const X
 
     return tangent;
 }
+
+
+inline UINT NumMantissaBitsInFloatFormat(UINT FloatFormatBitLength)
+{
+    switch (FloatFormatBitLength)
+    {
+    case 32: return 23;
+    case 16: return 10;
+    case 11: return 6;
+    case 10: return 5;
+    }
+
+    return 0;
+}

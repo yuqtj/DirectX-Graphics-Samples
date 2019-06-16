@@ -118,6 +118,7 @@ namespace GlobalRootSignature {
             FilterWeightSum,
             GBufferDepth,   // ToDo move to the above slot for GBufferResources ?
             GbufferNormalRGB,
+            NormalDepthLowPrecision,
             AORayHitDistance,
             AOFrameAge,
             AORayDirectionOriginDepthHitSRV,
@@ -213,6 +214,7 @@ namespace GBufferResource {
         Distance,       // Length along ray of hit. // ToDo update (depth?)
         Depth,          // Non-linear depth of the hit. // ToDo remove
         SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate remove Surface prefix
+        NormalDepthLowPrecision,
         PartialDepthDerivatives,
         MotionVector,
         ReprojectedHitPosition,

@@ -81,6 +81,7 @@ RWTexture2D<float4> g_rtColor : register(u19);
 RWTexture2D<float4> g_rtAODiffuse : register(u20);
 RWTexture2D<float> g_rtShadowMap : register(u21);
 RWTexture2D<float4> g_rtAORaysDirectionOriginDepth : register(u22);
+RWTexture2D<float4> g_rtGBufferNormalDepthLowPrecision : register(u23);
 
 ConstantBuffer<SceneConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
@@ -989,7 +990,7 @@ void MyRayGenShader_GBuffer()
         float _depth;
         float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth);
         g_rtTextureSpaceMotionVector[DTid] = motionVector;
-        g_rtReprojectedHitPosition[DTid] = float4(DecodeNormal(rayPayload.AOGBuffer._encodedNormal), _depth);
+        g_rtReprojectedHitPosition[DTid] = float4(rayPayload.AOGBuffer._encodedNormal, _depth, 0);
     }
     else
     {
@@ -1025,7 +1026,9 @@ void MyRayGenShader_GBuffer()
     //linearDepth = rayLength = nonLinearDepth;
 #endif
 
+    // ToDo do we need both? Or just normal for high-fidelity one w/o depth?
     g_rtGBufferNormal[DTid] = float4(rayPayload.AOGBuffer.encodedNormal, linearDepth, obliqueness);
+    g_rtGBufferNormalDepthLowPrecision[DTid] = float4(rayPayload.AOGBuffer.encodedNormal, linearDepth, 0);
 #else
     #if PACK_NORMAL_AND_DEPTH
         obliqueness = rayLength;
