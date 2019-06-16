@@ -568,7 +568,7 @@ enum CompositionType {
     Count
 };
 
-namespace RGBResourceFormats
+namespace TextureResourceFormatRGB
 {
     enum Type {
         R32G32B32A32_FLOAT = 0,
@@ -584,6 +584,28 @@ namespace RGBResourceFormats
         case R32G32B32A32_FLOAT: return DXGI_FORMAT_R32G32B32A32_FLOAT;
         case R16G16B16A16_FLOAT: return DXGI_FORMAT_R16G16B16A16_FLOAT;
         case R11G11B10_FLOAT: return DXGI_FORMAT_R11G11B10_FLOAT;
+        }
+        return DXGI_FORMAT_UNKNOWN;
+    }
+#endif
+}
+
+namespace TextureResourceFormatR
+{
+    enum Type {
+        R32_FLOAT = 0,
+        R16_FLOAT,
+        R8_UNORM,
+        Count
+    };
+#ifndef HLSL
+    inline DXGI_FORMAT ToDXGIFormat(UINT type)
+    {
+        switch (type)
+        {
+        case R32_FLOAT: return DXGI_FORMAT_D32_FLOAT;
+        case R16_FLOAT: return DXGI_FORMAT_R16_FLOAT;
+        case R8_UNORM: return DXGI_FORMAT_R8_UNORM;
         }
         return DXGI_FORMAT_UNKNOWN;
     }

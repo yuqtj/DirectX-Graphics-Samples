@@ -16,19 +16,16 @@
 // ToDo some pixels here and there on mirror boundaries fail temporal reprojection even for static scene/camera
 
 // ToDO pack value and depth beforehand?
-Texture2D<float> g_texInputCachedValue : register(t0);
-Texture2D<float> g_texInputCurrentFrameValue : register(t1);
-Texture2D<float> g_texInputCachedDepth : register(t2);
-Texture2D<float> g_texInputCurrentFrameDepth : register(t3);
-Texture2D<float4> g_texInputCachedNormal : register(t4);        // ToDo standardize cache vs cached
-Texture2D<float4> g_texInputCurrentFrameNormal : register(t5);
+Texture2D<float4> g_texInputCachedNormalDepth : register(t0);        // ToDo standardize cache vs cached
+Texture2D<float> g_texInputCachedValue : register(t1);
+Texture2D<float> g_texInputCurrentFrameValue : register(t2);
+Texture2D<float4> g_texInputCurrentFrameNormalDepth : register(t3);
+Texture2D<float4> g_texInputReprojectedNormalDepth : register(t4); // ToDo standardize naming across files
+Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t5); // ToDo standardize naming across files
 Texture2D<uint> g_texInputCacheFrameAge : register(t6);
 Texture2D<float> g_texInputCurrentFrameMean : register(t7);
 Texture2D<float> g_texInputCurrentFrameVariance : register(t8);
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t9); // ToDo standardize naming across files
-Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t10); // ToDo standardize naming across files
-Texture2D<float4> g_texInputReprojectedHitPosition : register(t11); // ToDo standardize naming across files
-Texture2D<float4> g_texInputCachedHitPosition : register(t12); // ToDo standardize naming across files
 
 RWTexture2D<float> g_texOutputCachedValue : register(u0);
 RWTexture2D<uint> g_texOutputCacheFrameAge : register(u1);
@@ -190,7 +187,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         for (int i = 0; i < 4; i++)
         {
             float dummy;
-            LoadDepthAndNormal(g_texInputCachedNormal, cacheIndices[i], vCacheDepths[i], cacheNormals[i]);
+            LoadDepthAndNormal(g_texInputCachedNormalDepth, cacheIndices[i], vCacheDepths[i], cacheNormals[i]);
         }
     }
 
@@ -214,17 +211,16 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float cacheDdxy = ddxy;
     float3 _normal;
     float _depth;
-    LoadDepthAndNormal(g_texInputReprojectedHitPosition, DTid, _depth, _normal);
+    LoadDepthAndNormal(g_texInputReprojectedNormalDepth, DTid, _depth, _normal);
 
 
     if (cb.useWorldSpaceDistance)
     {
         float3 normal;
-        float dummy;
-        float linearDepth = g_texInputCurrentFrameDepth[DTid];
-        LoadDepthAndNormal(g_texInputCurrentFrameNormal, DTid, dummy, normal);
+        float depth;
+        LoadDepthAndNormal(g_texInputCurrentFrameNormalDepth, DTid, depth, normal);
 
-        cacheDdxy = CalculateAdjustedDepthThreshold(ddxy, linearDepth, _depth, normal, _normal);
+        cacheDdxy = CalculateAdjustedDepthThreshold(ddxy, depth, _depth, normal, _normal);
     }
 
     float value = g_texInputCurrentFrameValue[DTid];
