@@ -1132,7 +1132,7 @@ namespace GpuKernels
                     Input,
                     Normals,
                     Depths,
-                    Variance,       // ToDo remove
+                    Variance,
                     SmoothedVariance,
                     ConstantBuffer,
                     RayHitDistance,
@@ -1275,6 +1275,11 @@ namespace GpuKernels
         float varianceSigmaScaleOnSmallKernels,
         bool usingBilateralDownsampledBuffers)
     {
+
+        // ToDo: cleanup use of variance
+        // SmoothedVariance is used for edge stopping
+        // Variance is used for intermediate variance calculations for the 
+
         using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
         using namespace AtrousWaveletTransformFilterCS;
 

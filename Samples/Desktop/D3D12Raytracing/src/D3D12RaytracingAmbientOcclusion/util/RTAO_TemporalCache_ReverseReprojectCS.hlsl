@@ -103,7 +103,7 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
        
         float depthTolerance = max(cb.depthSigma * depthThreshold, depthFloatPrecision);
         float4 depthWeigths = min(depthTolerance / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
-        depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise
+        depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise - this is same as comparing to depth tolerance
 #if DEBUG_OUTPUT
         g_texOutputDebug2[actualIndex] = float4(depthWeigths);
 #endif

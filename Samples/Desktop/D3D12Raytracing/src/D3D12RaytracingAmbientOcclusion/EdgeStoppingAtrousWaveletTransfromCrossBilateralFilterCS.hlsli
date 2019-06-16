@@ -80,10 +80,7 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
 #endif
     }
 
-    float depthFloatPrecision = 1.25f * FloatPrecision(distance, g_CB.DepthNumMantissaBits);
-
-
-    return max(depthThreshold, depthFloatPrecision);
+    return depthThreshold;
 }
 
 void AddFilterContribution(
@@ -122,6 +119,7 @@ void AddFilterContribution(
 
 
         // Blur more aggressively on smaller kernels.
+        // ToDo remove?
         varianceScale = lerp(g_CB.varianceSigmaScaleOnSmallKernels, 1, saturate((kernelWidth - g_CB.minKernelWidth) / 33));
 
         // Calculate pixel offset per iteration.
@@ -156,7 +154,7 @@ void AddFilterContribution(
         if (g_CB.outputFilteredValue)
         {
             iValue = g_inValues[id];
-            iVariance = g_inSmoothedVariance[id];
+            iVariance = g_inVariance[id];
 
             if (g_CB.useCalculatedVariance)
             {
@@ -203,20 +201,29 @@ void AddFilterContribution(
         }
         float depthThreshold = DepthThreshold(depth, ddxy, pixelOffsetForDepth, obliqueness, depth - iDepth);
 
+#if 1
+
+        // ToDo why is 2 needed to get rid of banding?
+        float depthFloatPrecision = 2.0f * FloatPrecision(max(depth, iDepth), g_CB.DepthNumMantissaBits);
+
+        float depthTolerance = max(depthSigma * depthThreshold, depthFloatPrecision);
+        //float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) / (depthTolerance + FLT_EPSILON) : 0;
+        float w_d = depthSigma > 0.01f ? min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1) : 0;
+#else
         float fMinEpsilon = 512 * FLT_EPSILON; // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations.
         float fMinDepthScaledEpsilon = 48 * 1e-6  * depth;  // Depth threshold to surpress differences that surface at larger depth from the camera.
         float fEpsilon = fMinEpsilon + fMinDepthScaledEpsilon;
         // ToDo revvise divEpsilon
         float divEpsilon = 1e-6f;
         float depthWeigth = min((depthSigma * depthThreshold + fEpsilon) / (abs(depth - iDepth) + divEpsilon), 1);
+
         //float w_d = depthWeigth;
         //float e_d = depthSigma > 0.01f  ? min(1 - abs(depth - iDepth) / (1 * depthThreshold), 0) : 0;
         //fload e_d = depth abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance
         // ToD revise "1 - "
         // ToDo should be depthSigma ^ 2
-        float e_d = depthSigma > 0.01f ? min(1 - abs(depth - iDepth) / (depthSigma * depthThreshold + fEpsilon), 0) : 0;
         float w_d = exp(e_d);
-
+#endif
 #else
         float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;
 #endif
