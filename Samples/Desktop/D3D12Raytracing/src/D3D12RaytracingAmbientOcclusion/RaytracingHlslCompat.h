@@ -603,9 +603,32 @@ namespace TextureResourceFormatR
     {
         switch (type)
         {
-        case R32_FLOAT: return DXGI_FORMAT_D32_FLOAT;
+        case R32_FLOAT: return DXGI_FORMAT_R32_FLOAT;
         case R16_FLOAT: return DXGI_FORMAT_R16_FLOAT;
         case R8_UNORM: return DXGI_FORMAT_R8_UNORM;
+        }
+        return DXGI_FORMAT_UNKNOWN;
+    }
+#endif
+}
+
+
+namespace TextureResourceFormatRG
+{
+    enum Type {
+        R32G32_FLOAT = 0,
+        R16G16_FLOAT,
+        R8G8_UNORM,
+        Count
+    };
+#ifndef HLSL
+    inline DXGI_FORMAT ToDXGIFormat(UINT type)
+    {
+        switch (type)
+        {
+        case R32G32_FLOAT: return DXGI_FORMAT_R32G32_FLOAT;
+        case R16G16_FLOAT: return DXGI_FORMAT_R16G16_FLOAT;
+        case R8G8_UNORM: return DXGI_FORMAT_R8G8_UNORM;
         }
         return DXGI_FORMAT_UNKNOWN;
     }
