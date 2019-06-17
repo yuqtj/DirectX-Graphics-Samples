@@ -194,6 +194,8 @@ private:
 	// ToDo use the struct
 	RWGpuResource m_raytracingOutput;
     RWGpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
+    RWGpuResource m_normalDepthLowPrecision[2];
+    RWGpuResource m_normalDepthLowResLowPrecision[2];
 	RWGpuResource m_GBufferResources[GBufferResource::Count];
     RWGpuResource m_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
     
@@ -213,7 +215,10 @@ private:
 
     // ToDo dedupe resources. Does dpeth need to have 2 instances?
     RWGpuResource m_temporalCache[2][TemporalCache::Count]; // ~array[Read/Write ping pong resource][Resources].
+    
+    // ToDo use a common ping-pong index?
     UINT          m_temporalCacheReadResourceIndex = 0;
+    UINT          m_normalDepthCurrentFrameResourceIndex = 0;
 
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;

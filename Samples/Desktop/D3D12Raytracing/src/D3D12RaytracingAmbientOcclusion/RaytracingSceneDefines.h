@@ -214,7 +214,6 @@ namespace GBufferResource {
         Distance,       // Length along ray of hit. // ToDo update (depth?)
         Depth,          // Non-linear depth of the hit. // ToDo remove
         SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate remove Surface prefix
-        NormalDepthLowPrecision,
         PartialDepthDerivatives,
         MotionVector,
         ReprojectedHitPosition,
@@ -238,7 +237,6 @@ namespace AOResource {
 namespace TemporalCache {
     enum Enum {
         AO = 0,
-        NormalDepth,
         FrameAge,
         Count
     };

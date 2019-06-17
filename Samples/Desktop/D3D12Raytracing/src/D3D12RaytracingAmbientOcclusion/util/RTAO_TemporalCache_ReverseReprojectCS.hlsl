@@ -259,9 +259,11 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         isDisoccluded = false;
 
+#if PACK_CACHE_VALUE_FRAME_AGE
+#else
         float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         uint4 vCacheFrameAge = g_texInputCacheFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-
+#endif
         weights /= weightSum;   // Normalize the weights.
         float cachedValue = dot(weights, vCacheValues);
         float cacheFrameAge = dot(weights, vCacheFrameAge);
