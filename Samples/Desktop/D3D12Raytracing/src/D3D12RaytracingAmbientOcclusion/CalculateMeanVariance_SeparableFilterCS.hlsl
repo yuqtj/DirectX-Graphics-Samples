@@ -28,8 +28,7 @@ ConstantBuffer<CalculateMeanVarianceConstantBuffer> cb: register(b0);
 // Group shared memory caches.
 // Spaced at 4 Byte element widths to avoid bank conflicts on access.
 // Trade precision for speed and pack floats to 16bit.
-// 0.137ms -> 0.126ms for 7x7 kernel at 1080p on TitanXp.
-// 0.59ms -> 0.368ms for 7x7 kernel at 4K on 2080Ti.
+// 0.4ms -> 0.31ms for 7x7 kernel at 4K on TitanXp.
 #define PACK_OPTIMIZATION 1
 // ToDo pack mean and variance ouputs to 2x16bit
 
@@ -38,11 +37,10 @@ groupshared float VCache[256];
 groupshared UINT PackedResultCache[256];            // 16bit float valueSum, squaredValueSum.
 
 #else
-
+groupshared float VCache[256];
 groupshared float ValueSumCache[256];
 groupshared float SquaredValueSumCache[256];
 #endif
-
 
 void LoadToSharedMemory(UINT smemIndex, int2 pixel)
 {
