@@ -35,6 +35,7 @@
 #include "CompiledShaders\CalculateVariance_SeparableFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_SeparableBilateralFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS.hlsl.h"
+#include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
 #include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
@@ -1715,6 +1716,7 @@ namespace GpuKernels
 
 
         }
+#if 0
         // Create compute pipeline state.
         {
             D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {}; 
@@ -1723,7 +1725,28 @@ namespace GpuKernels
             ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
             m_pipelineStateObject->SetName(L"Pipeline state object: CalculateMeanVariance");
         }
+#else
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+            for (UINT i = 0; i < FilterType::Count; i++)
+            {
+                switch (i)
+                {
+                case Separable_AnyToAnyWaveReadLaneAt:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateMeanVariance_SeparableFilterCS_AnyToAnyWaveReadLaneAt), ARRAYSIZE(g_pCalculateMeanVariance_SeparableFilterCS_AnyToAnyWaveReadLaneAt));
+                    break;
+                case Separable:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateMeanVariance_SeparableFilterCS), ARRAYSIZE(g_pCalculateMeanVariance_SeparableFilterCS));
+                    break;
+                }
 
+                ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
+                m_pipelineStateObjects[i]->SetName(L"Pipeline state object: CalculateMeanVariance");
+            }
+        }
+#endif
         // Create shader resources.
         {
             m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: CalculateMeanVariance");
@@ -1737,6 +1760,7 @@ namespace GpuKernels
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
         UINT height,
+        FilterType filterType,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputMeanVarianceResourceHandle,
         UINT kernelWidth)
@@ -1756,7 +1780,7 @@ namespace GpuKernels
         {
             commandList->SetDescriptorHeaps(1, &descriptorHeap);
             commandList->SetComputeRootSignature(m_rootSignature.Get());
-            commandList->SetPipelineState(m_pipelineStateObject.Get());
+            commandList->SetPipelineState(m_pipelineStateObjects[filterType].Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputMeanVariance, outputMeanVarianceResourceHandle);
         }

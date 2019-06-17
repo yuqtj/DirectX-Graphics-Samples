@@ -387,13 +387,13 @@
     <FxCompile Include="CalculateVariance_SeparableFilterCS.hlsl">
       <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
     </FxCompile>
-    <FxCompile Include="CalculateMeanVariance_SeparableFilterCS.hlsl">
-      <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
-    </FxCompile>
     <FxCompile Include="util\GaussianFilterRG3x3CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="CalculateMeanVariance_SeparableFilterCS_Wave.hlsl">
+    <FxCompile Include="CalculateMeanVariance_SeparableFilterCS_AnyToAnyWaveReadLaneAt.hlsl">
+      <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
+    </FxCompile>
+    <FxCompile Include="CalculateMeanVariance_SeparableFilterCS.hlsl">
       <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
     </FxCompile>
   </ItemGroup>

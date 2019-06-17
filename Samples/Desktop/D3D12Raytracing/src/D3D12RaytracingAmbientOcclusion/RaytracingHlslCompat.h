@@ -198,13 +198,6 @@ namespace CalculateMeanVarianceFilter {
     }
 }
 
-namespace CalculateMeanVarianceFilter16x4 {
-    namespace ThreadGroup {
-        enum Enum { Width = 16, Height = 8, Size = Width * Height };
-    }
-}
-
-
 namespace PerPixelMeanSquareError {
     namespace ThreadGroup {
         enum Enum { Width = 8, Height = 8, Size = Width * Height};

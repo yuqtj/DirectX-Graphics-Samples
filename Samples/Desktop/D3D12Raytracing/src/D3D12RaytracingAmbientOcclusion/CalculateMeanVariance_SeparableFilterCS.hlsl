@@ -35,7 +35,6 @@ ConstantBuffer<CalculateMeanVarianceConstantBuffer> cb: register(b0);
 #if PACK_OPTIMIZATION
 groupshared float VCache[256];
 groupshared UINT PackedResultCache[256];            // 16bit float valueSum, squaredValueSum.
-
 #else
 groupshared float VCache[256];
 groupshared float ValueSumCache[256];

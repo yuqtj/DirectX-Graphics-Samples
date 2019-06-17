@@ -1601,7 +1601,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::FilterWeightSum], initialResourceState, L"Render/AO LowRes Filter Weight Sum");
  
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO LowRes Hit Distance");
     }
 
     // ToDo pass formats via params shared across AO, GBuffer, TC
@@ -3723,7 +3723,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Color].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::AODiffuse].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(NormalDeptLowPrecisionResource.resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after),
             // ToDo remove
             //CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after) ,
             //CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after)
@@ -3998,6 +3997,13 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 
     ScopedTimer _prof(L"Shadows", commandList);
 
+    // Transition the shadow resource to UAV.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after));
+    }
+
     commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
 	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
 
@@ -4227,12 +4233,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 		D3D12_RESOURCE_BARRIER barriers[] = {
-			CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::HitCount].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Coefficient].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::RayHitDistance].resource.Get(), before, after).
             CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::UAV(m_AORayDirectionOriginDepth.resource.Get()),  // ToDo
-            CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Coefficient].resource.Get()),  // ToDo
 		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
@@ -4301,6 +4303,20 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
             DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RaytracingType::AmbientOcclusion][RayGenShaderType::AOSortedRays].Get(), m_raytracingWidth, m_raytracingHeight);
 #endif
         }
+    }	
+    
+    // Transition AO resources to shader resource state.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::HitCount].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Coefficient].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Coefficient].resource.Get()),  // ToDo
+            CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::RayHitDistance].resource.Get()),  // ToDo
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
 
@@ -4806,6 +4822,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
             m_cbvSrvUavHeap->GetHeap(),
             m_raytracingWidth,
             m_raytracingHeight,
+            GpuKernels::CalculateMeanVariance::FilterType::Separable_AnyToAnyWaveReadLaneAt,
             AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
             m_meanVarianceResource.gpuDescriptorWriteAccess,
             SceneArgs::VarianceBilateralFilterKernelWidth);
@@ -4814,6 +4831,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_BARRIER barriers[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(m_meanVarianceResource.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::UAV(m_meanVarianceResource.resource.Get())  // ToDo
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -4837,6 +4855,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
     D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     D3D12_RESOURCE_BARRIER barriers[] = {
         CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedMeanVarianceResource.resource.Get(), before, after),
+                CD3DX12_RESOURCE_BARRIER::UAV(m_smoothedMeanVarianceResource.resource.Get())  // ToDo
     };
     commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 #else

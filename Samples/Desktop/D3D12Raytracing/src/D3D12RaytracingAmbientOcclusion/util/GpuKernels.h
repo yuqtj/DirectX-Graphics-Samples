@@ -473,9 +473,18 @@ namespace GpuKernels
         UINT                                m_CBinstanceID = 0;
     };
 
+    // ToDo rename to VarianceMean to match the result layout
     class CalculateMeanVariance
     {
     public:
+        enum FilterType {
+            // ToDo is this supported on all HW?
+            Separable_AnyToAnyWaveReadLaneAt = 0,
+            Separable,
+            Count
+        };
+
+
         void Release()
         {
             assert(0 && L"ToDo");
@@ -487,13 +496,14 @@ namespace GpuKernels
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height,
+            FilterType filterType,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputMeanVarianceResourceHandle,
             UINT kernelWidth);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
-        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
         ConstantBuffer<CalculateMeanVarianceConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
         UINT                                m_CBinstanceID = 0;
     };
