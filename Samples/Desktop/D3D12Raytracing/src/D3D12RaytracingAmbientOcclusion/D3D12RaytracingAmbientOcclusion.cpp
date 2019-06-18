@@ -157,7 +157,7 @@ namespace SceneArgs
     IntVar MaxRadianceRayRecursionDepth(L"Render/PathTracing/Max Radiance Ray recursion depth", 2, 1, MAX_RAY_RECURSION_DEPTH, 1);   // ToDo Replace with 3/4 depth as it adds visible differences on spaceship/car
     IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 3, 1, MAX_RAY_RECURSION_DEPTH, 1);
     
-    BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", true);        // ToDO use enumeration
+    BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", false);        // ToDO use enumeration
 
     IntVar AOTileX(L"Render/AO/Tile X", 1, 1, 128, 1);
     IntVar AOTileY(L"Render/AO/Tile Y", 1, 1, 128, 1);
@@ -3830,7 +3830,6 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
     switch (SceneArgs::CompositionMode)
     {
         // ToDo Cleanup
-    case CompositionType::PhongLighting:
     case CompositionType::AmbientOcclusionOnly_Denoised:
     case CompositionType::AmbientOcclusionOnly_TemporallySupersampled:
     case CompositionType::AmbientOcclusionOnly_RawOneFrame:
@@ -3882,6 +3881,8 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
         outputHiResValueResource = &m_AOResources[AOResource::RayHitDistance];
         break;
     }
+    default:
+        break;
     }
 
     if (inputLowResValueResource)

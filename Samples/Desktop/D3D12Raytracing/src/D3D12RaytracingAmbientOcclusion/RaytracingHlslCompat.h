@@ -14,6 +14,15 @@
 
 #include "SSAO//GlobalSharedHlslCompat.h"
 
+/*
+//ToDo
+- overblur on mouse camera movement
+- quarterres
+-  no modes, no AOon phong, denoised artifacts onb normalMaps
+- Fireflies
+- quad blur in Variance
+
+*/
 // Workarounds - ToDo remove/document
 #define REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO 0
 #define REPRO_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF 0
