@@ -17,10 +17,12 @@
 /*
 //ToDo
 - overblur on mouse camera movement
-- quarterres
 -  no modes, no AOon phong, denoised artifacts onb normalMaps
 - Fireflies
 - quad blur in Variance
+- Split AO raytracing into its own hlsl
+- AO raypayload of 2B.
+- split temporal pass to Reprojection and Clamping. Use reprojection to drive AO spp. Run clamping on async compute while raytracing?
 
 */
 // Workarounds - ToDo remove/document

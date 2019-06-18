@@ -32,6 +32,7 @@ RWTexture2D<float2> g_outPartialDistanceDerivatives : register(u4);   // ToDo re
 RWTexture2D<float> g_outDepth : register(u5);
 RWTexture2D<float2> g_outMotionVector : register(u6);
 RWTexture2D<float4> g_outReprojectedHitPosition : register(u7);
+RWTexture2D<float4> g_outNormalLowPrecisionNormal : register(u8); // ToDo cleanup - pass two normal inputs instead?
 
 // ToDo remove duplicate downsampling with the other ValudeDepthNormal
 
@@ -84,7 +85,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     UINT outDepthIndex;
     GetDepthIndexFromDownsampleDepthBilateral2x2(outDepthIndex, depths, DTid);
 
-    g_outNormal[DTid] = encodedNormals[outDepthIndex];
+    g_outNormalLowPrecisionNormal[DTid] = g_outNormal[DTid] = encodedNormals[outDepthIndex];
     g_outHitPosition[DTid] = g_inHitPosition[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
     g_outGeometryHit[DTid] = g_inGeometryHit[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
     g_outDepth[DTid] = g_inDepth[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];

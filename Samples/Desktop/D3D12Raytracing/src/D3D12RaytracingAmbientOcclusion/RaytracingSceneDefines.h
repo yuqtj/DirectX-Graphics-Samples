@@ -236,8 +236,7 @@ namespace AOResource {
 
 namespace TemporalCache {
     enum Enum {
-        AO = 0,
-        FrameAge,
+        FrameAge = 0,
         Count
     };
 }

@@ -130,7 +130,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_RawOneFrame, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_TemporallySupersampled, CompositionType::Count, CompositionModes);
 
     const UINT DefaultSpp = 4;  // ToDo Cleanup
 
@@ -176,7 +176,7 @@ namespace SceneArgs
     BoolVar DownAndUpsamplingUseNormalWeights(L"Render/AO/RTAO/Down/Upsampling/Normal weighted", true);
     BoolVar DownAndUpsamplingUseDynamicDepthThreshold(L"Render/AO/RTAO/Down/Upsampling/Dynamic depth threshold", true);        // ToDO rename to adaptive
 
-    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", true);
+    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", false);
     NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 0.1f, 0.01f, 10.f, 0.01f);
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
@@ -1624,11 +1624,10 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             }
 
             // ToDo cleanup raytracing resolution - twice for coefficient.
-            CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::AO], initialResourceState, L"Temporal Cache: AO");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::FrameAge], initialResourceState, L"Temporal Cache: Disocclusion Map");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::FrameAge], initialResourceState, L"Temporal Cache: Disocclusion Map");
 
             m_AOTSSCoefficient[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-            CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOTSSCoefficient[i], initialResourceState, L"Render/AOTemporally Supersampled Coefficient");
+            CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOTSSCoefficient[i], initialResourceState, L"Render/AO Temporally Supersampled Coefficient");
 
             m_lowResAOTSSCoefficient[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_lowResAOTSSCoefficient[i], initialResourceState, L"Render/AO LowRes Temporally Supersampled Coefficient");
@@ -3774,6 +3773,7 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::MotionVector].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::ReprojectedHitPosition].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::Depth].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(NormalDeptLowResLowPrecisionResource.resource.Get(), before, after),
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
@@ -3792,6 +3792,7 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
         m_GBufferResources[GBufferResource::MotionVector].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::ReprojectedHitPosition].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::Depth].gpuDescriptorReadAccess,
+        m_GBufferLowResResources[GBufferResource::SurfaceNormal].gpuDescriptorWriteAccess,
         NormalDeptLowResLowPrecisionResource.gpuDescriptorWriteAccess,
         m_GBufferLowResResources[GBufferResource::HitPosition].gpuDescriptorWriteAccess,
         m_GBufferLowResResources[GBufferResource::Hit].gpuDescriptorWriteAccess,
@@ -3806,6 +3807,7 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
         D3D12_RESOURCE_BARRIER barriers[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::Hit].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::HitPosition].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(NormalDeptLowResLowPrecisionResource.resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::MotionVector].resource.Get(), before, after),
@@ -3824,8 +3826,7 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
     RWGpuResource* outputHiResValueResource = nullptr;
     wstring passName;
 
-    // ToDo cleanup readId should be for input to TAO, confusing.
-    UINT TC_readID = (m_temporalCacheReadResourceIndex + 1) % 2;
+
 
     switch (SceneArgs::CompositionMode)
     {
@@ -3841,7 +3842,7 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
         }
         else if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
         {
-            outputHiResValueResource = &m_AOTSSCoefficient[TC_readID];
+            outputHiResValueResource = &m_AOTSSCoefficient[m_temporalCacheReadResourceIndex];
         }
         else if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_Denoised)
         {
@@ -3858,7 +3859,7 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
         }
         else if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
         {
-            outputHiResValueResource = &m_AOTSSCoefficient[TC_readID];
+            inputLowResValueResource = &m_lowResAOTSSCoefficient[m_temporalCacheReadResourceIndex];
         }
         else
         {
@@ -4139,6 +4140,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateAmbientOcclusion()
 
     RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
+    RWGpuResource& NormalDeptLowPrecisionResource = SceneArgs::QuarterResAO ?
+        m_normalDepthLowResLowPrecision[m_normalDepthCurrentFrameResourceIndex]
+        : m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
 
     // Transition AO resources to UAV state.        // ToDo check all comments
     {
@@ -4750,7 +4754,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
     UINT TC_readID = m_temporalCacheReadResourceIndex;
     UINT TC_writeID = (m_temporalCacheReadResourceIndex + 1) % 2;
 
-    RWGpuResource* AOTSSCoeffiecient = SceneArgs::QuarterResAO ? m_lowResAOTSSCoefficient : m_AOTSSCoefficient;
+    RWGpuResource* AOTSSCoefficient = SceneArgs::QuarterResAO ? m_lowResAOTSSCoefficient : m_AOTSSCoefficient;
 
     // ToDo remove
     if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_RawOneFrame)
@@ -4759,7 +4763,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         //m_temporalCacheFrameAge = 0;
     }
 
-#if PACK_MEAN_VARIANCE
+    // ToDo zero out caches on resource reset.
+
     // ToDo reuse calculated variance for both TAO and denoising.
     // Transition all output resources to UAV state.
     {
@@ -4777,6 +4782,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
     // have anycontribution with bilateral - their variance will be zero. Or set a variance to non-zero in that case?
     // Calculate local mean and variance.
     {
+        // ToDo add Separable Bilateral and Square bilateral support how it affects image quality.
         ScopedTimer _prof(L"Calculate Mean and Variance", commandList);
         m_calculateMeanVarianceKernel.Execute(
             commandList,
@@ -4819,88 +4825,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
                 CD3DX12_RESOURCE_BARRIER::UAV(m_smoothedMeanVarianceResource.resource.Get())  // ToDo
     };
     commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-#else
-    // ToDo reuse calculated variance for both TAO and denoising.
-    // Transition all output resources to UAV state.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_meanResource.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedMeanResource.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
 
-    // ToDO Should use separable box filter instead?. Bilateral doesn't work for pixels that don't
-    // have anycontribution with bilateral - their variance will be zero. Or set a variance to non-zero in that case?
-    // Calculate local variance.
-    {
-        ScopedTimer _prof(L"Calculate Mean and Variance", commandList);
-        m_calculateVarianceKernel.Execute(
-            commandList,
-            m_cbvSrvUavHeap->GetHeap(),
-            m_raytracingWidth,
-            m_raytracingHeight,
-            static_cast<GpuKernels::CalculateVariance::FilterType>(static_cast<UINT>(SceneArgs::VarianceBilateralFilter)),
-            AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
-            NormalDeptLowPrecisionResource.gpuDescriptorReadAccess,
-            GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
-            m_varianceResource.gpuDescriptorWriteAccess,
-            m_meanResource.gpuDescriptorWriteAccess,
-            SceneArgs::AODenoiseDepthSigma,
-            SceneArgs::AODenoiseNormalSigma,
-            true,
-            SceneArgs::RTAODenoising_Variance_UseDepthWeights,
-            SceneArgs::RTAODenoising_Variance_UseNormalWeights,
-            SceneArgs::VarianceBilateralFilterKernelWidth);
-
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(m_meanResource.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after),
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
-
-    // Smoothen the local variance which is prone to error due to undersampled input.
-    {
-        {
-            ScopedTimer _prof(L"Mean Smoothing", commandList);
-            m_gaussianSmoothingKernel.Execute(
-                commandList,
-                m_raytracingWidth,
-                m_raytracingHeight,
-                GpuKernels::GaussianFilter::Filter3X3,
-                m_cbvSrvUavHeap->GetHeap(),
-                m_meanResource.gpuDescriptorReadAccess,
-                m_smoothedMeanResource.gpuDescriptorWriteAccess);
-        }
-
-        {
-            ScopedTimer _prof(L"Variance Smoothing", commandList);
-            m_gaussianSmoothingKernel.Execute(
-                commandList,
-                m_raytracingWidth,
-                m_raytracingHeight,
-                GpuKernels::GaussianFilter::Filter3X3,
-                m_cbvSrvUavHeap->GetHeap(),
-                m_varianceResource.gpuDescriptorReadAccess,
-                m_smoothedVarianceResource.gpuDescriptorWriteAccess);
-        }
-
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedMeanResource.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
-#endif
 
     // ToDo
     // Calculate reverse projection transform T to the previous frame's screen space coordinates.
@@ -4977,8 +4902,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::AO].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(AOTSSCoeffiecient[TC_writeID].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(AOTSSCoefficient[TC_writeID].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::FrameAge].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_debugOutput[0].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_debugOutput[1].resource.Get(), before, after)
@@ -5001,12 +4925,12 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_smoothedMeanResource.gpuDescriptorReadAccess,
 #endif
         GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
-        AOTSSCoeffiecient[TC_readID].gpuDescriptorReadAccess,
+        AOTSSCoefficient[TC_readID].gpuDescriptorReadAccess,
         PreviousFrameNormalDeptLowPrecisionResource.gpuDescriptorReadAccess,
         m_temporalCache[TC_readID][TemporalCache::FrameAge].gpuDescriptorReadAccess,
         GBufferResources[GBufferResource::MotionVector].gpuDescriptorReadAccess,
         GBufferResources[GBufferResource::ReprojectedHitPosition].gpuDescriptorReadAccess,
-        AOTSSCoeffiecient[TC_writeID].gpuDescriptorWriteAccess,
+        AOTSSCoefficient[TC_writeID].gpuDescriptorWriteAccess,
         m_temporalCache[TC_writeID][TemporalCache::FrameAge].gpuDescriptorWriteAccess,
         SceneArgs::RTAO_TemporalCache_MinSmoothingFactor,
         invView,
@@ -5040,7 +4964,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_BARRIER barriers[] = {
             
-            CD3DX12_RESOURCE_BARRIER::Transition(AOTSSCoeffiecient[TC_writeID].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(AOTSSCoefficient[TC_writeID].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[TC_writeID][TemporalCache::FrameAge].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_debugOutput[0].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_debugOutput[1].resource.Get(), before, after)
@@ -5326,10 +5250,8 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
             }
             else if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
             {
-                UINT TC_readID = (m_temporalCacheReadResourceIndex + 1) % 2;
-                AOSRV = m_AOTSSCoefficient[TC_readID].gpuDescriptorReadAccess;
+                AOSRV = m_AOTSSCoefficient[m_temporalCacheReadResourceIndex].gpuDescriptorReadAccess;
             }
-            
 
             RenderPass_ComposeRenderPassesCS(AOSRV);
 

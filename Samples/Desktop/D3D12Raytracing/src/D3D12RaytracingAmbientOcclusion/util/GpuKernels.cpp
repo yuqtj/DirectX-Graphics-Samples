@@ -435,6 +435,7 @@ namespace GpuKernels
                 enum Enum {
                     Output = 0,
                     OutputNormal,
+                    OutputLowPrecisionNormal,
                     OutputPosition,
                     OutputGeometryHit,
                     OutputPartialDistanceDerivative,
@@ -463,7 +464,7 @@ namespace GpuKernels
             using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
 
             // ToDo review access frequency or remove performance tip
-            CD3DX12_DESCRIPTOR_RANGE ranges[16]; // Perfomance TIP: Order from most frequent to least frequent.
+            CD3DX12_DESCRIPTOR_RANGE ranges[17]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input normal texture
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 input position texture
@@ -480,7 +481,8 @@ namespace GpuKernels
             ranges[13].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 6);  // 1 output motion vector
             ranges[14].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);  // 1 input previous frame hit position
             ranges[15].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 7);  // 1 output previous frame hit position
-
+            ranges[16].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 8);  // 1 output low precision normal
+            
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
             rootParameters[Slot::InputNormal].InitAsDescriptorTable(1, &ranges[1]);
@@ -498,6 +500,7 @@ namespace GpuKernels
             rootParameters[Slot::OutputMotionVector].InitAsDescriptorTable(1, &ranges[13]);
             rootParameters[Slot::InputPrevFrameHitPosition].InitAsDescriptorTable(1, &ranges[14]);
             rootParameters[Slot::OutputPrevFrameHitPosition].InitAsDescriptorTable(1, &ranges[15]);
+            rootParameters[Slot::OutputLowPrecisionNormal].InitAsDescriptorTable(1, &ranges[16]);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
@@ -534,6 +537,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPrevFrameHitPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalLowPrecisionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle,
@@ -558,6 +562,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputPrevFrameHitPosition, inputPrevFrameHitPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputDepth, inputDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputNormal, outputNormalResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputLowPrecisionNormal, outputNormalLowPrecisionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPosition, outputPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputGeometryHit, outputGeometryHitResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPartialDistanceDerivative, outputPartialDistanceDerivativesResourceHandle);

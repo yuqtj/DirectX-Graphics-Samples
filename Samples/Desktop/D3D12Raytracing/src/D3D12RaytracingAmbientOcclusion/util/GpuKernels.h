@@ -139,6 +139,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPrevFrameHitPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalLowPrecisionResourceHandle,            
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle,

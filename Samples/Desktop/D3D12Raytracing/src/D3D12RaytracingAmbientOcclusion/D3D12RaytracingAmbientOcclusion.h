@@ -216,10 +216,11 @@ private:
     RWGpuResource m_ShadowMapResource;
     bool m_updateShadowMap = true;
 
-    // ToDo dedupe resources. Does dpeth need to have 2 instances?
+    // ToDo dedupe resources. Does dpeth need to have 2 instances?   
     RWGpuResource m_temporalCache[2][TemporalCache::Count]; // ~array[Read/Write ping pong resource][Resources].
     
-    // ToDo use a common ping-pong index?
+    // ToDo use a common ping-pong index? 
+    // ToDo cleanup readId should be for input to TAO, confusing.
     UINT          m_temporalCacheReadResourceIndex = 0;
     UINT          m_normalDepthCurrentFrameResourceIndex = 0;
 
