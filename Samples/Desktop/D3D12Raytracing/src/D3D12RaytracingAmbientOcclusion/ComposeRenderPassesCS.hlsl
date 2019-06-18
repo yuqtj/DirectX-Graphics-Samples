@@ -107,7 +107,8 @@ void main(uint2 DTid : SV_DispatchThreadID )
             // ToDo
             color = lerp(color, BackgroundColor, 1.0 - exp(-DISTANCE_FALLOFF * t*t*t*t));
         }
-        else if (g_CB.compositionType == CompositionType::AmbientOcclusionOnly ||
+        else if (g_CB.compositionType == CompositionType::AmbientOcclusionOnly_Denoised ||
+            g_CB.compositionType == CompositionType::AmbientOcclusionOnly_TemporallySupersampled ||
                  g_CB.compositionType == CompositionType::AmbientOcclusionOnly_RawOneFrame ||
                  g_CB.compositionType == AmbientOcclusionAndDisocclusionMap)
         {

@@ -572,7 +572,8 @@ struct SceneConstantBuffer
 // Final render output composition modes.
 enum CompositionType {
     PhongLighting = 0,
-    AmbientOcclusionOnly,
+    AmbientOcclusionOnly_Denoised,
+    AmbientOcclusionOnly_TemporallySupersampled,
     AmbientOcclusionOnly_RawOneFrame,
     AmbientOcclusionHighResSamplingPixels,
     AmbientOcclusionAndDisocclusionMap, // ToDo quarter res support

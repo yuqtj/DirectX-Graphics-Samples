@@ -201,6 +201,9 @@ private:
     
 	RWGpuResource m_AOResources[AOResource::Count];
     RWGpuResource m_AOLowResResources[AOResource::Count];   // ToDo remove unused
+
+    RWGpuResource m_AOTSSCoefficient[2];
+    RWGpuResource m_lowResAOTSSCoefficient[2];
 	RWGpuResource m_VisibilityResource;
 
 
