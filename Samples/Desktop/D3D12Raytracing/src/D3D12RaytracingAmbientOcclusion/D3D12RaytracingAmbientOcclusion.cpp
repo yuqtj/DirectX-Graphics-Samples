@@ -5280,9 +5280,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #else
     m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
 #endif 
-    
-    //SceneArgs::TAO_LazyRender.Bang();
-   // m_cameraChangedIndex = 0;
 }
 
 // Compute the average frames per second and million rays per second.

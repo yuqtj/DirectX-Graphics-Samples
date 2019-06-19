@@ -66,12 +66,13 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         // Filter the values for the first GroupDim columns.
         {
             // Accumulate for the whole kernel width.
-#if 0
+#if 1
             float valueSum = 0;
             float squaredValueSum = 0;
 
             // Since we are using 2x or more threads than the kernel width is for each row in a 16 thread lane groups,
-            // split the kernel aggregation among the first 8 and the second 8 lanes.
+            // and only the first half of those lanes output actual results below,
+            // split the kernel wide aggregation among the first 8 and the second 8 lanes.
             
             // Initialize the first 8 lanes to the first cell contribution of the kernel. 
             // This covers the remainder of 1 in cb.kernelWidth / 2 used in the loop below. 
@@ -83,16 +84,19 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
 
             for (uint c = 0; c < cb.kernelRadius; c++)
             {
-                // Retrieve the loaded values for the row.
-                uint index = GTid16x4.x < GroupDim.x ? GTid16x4.x + 1 + c : (GTid16x4.x - GroupDim.x) + 1 + c + cb.kernelRadius;
-                float cValue = WaveReadLaneAt(value, Row_BaseWaveLaneIndex + index);
+                uint laneToReadFrom = Row_BaseWaveLaneIndex + 
+                                     GTid16x4.x < GroupDim.x ? GTid16x4.x + 1 + c : (GTid16x4.x - GroupDim.x) + 1 + c + cb.kernelRadius;
+                float cValue = WaveReadLaneAt(value, laneToReadFrom);
                 valueSum += cValue;
                 squaredValueSum += cValue * cValue;
             }
             
             // Combine the sub-results.
-            valueSum += WaveReadLaneAt(valueSum, Row_BaseWaveLaneIndex + GTid16x4.x + 8);
-            squaredValueSum += WaveReadLaneAt(squaredValueSum, Row_BaseWaveLaneIndex + GTid16x4.x + 8);
+            // Make sure not to index outside the warp, as otherwise the results get incorrect, 
+            // even though the results from such lanes are ignored below.
+            uint laneToReadFrom = max(WaveGetLaneCount() - 1, Row_BaseWaveLaneIndex + GTid16x4.x + 8);
+            valueSum += WaveReadLaneAt(valueSum, laneToReadFrom);
+            squaredValueSum += WaveReadLaneAt(squaredValueSum, laneToReadFrom);
 #else
             float valueSum = value;
             float squaredValueSum = value * value;
