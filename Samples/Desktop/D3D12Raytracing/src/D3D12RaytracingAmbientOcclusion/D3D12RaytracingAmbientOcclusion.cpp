@@ -176,7 +176,7 @@ namespace SceneArgs
     BoolVar DownAndUpsamplingUseNormalWeights(L"Render/AO/RTAO/Down/Upsampling/Normal weighted", true);
     BoolVar DownAndUpsamplingUseDynamicDepthThreshold(L"Render/AO/RTAO/Down/Upsampling/Dynamic depth threshold", true);        // ToDO rename to adaptive
 
-    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", true);
+    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", false);
     NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 0.1f, 0.01f, 10.f, 0.01f);
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
@@ -206,7 +206,7 @@ namespace SceneArgs
     NumVar RTAOAdaptiveSamplingMaxFilterWeight(L"Render/AO/RTAO/Adaptive Sampling/Filter weight cutoff for max sampling", 0.995f, 0.0f, 1.f, 0.005f);
     BoolVar RTAOAdaptiveSamplingMinMaxSampling(L"Render/AO/RTAO/Adaptive Sampling/Only min/max sampling", false );
     NumVar RTAOAdaptiveSamplingScaleExponent(L"Render/AO/RTAO/Adaptive Sampling/Sampling scale exponent", 0.3f, 0.0f, 10, 0.1f);
-    BoolVar RTAORandomFrameSeed(L"Render/AO/RTAO/Random per-frame seed", true);
+    BoolVar RTAORandomFrameSeed(L"Render/AO/RTAO/Random per-frame seed", false);
 
     NumVar RTAOTraceRayOffsetAlongNormal(L"Render/AO/RTAO/TraceRay/Ray origin offset along surface normal", 0.001f, 0, 0.1f, 0.0001f);
     NumVar RTAOTraceRayOffsetAlongRayDirection(L"Render/AO/RTAO/TraceRay/Ray origin offset fudge along ray direction", 0, 0, 0.1f, 0.0001f);
@@ -1069,6 +1069,9 @@ void D3D12RaytracingAmbientOcclusion::CreateAoBlurCSResources()
 void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 {
 	auto device = m_deviceResources->GetD3DDevice();
+
+    // ToDo remove
+    GpuTimeManager::instance().SetAvgRefreshPeriodMS(3000);
 
     // Create a heap for descriptors.
     CreateDescriptorHeaps();
@@ -5280,6 +5283,10 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #else
     m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
 #endif 
+
+
+   // SceneArgs::TAO_LazyRender.Bang();
+    //m_cameraChangedIndex = 0;
 }
 
 // Compute the average frames per second and million rays per second.

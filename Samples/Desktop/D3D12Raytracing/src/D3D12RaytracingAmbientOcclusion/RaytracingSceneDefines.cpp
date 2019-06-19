@@ -75,9 +75,9 @@ namespace Scene
 
 #if DEBUG_CAMERA_POS
 #if 1   // Isometric view of all objects and grass around
-            camera.position.at = { -47.2393f, 27.2846f, -30.9385f, 1 };
-            camera.position.up = { 0.499065f, 0.722306f, 0.478741f, 0 };
-            camera.position.eye = { -47.8167f, 27.891f, -31.4858f, 1 };
+            camera.position.at = { -47.2277f, 27.3063f, -30.9273f, 1 };
+            camera.position.up = { 0.483884f, 0.740712f, 0.466033f, 0 };
+            camera.position.eye = { -47.8157f, 27.891f, -31.4868f, 1 };
 #elif 0 // Top-down spaceship front rod - long ray distances
     camera.position.at = { -4.02726f, 1.08747f, -14.9725f, 1 };
     camera.position.up = { 0.0153231f, -0.232894f, -0.972375f, 0 };

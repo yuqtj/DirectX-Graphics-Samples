@@ -31,11 +31,14 @@ ConstantBuffer<CalculateMeanVarianceConstantBuffer> cb: register(b0);
 // Group shared memory cache for the row filtered results.
 groupshared uint PackedRowResultCache[16][8];            // 16bit float valueSum, squaredValueSum.
 
+
+
 // Load up to 16x16 pixels and filter them horizontally.
 // The output is cached in Shared Memory and contains NumRows x 8 results.
 void FilterHorizontally(in uint2 Gid, in uint GI)
 {
-    const uint NumValuesToLoadPerRowOrColumn = 8 + (cb.kernelWidth - 1);
+    const uint2 GroupDim = uint2(8, 8);
+    const uint NumValuesToLoadPerRowOrColumn = GroupDim.x + (cb.kernelWidth - 1);
 
     // Process the thread group as row-major 16x4, where each sub group of 16 threads processes one row.
     // Each thread loads up to 4 values, with the sub groups loading rows interleaved.
@@ -43,10 +46,9 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     uint2 GTid16x4_row0 = uint2(GI % 16, GI / 16);
     if (GTid16x4_row0.x >= NumValuesToLoadPerRowOrColumn)
     {
-        return;
+        //return;
     }
 
-    const uint2 GroupDim = uint2(8, 8);
     int2 KernelBasePixel = Gid * GroupDim - int2(cb.kernelRadius, cb.kernelRadius);
     const uint NumRowsToLoadPerThread = 4;
     const uint Row_BaseWaveLaneIndex = (WaveGetLaneIndex() / 16) * 16;
@@ -61,18 +63,24 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
 
         // Load all the contributing columns for each row.
         int2 pixel = KernelBasePixel + GTid16x4;
-        float value = g_inValues[pixel];
+        float value = 0;
+
+        // The lane is out of bounds of the kernel + GroupDim, 
+        // so don't need to pay for a texture fetch,
+        // but need to keep it as an active lane for below split sum.
+        if (GTid16x4.x < NumValuesToLoadPerRowOrColumn)
+        {
+            value = g_inValues[pixel];
+        }
 
         // Filter the values for the first GroupDim columns.
         {
             // Accumulate for the whole kernel width.
-#if 1
             float valueSum = 0;
             float squaredValueSum = 0;
 
-            // Since we are using 2x or more threads than the kernel width is for each row in a 16 thread lane groups,
-            // and only the first half of those lanes output actual results below,
-            // split the kernel wide aggregation among the first 8 and the second 8 lanes.
+            // Since a row uses 16 lanes, but we only need to calculate the aggregate for the first half (8) lanes,
+            // split the kernel wide aggregation among the first 8 and the second 8 lanes, and then combine them.
             
             // Initialize the first 8 lanes to the first cell contribution of the kernel. 
             // This covers the remainder of 1 in cb.kernelWidth / 2 used in the loop below. 
@@ -84,31 +92,19 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
 
             for (uint c = 0; c < cb.kernelRadius; c++)
             {
-                uint laneToReadFrom = Row_BaseWaveLaneIndex + 
-                                     GTid16x4.x < GroupDim.x ? GTid16x4.x + 1 + c : (GTid16x4.x - GroupDim.x) + 1 + c + cb.kernelRadius;
+                uint laneToReadFrom = Row_BaseWaveLaneIndex + 1 + c +
+                                     (GTid16x4.x < GroupDim.x ? GTid16x4.x : (GTid16x4.x - GroupDim.x) + cb.kernelRadius);
                 float cValue = WaveReadLaneAt(value, laneToReadFrom);
                 valueSum += cValue;
                 squaredValueSum += cValue * cValue;
             }
             
             // Combine the sub-results.
-            // Make sure not to index outside the warp, as otherwise the results get incorrect, 
-            // even though the results from such lanes are ignored below.
-            uint laneToReadFrom = max(WaveGetLaneCount() - 1, Row_BaseWaveLaneIndex + GTid16x4.x + 8);
+            uint laneToReadFrom = min(WaveGetLaneCount() - 1, Row_BaseWaveLaneIndex + GTid16x4.x + 8);
             valueSum += WaveReadLaneAt(valueSum, laneToReadFrom);
             squaredValueSum += WaveReadLaneAt(squaredValueSum, laneToReadFrom);
-#else
-            float valueSum = value;
-            float squaredValueSum = value * value;
 
-            for (uint c = 1; c < cb.kernelWidth; c++)
-            {
-                // Retrieve the loaded values for the row.
-                float xValue = WaveReadLaneAt(value, Row_BaseWaveLaneIndex + GTid16x4.x + c);
-                valueSum += xValue;
-                squaredValueSum += xValue * xValue;
-            }
-#endif
+
             // Store only the valid results, i.e. first GroupDim columns.
             if (GTid16x4.x < GroupDim.x)
             {
@@ -121,12 +117,13 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
 
 
 // ToDo handle OOB and inactive pixels
-void FilterVertically(uint2 DTid, in uint2 GTid)
+void FilterVertically(int2 DTid, in uint2 GTid)
 {
     float valueSum = 0;
     float squaredValueSum = 0;
 
     // Accumulate for the whole kernel.
+
     for (uint c = 0; c < cb.kernelWidth; c++)
     {
         uint rowID = GTid.y + c;
@@ -136,8 +133,18 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
         squaredValueSum += unpackedRowSum.y;
     }
        
-    // Calculate mean and variance
-    uint N = cb.kernelWidth * cb.kernelWidth;
+    // Calculate mean and variance.
+    // Adjust the kernel size for the valid pixels. 
+    // Out of texture bound reads return 0 and thus had no impact on the aggregates.
+    int leftMostIndex = max(0, DTid.x - cb.kernelRadius);
+    int rightMostIndex = min(cb.textureDim.x - 1, DTid.x + cb.kernelRadius);
+    uint kernelWidthX = rightMostIndex - leftMostIndex + 1;
+
+    int topMostIndex = max(0, DTid.y - cb.kernelRadius);
+    int bottomMostIndex = min(cb.textureDim.y - 1, DTid.y + cb.kernelRadius);
+    uint kernelWidthY = bottomMostIndex - topMostIndex + 1;
+
+    uint N = kernelWidthX * kernelWidthY;
     float invN = 1.f / N;
     float mean = invN * valueSum;
 
