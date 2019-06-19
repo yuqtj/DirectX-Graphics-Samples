@@ -9,15 +9,15 @@
 //
 //*********************************************************
 
-// ToDo
-// Desc: Calculate Variance and Mean via Separable kernel.
-// This shader utilizes any-to-any WaveReadLaneAt
-// Assumes the GPUs wave size is 16 or higher.
-// Pitfalls: // ToDo rename drawback 
-//  - it is not edge aware.
+// Desc: Calculate Variance and Mean via a separable kernel.
+// Supports up to 9x9 kernels.
+// Requirements:
+// - wave lane size 16 or higher.
 // Performance: 
-// 0.126ms for 7x7 kernel at 1080p on TitanXP.
-// 0.368ms for 7x7 kernel at 4K on 2080Ti.
+// 0.235ms for 7x7 kernel at 4K on 2080Ti.
+
+// ToDo handle inactive pixels
+// ToDo check WaveLaneCountMin cap to be 16 or higher and fail or disable using this shader.
 
 #define HLSL
 #include "RaytracingHlslCompat.h"
@@ -28,10 +28,8 @@ RWTexture2D<float2> g_outMeanVariance : register(u0);
 
 ConstantBuffer<CalculateMeanVarianceConstantBuffer> cb: register(b0);
 
-// Group shared memory cache for the row filtered results.
+// Group shared memory cache for the row aggregated results.
 groupshared uint PackedRowResultCache[16][8];            // 16bit float valueSum, squaredValueSum.
-
-
 
 // Load up to 16x16 pixels and filter them horizontally.
 // The output is cached in Shared Memory and contains NumRows x 8 results.
@@ -44,14 +42,10 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     // Each thread loads up to 4 values, with the sub groups loading rows interleaved.
     // Loads up to 16x4x4 == 256 input values.
     uint2 GTid16x4_row0 = uint2(GI % 16, GI / 16);
-    if (GTid16x4_row0.x >= NumValuesToLoadPerRowOrColumn)
-    {
-        //return;
-    }
-
     int2 KernelBasePixel = Gid * GroupDim - int2(cb.kernelRadius, cb.kernelRadius);
     const uint NumRowsToLoadPerThread = 4;
     const uint Row_BaseWaveLaneIndex = (WaveGetLaneIndex() / 16) * 16;
+
     [unroll]
     for (uint i = 0; i < NumRowsToLoadPerThread; i++)
     {
@@ -65,9 +59,10 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         int2 pixel = KernelBasePixel + GTid16x4;
         float value = 0;
 
-        // The lane is out of bounds of the kernel + GroupDim, 
-        // so don't need to pay for a texture fetch,
-        // but need to keep it as an active lane for below split sum.
+        // The lane is out of bounds of the GroupDim + kernel, 
+        // but could be within bounds of the input texture,
+        // so don't read it from the texture.
+        // but need to keep it as an active lane for a below split sum.
         if (GTid16x4.x < NumValuesToLoadPerRowOrColumn)
         {
             value = g_inValues[pixel];
@@ -104,7 +99,6 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             valueSum += WaveReadLaneAt(valueSum, laneToReadFrom);
             squaredValueSum += WaveReadLaneAt(squaredValueSum, laneToReadFrom);
 
-
             // Store only the valid results, i.e. first GroupDim columns.
             if (GTid16x4.x < GroupDim.x)
             {
@@ -115,9 +109,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     }
 }
 
-
-// ToDo handle OOB and inactive pixels
-void FilterVertically(int2 DTid, in uint2 GTid)
+void FilterVertically(uint2 DTid, in uint2 GTid)
 {
     float valueSum = 0;
     float squaredValueSum = 0;
@@ -136,12 +128,12 @@ void FilterVertically(int2 DTid, in uint2 GTid)
     // Calculate mean and variance.
     // Adjust the kernel size for the valid pixels. 
     // Out of texture bound reads return 0 and thus had no impact on the aggregates.
-    int leftMostIndex = max(0, DTid.x - cb.kernelRadius);
-    int rightMostIndex = min(cb.textureDim.x - 1, DTid.x + cb.kernelRadius);
+    uint leftMostIndex = max(0, int(DTid.x) - int(cb.kernelRadius));
+    uint rightMostIndex = min(cb.textureDim.x - 1, DTid.x + cb.kernelRadius);
     uint kernelWidthX = rightMostIndex - leftMostIndex + 1;
 
-    int topMostIndex = max(0, DTid.y - cb.kernelRadius);
-    int bottomMostIndex = min(cb.textureDim.y - 1, DTid.y + cb.kernelRadius);
+    uint topMostIndex = max(0, int(DTid.y) - int(cb.kernelRadius));
+    uint bottomMostIndex = min(cb.textureDim.y - 1, DTid.y + cb.kernelRadius);
     uint kernelWidthY = bottomMostIndex - topMostIndex + 1;
 
     uint N = kernelWidthX * kernelWidthY;

@@ -1762,7 +1762,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 	m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
     m_atrousWaveletTransformFilter.Initialize(device, ATROUS_DENOISER_MAX_PASSES, FrameCount, MaxAtrousWaveletTransformFilterInvocationsPerFrame);
     m_calculateVarianceKernel.Initialize(device, FrameCount, MaxCalculateVarianceKernelInvocationsPerFrame); 
-    m_calculateMeanVarianceKernel.Initialize(device, FrameCount, MaxCalculateVarianceKernelInvocationsPerFrame);
+    m_calculateMeanVarianceKernel.Initialize(device, FrameCount, 5*MaxCalculateVarianceKernelInvocationsPerFrame);
     m_calculatePartialDerivativesKernel.Initialize(device, FrameCount);
     m_gaussianSmoothingKernel.Initialize(device, FrameCount, MaxGaussianSmoothingKernelInvocationsPerFrame);
 	m_downsampleBoxFilter2x2Kernel.Initialize(device, FrameCount);
