@@ -22,7 +22,9 @@
 - quad blur in Variance
 - Split AO raytracing into its own hlsl
 - AO raypayload of 2B.
-- split temporal pass to Reprojection and Clamping. Use reprojection to drive AO spp. Run clamping on async compute while raytracing?
+- split temporal pass to Reprojection and Clamping. 
+    -Use reprojection to drive AO spp. 
+- option to disable variance smoothing
 
 */
 // Workarounds - ToDo remove/document

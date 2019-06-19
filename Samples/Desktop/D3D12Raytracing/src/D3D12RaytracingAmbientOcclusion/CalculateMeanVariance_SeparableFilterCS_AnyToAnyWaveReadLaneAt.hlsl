@@ -50,6 +50,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     int2 KernelBasePixel = Gid * GroupDim - int2(cb.kernelRadius, cb.kernelRadius);
     const uint NumRowsToLoadPerThread = 4;
     const uint Row_BaseWaveLaneIndex = (WaveGetLaneIndex() / 16) * 16;
+    [unroll]
     for (uint i = 0; i < NumRowsToLoadPerThread; i++)
     {
         uint2 GTid16x4 = GTid16x4_row0 + uint2(0, i * 4);
@@ -65,6 +66,34 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         // Filter the values for the first GroupDim columns.
         {
             // Accumulate for the whole kernel width.
+#if 0
+            float valueSum = 0;
+            float squaredValueSum = 0;
+
+            // Since we are using 2x or more threads than the kernel width is for each row in a 16 thread lane groups,
+            // split the kernel aggregation among the first 8 and the second 8 lanes.
+            
+            // Initialize the first 8 lanes to the first cell contribution of the kernel. 
+            // This covers the remainder of 1 in cb.kernelWidth / 2 used in the loop below. 
+            if (GTid16x4.x < GroupDim.x)
+            {
+                valueSum = value;
+                squaredValueSum = value * value;
+            }
+
+            for (uint c = 0; c < cb.kernelRadius; c++)
+            {
+                // Retrieve the loaded values for the row.
+                uint index = GTid16x4.x < GroupDim.x ? GTid16x4.x + 1 + c : (GTid16x4.x - GroupDim.x) + 1 + c + cb.kernelRadius;
+                float cValue = WaveReadLaneAt(value, Row_BaseWaveLaneIndex + index);
+                valueSum += cValue;
+                squaredValueSum += cValue * cValue;
+            }
+            
+            // Combine the sub-results.
+            valueSum += WaveReadLaneAt(valueSum, Row_BaseWaveLaneIndex + GTid16x4.x + 8);
+            squaredValueSum += WaveReadLaneAt(squaredValueSum, Row_BaseWaveLaneIndex + GTid16x4.x + 8);
+#else
             float valueSum = value;
             float squaredValueSum = value * value;
 
@@ -75,8 +104,8 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
                 valueSum += xValue;
                 squaredValueSum += xValue * xValue;
             }
-
-            // Store only the valid results, first GroupDim columns.
+#endif
+            // Store only the valid results, i.e. first GroupDim columns.
             if (GTid16x4.x < GroupDim.x)
             {
                 // ToDo offset row start by rowIndex to avoid bank conflicts on read
