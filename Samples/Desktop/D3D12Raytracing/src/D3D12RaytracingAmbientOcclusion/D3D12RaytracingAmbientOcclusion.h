@@ -221,7 +221,7 @@ private:
     
     // ToDo use a common ping-pong index? 
     // ToDo cleanup readId should be for input to TAO, confusing.
-    UINT          m_temporalCacheReadResourceIndex = 0;
+    UINT          m_temporalCacheCurrentFrameResourceIndex = 0;
     UINT          m_normalDepthCurrentFrameResourceIndex = 0;
 
     RWGpuResource m_varianceResource;
