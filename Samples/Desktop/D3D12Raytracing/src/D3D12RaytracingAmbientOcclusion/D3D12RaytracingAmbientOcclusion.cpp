@@ -3828,6 +3828,7 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
     switch (SceneArgs::CompositionMode)
     {
         // ToDo Cleanup
+    case CompositionType::PhongLighting:
     case CompositionType::AmbientOcclusionOnly_Denoised:
     case CompositionType::AmbientOcclusionOnly_TemporallySupersampled:
     case CompositionType::AmbientOcclusionOnly_RawOneFrame:
@@ -3841,7 +3842,7 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
         {
             outputHiResValueResource = &m_AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex];
         }
-        else if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_Denoised)
+        else
         {
             outputHiResValueResource = &m_AOResources[AOResource::Smoothed];
         }

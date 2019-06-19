@@ -582,7 +582,7 @@ struct SceneConstantBuffer
 // ToDo use namespace?
 // Final render output composition modes.
 enum CompositionType {
-    PhongLighting = 0,
+    PhongLighting = 0,  // ToDo rename
     AmbientOcclusionOnly_Denoised,
     AmbientOcclusionOnly_TemporallySupersampled,
     AmbientOcclusionOnly_RawOneFrame,
