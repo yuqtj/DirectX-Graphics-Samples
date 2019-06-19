@@ -91,7 +91,7 @@
 
 #define PRINT_OUT_TC_MATRICES 0
 #define DEBUG_CAMERA_POS 1
-#define PRINT_OUT_CAMERA_CONFIG 0
+#define PRINT_OUT_CAMERA_CONFIG 1
 
 #define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
 

@@ -176,7 +176,7 @@ namespace SceneArgs
     BoolVar DownAndUpsamplingUseNormalWeights(L"Render/AO/RTAO/Down/Upsampling/Normal weighted", true);
     BoolVar DownAndUpsamplingUseDynamicDepthThreshold(L"Render/AO/RTAO/Down/Upsampling/Dynamic depth threshold", true);        // ToDO rename to adaptive
 
-    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", false);
+    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", true);
     NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 0.1f, 0.01f, 10.f, 0.01f);
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
@@ -1071,7 +1071,7 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 	auto device = m_deviceResources->GetD3DDevice();
 
     // ToDo remove
-    GpuTimeManager::instance().SetAvgRefreshPeriodMS(3000);
+    //GpuTimeManager::instance().SetAvgRefreshPeriodMS(3000);
 
     // Create a heap for descriptors.
     CreateDescriptorHeaps();

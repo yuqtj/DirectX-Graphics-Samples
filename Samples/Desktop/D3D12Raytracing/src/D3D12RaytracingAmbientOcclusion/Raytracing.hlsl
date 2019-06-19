@@ -463,7 +463,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 
         // ToDo remove unnecessary normalize()
         float3 rayDirection = normalize(sample.x * u + sample.y * v + sample.z * w);
-        //rayDirection = normalize(float3(1, 1, 1));
+        rayDirection = normalize(float3(1, 1, 1));
         if (CB.RTAO_UseSortedRays)
         {
             uint2 DTid = DispatchRaysIndex().xy;

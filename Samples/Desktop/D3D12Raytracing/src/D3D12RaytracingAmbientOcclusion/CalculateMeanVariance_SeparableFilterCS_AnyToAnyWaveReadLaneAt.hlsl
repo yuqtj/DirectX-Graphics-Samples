@@ -127,7 +127,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
        
     // Calculate mean and variance.
     // Adjust the kernel size for the valid pixels. 
-    // Out of texture bound reads return 0 and thus had no impact on the aggregates.
+    // Out of texture bound reads return 0 and thus have no impact on the aggregates.
     uint leftMostIndex = max(0, int(DTid.x) - int(cb.kernelRadius));
     uint rightMostIndex = min(cb.textureDim.x - 1, DTid.x + cb.kernelRadius);
     uint kernelWidthX = rightMostIndex - leftMostIndex + 1;
