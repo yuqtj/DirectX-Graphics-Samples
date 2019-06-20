@@ -32,7 +32,10 @@ using namespace GameCore;
 
 // ToDo tighten shader visibility in Root Sigs - CS + DXR
 
+// ToDo use singleton interface and prevent multiple objects.
 D3D12RaytracingAmbientOcclusion* g_pSample = nullptr;
+
+
 HWND g_hWnd = 0;
 UIParameters g_UIparameters;    // ToDo move
 
@@ -479,7 +482,6 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     m_isASinitializationRequested(true),
 	m_isSceneInitializationRequested(false),
 	m_isRecreateRaytracingResourcesRequested(false),
-	m_isRecreateAOSamplesRequested(false),
     m_numFramesSinceASBuild(0),
 	m_isCameraFrozen(false)
 {
@@ -2606,6 +2608,8 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
         // ToDo split to recreate only whats needed?
 		OnCreateWindowSizeDependentResources();
         CreateAuxilaryDeviceResources();
+
+        m_RTAO.RequestRecreateRaytracingResources();
 	}
 
 
@@ -4329,6 +4333,7 @@ void D3D12RaytracingAmbientOcclusion::RecreateD3D()
 
 void D3D12RaytracingAmbientOcclusion::RenderRNGVisualizations()
 {
+#if 0
     auto device = m_deviceResources->GetD3DDevice();
     auto commandList = m_deviceResources->GetCommandList();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
@@ -4372,6 +4377,65 @@ void D3D12RaytracingAmbientOcclusion::RenderRNGVisualizations()
 
 	// Dispatch.
     commandList->Dispatch(rngWindowSize.x, rngWindowSize.y, 1);
+#endif
+}
+
+
+
+void D3D12RaytracingAmbientOcclusion::CreateSamplesRNGVisualization()
+{
+#if 0
+    auto device = m_deviceResources->GetD3DDevice();
+    auto FrameCount = m_deviceResources->GetBackBufferCount();
+
+    UINT samplesPerSet = m_sppAO * SceneArgs::AOSampleSetDistributedAcrossPixels * SceneArgs::AOSampleSetDistributedAcrossPixels;
+    UINT NumSampleSets = 83;
+    m_randomSampler.Reset(samplesPerSet, NumSampleSets, Samplers::HemisphereDistribution::Cosine);
+
+    // Create root signature.
+    {
+        using namespace ComputeShader::RootSignature::HemisphereSampleSetVisualization;
+
+        CD3DX12_DESCRIPTOR_RANGE ranges[1]; // Perfomance TIP: Order from most frequent to least frequent.
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+
+        CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+        rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
+        rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(1);
+        rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);
+
+        CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+        SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::HemisphereSampleSetVisualization], L"Root signature: CS hemisphere sample set visualization");
+    }
+
+    // Create compute pipeline state.
+    {
+        D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+        descComputePSO.pRootSignature = m_computeRootSigs[CSType::HemisphereSampleSetVisualization].Get();
+        descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void*)g_pRNGVisualizerCS, ARRAYSIZE(g_pRNGVisualizerCS));
+
+        ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[CSType::HemisphereSampleSetVisualization])));
+        m_computePSOs[CSType::HemisphereSampleSetVisualization]->SetName(L"PSO: CS hemisphere sample set visualization");
+    }
+
+
+    // Create shader resources
+    {
+        // ToDo rename GPU from resource names?
+        m_csHemisphereVisualizationCB.Create(device, FrameCount, L"GPU CB: RNG");
+        m_samplesGPUBuffer.Create(device, m_randomSampler.NumSamples() * m_randomSampler.NumSampleSets(), FrameCount, L"GPU buffer: Random unit square samples");
+        m_hemisphereSamplesGPUBuffer.Create(device, m_randomSampler.NumSamples() * m_randomSampler.NumSampleSets(), FrameCount, L"GPU buffer: Random hemisphere samples");
+
+        for (UINT i = 0; i < m_randomSampler.NumSamples() * m_randomSampler.NumSampleSets(); i++)
+        {
+            //sample.value = m_randomSampler.GetSample2D();
+            XMFLOAT3 p = m_randomSampler.GetHemisphereSample3D();
+            // Convert [-1,1] to [0,1].
+            m_samplesGPUBuffer[i].value = XMFLOAT2(p.x * 0.5f + 0.5f, p.y * 0.5f + 0.5f);
+            m_hemisphereSamplesGPUBuffer[i].value = p;
+        }
+    }
+#endif
 }
 
 

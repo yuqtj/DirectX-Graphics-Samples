@@ -52,7 +52,6 @@ public:
 	void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
 	void RequestSceneInitialization() { m_isSceneInitializationRequested = true; }
 	void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
-	void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
 
     static const UINT NumGrassPatchesX = 30;
     static const UINT NumGrassPatchesZ = 30;
@@ -82,8 +81,6 @@ private:
 	// DirectX Raytracing (DXR) attributes
 	ComPtr<ID3D12StateObject> m_dxrStateObject;
 
-	// Compute resources.
-	Samplers::MultiJittered m_randomSampler;
 
 	ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
     ConstantBuffer<AoBlurConstantBuffer> m_csAoBlurCB;
@@ -120,7 +117,6 @@ private:
 
     GpuKernels::WriteValueToTexture     m_writeValueToTexture;
     GpuKernels::GenerateGrassPatch      m_grassGeometryGenerator;
-    GpuKernels::SortRays                m_raySorter;
 
 
     D3D12_GPU_DESCRIPTOR_HANDLE m_nullVertexBufferGPUhandle;
@@ -185,8 +181,6 @@ private:
 
 	StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
 
-	StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;
-	StructuredBuffer<AlignedHemisphereSample3D> m_hemisphereSamplesGPUBuffer;
 
     RWGpuResource m_debugOutput[2];
 
@@ -207,12 +201,6 @@ private:
     RWGpuResource m_AOTSSCoefficient[2];
     RWGpuResource m_lowResAOTSSCoefficient[2];
 	RWGpuResource m_VisibilityResource;
-
-
-    RWGpuResource m_AORayDirectionOriginDepth;
-    RWGpuResource m_sourceToSortedRayIndex;                 // Index of the ray in the sorted array given a source index.
-    RWGpuResource m_sortedToSourceRayIndex;     // Index of the ray in the source (screen space) array given a sorted index.
-    RWGpuResource m_sortedRayGroupDebug;
 
     XMUINT2 c_shadowMapDim = XMUINT2(1024, 1024);
     RWGpuResource m_ShadowMapResource;
@@ -289,10 +277,6 @@ private:
     GameCore::Camera m_prevFrameCamera;
 	std::unique_ptr<GameCore::CameraController> m_cameraController;
 	
-	// AO
-	// ToDo fix artifacts at 4. Looks like selfshadowing on some AOrays in SquidScene
-	UINT m_sppAO;	// Samples per pixel for Ambient Occlusion.
-
 	// UI
 	std::unique_ptr<UILayer> m_uiLayer;
 	
@@ -304,7 +288,6 @@ private:
 	bool m_isASinitializationRequested;
 	bool m_isSceneInitializationRequested;
 	bool m_isRecreateRaytracingResourcesRequested;
-	bool m_isRecreateAOSamplesRequested;
 
 	// Render passes
 	void RenderPass_GenerateGBuffers();
@@ -361,6 +344,7 @@ private:
     void ReleaseDeviceDependentResources();
     void ReleaseWindowSizeDependentResources();
     void RenderRNGVisualizations();
+    void CreateSamplesRNGVisualization();
     void CreateRootSignatures();
     void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
     void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);

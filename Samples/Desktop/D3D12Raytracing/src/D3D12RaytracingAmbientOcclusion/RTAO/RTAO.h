@@ -25,7 +25,6 @@ namespace RTAORayGenShaderType {
     enum Enum {
         AOFullRes = 0,
         AOSortedRays,
-        AOQuarterRes,
         Count
     };
 }
@@ -35,16 +34,20 @@ class RTAO
 public:
     RTAO();
 
-    void Setup(std::shared_ptr<DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
+    void Setup(std::shared_ptr<DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT numHitGroupShaderRecodsToCreate, UINT FrameCount);
     void OnRender(D3D12_GPU_VIRTUAL_ADDRESS& accelerationStructure);
     void OnUpdate();
     void SetResolution(UINT width, UINT height);
     ID3D12Resource* GetRTAOOutputResource() { return m_ssaoResources.Get(); }
 
+    // Lazy upda
+    void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
+    void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
+
 private:
-    void CreateDeviceDependentResources();
+    void CreateDeviceDependentResources(UINT numHitGroupShaderRecodsToCreate, UINT FrameCount);
     void CreateConstantBuffers();
-    void CreateAuxilaryDeviceResources();
+    void CreateAuxilaryDeviceResources(UINT FrameCount);
     void CreateRootSignatures();    
     void CreateRaytracingPipelineStateObject();
     void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
@@ -54,12 +57,11 @@ private:
     void CalculateAdaptiveSamplingCounts();
     
     void CreateSamplesRNG();
-    void CreateDeviceDependentResources();
     void CreateResolutionDependentResources();
-    void ReleaseDeviceDependentResources();
-    void ReleaseWindowSizeDependentResources();
+    void ReleaseDeviceDependentResources() {}; // ToDo
+    void ReleaseWindowSizeDependentResources() {}; // ToDo
     void RenderRNGVisualizations();
-    void BuildShaderTables();
+    void BuildShaderTables(UINT numHitGroupShaderRecordsToCreate);
     void DispatchRays(ID3D12Resource* rayGenShaderTable);
     void CalculateRayHitCount();
 
@@ -70,27 +72,46 @@ private:
     std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
     std::mt19937 m_generatorURNG;
 
+    // ToDo fix artifacts at 4 spp. Looks like selfshadowing on some AOrays in SquidScene
+
     // Raytracing shaders.
     static const wchar_t* c_hitGroupName;
     static const wchar_t* c_rayGenShaderNames[RTAORayGenShaderType::Count];
     static const wchar_t* c_closestHitShaderName;
     static const wchar_t* c_missShaderName;
 
+    // Raytracing shader resources.
+    RWGpuResource m_AORayDirectionOriginDepth;
+    RWGpuResource m_sourceToSortedRayIndex;         // Index of a ray in the sorted array given a source index.
+    RWGpuResource m_sortedToSourceRayIndex;         // Index of a ray in the source (screen space) array given a sorted index.
+    RWGpuResource m_sortedRayGroupDebug;            // ToDo remove
+    ConstantBuffer<SceneConstantBuffer> m_CB;
+    Samplers::MultiJittered m_randomSampler;
+    StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;
+    StructuredBuffer<AlignedHemisphereSample3D> m_hemisphereSamplesGPUBuffer;
 
     // DirectX Raytracing (DXR) attributes
-    ComPtr<ID3D12StateObject> m_dxrStateObject;
+    ComPtr<ID3D12StateObject>   m_dxrStateObject;
 
     // Shader tables
     ComPtr<ID3D12Resource> m_rayGenShaderTables[RTAORayGenShaderType::Count];
     UINT m_rayGenShaderTableRecordSizeInBytes[RTAORayGenShaderType::Count];
     ComPtr<ID3D12Resource> m_hitGroupShaderTable;
-    UINT m_hitGroupShaderTableStrideInBytes;
+    UINT m_hitGroupShaderTableStrideInBytes = UINT_MAX;
     ComPtr<ID3D12Resource> m_missShaderTable;
-    UINT m_missShaderTableStrideInBytes;
+    UINT m_missShaderTableStrideInBytes = UINT_MAX;
 
     // Root signatures
     ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
     ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
+
+    // Compute shader & resources.
+    GpuKernels::ReduceSum		m_reduceSumKernel;
+    GpuKernels::SortRays        m_raySorter;
+
+
+    bool m_isRecreateAOSamplesRequested = false;
+    bool m_isRecreateRaytracingResourcesRequested = false;
 
     // Parameters
     bool m_calculateRayHitCounts = false;

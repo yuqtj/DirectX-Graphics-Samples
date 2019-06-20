@@ -26,6 +26,7 @@
     -Use reprojection to drive AO spp. 
     - Cache kernel weight sum, min hit distance, frame age, variance and reproject to drive ao sampling.
 - option to disable variance smoothing
+- ToDo test AO perf w/o tHit - if meaningful look into heuristic limitting ray groups to that. Maybe those that don't get sorted.
 
 */
 // Workarounds - ToDo remove/document

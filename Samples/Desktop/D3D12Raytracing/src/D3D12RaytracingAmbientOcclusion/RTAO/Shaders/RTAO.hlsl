@@ -419,7 +419,7 @@ float CalculateAO(in float3 hitPosition, in uint2 DTid, UINT numSamples, in floa
 
 
 [shader("raygeneration")]
-void RayGenShader_AO()
+void RayGenShader()
 {
     uint2 DTid = DispatchRaysIndex().xy;
 
@@ -498,7 +498,7 @@ void RayGenShader_AO()
 }
 
 [shader("raygeneration")]
-void RayGenShader_AO_sortedRays()
+void RayGenShader_sortedRays()
 {
 #if RTAO_RAY_SORT_1DRAYTRACE
     uint index1D = DispatchRaysIndex().x; 
@@ -652,40 +652,12 @@ void RayGenShader_AO_sortedRays()
 }
 
 
-[shader("raygeneration")]
-void RayGenShaderQuarterRes_AO()
-{
-    uint2 DTid = DispatchRaysIndex().xy * 2;
-
-	bool hit = g_texGBufferPositionHits[DTid] > 0;
-	uint numShadowRayHits = 0;
-	float ambientCoef = 0;
-    float minHitDistance;
-	if (hit)
-	{
-		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
-#if COMPRES_NORMALS
-        float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[DTid].xy);
-#else
-		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
-#endif
-        // ToDo Standardize naming AO vs AmbientOcclusion ?
-		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, DTid, CB.numSamplesToUse, hitPosition, surfaceNormal);
-	}
-
-	g_rtAOcoefficient[DTid] = ambientCoef;
-#if GBUFFER_AO_COUNT_AO_HITS
-	// ToDo test perf impact of writing this
-	g_rtAORayHits[DTid] = numShadowRayHits;
-#endif
-}
-
 //***************************************************************************
 //******************------ Closest hit shaders -------***********************
 //***************************************************************************
 
 [shader("closesthit")]
-void ClosestHitShader_AORay(inout ShadowRayPayload rayPayload, in BuiltInTriangleIntersectionAttributes attr)
+void ClosestHitShader(inout ShadowRayPayload rayPayload, in BuiltInTriangleIntersectionAttributes attr)
 {
     rayPayload.tHit = RayTCurrent();
 }
@@ -695,7 +667,7 @@ void ClosestHitShader_AORay(inout ShadowRayPayload rayPayload, in BuiltInTriangl
 //***************************************************************************
 
 [shader("miss")]
-void MissShader_AORay(inout ShadowRayPayload rayPayload)
+void MissShader(inout ShadowRayPayload rayPayload)
 {
     rayPayload.tHit = HitDistanceOnMiss;
 }
