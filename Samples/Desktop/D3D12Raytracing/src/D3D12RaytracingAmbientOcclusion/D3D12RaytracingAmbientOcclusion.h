@@ -80,7 +80,7 @@ private:
 	const UINT MaxGeometryTransforms = 10000;       // ToDo lower / remove?
 
 	// DirectX Raytracing (DXR) attributes
-	ComPtr<ID3D12StateObject> m_dxrStateObjects[RaytracingType::Count];
+	ComPtr<ID3D12StateObject> m_dxrStateObject;
 
 	// Compute resources.
 	Samplers::MultiJittered m_randomSampler;
@@ -362,9 +362,9 @@ private:
     void ReleaseWindowSizeDependentResources();
     void RenderRNGVisualizations();
     void CreateRootSignatures();
-    void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly = false);
-    void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly = false);
-    void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly = false);
+    void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+    void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+    void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
     void CreateRaytracingPipelineStateObject();
     void CreateDescriptorHeaps();
     void CreateRaytracingOutputResource();

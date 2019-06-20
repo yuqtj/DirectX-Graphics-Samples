@@ -904,18 +904,6 @@ struct VertexPositionNormalTextureTangent
 
  */
 
-namespace RayGenShaderType {
-	enum Enum {
-		GBuffer = 0,
-		AOFullRes,
-        AOSortedRays,
-        AOQuarterRes,
-		Visibility,
-        ShadowMap,
-		Count
-	};
-}
-
 
 // Ray types traced in this sample.
 namespace RayType {

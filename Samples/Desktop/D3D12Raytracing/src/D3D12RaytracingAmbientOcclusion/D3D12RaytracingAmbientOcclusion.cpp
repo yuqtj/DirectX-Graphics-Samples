@@ -2805,12 +2805,7 @@ void D3D12RaytracingAmbientOcclusion::CalculateRayHitCount(ReduceSumCalculations
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 	auto commandList = m_deviceResources->GetCommandList();
 
-	RWGpuResource* inputResource = nullptr;
-	switch (type)
-	{
-	case ReduceSumCalculations::CameraRayHits: inputResource = &m_GBufferResources[GBufferResource::Hit]; break;
-	case ReduceSumCalculations::AORayHits: inputResource = &m_AOResources[AOResource::HitCount]; break;
-	}
+	RWGpuResource* inputResource = &m_GBufferResources[GBufferResource::Hit];
 
 
     // Todo
@@ -4250,6 +4245,7 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
     CreateRaytracingOutputResource();
 
 	CreateGBufferResources();
+    m_RTAO.SetResolution(m_raytracingWidth, m_raytracingHeight);
 	m_reduceSumKernel.CreateInputResourceSizeDependentResources(
 		device,
 		m_cbvSrvUavHeap.get(), 
@@ -4824,7 +4820,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 ScopedTimer _prof(L"RTAO", commandList);
 
                
-                m_RTAO.OnRender();
+                m_RTAO.OnRender(m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
 
                 RenderPass_TemporalCacheReverseProjection();
 
