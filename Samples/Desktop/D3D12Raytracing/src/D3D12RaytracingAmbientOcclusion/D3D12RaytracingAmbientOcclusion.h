@@ -190,6 +190,8 @@ private:
 
     RWGpuResource m_debugOutput[2];
 
+    RTAO m_RTAO;
+
 	// Raytracing output
 	// ToDo use the struct
 	RWGpuResource m_raytracingOutput;
@@ -260,12 +262,13 @@ private:
     UINT m_raytracingWidth;
     UINT m_raytracingHeight;
 
-	// Shader tables
+    // Raytracing shaders.
 	static const wchar_t* c_hitGroupNames_TriangleGeometry[RayType::Count];
 	static const wchar_t* c_rayGenShaderNames[RayGenShaderType::Count];
 	static const wchar_t* c_closestHitShaderNames[RayType::Count];
 	static const wchar_t* c_missShaderNames[RayType::Count];
 
+    // Shader tables
 	ComPtr<ID3D12Resource> m_rayGenShaderTables[RaytracingType::Count][RayGenShaderType::Count];
 	UINT m_rayGenShaderTableRecordSizeInBytes[RaytracingType::Count];
 	ComPtr<ID3D12Resource> m_hitGroupShaderTable[RaytracingType::Count];
@@ -334,7 +337,6 @@ private:
     void ApplyAtrousWaveletTransformFilter();
     void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter();
-    void CalculateAdaptiveSamplingCounts();
     void RenderPass_TemporalCacheReverseProjection();
 
 	void DownsampleRaytracingOutput();
@@ -353,7 +355,6 @@ private:
         LPCWCHAR passName);
 
     void CreateConstantBuffers();
-    void CreateSamplesRNG();
 	void UpdateUI();
     void CreateDeviceDependentResources();
     void CreateWindowSizeDependentResources();

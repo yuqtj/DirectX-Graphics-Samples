@@ -74,7 +74,7 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 0   // Isometric view of all objects and grass around
+#if 1   // Isometric view of all objects and grass around
             camera.position.at = { -47.2277f, 27.3063f, -30.9273f, 1 };
             camera.position.up = { 0.483884f, 0.740712f, 0.466033f, 0 };
             camera.position.eye = { -47.8157f, 27.891f, -31.4868f, 1 };

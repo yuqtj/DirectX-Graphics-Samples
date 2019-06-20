@@ -24,6 +24,7 @@
 - AO raypayload of 2B.
 - split temporal pass to Reprojection and Clamping. 
     -Use reprojection to drive AO spp. 
+    - Cache kernel weight sum, min hit distance, frame age, variance and reproject to drive ao sampling.
 - option to disable variance smoothing
 
 */

@@ -49,6 +49,9 @@
     <Filter Include="Assets\Shaders\RTAO\VarianceMean">
       <UniqueIdentifier>{2fbe6f49-be73-41a0-8fdc-29d6b38db505}</UniqueIdentifier>
     </Filter>
+    <Filter Include="RTAO">
+      <UniqueIdentifier>{09737061-0eea-4880-bd21-08a05295f874}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -159,6 +162,9 @@
     <ClInclude Include="SceneParameters.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="RTAO\RTAO.h">
+      <Filter>RTAO</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -236,6 +242,9 @@
     <ClCompile Include="RaytracingAccelerationStructure.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="RTAO\RTAO.cpp">
+      <Filter>RTAO</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="readme.md" />
@@ -255,7 +264,7 @@
     <None Include="util\BxDF.hlsli">
       <Filter>Assets\Shaders\Lighting</Filter>
     </None>
-    <None Include="RaySorting.hlsli">
+    <None Include="RTAO\Shaders\RaySorting.hlsli">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </None>
   </ItemGroup>
@@ -395,6 +404,9 @@
     </FxCompile>
     <FxCompile Include="CalculateMeanVariance_SeparableFilterCS.hlsl">
       <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\RTAO.hlsl">
+      <Filter>Assets\Shaders\RTAO</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

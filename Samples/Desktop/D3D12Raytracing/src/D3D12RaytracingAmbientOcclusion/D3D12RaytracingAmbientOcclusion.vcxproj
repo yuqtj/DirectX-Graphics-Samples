@@ -19,7 +19,7 @@
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>D3D12Raytracing</RootNamespace>
     <ProjectName>D3D12RaytracingAmbientOcclusion</ProjectName>
-    <WindowsTargetPlatformVersion>10.0.18343.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.18362.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -262,6 +262,7 @@
     <ClInclude Include="RaytracingHlslCompat.h" />
     <ClInclude Include="RaytracingShaderHelper.hlsli" />
     <ClInclude Include="D3D12RaytracingAmbientOcclusion.h" />
+    <ClInclude Include="RTAO\RTAO.h" />
     <ClInclude Include="Sampler.h" />
     <ClInclude Include="SceneParameters.h" />
     <ClInclude Include="SSAO\GeneralHelper.h" />
@@ -298,6 +299,7 @@
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="RaytracingAccelerationStructure.cpp" />
     <ClCompile Include="RaytracingSceneDefines.cpp" />
+    <ClCompile Include="RTAO\RTAO.cpp" />
     <ClCompile Include="Sampler.cpp" />
     <ClCompile Include="SSAO\Menus.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -418,6 +420,7 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.3</ShaderModel>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">g_p%(Filename)</VariableName>
+      <DisableOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DisableOptimizations>
     </FxCompile>
     <FxCompile Include="CalculateVariance_BilateralFilterCS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
@@ -564,6 +567,23 @@
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>
       <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/Zpr %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/Zpr %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">/Zpr %(AdditionalOptions)</AdditionalOptions>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\RTAO.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Library</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.3</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Library</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.3</ShaderModel>
+      <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
+      <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
+      <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">$(IntDir)\CompiledShaders\%(Filename).hlsl.h</HeaderFileOutput>
+      <VariableName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">g_p%(Filename)</VariableName>
+      <VariableName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">g_p%(Filename)</VariableName>
+      <VariableName Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">g_p%(Filename)</VariableName>
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/Zpr %(AdditionalOptions)</AdditionalOptions>
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/Zpr %(AdditionalOptions)</AdditionalOptions>
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">/Zpr %(AdditionalOptions)</AdditionalOptions>
@@ -1020,7 +1040,6 @@
       <FileType>Document</FileType>
     </ClInclude>
     <None Include="packages.config" />
-    <None Include="RaySorting.hlsli" />
     <None Include="readme.md" />
     <CustomBuild Include="util\SquidRoom.bin">
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DeploymentContent>
@@ -1028,6 +1047,7 @@
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</DeploymentContent>
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">true</DeploymentContent>
     </CustomBuild>
+    <None Include="RTAO\Shaders\RaySorting.hlsli" />
     <None Include="SSAO\Shaders\SSAOBlurAndUpsampleCS.hlsli" />
     <None Include="SSAO\Shaders\SSAORenderCS.hlsli" />
     <FxCompile Include="util\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl">
