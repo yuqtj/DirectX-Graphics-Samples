@@ -84,10 +84,12 @@ namespace ComputeShader {
 namespace CSType = ComputeShader::Type;
 namespace CSRootSignature = ComputeShader::RootSignature;
 
-namespace RaytracingType {
+// ToDo move?
+namespace RayGenShaderType {
     enum Enum {
-        Pathtracing = 0,
-        AmbientOcclusion,
+        GBuffer = 0,
+        Visibility,
+        ShadowMap,
         Count
     };
 }
@@ -183,15 +185,6 @@ namespace LocalRootSignature {
     {
         return sizeof(Triangle::RootArguments);
     }
-}
-
-// Todo rename
-namespace ReduceSumCalculations {
-	enum Enum {
-		CameraRayHits = 0,
-		AORayHits,
-		Count
-	};
 }
 
 namespace GeometryType {

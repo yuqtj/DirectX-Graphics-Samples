@@ -24,7 +24,7 @@ inline T Clamp(T value, T minValue, T maxValue)
 }
 
 class D3D12RaytracingAmbientOcclusion;
-extern D3D12RaytracingAmbientOcclusion* g_pSample;
+extern D3D12RaytracingAmbientOcclusion* global_pSample;
 
 // Shader record = {{Shader ID}, {RootArguments}}
 class ShaderRecord

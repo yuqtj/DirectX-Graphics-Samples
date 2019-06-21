@@ -32,8 +32,9 @@ using namespace GameCore;
 
 // ToDo tighten shader visibility in Root Sigs - CS + DXR
 
-// ToDo use singleton interface and prevent multiple objects.
-D3D12RaytracingAmbientOcclusion* g_pSample = nullptr;
+// Singleton instance.
+static D3D12RaytracingAmbientOcclusion* global_pSample;
+UINT D3D12RaytracingAmbientOcclusion::s_numInstances = 0;
 
 
 HWND g_hWnd = 0;
@@ -48,46 +49,42 @@ const wchar_t* D3D12RaytracingAmbientOcclusion::c_rayGenShaderNames[] =
 };
 const wchar_t* D3D12RaytracingAmbientOcclusion::c_closestHitShaderNames[] =
 {
-    L"MyClosestHitShader", L"MyClosestHitShader_ShadowRay", L"MyClosestHitShader_GBuffer"
+     L"MyClosestHitShader_GBuffer", L"MyClosestHitShader_ShadowRay"
 };
 const wchar_t* D3D12RaytracingAmbientOcclusion::c_missShaderNames[] =
 {
-    L"MyMissShader", L"MyMissShader_ShadowRay", L"MyMissShader_GBuffer"
+    L"MyMissShader_GBuffer", L"MyMissShader_ShadowRay",
 };
 // Hit groups.
 const wchar_t* D3D12RaytracingAmbientOcclusion::c_hitGroupNames_TriangleGeometry[] = 
 { 
-    L"MyHitGroup_Triangle", L"MyHitGroup_Triangle_ShadowRay", L"MyHitGroup_Triangle_GBuffer"
+    L"MyHitGroup_Triangle_GBuffer", L"MyHitGroup_Triangle_ShadowRay",
 };
 namespace SceneArgs
 {
     void OnGeometryReinitializationNeeded(void* args)
     {
-        g_pSample->RequestGeometryInitialization(true);
-        g_pSample->RequestASInitialization(true);
+        global_pSample->RequestGeometryInitialization(true);
+        global_pSample->RequestASInitialization(true);
     }
 
     void OnASReinitializationNeeded(void* args)
     {
-        g_pSample->RequestASInitialization(true);
+        global_pSample->RequestASInitialization(true);
     }
     function<void(void*)> OnGeometryChange = OnGeometryReinitializationNeeded;
     function<void(void*)> OnASChange = OnASReinitializationNeeded;
 	
 	void OnSceneChange(void*)
 	{
-		g_pSample->RequestSceneInitialization();
+		global_pSample->RequestSceneInitialization();
 	}
 
 	void OnRecreateRaytracingResources(void*)
 	{
-		g_pSample->RequestRecreateRaytracingResources();
+		global_pSample->RequestRecreateRaytracingResources();
 	}
 
-	void OnRecreateSamples(void*)
-	{
-		g_pSample->RequestRecreateAOSamples();
-	}
     BoolVar EnableGeometryAndASBuildsAndUpdates(L"Render/Acceleration structure/Enable geometry & AS builds and updates", true);
 
 #if ONLY_SQUID_SCENE_BLAS
@@ -164,6 +161,7 @@ namespace SceneArgs
 
     // Avoid tracing rays where they have close to zero visual impact.
     // todo test perf gain or remove.
+    // ToDo remove RTAO from name
     NumVar RTAO_minimumFrBounceCoefficient(L"Render/PathTracing/Minimum BRDF bounce contribution coefficient", 0.03f, 0, 1.01f, 0.01f);        // Minimum BRDF coefficient to cast a ray for.
     NumVar RTAO_minimumFtBounceCoefficient(L"Render/PathTracing/Minimum BTDF bounce contribution coefficient", 0.00f, 0, 1.01f, 0.01f);        // Minimum BTDF coefficient to cast a ray for.
 
@@ -179,6 +177,7 @@ namespace SceneArgs
 
     NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
 
+    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
 
     // Temporal Cache.
     // ToDo rename cache to accumulation/supersampling?
@@ -191,6 +190,13 @@ namespace SceneArgs
     BoolVar RTAO_TemporalCache_UseNormalWeights(L"Render/AO/RTAO/Temporal Cache/Use normal weights", true);
     BoolVar RTAO_TemporalCache_ForceUseMinSmoothingFactor(L"Render/AO/RTAO/Temporal Cache/Force min smoothing factor", false);
 
+
+    // ToDo remove
+    IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 0, 0, 10, 1);
+    IntVar RTAO_KernelStepShift1(L"Render/AO/RTAO/Kernel Step Shifts/1", 0, 0, 10, 1);
+    IntVar RTAO_KernelStepShift2(L"Render/AO/RTAO/Kernel Step Shifts/2", 0, 0, 10, 1);
+    IntVar RTAO_KernelStepShift3(L"Render/AO/RTAO/Kernel Step Shifts/3", 0, 0, 10, 1);
+    IntVar RTAO_KernelStepShift4(L"Render/AO/RTAO/Kernel Step Shifts/4", 0, 0, 10, 1);
 
     const WCHAR* VarianceBilateralFilters[GpuKernels::CalculateVariance::FilterType::Count] = { L"Square Bilateral", L"Separable Bilateral", L"Separable" };
     EnumVar VarianceBilateralFilter(L"Render/GpuKernels/CalculateVariance/Filter", GpuKernels::CalculateVariance::Separable, GpuKernels::CalculateVariance::Count, VarianceBilateralFilters);
@@ -221,6 +227,7 @@ namespace SceneArgs
     
     BoolVar TAO_LazyRender(L"TAO/Lazy render", false);
     IntVar RTAO_LazyRenderNumFrames(L"TAO/Lazy render frames", 1, 0, 20, 1);
+    BoolVar RTAOUseNormalMaps(L"Render/AO/RTAO/Normal maps", false);
 
 
     // ToDo add Weights On/OFF - 
@@ -485,13 +492,14 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     m_numFramesSinceASBuild(0),
 	m_isCameraFrozen(false)
 {
+    ThrowIfFalse(++s_numInstances == 1, L"There can be only one D3D12RaytracingAmbientOcclusion instance.");
+    global_pSample = this;
 
-    for (UINT i = 0; i < RaytracingType::Count; i++)
+    for (auto& rayGenShaderTableRecordSizeInBytes : m_rayGenShaderTableRecordSizeInBytes)
     {
-        m_missShaderTableStrideInBytes[i] = UINT_MAX;
-        m_hitGroupShaderTableStrideInBytes[i] = UINT_MAX;
+        rayGenShaderTableRecordSizeInBytes = UINT_MAX;
     }
-    g_pSample = this;
+    global_pSample = this;
     UpdateForSizeChange(width, height);
 	m_generatorURNG.seed(1729);
 
@@ -983,11 +991,8 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
     // Create constant buffers for the geometry and the scene.
     CreateConstantBuffers();
 
-#if ENABLE_RAYTRACING
 	// Build shader tables, which define shaders and their local root arguments.
-    BuildShaderTables(RaytracingType::Pathtracing);
-    BuildShaderTables(RaytracingType::AmbientOcclusion);
-#endif
+    BuildShaderTables();
 
     InitializeAccelerationStructures();
    
@@ -997,6 +1002,7 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 
     CreateAoBlurCSResources();
 
+    m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_maxInstanceContributionToHitGroupIndex);
     m_SSAO.Setup(m_deviceResources);
 
     // 
@@ -1121,54 +1127,39 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
 // DXIL library
 // This contains the shaders and their entrypoints for the state object.
 // Since shaders are not considered a subobject, they need to be passed in via DXIL library subobjects.
-void D3D12RaytracingAmbientOcclusion::CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly)
+void D3D12RaytracingAmbientOcclusion::CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline)
 {
     auto lib = raytracingPipeline->CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
     D3D12_SHADER_BYTECODE libdxil = CD3DX12_SHADER_BYTECODE((void *)g_pRaytracing, ARRAYSIZE(g_pRaytracing));
     lib->SetDXILLibrary(&libdxil);
     // Use default shader exports for a DXIL library/collection subobject ~ surface all shaders.
-
-    // ToDo cleanup
-    if (shadowOnly)
-    {
-        lib->DefineExport(c_rayGenShaderNames[RayGenShaderType::AOFullRes]);
-        lib->DefineExport(c_rayGenShaderNames[RayGenShaderType::AOSortedRays]);
-        lib->DefineExport(c_rayGenShaderNames[RayGenShaderType::ShadowMap]);
-        lib->DefineExport(c_rayGenShaderNames[RayGenShaderType::Visibility]);
-        lib->DefineExport(c_closestHitShaderNames[RayType::Shadow]);
-        lib->DefineExport(c_missShaderNames[RayType::Shadow]);
-    }
 }
 
 // Hit groups
 // A hit group specifies closest hit, any hit and intersection shaders 
 // to be executed when a ray intersects the geometry.
-void D3D12RaytracingAmbientOcclusion::CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly)
+void D3D12RaytracingAmbientOcclusion::CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline)
 {
     // Triangle geometry hit groups
     {
         for (UINT rayType = 0; rayType < RayType::Count; rayType++)
         {
-            // ToDo cleanup
-            if (!shadowOnly || rayType == RayType::Shadow)
+            auto hitGroup = raytracingPipeline->CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+
+            if (c_closestHitShaderNames[rayType])
             {
-                auto hitGroup = raytracingPipeline->CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
 
-                if (c_closestHitShaderNames[rayType])
-                {
-
-                    hitGroup->SetClosestHitShaderImport(c_closestHitShaderNames[rayType]);
-                }
-                hitGroup->SetHitGroupExport(c_hitGroupNames_TriangleGeometry[rayType]);
-                hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+                hitGroup->SetClosestHitShaderImport(c_closestHitShaderNames[rayType]);
             }
+            hitGroup->SetHitGroupExport(c_hitGroupNames_TriangleGeometry[rayType]);
+            hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
         }
     }
 }
 
 // Local root signature and shader association
 // This is a root signature that enables a shader to have unique arguments that come from shader tables.
-void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline, bool shadowOnly)
+void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline)
 {
     // Ray gen and miss shaders in this sample are not using a local root signature and thus one is not associated with them.
 
@@ -1180,14 +1171,7 @@ void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12
         // Shader association
         auto rootSignatureAssociation = raytracingPipeline->CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
         rootSignatureAssociation->SetSubobjectToAssociate(*localRootSignature);
-        if (shadowOnly)
-        {
-            rootSignatureAssociation->AddExport(c_hitGroupNames_TriangleGeometry[RayType::Shadow]);
-        }
-        else
-        {
-            rootSignatureAssociation->AddExports(c_hitGroupNames_TriangleGeometry);
-        }
+        rootSignatureAssociation->AddExports(c_hitGroupNames_TriangleGeometry);
     }
 }
 
@@ -1247,7 +1231,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
         PrintStateObjectDesc(raytracingPipeline);
 
         // Create the state object.
-        ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObjects[RaytracingType::Pathtracing])), L"Couldn't create DirectX Raytracing state object.\n");
+        ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object.\n");
     }
 
     // Ambient Occlusion state object.
@@ -1268,10 +1252,10 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
 
         bool loadShadowShadersOnly = true;
         // DXIL library
-        CreateDxilLibrarySubobject(&raytracingPipeline, loadShadowShadersOnly);
+        CreateDxilLibrarySubobject(&raytracingPipeline);
 
         // Hit groups
-        CreateHitGroupSubobjects(&raytracingPipeline, loadShadowShadersOnly);
+        CreateHitGroupSubobjects(&raytracingPipeline);
 
 #define AO_4B_RAYPAYLOAD 0
 
@@ -1288,7 +1272,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
 
         // Local root signature and shader association
         // This is a root signature that enables a shader to have unique arguments that come from shader tables.
-        CreateLocalRootSignatureSubobjects(&raytracingPipeline, loadShadowShadersOnly);
+        CreateLocalRootSignatureSubobjects(&raytracingPipeline);
 
         // Global root signature
         // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
@@ -1306,7 +1290,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
         PrintStateObjectDesc(raytracingPipeline);
 
         // Create the state object.
-        ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObjects[RaytracingType::AmbientOcclusion])), L"Couldn't create DirectX Raytracing state object.\n");
+        ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object");
     }
 }
 
@@ -1434,7 +1418,6 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     m_SSAO.BindGBufferResources(m_GBufferResources[GBufferResource::SurfaceNormalRGB].resource.Get(), m_GBufferResources[GBufferResource::Depth].resource.Get());
 
 
-
     // Full-res AO resources.
     {
         // Preallocate subsequent descriptor indices for both SRV and UAV groups.
@@ -1450,12 +1433,12 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         // ToDo pack some resources.
 
         // ToDo cleanup raytracing resolution - twice for coefficient.
-        CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"Render/AO Coefficient");
+        CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"Render/AO Coefficient");
         
 #if ATROUS_DENOISER
-        CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Smoothed");
+        CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Smoothed");
 #else
-        CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Smoothed");
+        CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Smoothed");
 #endif
         // ToDo 8 bit hit count?
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"Render/AO Hit Count");
@@ -1478,12 +1461,12 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             m_AOLowResResources[i].srvDescriptorHeapIndex = m_AOLowResResources[0].srvDescriptorHeapIndex + i;
         }
 
-        CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Coefficient], initialResourceState, L"Render/AO LowRes Coefficient");
+        CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Coefficient], initialResourceState, L"Render/AO LowRes Coefficient");
 
 #if ATROUS_DENOISER
-        CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Smoothed], initialResourceState, L"Render/AO LowRes Smoothed");
+        CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Smoothed], initialResourceState, L"Render/AO LowRes Smoothed");
 #else
-        CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Smoothed], initialResourceState, L"Render/AO LowRes Smoothed");
+        CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::Smoothed], initialResourceState, L"Render/AO LowRes Smoothed");
 #endif
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOLowResResources[AOResource::HitCount], initialResourceState, L"Render/AO LowRes Hit Count");
 
@@ -1512,10 +1495,10 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::FrameAge], initialResourceState, L"Temporal Cache: Disocclusion Map");
 
             m_AOTSSCoefficient[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-            CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOTSSCoefficient[i], initialResourceState, L"Render/AO Temporally Supersampled Coefficient");
+            CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOTSSCoefficient[i], initialResourceState, L"Render/AO Temporally Supersampled Coefficient");
 
             m_lowResAOTSSCoefficient[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-            CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_lowResAOTSSCoefficient[i], initialResourceState, L"Render/AO LowRes Temporally Supersampled Coefficient");
+            CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_lowResAOTSSCoefficient[i], initialResourceState, L"Render/AO LowRes Temporally Supersampled Coefficient");
 
 
         }
@@ -1542,23 +1525,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 	m_VisibilityResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
 	CreateRenderTargetResource(device, texFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_VisibilityResource, initialResourceState, L"Visibility");
     
-    
-    m_sourceToSortedRayIndex.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sourceToSortedRayIndex, initialResourceState, L"Source To Sorted Ray Index");
-    
-    m_sortedToSourceRayIndex.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedToSourceRayIndex, initialResourceState, L"Sorted To Source Ray Index");
-    
-    
-    m_sortedRayGroupDebug.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupDebug, initialResourceState, L"Sorted Ray Group Debug");
-
-
-    // ToDo use 8 bit format
-    m_AORayDirectionOriginDepth.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AORayDirectionOriginDepth, initialResourceState, L"AO Rays Direction, Origin Depth and Hit");
-
-    
+       
     m_ShadowMapResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
     CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, c_shadowMapDim.x, c_shadowMapDim.y, m_cbvSrvUavHeap.get(), &m_ShadowMapResource, initialResourceState, L"Shadow Map");
 
@@ -1657,14 +1624,12 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
     m_temporalCacheReverseReprojectKernel.Initialize(device, FrameCount);
     m_writeValueToTexture.Initialize(device, m_cbvSrvUavHeap.get());
     m_grassGeometryGenerator.Initialize(device, L"Assets\\wind\\wind2.jpg", m_cbvSrvUavHeap.get(), &resourceUpload, FrameCount, UIParameters::NumGrassGeometryLODs);
-    m_raySorter.Initialize(device, FrameCount);
 
     // Upload the resources to the GPU.
     auto finish = resourceUpload.End(commandQueue);
 
     // Wait for the upload thread to terminate
     finish.wait();
-    
 }
 
 void D3D12RaytracingAmbientOcclusion::CreateDescriptorHeaps()
@@ -1686,6 +1651,7 @@ void D3D12RaytracingAmbientOcclusion::CreateDescriptorHeaps()
 		m_cbvSrvUavHeap = make_unique<DX::DescriptorHeap>(device, NumDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	}
 
+    // TodO remove
 	// Sampler heap.
 	{
 		UINT NumDescriptors = 1;
@@ -2286,7 +2252,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 
 // Build shader tables.
 // This encapsulates all shader records - shaders and the arguments for their local root signatures.
-void D3D12RaytracingAmbientOcclusion::BuildShaderTables(RaytracingType::Enum raytracingType)
+void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 {
 	auto device = m_deviceResources->GetD3DDevice();
 
@@ -2301,58 +2267,27 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables(RaytracingType::Enum ray
 	{
         for (UINT i = 0; i < RayGenShaderType::Count; i++)
         {
-            // ToDo cleanup
-            if (raytracingType == RaytracingType::Pathtracing ||
-                i == RayGenShaderType::AOFullRes ||
-                i == RayGenShaderType::AOSortedRays ||
-                i == RayGenShaderType::ShadowMap ||
-                i == RayGenShaderType::Visibility)
-            {
-                rayGenShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_rayGenShaderNames[i]);
-                shaderIdToStringMap[rayGenShaderIDs[i]] = c_rayGenShaderNames[i];
-            }
-            else
-            {
-                rayGenShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_rayGenShaderNames[RayGenShaderType::AOFullRes]);
-                shaderIdToStringMap[rayGenShaderIDs[i]] = c_rayGenShaderNames[RayGenShaderType::AOFullRes];
-            }
+            rayGenShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_rayGenShaderNames[i]);
+            shaderIdToStringMap[rayGenShaderIDs[i]] = c_rayGenShaderNames[i];
 		}
 
 		for (UINT i = 0; i < RayType::Count; i++)
 		{
-            if (raytracingType == RaytracingType::Pathtracing ||
-                i == RayType::Shadow)
-            {
-                missShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_missShaderNames[i]);
-                shaderIdToStringMap[missShaderIDs[i]] = c_missShaderNames[i];
-            }
-            else
-            {
-                missShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_missShaderNames[RayType::Shadow]);
-                shaderIdToStringMap[missShaderIDs[i]] = c_missShaderNames[RayType::Shadow];
-            }
+            missShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_missShaderNames[i]);
+            shaderIdToStringMap[missShaderIDs[i]] = c_missShaderNames[i];
 		}
 
 		for (UINT i = 0; i < RayType::Count; i++)
 		{
-            if (raytracingType == RaytracingType::Pathtracing ||
-                i == RayType::Shadow)
-            {
-                hitGroupShaderIDs_TriangleGeometry[i] = stateObjectProperties->GetShaderIdentifier(c_hitGroupNames_TriangleGeometry[i]);
-                shaderIdToStringMap[hitGroupShaderIDs_TriangleGeometry[i]] = c_hitGroupNames_TriangleGeometry[i];
-            }
-            else
-            {
-                hitGroupShaderIDs_TriangleGeometry[i] = stateObjectProperties->GetShaderIdentifier(c_hitGroupNames_TriangleGeometry[RayType::Shadow]);
-                shaderIdToStringMap[hitGroupShaderIDs_TriangleGeometry[i]] = c_hitGroupNames_TriangleGeometry[RayType::Shadow];
-            }
+            hitGroupShaderIDs_TriangleGeometry[i] = stateObjectProperties->GetShaderIdentifier(c_hitGroupNames_TriangleGeometry[i]);
+            shaderIdToStringMap[hitGroupShaderIDs_TriangleGeometry[i]] = c_hitGroupNames_TriangleGeometry[i];
 		}
 	};
 
 	// Get shader identifiers.
 	UINT shaderIDSize;
 	ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
-	ThrowIfFailed(m_dxrStateObjects[raytracingType].As(&stateObjectProperties));
+	ThrowIfFailed(m_dxrStateObject.As(&stateObjectProperties));
 	GetShaderIDs(stateObjectProperties.Get());
 	shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 
@@ -2389,7 +2324,7 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables(RaytracingType::Enum ray
             ShaderTable rayGenShaderTable(device, numShaderRecords, shaderRecordSize, L"RayGenShaderTable");
             rayGenShaderTable.push_back(ShaderRecord(rayGenShaderIDs[i], shaderIDSize, nullptr, 0));
             rayGenShaderTable.DebugPrint(shaderIdToStringMap);
-            m_rayGenShaderTables[raytracingType][i] = rayGenShaderTable.GetResource();
+            m_rayGenShaderTables[i] = rayGenShaderTable.GetResource();
 		}
 	}
 
@@ -2404,8 +2339,8 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables(RaytracingType::Enum ray
             missShaderTable.push_back(ShaderRecord(missShaderIDs[i], shaderIDSize, nullptr, 0));
 		}
 		missShaderTable.DebugPrint(shaderIdToStringMap);
-		m_missShaderTableStrideInBytes[raytracingType] = missShaderTable.GetShaderRecordSize();
-		m_missShaderTable[raytracingType] = missShaderTable.GetResource();
+		m_missShaderTableStrideInBytes = missShaderTable.GetShaderRecordSize();
+		m_missShaderTable = missShaderTable.GetResource();
 	}
 
 	// ToDo remove
@@ -2413,6 +2348,7 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables(RaytracingType::Enum ray
 
     // ToDo split shader table per unique pass?
 
+    UINT m_maxInstanceContributionToHitGroupIndex = 0;
 	// Hit group shader table.
 	{
 		UINT numShaderRecords = 0;
@@ -2435,6 +2371,7 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables(RaytracingType::Enum ray
 
             UINT shaderRecordOffset = hitGroupShaderTable.GeNumShaderRecords();
             m_accelerationStructure->GetBottomLevelAS(bottomLevelASGeometryPair.first).SetInstanceContributionToHitGroupIndex(shaderRecordOffset);
+            m_maxInstanceContributionToHitGroupIndex = shaderRecordOffset;
 
             // ToDo cleaner?
             // Grass Patch LOD shader recods
@@ -2529,8 +2466,8 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables(RaytracingType::Enum ray
             }
         }
         hitGroupShaderTable.DebugPrint(shaderIdToStringMap);
-        m_hitGroupShaderTableStrideInBytes[raytracingType] = hitGroupShaderTable.GetShaderRecordSize();
-        m_hitGroupShaderTable[raytracingType] = hitGroupShaderTable.GetResource();
+        m_hitGroupShaderTableStrideInBytes = hitGroupShaderTable.GetShaderRecordSize();
+        m_hitGroupShaderTable = hitGroupShaderTable.GetResource();
     }
 }
 
@@ -2731,23 +2668,12 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     }
 
     // ToDo move
-    m_sceneCB->RTAO_UseAdaptiveSampling = SceneArgs::RTAOAdaptiveSampling;
-    m_sceneCB->RTAO_AdaptiveSamplingMaxWeightSum = SceneArgs::RTAOAdaptiveSamplingMaxFilterWeight;
-    m_sceneCB->RTAO_UseNormalMaps = SceneArgs::RTAOUseNormalMaps;
-    m_sceneCB->RTAO_AdaptiveSamplingMinMaxSampling = SceneArgs::RTAOAdaptiveSamplingMinMaxSampling;
-    m_sceneCB->RTAO_AdaptiveSamplingScaleExponent = SceneArgs::RTAOAdaptiveSamplingScaleExponent;
-    m_sceneCB->RTAO_AdaptiveSamplingMinSamples = SceneArgs::RTAOAdaptiveSamplingMinSamples;
-    m_sceneCB->RTAO_TraceRayOffsetAlongNormal = SceneArgs::RTAOTraceRayOffsetAlongNormal;
-    m_sceneCB->RTAO_TraceRayOffsetAlongRayDirection = SceneArgs::RTAOTraceRayOffsetAlongRayDirection;
-    m_sceneCB->RTAO_minimumFrBounceCoefficient = SceneArgs::RTAO_minimumFrBounceCoefficient;   // ToDo
-    m_sceneCB->RTAO_minimumFtBounceCoefficient = SceneArgs::RTAO_minimumFtBounceCoefficient;   // ToDo
     m_sceneCB->defaultAmbientIntensity = SceneArgs::DefaultAmbientIntensity;
     m_sceneCB->maxRadianceRayRecursionDepth = SceneArgs::MaxRadianceRayRecursionDepth;
     m_sceneCB->maxShadowRayRecursionDepth = SceneArgs::MaxShadowRayRecursionDepth;
     m_sceneCB->useShadowMap = SceneArgs::UseShadowMap;
-    m_sceneCB->RTAO_UseSortedRays = SceneArgs::RTAOUseRaySorting;
-
-    SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
+    m_sceneCB->RTAO_UseNormalMaps = SceneArgs::RTAOUseNormalMaps;
+    m_sceneCB->defaultAmbientIntensity = SceneArgs::DefaultAmbientIntensity;
  }
 
 // Parse supplied command line args.
@@ -2779,7 +2705,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructure()
     }
 }
 
-void D3D12RaytracingAmbientOcclusion::DispatchRays(RaytracingType::Enum raytracingType, ID3D12Resource* rayGenShaderTable, uint32_t width, uint32_t height)
+void D3D12RaytracingAmbientOcclusion::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT height)
 {
 	auto commandList = m_deviceResources->GetCommandList();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
@@ -2787,23 +2713,23 @@ void D3D12RaytracingAmbientOcclusion::DispatchRays(RaytracingType::Enum raytraci
     ScopedTimer _prof(L"DispatchRays", commandList);
 
 	D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
-	dispatchDesc.HitGroupTable.StartAddress = m_hitGroupShaderTable[raytracingType]->GetGPUVirtualAddress();
-	dispatchDesc.HitGroupTable.SizeInBytes = m_hitGroupShaderTable[raytracingType]->GetDesc().Width;
-	dispatchDesc.HitGroupTable.StrideInBytes = m_hitGroupShaderTableStrideInBytes[raytracingType];
-	dispatchDesc.MissShaderTable.StartAddress = m_missShaderTable[raytracingType]->GetGPUVirtualAddress();
-	dispatchDesc.MissShaderTable.SizeInBytes = m_missShaderTable[raytracingType]->GetDesc().Width;
-	dispatchDesc.MissShaderTable.StrideInBytes = m_missShaderTableStrideInBytes[raytracingType];
+	dispatchDesc.HitGroupTable.StartAddress = m_hitGroupShaderTable->GetGPUVirtualAddress();
+	dispatchDesc.HitGroupTable.SizeInBytes = m_hitGroupShaderTable->GetDesc().Width;
+	dispatchDesc.HitGroupTable.StrideInBytes = m_hitGroupShaderTableStrideInBytes;
+	dispatchDesc.MissShaderTable.StartAddress = m_missShaderTable->GetGPUVirtualAddress();
+	dispatchDesc.MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
+	dispatchDesc.MissShaderTable.StrideInBytes = m_missShaderTableStrideInBytes;
 	dispatchDesc.RayGenerationShaderRecord.StartAddress = rayGenShaderTable->GetGPUVirtualAddress();
 	dispatchDesc.RayGenerationShaderRecord.SizeInBytes = rayGenShaderTable->GetDesc().Width;
 	dispatchDesc.Width = width != 0 ? width : m_GBufferWidth;
 	dispatchDesc.Height = height != 0 ? height : m_GBufferHeight;
 	dispatchDesc.Depth = 1;
-	commandList->SetPipelineState1(m_dxrStateObjects[raytracingType].Get());
+	commandList->SetPipelineState1(m_dxrStateObject.Get());
 
 	commandList->DispatchRays(&dispatchDesc);
 };
 
-void D3D12RaytracingAmbientOcclusion::CalculateRayHitCount(ReduceSumCalculations::Enum type)
+void D3D12RaytracingAmbientOcclusion::CalculateCameraRayHitCount)
 {
 	auto device = m_deviceResources->GetD3DDevice();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
@@ -2811,6 +2737,7 @@ void D3D12RaytracingAmbientOcclusion::CalculateRayHitCount(ReduceSumCalculations
 
 	RWGpuResource* inputResource = &m_GBufferResources[GBufferResource::Hit];
 
+    // ToDo make this disabled by default/
 
     // Todo
     if (SceneArgs::QuarterResAO)
@@ -2822,9 +2749,8 @@ void D3D12RaytracingAmbientOcclusion::CalculateRayHitCount(ReduceSumCalculations
 		commandList,
 		m_cbvSrvUavHeap->GetHeap(),
 		frameIndex,
-		type,
         inputResource->gpuDescriptorReadAccess,
-		&m_numRayGeometryHits[type]);
+		&m_numCameraRayGeometryHits[type]);
 };
 
 void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
@@ -3366,23 +3292,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     m_normalDepthCurrentFrameResourceIndex = (m_normalDepthCurrentFrameResourceIndex + 1) % 2;
     RWGpuResource& NormalDeptLowPrecisionResource = m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
     
-	uniform_int_distribution<UINT> seedDistribution(0, UINT_MAX);
-#if AO_RANDOM_SEED_EVERY_FRAME
-	m_sceneCB->seed = seedDistribution(m_generatorURNG);
-#else
-    if (SceneArgs::RTAORandomFrameSeed)
-    {
-        m_sceneCB->seed = seedDistribution(m_generatorURNG);
-    }
-    else
-    {
-        m_sceneCB->seed = 1879;
-    }
-#endif
-	m_sceneCB->numSamplesPerSet = m_randomSampler.NumSamples();
-	m_sceneCB->numSampleSets = m_randomSampler.NumSampleSets();
-	m_sceneCB->numSamplesToUse = SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension;
-    m_sceneCB->numPixelsPerDimPerSet = SceneArgs::AOSampleSetDistributedAcrossPixels;
     m_sceneCB->useDiffuseFromMaterial = SceneArgs::CompositionMode == CompositionType::Diffuse;
     m_sceneCB->doShading = SceneArgs::CompositionMode == CompositionType::PhongLighting;
 #if CAMERA_JITTER
@@ -3404,15 +3313,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 #endif
 #endif
 
-    // ToDo move
-    m_sceneCB->useShadowRayHitTime = SceneArgs::RTAOIsExponentialFalloffEnabled;
-    // ToDo standardize RTAO RTAO_ prefix
-    m_sceneCB->RTAO_maxShadowRayHitTime = SceneArgs::RTAOMaxRayHitTime;
-    m_sceneCB->RTAO_approximateInterreflections = SceneArgs::RTAOApproximateInterreflections;
-    m_sceneCB->RTAO_diffuseReflectanceScale = SceneArgs::RTAODiffuseReflectanceScale;
-    m_sceneCB->RTAO_minimumAmbientIllumnination = SceneArgs::minimumAmbientIllumination;
-    m_sceneCB->RTAO_IsExponentialFalloffEnabled = SceneArgs::RTAOIsExponentialFalloffEnabled;
-    m_sceneCB->RTAO_exponentialFalloffDecayConstant = SceneArgs::RTAO_ExponentialFalloffDecayConstant;
 
 
     // ToDo should we use cameraAtPosition0 too and offset the world space pos vector in the shader?
@@ -3426,22 +3326,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     XMMATRIX viewProj0 = prevView0 * prevProj;
     m_sceneCB->prevProjToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj0);
 
-    // Calculate a theoretical max ray distance to be used in occlusion factor computation.
-    // Occlusion factor of a ray hit is computed based of its ray hit time, falloff exponent and a max ray hit time.
-    // By specifying a min occlusion factor of a ray, we can skip tracing rays that would have an occlusion 
-    // factor less than the cutoff to save a bit of performance (generally 1-10% perf win without visible AO result impact). 
-    // Therefore we discern between true maxRayHitTime, used in TraceRay, 
-    // and a theoretical one used of calculating the occlusion factor on hit.
-    {
-        float occclusionCutoff = SceneArgs::RTAO_ExponentialFalloffMinOcclusionCutoff;
-        float lambda = SceneArgs::RTAO_ExponentialFalloffDecayConstant;
-
-        // Invert occlusionFactor = exp(-lambda * t * t), where t is tHit/tMax of a ray.
-        float t = sqrt(logf(occclusionCutoff) / -lambda);
-
-        m_sceneCB->RTAO_maxShadowRayHitTime = t * SceneArgs::RTAOMaxRayHitTime;
-        m_sceneCB->RTAO_maxTheoreticalShadowRayHitTime = SceneArgs::RTAOMaxRayHitTime;
-    }
 
     m_sceneCB->raytracingDim = XMUINT2(m_raytracingWidth, m_raytracingHeight);
 	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
@@ -3505,7 +3389,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::PartialDepthDerivatives, m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
 #endif	
 	// Dispatch Rays.
-    DispatchRays(RaytracingType::Pathtracing, m_rayGenShaderTables[RaytracingType::Pathtracing][RayGenShaderType::GBuffer].Get());
+    DispatchRays(m_rayGenShaderTables[RayGenShaderType::GBuffer].Get());
 
 	// Transition GBuffer resources to shader resource state.
 	{
@@ -3534,7 +3418,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     // Calculate ray hit counts.
     {
         ScopedTimer _prof(L"CalculateCameraRayHitCount", commandList);
-        CalculateRayHitCount(ReduceSumCalculations::CameraRayHits);
+        CalculateCameraRayHitCount();
     }
 
 #if !CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
@@ -3756,6 +3640,9 @@ void D3D12RaytracingAmbientOcclusion::BilateralUpsample(
 // ToDo - rename to hardshadows?
 void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 {
+    ThrowIfFalse(false, L"ToDo/Remove");
+#if 0
+
 	auto device = m_deviceResources->GetD3DDevice();
 	auto commandList = m_deviceResources->GetCommandList();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
@@ -3782,7 +3669,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	// Bind the heaps, acceleration structure and dispatch rays. 
 	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
 
-    DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RaytracingType::AmbientOcclusion][RayGenShaderType::Visibility].Get());
+    DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RayGenShaderType::Visibility].Get());
     
 	// Transition shadow resources to shader resource state.
 	{
@@ -3792,6 +3679,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	}
 
 	PIXEndEvent(commandList);
+#endif
 }
 
 
@@ -3849,7 +3737,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
     // Bind the heaps, acceleration structure and dispatch rays. 
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
 
-    DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RaytracingType::AmbientOcclusion][RayGenShaderType::ShadowMap].Get(), c_shadowMapDim.x, c_shadowMapDim.y);
+    DispatchRays(RaytracingType::AmbientOcclusion, m_rayGenShaderTables[RayGenShaderType::ShadowMap].Get(), c_shadowMapDim.x, c_shadowMapDim.y);
 
     // Transition shadow resources to shader resource state.
     {
@@ -4120,7 +4008,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
 		wLabel << fixed << L" CameraRay DispatchRays: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_GBuffer) << L"ms  ~" <<
 			0.001f* NumMPixelsPerSecond(GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_GBuffer), m_GBufferWidth, m_GBufferHeight)  << " GigaRay/s\n";
         // ToDo use profiler from MiniEngine
-		float numAOGigaRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * (SceneArgs::QuarterResAO ? 0.25f : 1) * m_sppAO / GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_AO);
+		float numAOGigaRays = 1e-6f * m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] * (SceneArgs::QuarterResAO ? 0.25f : 1) * m_sppAO / GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_AO);
 		wLabel << fixed << L" AORay DispatchRays: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_AO) << L"ms  ~" <<	numAOGigaRays << " GigaRay/s\n";
         wLabel << fixed << L" - AORay Adaptive Sampling ImportanceMap: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_FilterWeightSum) << L"ms  ~" << numAOGigaRays << " GigaRay/s\n";
         wLabel << fixed << L" AO Denoising: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Denoising) << L"ms\n";
@@ -4130,7 +4018,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
         wLabel << fixed << L" - AO downsample: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::DownsampleGBuffer) << L"ms\n";
         wLabel << fixed << L" - AO upsample: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::UpsampleAOBilateral) << L"ms\n";
 
-		float numVisibilityRays = 1e-6f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] / GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_Visibility);
+		float numVisibilityRays = 1e-6f * m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] / GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_Visibility);
 		//wLabel << fixed << L" VisibilityRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() << L"ms  ~" << numVisibilityRays << " GigaRay/s\n";
 		//wLabel << fixed << L" Shading: " << m_gpuTimers[GpuTimers::ComposeRenderPassesCS].GetAverageMS() << L"ms\n";
 
@@ -4144,14 +4032,14 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
                << m_gpuTimers[GpuTimers::UpdateBLAS].GetElapsedMS() +
                   m_gpuTimers[GpuTimers::UpdateTLAS].GetElapsedMS() << L"ms\n";
 		wLabel << fixed << L" CameraRayGeometryHits: #/%%/time " 
-			   << m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] << "/"
-			   << ((m_GBufferWidth * m_GBufferHeight) > 0 ? (100.f * m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits]) / (m_GBufferWidth * m_GBufferHeight) : 0) << "%%/"
+			   << m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] << "/"
+			   << ((m_GBufferWidth * m_GBufferHeight) > 0 ? (100.f * m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits]) / (m_GBufferWidth * m_GBufferHeight) : 0) << "%%/"
 			   << 1000.0f * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::CameraRayHits) << L"us \n";
 		wLabel << fixed << L" AORayGeometryHits: #/%%/time "
-			   << m_numRayGeometryHits[ReduceSumCalculations::AORayHits] << "/"
+			   << m_numCameraRayGeometryHits[ReduceSumCalculations::AORayHits] << "/"
             // ToDo fix up for raytracing at quarter res
-			   << ((m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO) > 0 ?
-				   (100.0f * m_numRayGeometryHits[ReduceSumCalculations::AORayHits]) / (m_numRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO) : 0) << "%%/"
+			   << ((m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO) > 0 ?
+				   (100.0f * m_numCameraRayGeometryHits[ReduceSumCalculations::AORayHits]) / (m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO) : 0) << "%%/"
 			   << 1000.0f * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::AORayHits) << L"us \n";
     */
         labels.push_back(wLabel.str());
@@ -4255,8 +4143,7 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
 		m_cbvSrvUavHeap.get(), 
 		FrameCount, 
 		m_GBufferWidth,
-		m_GBufferHeight,
-		ReduceSumCalculations::Count);
+		m_GBufferHeight);
     m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_raytracingWidth, m_raytracingHeight);
     
     // SSAO
@@ -4299,7 +4186,7 @@ void D3D12RaytracingAmbientOcclusion::ReleaseDeviceDependentResources()
 
     m_raytracingGlobalRootSignature.Reset();
     ResetComPtrArray(&m_raytracingLocalRootSignature);
-    ResetComPtrArray(&m_dxrStateObjects);
+    ResetComPtrArray(&m_dxrStateObject);
 
     m_raytracingGlobalRootSignature.Reset();
     ResetComPtrArray(&m_raytracingLocalRootSignature);
@@ -4884,7 +4771,9 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 ScopedTimer _prof(L"RTAO", commandList);
 
                
-                m_RTAO.OnRender(m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
+                m_RTAO.OnRender(
+                    m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
+                    GBufferResources[0].gpuDescriptorReadAccess);
 
                 RenderPass_TemporalCacheReverseProjection();
 

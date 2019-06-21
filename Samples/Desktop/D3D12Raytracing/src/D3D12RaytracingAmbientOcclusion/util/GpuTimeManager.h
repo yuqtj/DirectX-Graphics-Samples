@@ -19,7 +19,7 @@ namespace DX
     class GpuTimeManager
     {
     public:
-        GpuTimeManager() { assert(++s_numInstances == 1 && L"There can be only one GpuTimeManager instance."); }
+        GpuTimeManager() { ThrowIfFalse(++s_numInstances == 1, L"There can be only one GpuTimeManager instance."); }
         ~GpuTimeManager() { ReleaseDevice(); }
 
         void RestoreDevice(ID3D12Device5* device, ID3D12CommandQueue* commandQueue, UINT maxFrameCount, UINT MaxNumTimers = 100);

@@ -35,8 +35,8 @@ namespace DX
         CPUTimer& operator=(CPUTimer&&) = default;
 
         // Start/stop a particular performance timer (don't start same index more than once in a single frame)
-        void Start(uint32_t timerid = 0);
-        void Stop(uint32_t timerid = 0);
+        void Start(UINT timerid = 0);
+        void Stop(UINT timerid = 0);
 
         // Should Update once per frame to compute timer results
         void Update();
@@ -45,10 +45,10 @@ namespace DX
         void Reset();
 
         // Returns delta time in milliseconds
-		float GetElapsedMS(uint32_t timerid = 0) const;
+		float GetElapsedMS(UINT timerid = 0) const;
 
         // Returns running average in milliseconds
-        float GetAverageMS(uint32_t timerid = 0) const
+        float GetAverageMS(UINT timerid = 0) const
         {
             return (timerid < c_maxTimers) ? m_avg[timerid] : 0.f;
         }
@@ -102,8 +102,8 @@ namespace DX
         void EndFrame(_In_ ID3D12GraphicsCommandList4* commandList);
 
         // Start/stop a particular performance timer (don't start same index more than once in a single frame)
-        void Start(_In_ ID3D12GraphicsCommandList4* commandList, uint32_t timerid = 0);
-        void Stop(_In_ ID3D12GraphicsCommandList4* commandList, uint32_t timerid = 0);
+        void Start(_In_ ID3D12GraphicsCommandList4* commandList, UINT timerid = 0);
+        void Stop(_In_ ID3D12GraphicsCommandList4* commandList, UINT timerid = 0);
 		
 		void SetAvgRefreshPeriodMS(float avgRefreshPeriodMs) { m_avgRefreshPeriodMs = avgRefreshPeriodMs; }
 
@@ -111,10 +111,10 @@ namespace DX
         void Reset();
 		
         // Returns delta time in milliseconds
-        float GetElapsedMS(uint32_t timerid = 0) const;
+        float GetElapsedMS(UINT timerid = 0) const;
 
         // Returns running average in milliseconds
-        float GetAverageMS(uint32_t timerid = 0) const
+        float GetAverageMS(UINT timerid = 0) const
         {
             return (timerid < c_maxTimers) ? m_avg[timerid] : 0.f;
         }

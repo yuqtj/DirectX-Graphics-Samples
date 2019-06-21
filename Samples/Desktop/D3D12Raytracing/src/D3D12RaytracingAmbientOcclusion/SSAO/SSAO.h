@@ -244,8 +244,8 @@ private:
     std::vector<ComPtr<ID3D12Resource>> m_materialListCB;
 
     // Buffer sizes.
-    uint32_t bufferWidth[NUM_BUFFERS + 2];
-    uint32_t bufferHeight[NUM_BUFFERS + 2];
+    UINT bufferWidth[NUM_BUFFERS + 2];
+    UINT bufferHeight[NUM_BUFFERS + 2];
 
     // Cached vars.
     float m_sampleThickness[12];

@@ -190,7 +190,7 @@ public:
     virtual void SetValue(FILE* file, const std::wstring& setting) override;
 
 private:
-    mutable uint32_t m_BangDisplay;
+    mutable UINT m_BangDisplay;
 };
 
 namespace EngineTuning

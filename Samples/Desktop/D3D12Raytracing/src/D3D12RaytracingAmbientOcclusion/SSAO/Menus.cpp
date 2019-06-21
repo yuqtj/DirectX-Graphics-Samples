@@ -22,7 +22,7 @@ void Menus::CreateDescriptorHeaps()
 
     // Allocate a csu heap.
     {
-        const uint32_t c_csuCount = MenuCSUDesc::CSUCount;
+        const UINT c_csuCount = MenuCSUDesc::CSUCount;
         m_csuDescriptors = std::make_unique<DescriptorHeap>(
             device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, c_csuCount);
     }
@@ -409,7 +409,7 @@ void Menus::DrawLabel()
     PIXEndEvent(commandList);
 }
 
-void Menus::DrawFrameRate(uint32_t fps)
+void Menus::DrawFrameRate(UINT fps)
 {
     if (!m_showFPS)
         return;
@@ -460,7 +460,7 @@ void Menus::DrawFrameRate(uint32_t fps)
     PIXEndEvent(commandList);
 }
 
-void Menus::Draw(uint32_t fps, bool halfLine)
+void Menus::Draw(UINT fps, bool halfLine)
 {
     auto commandList = m_deviceResources->GetCommandList();
     auto rtvDescriptor = m_deviceResources->GetRenderTargetView();

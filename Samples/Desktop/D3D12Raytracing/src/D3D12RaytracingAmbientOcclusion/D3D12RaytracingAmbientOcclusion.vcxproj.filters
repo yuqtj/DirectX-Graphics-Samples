@@ -384,9 +384,6 @@
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
     <FxCompile Include="util\AnalyticalTextures.hlsli" />
-    <FxCompile Include="CountingSort_SortRays_128x64rayGroupCS.hlsl">
-      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
-    </FxCompile>
     <FxCompile Include="CalculateVariance_BilateralFilterCS.hlsl">
       <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
     </FxCompile>
@@ -407,6 +404,9 @@
     </FxCompile>
     <FxCompile Include="RTAO\Shaders\RTAO.hlsl">
       <Filter>Assets\Shaders\RTAO</Filter>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\CountingSort_SortRays_128x64rayGroupCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

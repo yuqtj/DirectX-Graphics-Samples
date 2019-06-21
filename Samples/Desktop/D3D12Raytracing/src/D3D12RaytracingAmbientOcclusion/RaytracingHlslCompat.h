@@ -106,7 +106,6 @@
 #define GBUFFER_AO_COUNT_AO_HITS 0
 #define AO_ANY_HIT_FULL_OCCLUSION 0
 #define TWO_STAGE_AO_BLUR 1
-#define AO_RANDOM_SEED_EVERY_FRAME 0
 #define AO_HITPOSITION_BASED_SEED 1
 #define AO_SAMPLES_SPREAD_ACCROSS_PIXELS 1
 #define VARIANCE_APPROXIMATION 1
@@ -510,6 +509,7 @@ namespace SortRays {
 // ToDo split CB?
 // ToDo capitalize?
 // ToDo padding?
+// ToDo remove unused
 struct SceneConstantBuffer
 {
     // ToDo rename to world to view matrix and drop (0,0,0) note.
@@ -537,51 +537,61 @@ struct SceneConstantBuffer
     float elapsedTime;                 // Elapsed application time.
 	float Zmin;     // ToDo rename to zNear
 	float Zmax;
-    
+        
+    BOOL useShadowRayHitTime;           // ToDo Rename "use"
+    XMFLOAT2 cameraJitter;
+    XMUINT2 raytracingDim;
+
+    UINT  maxRadianceRayRecursionDepth;
+    UINT  maxShadowRayRecursionDepth;
+    BOOL useDiffuseFromMaterial;
+    BOOL doShading;                         // Do shading during path tracing. If false, collects only information needed for AO pass.
+   
+    BOOL useShadowMap;                      // Use shadow map (true). Trace visibility rays (false).
+    float RTAO_minimumFrBounceCoefficient;  // Minimum bounce coefficient for reflection ray to consider executing a TraceRay for it.
+    float RTAO_minimumFtBounceCoefficient;  // Minimum bounce coefficient for transmission ray to consider executing a TraceRay for it.
+    BOOL RTAO_UseNormalMaps; 
+};
+
+// ToDo split CB?
+// ToDo capitalize?
+// ToDo padding?
+struct RTAOConstantBuffer
+{
+
     UINT seed;
     UINT numSamplesPerSet;
     UINT numSampleSets;
     UINT numSamplesToUse;       // ToDo rename to max samples
-    
-    UINT numPixelsPerDimPerSet;
-    BOOL useShadowRayHitTime;           // ToDo Rename "use"
-    XMFLOAT2 cameraJitter;
+
 
     float RTAO_maxShadowRayHitTime;             // Max shadow ray hit time used for tMax in TraceRay.
     BOOL RTAO_approximateInterreflections;      // Approximate interreflections. 
     float RTAO_diffuseReflectanceScale;              // Diffuse reflectance from occluding surfaces. 
     float RTAO_minimumAmbientIllumnination;       // Ambient illumination coef when a ray is occluded.
 
-    // toDo rename shadow to AO?
+    // toDo rename shadow to AO
     float RTAO_maxTheoreticalShadowRayHitTime;  // Max shadow ray hit time used in falloff computation accounting for
                                                 // RTAO_ExponentialFalloffMinOcclusionCutoff and RTAO_maxShadowRayHitTime.
-    UINT  maxRadianceRayRecursionDepth;
-    UINT  maxShadowRayRecursionDepth;
-    float padding;   //ToDo remove
+    UINT numPixelsPerDimPerSet;
+    BOOL useShadowRayHitTime;           // ToDo Rename "use"
 
     BOOL RTAO_IsExponentialFalloffEnabled;               // Apply exponential falloff to AO coefficient based on ray hit distance.    
-    float RTAO_exponentialFalloffDecayConstant; 
+    float RTAO_exponentialFalloffDecayConstant;
     BOOL RTAO_UseAdaptiveSampling;
     float RTAO_AdaptiveSamplingMaxWeightSum;
 
     float RTAO_AdaptiveSamplingScaleExponent;   // ToDo weight exponent instead?
-    BOOL RTAO_UseNormalMaps;
     BOOL RTAO_AdaptiveSamplingMinMaxSampling;
     UINT RTAO_AdaptiveSamplingMinSamples;
+    XMUINT2 raytracingDim;
 
     float RTAO_TraceRayOffsetAlongNormal;
     float RTAO_TraceRayOffsetAlongRayDirection;
-    float RTAO_minimumFrBounceCoefficient;  // Minimum bounce coefficient for reflection ray to consider executing a TraceRay for it.
-    float RTAO_minimumFtBounceCoefficient;  // Minimum bounce coefficient for transmission ray to consider executing a TraceRay for it.
-    
-    BOOL useDiffuseFromMaterial;
-    BOOL doShading;                         // Do shading during path tracing. If false, collects only information needed for AO pass.
-    BOOL useShadowMap;                      // Use shadow map (true). Trace visibility rays (false).
     BOOL RTAO_UseSortedRays;
-    
-    XMUINT2 raytracingDim;
-    float padding2[2];
+    float defaultAmbientIntensity;
 };
+
  
 // ToDo use namespace?
 // Final render output composition modes.
@@ -906,12 +916,12 @@ struct VertexPositionNormalTextureTangent
  */
 
 
+
 // Ray types traced in this sample.
 namespace RayType {
     enum Enum {
-        Radiance = 0,   // ~ Primary, reflected camera/view rays calculating color for each hit.
+        GBuffer = 0,	 // ToDo update	// ~ Primary camera ray generating GBuffer data.
         Shadow,         // ~ Shadow/visibility rays, only testing for occlusion
-		GBuffer,		// ~ Primary camera ray generating GBuffer data.
         Count
     };
 }
@@ -922,9 +932,8 @@ namespace TraceRayParameters
     namespace HitGroup {
         static const UINT Offset[RayType::Count] =
         {
-            0, // Radiance ray
+            0, // GBuffer ray
             1, // Shadow ray
-			2  // GBuffer ray
         };
 		// ToDo For now all geometries reusing shader records
 		static const UINT GeometryStride = RayType::Count;
@@ -932,9 +941,8 @@ namespace TraceRayParameters
     namespace MissShader {
         static const UINT Offset[RayType::Count] =
         {
-            0, // Radiance ray
+            0, // GBuffer ray
             1, // Shadow ray
-			2, // GBuffer ray
         };
     }
 }

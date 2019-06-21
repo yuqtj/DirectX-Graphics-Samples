@@ -37,14 +37,14 @@ namespace GpuKernels
 			UINT frameCount,
 			UINT width,
 			UINT height,
-			UINT numInvocationsPerFrame);
+			UINT numInvocationsPerFrame = 1);
 		void Execute(
 			ID3D12GraphicsCommandList4* commandList,
 			ID3D12DescriptorHeap* descriptorHeap,
 			UINT frameIndex,
-			UINT invocationIndex,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
-			void* resultSum);
+			void* resultSum,
+            UINT invocationIndex = 0 );
 
 	private:
         Type                                m_resultType;

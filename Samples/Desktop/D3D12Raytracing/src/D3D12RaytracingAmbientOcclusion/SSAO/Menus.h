@@ -117,7 +117,7 @@ class Menus
 public:
     void Setup(
         std::shared_ptr<DX::DeviceResources> pDeviceResources);
-    void Draw(uint32_t fps, bool halfLine = false);
+    void Draw(UINT fps, bool halfLine = false);
     void OnSizeChanged();
     bool ProcessKeys(DirectX::Keyboard::KeyboardStateTracker& keyboard);
 
@@ -142,7 +142,7 @@ private:
     void DrawCenterLine();
     void DrawSplitLabels();
     void DrawLabel();
-    void DrawFrameRate(uint32_t fps);
+    void DrawFrameRate(UINT fps);
 
     std::shared_ptr<DX::DeviceResources> m_deviceResources;
 

@@ -172,28 +172,28 @@ void SSAO::CreateDescriptorHeaps()
 
     // Allocate a csu heap.
     {
-        const uint32_t c_csuCount = SSAOCSUDesc::CSUCount;
+        const UINT c_csuCount = SSAOCSUDesc::CSUCount;
         m_csuDescriptors = std::make_unique<DirectX::DescriptorHeap>(
             device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, c_csuCount);
     }
 
     // Allocate a sampler heap.
     {
-        const uint32_t c_samplerCount = SSAOSamplerDesc::SamplerCount;
+        const UINT c_samplerCount = SSAOSamplerDesc::SamplerCount;
         m_samplerDescriptors = std::make_unique<DirectX::DescriptorHeap>(
             device, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, c_samplerCount);
     }
 
     // Allocate a rtv.
     {
-        const uint32_t c_rtvCount = SSAORTVDesc::RTVCount;
+        const UINT c_rtvCount = SSAORTVDesc::RTVCount;
         m_rtvDescriptors = std::make_unique<DirectX::DescriptorHeap>(
             device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, c_rtvCount);
     }
 
     // Allocate a dsv.
     {
-        const uint32_t c_dsvCount = SSAODSVDesc::DSVCount;
+        const UINT c_dsvCount = SSAODSVDesc::DSVCount;
         m_dsvDescriptors = std::make_unique<DirectX::DescriptorHeap>(
             device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, c_dsvCount);
     }

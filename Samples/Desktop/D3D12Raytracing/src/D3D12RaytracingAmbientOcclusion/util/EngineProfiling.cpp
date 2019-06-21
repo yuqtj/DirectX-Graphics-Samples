@@ -67,13 +67,13 @@ public:
         return GpuTimeManager::instance().GetAverageMS(m_TimerIndex);
     }
 
-    uint32_t GetTimerIndex(void)
+    UINT GetTimerIndex(void)
     {
         return m_TimerIndex;
     }
 private:
 
-    uint32_t m_TimerIndex;
+    UINT m_TimerIndex;
 };
 
 class NestedTimingTree
@@ -188,7 +188,7 @@ public:
         PIXEndEvent(CommandList);
     }
 
-    void GatherTimes(uint32_t FrameIndex)
+    void GatherTimes(UINT FrameIndex)
     {
         if (EngineProfiling::Paused)
         {
@@ -345,7 +345,7 @@ namespace EngineProfiling
         Text << L"GPU " << gpuTime << L"ms, ";
 
         Text.width(3);
-        Text << (uint32_t)(frameRate + 0.5f) << L" FPS\n";
+        Text << (UINT)(frameRate + 0.5f) << L" FPS\n";
 
         Text.precision(prevPrecision);
     }

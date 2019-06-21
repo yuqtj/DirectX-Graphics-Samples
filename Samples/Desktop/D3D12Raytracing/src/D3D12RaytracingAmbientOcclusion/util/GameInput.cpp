@@ -468,21 +468,21 @@ void GameInput::Update( float frameDelta )
     {
         IGamepad^ gamepad = gamepads->GetAt(0);
         GamepadReading reading = gamepad->GetCurrentReading();
-        uint32_t Buttons = (uint32_t)reading.Buttons;
-        if (Buttons & (uint32_t)GamepadButtons::DPadUp) s_Buttons[0][kDPadUp] = true;
-        if (Buttons & (uint32_t)GamepadButtons::DPadDown) s_Buttons[0][kDPadDown] = true;
-        if (Buttons & (uint32_t)GamepadButtons::DPadLeft) s_Buttons[0][kDPadLeft] = true;
-        if (Buttons & (uint32_t)GamepadButtons::DPadRight) s_Buttons[0][kDPadRight] = true;
-        if (Buttons & (uint32_t)GamepadButtons::Menu) s_Buttons[0][kStartButton] = true;
-        if (Buttons & (uint32_t)GamepadButtons::View) s_Buttons[0][kBackButton] = true;
-        if (Buttons & (uint32_t)GamepadButtons::LeftThumbstick) s_Buttons[0][kLThumbClick] = true;
-        if (Buttons & (uint32_t)GamepadButtons::RightThumbstick) s_Buttons[0][kRThumbClick] = true;
-        if (Buttons & (uint32_t)GamepadButtons::LeftShoulder) s_Buttons[0][kLShoulder] = true;
-        if (Buttons & (uint32_t)GamepadButtons::RightShoulder) s_Buttons[0][kRShoulder] = true;
-        if (Buttons & (uint32_t)GamepadButtons::A) s_Buttons[0][kAButton] = true;
-        if (Buttons & (uint32_t)GamepadButtons::B) s_Buttons[0][kBButton] = true;
-        if (Buttons & (uint32_t)GamepadButtons::X) s_Buttons[0][kXButton] = true;
-        if (Buttons & (uint32_t)GamepadButtons::Y) s_Buttons[0][kYButton] = true;
+        UINT Buttons = (UINT)reading.Buttons;
+        if (Buttons & (UINT)GamepadButtons::DPadUp) s_Buttons[0][kDPadUp] = true;
+        if (Buttons & (UINT)GamepadButtons::DPadDown) s_Buttons[0][kDPadDown] = true;
+        if (Buttons & (UINT)GamepadButtons::DPadLeft) s_Buttons[0][kDPadLeft] = true;
+        if (Buttons & (UINT)GamepadButtons::DPadRight) s_Buttons[0][kDPadRight] = true;
+        if (Buttons & (UINT)GamepadButtons::Menu) s_Buttons[0][kStartButton] = true;
+        if (Buttons & (UINT)GamepadButtons::View) s_Buttons[0][kBackButton] = true;
+        if (Buttons & (UINT)GamepadButtons::LeftThumbstick) s_Buttons[0][kLThumbClick] = true;
+        if (Buttons & (UINT)GamepadButtons::RightThumbstick) s_Buttons[0][kRThumbClick] = true;
+        if (Buttons & (UINT)GamepadButtons::LeftShoulder) s_Buttons[0][kLShoulder] = true;
+        if (Buttons & (UINT)GamepadButtons::RightShoulder) s_Buttons[0][kRShoulder] = true;
+        if (Buttons & (UINT)GamepadButtons::A) s_Buttons[0][kAButton] = true;
+        if (Buttons & (UINT)GamepadButtons::B) s_Buttons[0][kBButton] = true;
+        if (Buttons & (UINT)GamepadButtons::X) s_Buttons[0][kXButton] = true;
+        if (Buttons & (UINT)GamepadButtons::Y) s_Buttons[0][kYButton] = true;
 
         static const float kAnalogStickDeadZone = 0.18f;
 
@@ -499,12 +499,12 @@ void GameInput::Update( float frameDelta )
 #ifdef USE_KEYBOARD_MOUSE
     KbmUpdate();
 
-    for (uint32_t i = 0; i < kNumKeys; ++i)
+    for (UINT i = 0; i < kNumKeys; ++i)
     {
         s_Buttons[0][i] = (s_Keybuffer[s_DXKeyMapping[i]] & 0x80) != 0;
     }
 
-    for (uint32_t i = 0; i < 8; ++i)
+    for (UINT i = 0; i < 8; ++i)
     {
         if (s_MouseState.rgbButtons[i] > 0) s_Buttons[0][kMouse0 + i] = true;
     }
@@ -519,7 +519,7 @@ void GameInput::Update( float frameDelta )
 #endif
 
     // Update time duration for buttons pressed
-    for (uint32_t i = 0; i < kNumDigitalInputs; ++i)
+    for (UINT i = 0; i < kNumDigitalInputs; ++i)
     {
         if (s_Buttons[0][i])
         {
@@ -530,7 +530,7 @@ void GameInput::Update( float frameDelta )
         }
     }
 
-    for (uint32_t i = 0; i < kNumAnalogInputs; ++i)
+    for (UINT i = 0; i < kNumAnalogInputs; ++i)
     {
         s_AnalogsTC[i] = s_Analogs[i] * frameDelta;
     }

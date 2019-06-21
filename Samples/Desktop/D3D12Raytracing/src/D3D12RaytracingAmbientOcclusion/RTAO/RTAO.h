@@ -34,20 +34,22 @@ class RTAO
 public:
     RTAO();
 
-    void Setup(std::shared_ptr<DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT numHitGroupShaderRecodsToCreate, UINT FrameCount);
-    void OnRender(D3D12_GPU_VIRTUAL_ADDRESS& accelerationStructure);
+    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
     void OnUpdate();
+    void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE GBufferResourcesIn);
+    
+    // Getters & Setters.
     void SetResolution(UINT width, UINT height);
     ID3D12Resource* GetRTAOOutputResource() { return m_ssaoResources.Get(); }
+    DXGI_FORMAT GetAOCoefficientFormat();
 
-    // Lazy upda
     void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
     void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
 private:
-    void CreateDeviceDependentResources(UINT numHitGroupShaderRecodsToCreate, UINT FrameCount);
+    void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
     void CreateConstantBuffers();
-    void CreateAuxilaryDeviceResources(UINT FrameCount);
+    void CreateAuxilaryDeviceResources();
     void CreateRootSignatures();    
     void CreateRaytracingPipelineStateObject();
     void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
@@ -62,7 +64,7 @@ private:
     void ReleaseWindowSizeDependentResources() {}; // ToDo
     void RenderRNGVisualizations();
     void BuildShaderTables(UINT numHitGroupShaderRecordsToCreate);
-    void DispatchRays(ID3D12Resource* rayGenShaderTable);
+    void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
     void CalculateRayHitCount();
 
     UINT m_raytracingWidth;
@@ -81,14 +83,17 @@ private:
     static const wchar_t* c_missShaderName;
 
     // Raytracing shader resources.
-    RWGpuResource m_AORayDirectionOriginDepth;
-    RWGpuResource m_sourceToSortedRayIndex;         // Index of a ray in the sorted array given a source index.
-    RWGpuResource m_sortedToSourceRayIndex;         // Index of a ray in the source (screen space) array given a sorted index.
-    RWGpuResource m_sortedRayGroupDebug;            // ToDo remove
-    ConstantBuffer<SceneConstantBuffer> m_CB;
+    RWGpuResource   m_AOResources[AOResource::Count];
+    RWGpuResource   m_AORayDirectionOriginDepth;
+    RWGpuResource   m_sourceToSortedRayIndex;         // Index of a ray in the sorted array given a source index.
+    RWGpuResource   m_sortedToSourceRayIndex;         // Index of a ray in the source (screen space) array given a sorted index.
+    RWGpuResource   m_sortedRayGroupDebug;            // ToDo remove
+    ConstantBuffer<RTAOConstantBuffer> m_CB;
     Samplers::MultiJittered m_randomSampler;
     StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;
     StructuredBuffer<AlignedHemisphereSample3D> m_hemisphereSamplesGPUBuffer;
+
+    UINT		    m_numAORayGeometryHits;
 
     // DirectX Raytracing (DXR) attributes
     ComPtr<ID3D12StateObject>   m_dxrStateObject;
@@ -117,4 +122,5 @@ private:
     bool m_calculateRayHitCounts = false;
 
 
+    static UINT             s_numInstances;
 };

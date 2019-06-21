@@ -113,7 +113,7 @@ private:
     GpuKernels::UpsampleBilateralFilter	    m_upsampleBilateralFilterKernel;
     GpuKernels::MultiScale_UpsampleBilateralFilterAndCombine	    m_multiScale_upsampleBilateralFilterAndCombineKernel;
 	const UINT c_SupersamplingScale = 2;    // ToDo UI parameter
-	UINT								m_numRayGeometryHits[ReduceSumCalculations::Count];
+	UINT								m_numCameraRayGeometryHits;
 
     GpuKernels::WriteValueToTexture     m_writeValueToTexture;
     GpuKernels::GenerateGrassPatch      m_grassGeometryGenerator;
@@ -140,8 +140,8 @@ private:
 	ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature[LocalRootSignature::Type::Count];
 
 	// ToDo move to deviceResources
-	std::unique_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
-	std::unique_ptr<DX::DescriptorHeap> m_samplerHeap;
+	std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
+	std::unique_ptr<DX::DescriptorHeap> m_samplerHeap;      
 
 	// Raytracing scene
 	ConstantBuffer<SceneConstantBuffer> m_sceneCB;
@@ -176,6 +176,7 @@ private:
 
     std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
     StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.
+    UINT m_maxInstanceContributionToHitGroupIndex;
 
     const UINT MaxNumBottomLevelInstances = 10100;           // ToDo tighten this to only what needed or add support a copy of whats used from StructuredBuffers to GPU.
 
@@ -257,12 +258,12 @@ private:
 	static const wchar_t* c_missShaderNames[RayType::Count];
 
     // Shader tables
-	ComPtr<ID3D12Resource> m_rayGenShaderTables[RaytracingType::Count][RayGenShaderType::Count];
-	UINT m_rayGenShaderTableRecordSizeInBytes[RaytracingType::Count];
-	ComPtr<ID3D12Resource> m_hitGroupShaderTable[RaytracingType::Count];
-	UINT m_hitGroupShaderTableStrideInBytes[RaytracingType::Count];
-	ComPtr<ID3D12Resource> m_missShaderTable[RaytracingType::Count];
-	UINT m_missShaderTableStrideInBytes[RaytracingType::Count];
+	ComPtr<ID3D12Resource> m_rayGenShaderTables[RayGenShaderType::Count];
+	UINT m_rayGenShaderTableRecordSizeInBytes[RayGenShaderType::Count];
+	ComPtr<ID3D12Resource> m_hitGroupShaderTable;
+	UINT m_hitGroupShaderTableStrideInBytes = UINT_MAX;
+	ComPtr<ID3D12Resource> m_missShaderTable;
+	UINT m_missShaderTableStrideInBytes = UINT_MAX;
 
 	// Application state
 	StepTimer m_timer;
@@ -288,6 +289,9 @@ private:
 	bool m_isASinitializationRequested;
 	bool m_isSceneInitializationRequested;
 	bool m_isRecreateRaytracingResourcesRequested;
+
+
+    static UINT             s_numInstances;
 
 	// Render passes
 	void RenderPass_GenerateGBuffers();
@@ -315,8 +319,8 @@ private:
     void UpdateGridGeometryTransforms();
     void InitializeScene();
 	void UpdateAccelerationStructure();
-	void DispatchRays(RaytracingType::Enum raytracingType, ID3D12Resource* rayGenShaderTable, uint32_t width=0, uint32_t height=0);
-	void CalculateRayHitCount(ReduceSumCalculations::Enum type);
+	void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width=0, UINT height=0);
+	void CalculateCameraRayHitCount();
     void ApplyAtrousWaveletTransformFilter();
     void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter();
@@ -361,7 +365,7 @@ private:
 	void GenerateBottomLevelASInstanceTransforms();
     void InitializeAllBottomLevelAccelerationStructures();
     void InitializeAccelerationStructures();
-    void BuildShaderTables(RaytracingType::Enum raytracingType);
+    void BuildShaderTables();
     void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
     void CalculateFrameStats();
 	//float NumCameraRaysPerSecondNumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimeManager.GetAverageMS(GpuTimers::Raytracing_GBuffer), m_raytracingWidth, m_raytracingHeight); }

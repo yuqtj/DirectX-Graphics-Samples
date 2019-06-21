@@ -150,7 +150,7 @@ float GpuTimeManager::GetElapsedMS(UINT timerid) const
     return static_cast<float>(double(end - start) * m_GpuTickDelta);
 }
 
-uint32_t GpuTimeManager::NewTimer(void)
+UINT GpuTimeManager::NewTimer(void)
 {
     return m_NumAllotedTimers++;
 }

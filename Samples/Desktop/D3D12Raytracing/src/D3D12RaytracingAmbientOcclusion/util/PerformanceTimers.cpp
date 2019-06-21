@@ -36,7 +36,7 @@ namespace
         return avg >= 0.0001f ? lerp(avg, value, 0.05f) : value;
     }
 
-    inline void DebugWarnings(uint32_t timerid, uint64_t start, uint64_t end)
+    inline void DebugWarnings(UINT timerid, uint64_t start, uint64_t end)
     {
 #if defined(_DEBUG)
         if (!start && end > 0)
@@ -78,7 +78,7 @@ CPUTimer::CPUTimer() :
     m_cpuFreqInv = 1000.0 / double(cpuFreq.QuadPart);
 }
 
-void CPUTimer::Start(uint32_t timerid)
+void CPUTimer::Start(UINT timerid)
 {
     if (timerid >= c_maxTimers)
         throw std::out_of_range("Timer ID out of range");
@@ -89,7 +89,7 @@ void CPUTimer::Start(uint32_t timerid)
     }
 }
 
-void CPUTimer::Stop(uint32_t timerid)
+void CPUTimer::Stop(UINT timerid)
 {
     if (timerid >= c_maxTimers)
         throw std::out_of_range("Timer ID out of range");
@@ -102,7 +102,7 @@ void CPUTimer::Stop(uint32_t timerid)
 
 void CPUTimer::Update()
 {
-    for (uint32_t j = 0; j < c_maxTimers; ++j)
+    for (UINT j = 0; j < c_maxTimers; ++j)
     {
         uint64_t start = m_start[j].QuadPart;
         uint64_t end = m_end[j].QuadPart;
@@ -119,7 +119,7 @@ void CPUTimer::Reset()
     memset(m_avg, 0, sizeof(m_avg));
 }
 
-float CPUTimer::GetElapsedMS(uint32_t timerid) const
+float CPUTimer::GetElapsedMS(UINT timerid) const
 {
     if (timerid >= c_maxTimers)
         return 0.0;
@@ -161,7 +161,7 @@ void GPUTimer::EndFrame(_In_ ID3D12GraphicsCommandList4* commandList)
     memcpy(m_timing, timingData, sizeof(UINT64) * c_timerSlots);
     m_buffer->Unmap(0, &CD3DX12_RANGE(0, 0));
 
-    for (uint32_t j = 0; j < c_maxTimers; ++j)
+    for (UINT j = 0; j < c_maxTimers; ++j)
     {
         UINT64 start = m_timing[j * 2];
         UINT64 end = m_timing[j * 2 + 1];
@@ -178,7 +178,7 @@ void GPUTimer::EndFrame(_In_ ID3D12GraphicsCommandList4* commandList)
 	float elapsedMs = m_avgPeriodTimer.GetElapsedMS();
 	if (m_avgPeriodTimer.GetElapsedMS() >= m_avgRefreshPeriodMs)
 	{
-		for (uint32_t j = 0; j < c_maxTimers; ++j)
+		for (UINT j = 0; j < c_maxTimers; ++j)
 		{
 			m_avg[j] = m_avgPeriodTotal[j] / m_avgTimestampsTotal;
 			m_avgPeriodTotal[j] = 0;
@@ -195,7 +195,7 @@ void GPUTimer::EndFrame(_In_ ID3D12GraphicsCommandList4* commandList)
     resolveToFrameID = readBackFrameID;
 }
 
-void GPUTimer::Start(_In_ ID3D12GraphicsCommandList4* commandList, uint32_t timerid)
+void GPUTimer::Start(_In_ ID3D12GraphicsCommandList4* commandList, UINT timerid)
 {
     if (timerid >= c_maxTimers)
         throw std::out_of_range("Timer ID out of range");
@@ -203,7 +203,7 @@ void GPUTimer::Start(_In_ ID3D12GraphicsCommandList4* commandList, uint32_t time
     commandList->EndQuery(m_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timerid * 2);
 }
 
-void GPUTimer::Stop(_In_ ID3D12GraphicsCommandList4* commandList, uint32_t timerid)
+void GPUTimer::Stop(_In_ ID3D12GraphicsCommandList4* commandList, UINT timerid)
 {
     if (timerid >= c_maxTimers)
         throw std::out_of_range("Timer ID out of range");
@@ -220,7 +220,7 @@ void GPUTimer::Reset()
 	m_avgPeriodTimer.Start();
 }
 
-float GPUTimer::GetElapsedMS(uint32_t timerid) const
+float GPUTimer::GetElapsedMS(UINT timerid) const
 {
     if (timerid >= c_maxTimers)
         return 0.0;
