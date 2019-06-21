@@ -15,9 +15,9 @@
 // Remove /Zpr and use column-major? It might be slightly faster
 
 #define HLSL
-#include "..\..\RaytracingHlslCompat.h"
-#include "..\..\RaytracingShaderHelper.hlsli"
-#include "..\..\RandomNumberGenerator.hlsli"
+#include "RaytracingHlslCompat.h"
+#include "RaytracingShaderHelper.hlsli"
+#include "RandomNumberGenerator.hlsli"
 #include "RaySorting.hlsli"
 
 #define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS - should be 0 as we're using non-negative low precision formats
@@ -81,7 +81,7 @@ RWTexture2D<float> g_rtShadowMap : register(u21);
 RWTexture2D<float4> g_rtAORaysDirectionOriginDepth : register(u22);
 RWTexture2D<float4> g_rtGBufferNormalDepthLowPrecision : register(u23);
 
-ConstantBuffer<SceneConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
+ConstantBuffer<RTAOConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
 
@@ -96,13 +96,8 @@ SamplerState LinearWrapSampler : register(s0);
 //***************************************************************************
 
 // Trace a shadow ray and return true if it hits any geometry.
-bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRayRecursionDepth, in bool retrieveTHit = true, in float TMax = 10000, in bool acceptFirstHit = false)
+bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in bool retrieveTHit = true, in float TMax = 10000, in bool acceptFirstHit = false)
 {
-    if (currentRayRecursionDepth >= CB.maxShadowRayRecursionDepth)
-    {
-        return false;
-    }
-
     // Set the ray's extents.
     RayDesc rayDesc;
     rayDesc.Origin = ray.origin;
@@ -154,24 +149,15 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRayRecu
     return shadowPayload.tHit > 0;
 }
 
-bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float3 N, in UINT currentRayRecursionDepth, in bool retrieveTHit = true, in float TMax = 10000)
+bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float3 N, in bool retrieveTHit = true, in float TMax = 10000)
 {
     // Only trace if the surface is facing the target.
     if (dot(ray.direction, N) > 0)
     {
-        return TraceAORayAndReportIfHit(tHit, ray, currentRayRecursionDepth, retrieveTHit, TMax);
+        return TraceAORayAndReportIfHit(tHit, ray, retrieveTHit, TMax);
     }
     return false;
 }
-
-bool TraceAORayAndReportIfHit(in float3 hitPosition, in float3 direction, in float3 N, in GBufferRayPayload rayPayload, in float TMax = 10000)
-{
-    float tOffset = 0.001f;
-    Ray visibilityRay = { hitPosition + tOffset * N, direction };
-    float dummyTHit;
-    return TraceAORayAndReportIfHit(dummyTHit, visibilityRay, N, rayPayload.rayRecursionDepth, false, TMax);
-}
-
 
 // ToDo comment
 // MinHitDistance - minimum hit distance of all AO ray hits.
@@ -254,7 +240,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
 
         const float tMax = CB.RTAO_maxShadowRayHitTime;
         float tHit;
-        if (TraceAORayAndReportIfHit(tHit, shadowRay, 0, CB.useShadowRayHitTime, tMax, true))
+        if (TraceAORayAndReportIfHit(tHit, shadowRay, CB.useShadowRayHitTime, tMax, true))
         {
             float occlusionCoef = 1;
             if (CB.RTAO_IsExponentialFalloffEnabled)
@@ -465,7 +451,7 @@ void RayGenShader_sortedRays()
 
         const float tMax = CB.RTAO_maxShadowRayHitTime; // ToDo make sure its FLT_10BIT_MAX or less since we use 10bit origin depth in RaySort
         float tHit;
-        if (TraceAORayAndReportIfHit(tHit, shadowRay, 0, CB.useShadowRayHitTime, tMax, true))
+        if (TraceAORayAndReportIfHit(tHit, shadowRay, CB.useShadowRayHitTime, tMax, true))
         {
             float occlusionCoef = 1;
             if (CB.RTAO_IsExponentialFalloffEnabled)

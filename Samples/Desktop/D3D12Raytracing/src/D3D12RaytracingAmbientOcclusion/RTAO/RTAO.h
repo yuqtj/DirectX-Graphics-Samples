@@ -20,7 +20,7 @@
 #include "GpuKernels.h"
 
 
-
+// ToDo move to cpp
 namespace RTAORayGenShaderType {
     enum Enum {
         AOFullRes = 0,
@@ -32,16 +32,22 @@ namespace RTAORayGenShaderType {
 class RTAO
 {
 public:
+    // Ctors.
     RTAO();
 
+    // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
     void OnUpdate();
     void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE GBufferResourcesIn);
-    
+    void ReleaseDeviceDependentResources();
+    void ReleaseWindowSizeDependentResources() {}; // ToDo
+
     // Getters & Setters.
     void SetResolution(UINT width, UINT height);
-    ID3D12Resource* GetRTAOOutputResource() { return m_ssaoResources.Get(); }
     DXGI_FORMAT GetAOCoefficientFormat();
+
+    // ToDo return only a subset
+    RWGpuResource (&AOResources())[AOResource::Count]{ return m_AOResources; }
 
     void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
     void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
@@ -55,15 +61,13 @@ private:
     void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
     void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
     void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateResources();
+    void CreateTextureResources();
     void CalculateAdaptiveSamplingCounts();
     
     void CreateSamplesRNG();
     void CreateResolutionDependentResources();
-    void ReleaseDeviceDependentResources() {}; // ToDo
-    void ReleaseWindowSizeDependentResources() {}; // ToDo
     void RenderRNGVisualizations();
-    void BuildShaderTables(UINT numHitGroupShaderRecordsToCreate);
+    void BuildShaderTables(UINT maxInstanceContributionToHitGroupIndex);
     void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
     void CalculateRayHitCount();
 

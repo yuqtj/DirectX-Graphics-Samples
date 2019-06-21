@@ -155,9 +155,9 @@ namespace GpuKernels
 		ID3D12GraphicsCommandList4* commandList,
 		ID3D12DescriptorHeap* descriptorHeap, 
 		UINT frameIndex,
-		UINT invocationIndex,   // per frame invocation index
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
-		void* resultSum)
+		void* resultSum,
+        UINT invocationIndex)   // per frame invocation index)
 	{
 		using namespace RootSignature::ReduceSum;
 		
@@ -1117,7 +1117,7 @@ namespace GpuKernels
         float sumPerPixelMeanSquareError;
         {
             // ToDo index the result to a frame its from or wait on the GPU to finish
-            m_reduceSumKernel.Execute(commandList, descriptorHeap, frameIndex, invocationIndex, m_perPixelMeanSquareError.gpuDescriptorReadAccess, &sumPerPixelMeanSquareError);
+            m_reduceSumKernel.Execute(commandList, descriptorHeap, frameIndex, m_perPixelMeanSquareError.gpuDescriptorReadAccess, &sumPerPixelMeanSquareError, invocationIndex);
         }
 
         // Calculate root mean square error.

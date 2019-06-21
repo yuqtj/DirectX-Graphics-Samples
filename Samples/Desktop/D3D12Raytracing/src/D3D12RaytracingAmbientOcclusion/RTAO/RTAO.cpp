@@ -39,7 +39,7 @@ UINT RTAO::s_numInstances = 0;
 
 namespace SceneArgs
 {
-    void OnRecreateRaytracingResources(void*)
+    void OnRecreateRTAORaytracingResources(void*)
     {
         global_pRTAO->RequestRecreateRaytracingResources();
     }
@@ -71,7 +71,7 @@ namespace SceneArgs
 
 
     const WCHAR* FloatingPointFormatsR[TextureResourceFormatR::Count] = { L"R32_FLOAT", L"R16_FLOAT", L"R8_UNORM" };
-    EnumVar RTAO_AmbientCoefficientResourceFormat(L"Render/Texture Formats/AO/RTAO/Ambient Coefficient", TextureResourceFormatR::R8_UNORM, TextureResourceFormatR::Count, FloatingPointFormatsR, OnRecreateRaytracingResources);
+    EnumVar RTAO_AmbientCoefficientResourceFormat(L"Render/Texture Formats/AO/RTAO/Ambient Coefficient", TextureResourceFormatR::R8_UNORM, TextureResourceFormatR::Count, FloatingPointFormatsR, OnRecreateRTAORaytracingResources);
 
   
     // ToDo cleanup RTAO... vs RTAO_..
@@ -111,6 +111,13 @@ void RTAO::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::Des
 {
     m_deviceResources = deviceResources;
     m_cbvSrvUavHeap = descriptorHeap;
+
+    CreateDeviceDependentResources(maxInstanceContributionToHitGroupIndex);
+}
+
+void RTAO::ReleaseDeviceDependentResources()
+{ 
+    // ToDo 
 }
 
 // Create resources that depend on the device.
@@ -371,7 +378,7 @@ void RTAO::CreateRaytracingPipelineStateObject()
 }
 
 
-void RTAO::CreateResources()
+void RTAO::CreateTextureResources()
 {
     auto device = m_deviceResources->GetD3DDevice();
     auto backbufferFormat = m_deviceResources->GetBackBufferFormat();
@@ -396,6 +403,9 @@ void RTAO::CreateResources()
 
         // ToDo cleanup raytracing resolution - twice for coefficient.
         CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"Render/AO Coefficient");
+        
+        // ToDo move outside of RTAO
+        CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Coefficient");
 
         // ToDo 8 bit hit count?
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"Render/AO Hit Count");
@@ -423,9 +433,9 @@ void RTAO::CreateResources()
 // Build shader tables.
 // This encapsulates all shader records - shaders and the arguments for their local root signatures.
 // For AO, the shaders are simple with only one shader type per shader table.
-// numHitGroupShaderRecordsToCreate - since BLAS instances in this sample specify non-zero InstanceContributionToHitGroupIndex, 
-//  the sample needs to add as many shader records to all hit group shader tables so that DXR shader addressing lands on a valid shader record.
-void RTAO::BuildShaderTables(UINT numHitGroupShaderRecordsToCreate)
+// maxInstanceContributionToHitGroupIndex - since BLAS instances in this sample specify non-zero InstanceContributionToHitGroupIndex, 
+//  the sample needs to add as many shader records to all hit group shader tables so that DXR shader addressing lands on a valid shader record for all BLASes.
+void RTAO::BuildShaderTables(UINT maxInstanceContributionToHitGroupIndex)
 {
     auto device = m_deviceResources->GetD3DDevice();
 
@@ -511,7 +521,7 @@ void RTAO::BuildShaderTables(UINT numHitGroupShaderRecordsToCreate)
     
     // Hit group shader table.
     {
-        UINT numShaderRecords = numHitGroupShaderRecordsToCreate;
+        UINT numShaderRecords = maxInstanceContributionToHitGroupIndex + 1;
         UINT shaderRecordSize = shaderIDSize; // No root arguments
 
         ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"RTAO HitGroupShaderTable");
@@ -754,6 +764,9 @@ void RTAO::OnRender(
         CalculateAdaptiveSamplingCounts();
     }
 
+    // ToDo Copy only if necessary?
+    m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
+
     ScopedTimer _prof(L"CalculateAmbientOcclusion", commandList);
 
     // Transition AO resources to UAV state.        // ToDo check all comments
@@ -917,7 +930,7 @@ void RTAO::CreateResolutionDependentResources()
     auto commandQueue = m_deviceResources->GetCommandQueue();
     auto FrameCount = m_deviceResources->GetBackBufferCount();
 
-    CreateResources();
+    CreateTextureResources();
     m_reduceSumKernel.CreateInputResourceSizeDependentResources(
         device,
         m_cbvSrvUavHeap.get(),

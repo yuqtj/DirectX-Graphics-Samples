@@ -26,6 +26,7 @@
 #include "PBRTParser.h"
 #include "SSAO\SSAO.h"
 #include "SceneParameters.h"
+#include "RTAO\RTAO.h"
 
 
 class D3D12RaytracingAmbientOcclusion : public DXSample
@@ -197,7 +198,8 @@ private:
     RWGpuResource m_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
     
 	RWGpuResource m_AOResources[AOResource::Count];
-    RWGpuResource m_AOLowResResources[AOResource::Count];   // ToDo remove unused
+
+    RWGpuResource m_AOSmoothedResource[2];
 
     RWGpuResource m_AOTSSCoefficient[2];
     RWGpuResource m_lowResAOTSSCoefficient[2];
@@ -252,10 +254,10 @@ private:
     UINT m_raytracingHeight;
 
     // Raytracing shaders.
-	static const wchar_t* c_hitGroupNames_TriangleGeometry[RayType::Count];
-	static const wchar_t* c_rayGenShaderNames[RayGenShaderType::Count];
+    static const wchar_t* c_rayGenShaderNames[RayGenShaderType::Count];
 	static const wchar_t* c_closestHitShaderNames[RayType::Count];
 	static const wchar_t* c_missShaderNames[RayType::Count];
+    static const wchar_t* c_hitGroupNames_TriangleGeometry[RayType::Count];
 
     // Shader tables
 	ComPtr<ID3D12Resource> m_rayGenShaderTables[RayGenShaderType::Count];

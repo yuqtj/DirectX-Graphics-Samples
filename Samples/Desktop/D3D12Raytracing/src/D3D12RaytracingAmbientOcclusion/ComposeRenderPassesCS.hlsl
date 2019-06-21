@@ -130,6 +130,9 @@ void main(uint2 DTid : SV_DispatchThreadID )
         }
         else if (g_CB.compositionType == CompositionType::AmbientOcclusionHighResSamplingPixels)
         {
+            // ToDo
+            color = float4(1,1,0, 1);
+#if 0
             UINT numSamples = g_CB.RTAO_MaxSPP;
             if (g_CB.RTAO_UseAdaptiveSampling)
             {
@@ -154,6 +157,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float3 maxSampleColor = float3(153, 18, 15) / 255;
             float sppScale = float(numSamples) / g_CB.RTAO_MaxSPP;
             color = float4(lerp(minSampleColor, maxSampleColor, sppScale), 1);
+#endif
         }
         else if (g_CB.compositionType == CompositionType::RTAOHitDistance)
         {
