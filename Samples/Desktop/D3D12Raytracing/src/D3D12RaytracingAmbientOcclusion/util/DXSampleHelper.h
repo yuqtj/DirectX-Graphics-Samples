@@ -434,6 +434,8 @@ namespace DX
     public:
         DescriptorHeap(ID3D12Device5* device, UINT numDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE type)
         {
+            m_descriptorsAllocated = 0;
+
             D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
             // Allocate a heap for descriptors:
             // 2 per geometry - vertex and index  buffer SRVs

@@ -508,7 +508,7 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
 // ToDo worth moving some common member vars and fncs to DxSampleRaytracing base class?
 void D3D12RaytracingAmbientOcclusion::OnInit()
 {
-    m_deviceResources = make_unique<DeviceResources>(
+    m_deviceResources = make_shared<DeviceResources>(
         DXGI_FORMAT_R8G8B8A8_UNORM,
         DXGI_FORMAT_UNKNOWN,
         FrameCount,
@@ -1622,7 +1622,7 @@ void D3D12RaytracingAmbientOcclusion::CreateDescriptorHeaps()
         // 1 for a null diffuse texture.
 		//ToDo
 		UINT NumDescriptors = 2 * GeometryType::Count + 1 + 2 * MaxBLAS + 1 + ARRAYSIZE(SquidRoomAssets::Draws) * 2 + ARRAYSIZE(SquidRoomAssets::Textures) + 1;
-		m_cbvSrvUavHeap = make_unique<DX::DescriptorHeap>(device, NumDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		m_cbvSrvUavHeap = make_shared<DX::DescriptorHeap>(device, NumDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	}
 
     // TodO remove
