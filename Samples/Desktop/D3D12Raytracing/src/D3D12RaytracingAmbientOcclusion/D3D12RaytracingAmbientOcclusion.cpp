@@ -508,7 +508,7 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
 // ToDo worth moving some common member vars and fncs to DxSampleRaytracing base class?
 void D3D12RaytracingAmbientOcclusion::OnInit()
 {
-    m_deviceResources = make_unique<DeviceResources>(
+    m_deviceResources = make_shared<DeviceResources>(
         DXGI_FORMAT_R8G8B8A8_UNORM,
         DXGI_FORMAT_UNKNOWN,
         FrameCount,
@@ -536,11 +536,14 @@ void D3D12RaytracingAmbientOcclusion::OnInit()
 #endif
     // ToDo cleanup
     m_deviceResources->CreateDeviceResources();
-	// Initialize scene ToDo
-    InitializeScene();
-    CreateDeviceDependentResources();
-    m_deviceResources->CreateWindowSizeDependentResources();
 
+    // Initialize scene ToDo
+
+    CreateDeviceDependentResources();
+
+    InitializeScene();
+
+    m_deviceResources->CreateWindowSizeDependentResources();
 }
 
 D3D12RaytracingAmbientOcclusion::~D3D12RaytracingAmbientOcclusion()
@@ -576,7 +579,6 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
     }
 
     // SSAO.
-#if !DEBUG_RTAO
     {
         XMMATRIX view, proj;
         m_camera.GetProj(&proj, m_GBufferWidth, m_GBufferHeight);
@@ -622,7 +624,6 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
             m_SSAOCB->frustumVDelta = vertDelta;
         }
     }
-#endif
 }
 
 void D3D12RaytracingAmbientOcclusion::UpdateBottomLevelASTransforms()
@@ -969,7 +970,6 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
     // Create a heap for descriptors.
     CreateDescriptorHeaps();
 
-
     CreateAuxilaryDeviceResources();
 
 	// ToDo move
@@ -986,13 +986,14 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 #if ENABLE_RAYTRACING
     // Create root signatures for the shaders.
     CreateRootSignatures();
-
+ 
     // Create a raytracing pipeline state object which defines the binding of shaders, state and resources to be used during raytracing.
     CreateRaytracingPipelineStateObject();
 #endif
     // Create constant buffers for the geometry and the scene.
     CreateConstantBuffers();
 
+ 
 	// Build shader tables, which define shaders and their local root arguments.
     BuildShaderTables();
 
@@ -1003,11 +1004,10 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 	CreateComposeRenderPassesCSResources();
 
     CreateAoBlurCSResources();
-#if !DEBUG_RTAO
-    m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_maxInstanceContributionToHitGroupIndex);
 
+    m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_maxInstanceContributionToHitGroupIndex);
     m_SSAO.Setup(m_deviceResources);
-#endif
+
     // 
     m_prevFrameBottomLevelASInstanceTransforms.Create(device, MaxNumBottomLevelInstances, FrameCount, L"GPU buffer: Bottom Level AS Instance transforms for previous frame");
 }
@@ -1236,65 +1236,6 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
         // Create the state object.
         ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object.\n");
     }
-
-    // Ambient Occlusion state object.
-    {
-        // ToDo review
-        // Create 18 subobjects that combine into a RTPSO:
-        // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
-        // Default association applies to every exported shader entrypoint that doesn't have any of the same type of subobject associated with it.
-        // This simple sample utilizes default shader association except for local root signature subobject
-        // which has an explicit association specified purely for demonstration purposes.
-        // 1 - DXIL library
-        // 8 - Hit group types - 4 geometries (1 triangle, 3 aabb) x 2 ray types (ray, shadowRay)
-        // 1 - Shader config
-        // 6 - 3 x Local root signature and association
-        // 1 - Global root signature
-        // 1 - Pipeline config
-        CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
-
-        bool loadShadowShadersOnly = true;
-        // DXIL library
-        CreateDxilLibrarySubobject(&raytracingPipeline);
-
-        // Hit groups
-        CreateHitGroupSubobjects(&raytracingPipeline);
-
-#define AO_4B_RAYPAYLOAD 0
-
-        // Shader config
-        // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
-        auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-#if AO_4B_RAYPAYLOAD
-        UINT payloadSize = static_cast<UINT>(sizeof(ShadowRayPayload));		// ToDo revise
-#else
-        UINT payloadSize = static_cast<UINT>(max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload)));		// ToDo revise
-#endif
-        UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics
-        shaderConfig->Config(payloadSize, attributeSize);
-
-        // Local root signature and shader association
-        // This is a root signature that enables a shader to have unique arguments that come from shader tables.
-        CreateLocalRootSignatureSubobjects(&raytracingPipeline);
-
-        // Global root signature
-        // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
-        auto globalRootSignature = raytracingPipeline.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
-        globalRootSignature->SetRootSignature(m_raytracingGlobalRootSignature.Get());
-
-        // Pipeline config
-        // Defines the maximum TraceRay() recursion depth.
-        auto pipelineConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
-        // PERFOMANCE TIP: Set max recursion depth as low as needed
-        // as drivers may apply optimization strategies for low recursion depths.
-        UINT maxRecursionDepth = 1;
-        pipelineConfig->Config(maxRecursionDepth);
-
-        PrintStateObjectDesc(raytracingPipeline);
-
-        // Create the state object.
-        ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object");
-    }
 }
 
 // Create a 2D output texture for raytracing.
@@ -1418,9 +1359,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         }
     }
 
-#if !DEBUG_RTAO
     m_SSAO.BindGBufferResources(m_GBufferResources[GBufferResource::SurfaceNormalRGB].resource.Get(), m_GBufferResources[GBufferResource::Depth].resource.Get());
-#endif
 
     // ToDo remove unneeded ones
     // Full-res AO resources.
@@ -2326,7 +2265,7 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 
     // ToDo split shader table per unique pass?
 
-    UINT m_maxInstanceContributionToHitGroupIndex = 0;
+    m_maxInstanceContributionToHitGroupIndex = 0;
 	// Hit group shader table.
 	{
 		UINT numShaderRecords = 0;
@@ -2524,9 +2463,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 		OnCreateWindowSizeDependentResources();
         CreateAuxilaryDeviceResources();
 
-#if !DEBUG_RTAO
         m_RTAO.RequestRecreateRaytracingResources();
-#endif
     }
 
 
@@ -2535,9 +2472,9 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     GameInput::Update(elapsedTime);
     EngineTuning::Update(elapsedTime);
     EngineProfiling::Update();
-#if !DEBUG_RTAO
+
     m_RTAO.OnUpdate();
-#endif
+
 	
 	if (GameInput::IsFirstPressed(GameInput::kKey_f))
 	{
@@ -2639,13 +2576,11 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 
     // ToDo move
     // SSAO
-#if !DEBUG_RTAO
     {   
         m_SSAOCB->noiseTile = { float(m_width) / float(SSAO_NOISE_W), float(m_height) / float(SSAO_NOISE_W), 0, 0};
         m_SSAO.SetParameters(SceneArgs::SSAONoiseFilterTolerance, SceneArgs::SSAOBlurTolerance, SceneArgs::SSAOUpsampleTolerance, SceneArgs::SSAONormalMultiply);
     
     }
-#endif
 	if (m_enableUI)
     {
         UpdateUI();
@@ -4121,9 +4056,8 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
     CreateRaytracingOutputResource();
 
 	CreateGBufferResources();
-#if !DEBUG_RTAO
     m_RTAO.SetResolution(m_raytracingWidth, m_raytracingHeight);
-#endif
+
 	m_reduceSumKernel.CreateInputResourceSizeDependentResources(
 		device,
 		m_cbvSrvUavHeap.get(), 
@@ -4133,14 +4067,12 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
     m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_raytracingWidth, m_raytracingHeight);
     
     // SSAO
-#if !DEBUG_RTAO
     {
         m_SSAO.OnSizeChanged(m_GBufferWidth, m_GBufferHeight);
         ID3D12Resource* SSAOoutputResource = m_SSAO.GetSSAOOutputResource();
         D3D12_CPU_DESCRIPTOR_HANDLE dummyHandle;
         CreateTextureSRV(device, SSAOoutputResource, m_cbvSrvUavHeap.get(), &m_SSAOsrvDescriptorHeapIndex, &dummyHandle, &SSAOgpuDescriptorReadAccess);
     }
-#endif
 
     if (m_enableUI)
     {
@@ -4729,10 +4661,13 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
         return;
     }
 
-#if DEBUG_RTAO
-
+#if 0
+    auto commandList = m_deviceResources->GetCommandList();
     m_deviceResources->Prepare();
+    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_deviceResources->GetRenderTarget(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    commandList->ResourceBarrier(1, &barrier);
     m_deviceResources->ExecuteCommandList();
+    m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
 #else
     auto commandList = m_deviceResources->GetCommandList();
     
@@ -4741,9 +4676,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
     EngineProfiling::BeginFrame(commandList);
 
-#if DEBUG_RTAO
-    if (0)
-#endif
     {
         // ToDo fix - this dummy and make sure the children are properly enumerated as children in the UI output.
         ScopedTimer _prof(L"Dummy", commandList);
@@ -4765,12 +4697,10 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
             {
                 ScopedTimer _prof(L"RTAO", commandList);
 
-
                 RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
                 m_RTAO.OnRender(
                     m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
                     GBufferResources[0].gpuDescriptorReadAccess);
-
                 RenderPass_TemporalCacheReverseProjection();
 
 #if BLUR_AO
@@ -4812,10 +4742,8 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                     m_SSAOCB.CopyStagingToGpu(frameIndex);
                 }
 
-#if !DEBUG_RTAO
                 m_SSAO.ChangeScreenScale(1.f);
                 m_SSAO.Run(m_SSAOCB.GetResource());
-#endif
             }
 #if 0
 #if TEST_EARLY_EXIT
@@ -4843,7 +4771,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
             {
                 AOSRV = m_AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].gpuDescriptorReadAccess;
             }
-
             RenderPass_ComposeRenderPassesCS(AOSRV);
 
             if (m_GBufferWidth != m_width || m_GBufferHeight != m_height)

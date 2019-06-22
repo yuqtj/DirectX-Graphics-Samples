@@ -299,6 +299,10 @@ float CalculateAO(in float3 hitPosition, in uint2 DTid, UINT numSamples, in floa
 [shader("raygeneration")]
 void RayGenShader()
 {
+
+#if DEBUG_RTAO
+    return;
+#endif
     uint2 DTid = DispatchRaysIndex().xy;
 
 
@@ -378,6 +382,9 @@ void RayGenShader()
 [shader("raygeneration")]
 void RayGenShader_sortedRays()
 {
+#if DEBUG_RTAO
+    return;
+#endif
 #if RTAO_RAY_SORT_1DRAYTRACE
     uint index1D = DispatchRaysIndex().x; 
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);

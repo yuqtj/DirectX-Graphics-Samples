@@ -14,6 +14,8 @@
 
 #include "SSAO//GlobalSharedHlslCompat.h"
 
+#define DEBUG_RTAO 1
+
 /*
 //ToDo
 - overblur on mouse camera movement

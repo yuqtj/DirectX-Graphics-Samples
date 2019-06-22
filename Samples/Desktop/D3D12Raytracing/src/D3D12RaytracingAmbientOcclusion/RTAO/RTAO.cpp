@@ -806,6 +806,24 @@ void RTAO::OnRender(
 
     DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOFullRes].Get());
 
+#if DEBUG_RTAO
+
+    // Transition AO resources to shader resource state.
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_sourceToSortedRayIndex.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndex.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+    }
+#else
     // ToDo Remove
     //DispatchRays(m_rayGenShaderTables[SceneArgs::QuarterResAO ? RTAORayGenShaderType::AOQuarterRes : RTAORayGenShaderType::AOFullRes].Get(),
     //    &m_gpuTimers[GpuTimers::Raytracing_AO], m_raytracingWidth, m_raytracingHeight);
@@ -899,7 +917,7 @@ void RTAO::OnRender(
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
-
+#endif
     // Calculate AO ray hit count.
     if (m_calculateRayHitCounts)
     {

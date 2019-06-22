@@ -20,7 +20,6 @@
 #include "GpuKernels.h"
 
 
-#define DEBUG_RTAO 1
 
 // ToDo move to cpp
 namespace RTAORayGenShaderType {
