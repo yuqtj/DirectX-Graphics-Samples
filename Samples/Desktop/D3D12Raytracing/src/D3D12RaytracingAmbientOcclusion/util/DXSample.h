@@ -77,7 +77,7 @@ protected:
 
     // D3D device resources
     UINT m_adapterIDoverride;
-    std::shared_ptr<DX::DeviceResources> m_deviceResources;
+    std::unique_ptr<DX::DeviceResources> m_deviceResources;
 
 private:
     // Root assets path.

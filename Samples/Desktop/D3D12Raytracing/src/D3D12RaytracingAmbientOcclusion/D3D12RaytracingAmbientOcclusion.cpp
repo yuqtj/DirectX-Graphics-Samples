@@ -508,7 +508,7 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
 // ToDo worth moving some common member vars and fncs to DxSampleRaytracing base class?
 void D3D12RaytracingAmbientOcclusion::OnInit()
 {
-    m_deviceResources = make_shared<DeviceResources>(
+    m_deviceResources = make_unique<DeviceResources>(
         DXGI_FORMAT_R8G8B8A8_UNORM,
         DXGI_FORMAT_UNKNOWN,
         FrameCount,
@@ -576,6 +576,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
     }
 
     // SSAO.
+#if !DEBUG_RTAO
     {
         XMMATRIX view, proj;
         m_camera.GetProj(&proj, m_GBufferWidth, m_GBufferHeight);
@@ -621,6 +622,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
             m_SSAOCB->frustumVDelta = vertDelta;
         }
     }
+#endif
 }
 
 void D3D12RaytracingAmbientOcclusion::UpdateBottomLevelASTransforms()
@@ -1001,10 +1003,11 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 	CreateComposeRenderPassesCSResources();
 
     CreateAoBlurCSResources();
-
+#if !DEBUG_RTAO
     m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_maxInstanceContributionToHitGroupIndex);
-    m_SSAO.Setup(m_deviceResources);
 
+    m_SSAO.Setup(m_deviceResources);
+#endif
     // 
     m_prevFrameBottomLevelASInstanceTransforms.Create(device, MaxNumBottomLevelInstances, FrameCount, L"GPU buffer: Bottom Level AS Instance transforms for previous frame");
 }
@@ -1415,8 +1418,9 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         }
     }
 
+#if !DEBUG_RTAO
     m_SSAO.BindGBufferResources(m_GBufferResources[GBufferResource::SurfaceNormalRGB].resource.Get(), m_GBufferResources[GBufferResource::Depth].resource.Get());
-
+#endif
 
     // ToDo remove unneeded ones
     // Full-res AO resources.
@@ -2520,8 +2524,10 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 		OnCreateWindowSizeDependentResources();
         CreateAuxilaryDeviceResources();
 
+#if !DEBUG_RTAO
         m_RTAO.RequestRecreateRaytracingResources();
-	}
+#endif
+    }
 
 
     CalculateFrameStats();
@@ -2529,7 +2535,9 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     GameInput::Update(elapsedTime);
     EngineTuning::Update(elapsedTime);
     EngineProfiling::Update();
+#if !DEBUG_RTAO
     m_RTAO.OnUpdate();
+#endif
 	
 	if (GameInput::IsFirstPressed(GameInput::kKey_f))
 	{
@@ -2631,11 +2639,13 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 
     // ToDo move
     // SSAO
+#if !DEBUG_RTAO
     {   
         m_SSAOCB->noiseTile = { float(m_width) / float(SSAO_NOISE_W), float(m_height) / float(SSAO_NOISE_W), 0, 0};
         m_SSAO.SetParameters(SceneArgs::SSAONoiseFilterTolerance, SceneArgs::SSAOBlurTolerance, SceneArgs::SSAOUpsampleTolerance, SceneArgs::SSAONormalMultiply);
     
     }
+#endif
 	if (m_enableUI)
     {
         UpdateUI();
@@ -4111,7 +4121,9 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
     CreateRaytracingOutputResource();
 
 	CreateGBufferResources();
+#if !DEBUG_RTAO
     m_RTAO.SetResolution(m_raytracingWidth, m_raytracingHeight);
+#endif
 	m_reduceSumKernel.CreateInputResourceSizeDependentResources(
 		device,
 		m_cbvSrvUavHeap.get(), 
@@ -4121,12 +4133,14 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
     m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_raytracingWidth, m_raytracingHeight);
     
     // SSAO
+#if !DEBUG_RTAO
     {
         m_SSAO.OnSizeChanged(m_GBufferWidth, m_GBufferHeight);
         ID3D12Resource* SSAOoutputResource = m_SSAO.GetSSAOOutputResource();
         D3D12_CPU_DESCRIPTOR_HANDLE dummyHandle;
         CreateTextureSRV(device, SSAOoutputResource, m_cbvSrvUavHeap.get(), &m_SSAOsrvDescriptorHeapIndex, &dummyHandle, &SSAOgpuDescriptorReadAccess);
     }
+#endif
 
     if (m_enableUI)
     {
@@ -4715,6 +4729,11 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
         return;
     }
 
+#if DEBUG_RTAO
+
+    m_deviceResources->Prepare();
+    m_deviceResources->ExecuteCommandList();
+#else
     auto commandList = m_deviceResources->GetCommandList();
     
     // Begin frame.
@@ -4722,7 +4741,9 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
     EngineProfiling::BeginFrame(commandList);
 
+#if DEBUG_RTAO
     if (0)
+#endif
     {
         // ToDo fix - this dummy and make sure the children are properly enumerated as children in the UI output.
         ScopedTimer _prof(L"Dummy", commandList);
@@ -4791,8 +4812,10 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                     m_SSAOCB.CopyStagingToGpu(frameIndex);
                 }
 
+#if !DEBUG_RTAO
                 m_SSAO.ChangeScreenScale(1.f);
                 m_SSAO.Run(m_SSAOCB.GetResource());
+#endif
             }
 #if 0
 #if TEST_EARLY_EXIT
@@ -4841,7 +4864,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     EngineProfiling::EndFrame(commandList);
 
     m_deviceResources->ExecuteCommandList();
-
     // UI overlay.
     if (m_enableUI)
     {
@@ -4854,6 +4876,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
 #endif 
 
+#endif
 
    // SceneArgs::TAO_LazyRender.Bang();
     //m_cameraChangedIndex = 0;
