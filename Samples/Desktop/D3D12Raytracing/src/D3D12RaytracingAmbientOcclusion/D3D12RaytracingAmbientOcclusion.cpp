@@ -1292,7 +1292,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Hit], initialResourceState, L"GBuffer Hit");
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Material], initialResourceState, L"GBuffer Material");
 
-        // ToDo change to RGB32?
+        // ToDo change to 16bit? or DXGI_FORMAT_R32G32B32_FLOAT
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer HitPosition");
 
         CreateRenderTargetResource(device, normalFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormal], initialResourceState, L"GBuffer Normal");

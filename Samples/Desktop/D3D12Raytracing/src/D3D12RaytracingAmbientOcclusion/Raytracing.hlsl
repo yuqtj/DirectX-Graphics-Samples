@@ -47,7 +47,7 @@ RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
 // {MaterialId, 16b 2D texCoords}
 RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}. // ToDo compact to 8b?
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
-RWTexture2D<float4> g_rtGBufferNormal : register(u8);
+RWTexture2D<float4> g_texGBufferNormalDepth : register(u8);
 RWTexture2D<float> g_rtGBufferDistance : register(u9);
 
 Texture2D<uint> g_texGBufferPositionHits : register(t5); 
@@ -807,7 +807,8 @@ void MyRayGenShader_GBuffer()
 
     // ToDo dedupe
     //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - CB.cameraPosition.xyz, 1);
-    if (rayPayload.AOGBuffer.tHit > 0)
+    bool hasCameraRayHitGeometry = rayPayload.AOGBuffer.tHit > 0;
+    if (hasCameraRayHitGeometry)
     {
         // Calculate depth value.
         //float4 homogeneousScreenSpaceHitPosition = mul(viewSpaceHitPosition, CB.viewProjection);
@@ -828,62 +829,64 @@ void MyRayGenShader_GBuffer()
         float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth);
         g_rtTextureSpaceMotionVector[DTid] = motionVector;
         g_rtReprojectedHitPosition[DTid] = float4(rayPayload.AOGBuffer._encodedNormal, _depth, 0);
-    }
-    else
-    {
-        // Invalidate the motion vector - set it to move well out of texture bounds.
-        g_rtTextureSpaceMotionVector[DTid] = 1e3f;
-        g_rtReprojectedHitPosition[DTid] = FLT_MAX;   // ToDo can we skip this write
-    }
 
-#if COMPRES_NORMALS
-    // compress normal
-    // ToDo normalize depth to [0,1] as floating point has higher precision around 0.
-    // ToDo need to normalize hit distance as well
+        // ToDo normalize depth to [0,1] as floating point has higher precision around 0.
+        // ToDo need to normalize hit distance as well
 #if USE_NORMALIZED_Z
-     float linearDistance = NormalizeToRange(rayLength, CB.Zmin, CB.Zmax);
+        float linearDistance = NormalizeToRange(rayLength, CB.Zmin, CB.Zmax);
 #else
-    float linearDistance = rayLength;// (rayLength - CB.Zmin) / (CB.Zmax - CB.Zmin);
+        float linearDistance = rayLength;// (rayLength - CB.Zmin) / (CB.Zmax - CB.Zmin);
 #endif
     // Calculate z-depth
-    float3 cameraDirection = GenerateForwardCameraRayDirection(CB.projectionToWorldWithCameraEyeAtOrigin);
-    float linearDepth = linearDistance * dot(ray.direction, cameraDirection);
+        float3 cameraDirection = GenerateForwardCameraRayDirection(CB.projectionToWorldWithCameraEyeAtOrigin);
+        float linearDepth = linearDistance * dot(ray.direction, cameraDirection);
 
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-    float rxLinearDepth = rayPayload.rxTHit * dot(rx.direction, cameraDirection);
-    float ryLinearDepth = rayPayload.ryTHit * dot(ry.direction, cameraDirection);
-    float2 ddxy = abs(float2(rxLinearDepth, ryLinearDepth) - linearDepth);
-    g_rtPartialDepthDerivatives[DTid] = ddxy;
+        float rxLinearDepth = rayPayload.rxTHit * dot(rx.direction, cameraDirection);
+        float ryLinearDepth = rayPayload.ryTHit * dot(ry.direction, cameraDirection);
+        float2 ddxy = abs(float2(rxLinearDepth, ryLinearDepth) - linearDepth);
+        g_rtPartialDepthDerivatives[DTid] = ddxy;
 #endif
 #if 1
-    float nonLinearDepth = rayPayload.AOGBuffer.tHit > 0 ?
-        (FAR_PLANE + NEAR_PLANE - 2.0 * NEAR_PLANE * FAR_PLANE / linearDepth) / (FAR_PLANE - NEAR_PLANE)
-        : 1;
-    nonLinearDepth = (nonLinearDepth + 1.0) / 2.0;
-    //linearDepth = rayLength = nonLinearDepth;
+        float nonLinearDepth = rayPayload.AOGBuffer.tHit > 0 ?
+            (FAR_PLANE + NEAR_PLANE - 2.0 * NEAR_PLANE * FAR_PLANE / linearDepth) / (FAR_PLANE - NEAR_PLANE)
+            : 1;
+        nonLinearDepth = (nonLinearDepth + 1.0) / 2.0;
+        //linearDepth = rayLength = nonLinearDepth;
 #endif
 
     // ToDo do we need both? Or just normal for high-fidelity one w/o depth?
-    g_rtGBufferNormal[DTid] = float4(rayPayload.AOGBuffer.encodedNormal, linearDepth, obliqueness);
-    g_rtGBufferNormalDepthLowPrecision[DTid] = float4(rayPayload.AOGBuffer.encodedNormal, linearDepth, 0);
-#else
-    #if PACK_NORMAL_AND_DEPTH
-        obliqueness = rayLength;
-    #endif
-    g_rtGBufferNormal[DTid] = float4(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), obliqueness);
-#endif
-    g_rtGBufferDistance[DTid] = linearDepth;
+        g_texGBufferNormalDepth[DTid] = float4(rayPayload.AOGBuffer.encodedNormal, linearDepth, obliqueness);
+        g_rtGBufferNormalDepthLowPrecision[DTid] = float4(rayPayload.AOGBuffer.encodedNormal, linearDepth, 0);
 
-    // ToDo revise + check https://stackoverflow.com/questions/6652253/getting-the-true-z-value-from-the-depth-buffer
-    // Convert distance to nonLinearDepth.
-    {
+        g_rtGBufferDistance[DTid] = linearDepth;
 
-        g_rtGBufferDepth[DTid] = linearDepth;// nonLinearDepth;
+        // ToDo revise + check https://stackoverflow.com/questions/6652253/getting-the-true-z-value-from-the-depth-buffer
+        // Convert distance to nonLinearDepth.
+        {
+
+            g_rtGBufferDepth[DTid] = linearDepth;// nonLinearDepth;
+        }
+        // ToDo don't write on no hit?
+        g_rtGBufferNormalRGB[DTid] = float4(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), 0);
+
+        g_rtAODiffuse[DTid] = float4(Byte3ToNormalizedFloat3(rayPayload.AOGBuffer.diffuseByte3), 0);
     }
-    // ToDo don't write on no hit?
-    g_rtGBufferNormalRGB[DTid] = rayPayload.AOGBuffer.tHit > 0 ? float4(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), 0) : float4(0, 0, 0, 0);
+    else // No geometry hit.
+    {
+        // Depth of 0 demarks no hit
+        // as low precision normal depth resource R11G11B10 
+        // can store non-negative numbers only.
+        g_texGBufferNormalDepth[DTid] = 0;
+        g_rtGBufferNormalDepthLowPrecision[DTid] = 0;
+        g_rtGBufferNormalRGB[DTid] = 0 ;
 
-    g_rtAODiffuse[DTid] = float4(Byte3ToNormalizedFloat3(rayPayload.AOGBuffer.diffuseByte3), 0);
+        // Invalidate the motion vector - set it to move well out of texture bounds.
+        g_rtTextureSpaceMotionVector[DTid] = 1e3f;
+        g_rtReprojectedHitPosition[DTid] = FLT_MAX;   // ToDo can we skip this write
+
+    }
+
     g_rtColor[DTid] = float4(rayPayload.radiance, 1);
 }
 

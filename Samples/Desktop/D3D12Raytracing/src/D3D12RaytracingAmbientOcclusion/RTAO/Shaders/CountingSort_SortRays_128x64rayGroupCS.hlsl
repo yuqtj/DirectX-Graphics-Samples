@@ -39,18 +39,16 @@
 
 Texture2D<float4> g_inRayDirectionOriginDepth : register(t0);    // R11G11B10 texture. Note this format doesn't store negative values.
 
-// Sorted Ray Group index offsets. 
-// This lists ray index offsets of the sorted rays from the Ray Group start.
-RWTexture2D<uint2> g_outSourceToSortedRayIndex : register(u0);   
+// Source ray index offset for a given sorted ray index offset within a ray group.
+// This is essentially a sorted source ray index offsets buffer within a ray group.
+RWTexture2D<uint2> g_outSortedToSourceRayIndexOffset  : register(u0);   
 
-// Inverted sorted Ray Group index offsets. 
-// This lists sorted ray index offsets of the non-sorted rays from the Ray Group start.
-// This can be used to find which ray group index (based on sorting) processed ray for a given index.
-// In other words, ray tracing pass for the sorted rays can output their results sequentially according to their dispatch thread indices 
-// and then another post-process pass can use this list to gather those results, instead of doing a more costly scatter write during ray tracing pass.
-// RWTexture2D<uint2> g_outSortedToSourceRayIndex : register(u0);
-
-RWTexture2D<uint2> g_outSortedToSourceRayIndex : register(u1);  // Thread group per-pixel index offsets within each 128x64 pixel group.
+// Test perf
+// Sorted ray index offset for a given source ray index offset within a ray group.
+// This is essentially an inverted mapping to SortedToSourceRayIndexOffset to
+// help avoid scatter writes from sorted rays, and instead do gather reads
+// in a pass reading from sorted AO pass output.
+RWTexture2D<uint2> g_outSourceToSortedRayIndexOffset: register(u1);  // Thread group per-pixel index offsets within each 128x64 pixel group.
 RWTexture2D<float4> g_outDebug : register(u2);  // Thread group per-pixel index offsets within each 128x64 pixel group.
 
 ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
@@ -1036,7 +1034,7 @@ void SpillCInvertedSortedIndicesToVRAM(in uint2 Gid, in uint GI)
 
         uint2 srcIndex = uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
         uint2 outPixel = GroupStart + srcIndex;
-        g_outSortedToSourceRayIndex[outPixel] = packedSortedIndex;   // Output the sorted index for this source ray index.
+        g_outSortedToSourceRayIndexOffset[outPixel] = packedSortedIndex;   // Output the sorted index for this source ray index.
     }
 }
 
@@ -1047,9 +1045,13 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
 
     float2 rayGroupMinMaxDepth;
     GenerateHashKeysAndKeyHistogram(Gid, GI, rayGroupMinMaxDepth);
+
     PrefixSum(GI);
+
     ScatterWriteSortedIndicesToSharedMemory(Gid, GI, rayGroupMinMaxDepth);
+
     SpillCachedIndicesToVRAMAndCacheInvertedSortedIndices(Gid, GI);
+
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
     SpillCInvertedSortedIndicesToVRAM(Gid, GI);
 #endif

@@ -90,8 +90,8 @@ private:
     // Raytracing shader resources.
     RWGpuResource   m_AOResources[AOResource::Count];
     RWGpuResource   m_AORayDirectionOriginDepth;
+    RWGpuResource   m_sortedToSourceRayIndexOffset;   // Index of a ray in the source array given a sorted index.
     RWGpuResource   m_sourceToSortedRayIndex;         // Index of a ray in the sorted array given a source index.
-    RWGpuResource   m_sortedToSourceRayIndex;         // Index of a ray in the source (screen space) array given a sorted index.
     RWGpuResource   m_sortedRayGroupDebug;            // ToDo remove
     ConstantBuffer<RTAOConstantBuffer> m_CB;
     Samplers::MultiJittered m_randomSampler;

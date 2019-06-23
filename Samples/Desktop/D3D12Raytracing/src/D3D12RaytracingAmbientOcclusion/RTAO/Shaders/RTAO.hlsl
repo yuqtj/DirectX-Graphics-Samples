@@ -37,73 +37,57 @@
 //  g_* - bound via a global root signature.
 //  l_* - bound via a local root signature.
 RaytracingAccelerationStructure g_scene : register(t0, space0);
-RWTexture2D<float4> g_renderTarget : register(u0);			// ToDo remove
 
-// ToDo prune redundant
-// ToDo move this to local ray gen root sig
-RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
-// {MaterialId, 16b 2D texCoords}
-RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}. // ToDo compact to 8b?
-RWTexture2D<float4> g_rtGBufferPosition : register(u7);
-RWTexture2D<float4> g_rtGBufferNormal : register(u8);
-RWTexture2D<float> g_rtGBufferDistance : register(u9);
 
+// ToDo switch to depth == 0 for hit/no hit?
 Texture2D<uint> g_texGBufferPositionHits : register(t5); 
+
 Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Material Id, 3x Diffuse.RGB}       // ToDo rename to material like in composerenderpasses
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
-Texture2D<float4> g_texGBufferNormal : register(t8);
-Texture2D<float4> g_texGBufferDistance : register(t9);
-TextureCube<float4> g_texEnvironmentMap : register(t12);
-Texture2D<float> g_filterWeightSum : register(t13);
-Texture2D<uint> g_texInputAOFrameAge : register(t14);
-Texture2D<float> g_texShadowMap : register(t21);
+Texture2D<float4> g_texGBufferNormalDepth : register(t8);        // ToDo use 32bit format?
 Texture2D<float4> g_texAORaysDirectionOriginDepthHit : register(t22);
 Texture2D<uint2> g_texAOSourceToSortedRayIndex : register(t23);
 
+
+// ToDo remove ? 
+Texture2D<float> g_filterWeightSum : register(t13);
+Texture2D<uint> g_texInputAOFrameAge : register(t14);
 
 // ToDo remove AOcoefficient and use AO hits instead?
 //todo remove rt?
 RWTexture2D<float> g_rtAOcoefficient : register(u10);
 RWTexture2D<uint> g_rtAORayHits : register(u11);
-RWTexture2D<float> g_rtVisibilityCoefficient : register(u12);
-RWTexture2D<float> g_rtGBufferDepth : register(u13);
-RWTexture2D<float4> g_rtGBufferNormalRGB : register(u14);   // for SSAO. ToDo cleanup
 RWTexture2D<float> g_rtAORayHitDistance : register(u15);
-#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
-#endif
-// ToDo pack motion vector, depth and normal into float4
-RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
-RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18);
-RWTexture2D<float4> g_rtColor : register(u19);
-RWTexture2D<float4> g_rtAODiffuse : register(u20);
-RWTexture2D<float> g_rtShadowMap : register(u21);
 RWTexture2D<float4> g_rtAORaysDirectionOriginDepth : register(u22);
 RWTexture2D<float4> g_rtGBufferNormalDepthLowPrecision : register(u23);
 
 ConstantBuffer<RTAOConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
-StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
 
-StructuredBuffer<float3x4> g_prevFrameBottomLevelASInstanceTransform : register(t15);
 
 
-SamplerState LinearWrapSampler : register(s0);
+bool HasAORayHitAnyGeometry(in float tHit)
+{
+    return tHit != HitDistanceOnMiss;
+}
 
 
 //***************************************************************************
 //*********************------ TraceRay wrappers. -------*********************
 //***************************************************************************
 
-// Trace a shadow ray and return true if it hits any geometry.
-bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in bool retrieveTHit = true, in float TMax = 10000, in bool acceptFirstHit = false)
+// Trace an AO ray and return true if it hits any geometry.
+bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float TMax, in float3 surfaceNormal)
 {
-    // Set the ray's extents.
     RayDesc rayDesc;
-    rayDesc.Origin = ray.origin;
+
+    // Nudge the origin along the surface normal a bit to avoid 
+    // starting from behind the surface
+    // due to float calculations imprecision.
+    rayDesc.Origin = ray.origin + CB.RTAO_TraceRayOffsetAlongNormal * surfaceNormal;
     rayDesc.Direction = ray.direction;
-    // Set TMin to a zero value to avoid aliasing artifacts along contact areas. // ToDo update comment re-floating error
-    // Note: make sure to enable back-face culling so as to avoid surface face fighting.
+
+    // Set the ray's extents.
     rayDesc.TMin = 0.0;
 	rayDesc.TMax = TMax;
 
@@ -119,66 +103,51 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in bool retrieveTHit =
 #else
         0
 #endif
-        | RAY_FLAG_CULL_NON_OPAQUE;             // ~skip transparent objects
-    
-    if (acceptFirstHit || !retrieveTHit)
+        // Skip transparent objects.in bool acceptFirstHit = false
+        | RAY_FLAG_CULL_NON_OPAQUE;        
+
+    // ToDo test perf impact
+    bool acceptFirstHit = true;
+    if (acceptFirstHit || !CB.useShadowRayHitTime)
     {
+        // ToDo test perf impact
         // Performance TIP: Accept first hit if true hit is not neeeded,
         // or has minimal to no impact (in AO). The peformance gain can
         // be substantial.
         rayFlags |= RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
     }
 
+    // ToDo test perf impact
     // Skip closest hit shaders of tHit time is not needed.
-    if (!retrieveTHit) 
-    {
-        rayFlags |= RAY_FLAG_SKIP_CLOSEST_HIT_SHADER; 
-    }
+    // rayFlags |= RAY_FLAG_SKIP_CLOSEST_HIT_SHADER; 
 
     TraceRay(g_scene,
         rayFlags,
-        TraceRayParameters::InstanceMask,
-        TraceRayParameters::HitGroup::Offset[RayType::Shadow],
-        TraceRayParameters::HitGroup::GeometryStride,
-        TraceRayParameters::MissShader::Offset[RayType::Shadow],
+        RTAOTraceRayParameters::InstanceMask,
+        RTAOTraceRayParameters::HitGroup::Offset[RTAORayType::AO],
+        RTAOTraceRayParameters::HitGroup::GeometryStride,
+        RTAOTraceRayParameters::MissShader::Offset[RTAORayType::AO],
         rayDesc, shadowPayload);
     
-    // Report a hit if Miss Shader didn't set the value to HitDistanceOnMiss.
     tHit = shadowPayload.tHit;
 
-    return shadowPayload.tHit > 0;
+    // Report a hit if Miss Shader didn't set the value to HitDistanceOnMiss.
+    return HasAORayHitAnyGeometry(tHit);
 }
 
-bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float3 N, in bool retrieveTHit = true, in float TMax = 10000)
-{
-    // Only trace if the surface is facing the target.
-    if (dot(ray.direction, N) > 0)
-    {
-        return TraceAORayAndReportIfHit(tHit, ray, retrieveTHit, TMax);
-    }
-    return false;
-}
 
-// ToDo comment
-// MinHitDistance - minimum hit distance of all AO ray hits.
-// ToDo ensure AO doesn't cast beyond max recursion depth
-float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 DTid, in UINT numSamples, in float3 hitPosition, in float3 surfaceNormal, in float3 surfaceAlbedo = float3(1,1,1), in float linearDepth = 0)
+Ray GenerateRandomAORay(in uint2 DTid, in float3 hitPosition, in float3 surfaceNormal)
 {
-    numShadowRayHits = 0;
-    minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
-    float occlussionCoefSum = 0;
-
     // Calculate coordinate system for the hemisphere.
     // ToDo AO has square alias due to same hemisphere
     float3 u, v, w;
     w = surfaceNormal;
-#if 0
-    w = float3(0, 1, 0);
-#endif
+
+    // ToDo test using rand instead.
     float3 right = float3(0.0072, 0.999994132f, 0.0034);
     v = normalize(cross(w, right));
     u = cross(v, w);
-    
+
 
     // Calculate offsets to the pregenerated sample set.
     uint sampleSetJump;     // Offset to the start of the sample set
@@ -186,8 +155,8 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
     {
         // Neighboring samples NxN share a sample set, but use different samples within a set.
         // Sharing a sample set lets the pixels in the group get a better coverage of the hemisphere 
-        // than if each pixel used a separate sample set with less samples per set.
-        
+        // than if each pixel used a separate sample set with less samples pregenerated per set.
+
         // Get a common sample set ID and seed shared across neighboring pixels.
         uint numSampleSetsInX = (DispatchRaysDimensions().x + CB.numPixelsPerDimPerSet - 1) / CB.numPixelsPerDimPerSet;
         uint2 sampleSetId = DTid / CB.numPixelsPerDimPerSet;
@@ -199,7 +168,7 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
         float3 pixelZeroHitPosition = g_texGBufferPositionRT[pixelZeroId].xyz;      // ToDo remove?
         uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + CB.seed;
         uint RNGState = RNG::SeedThread(sampleSetSeed);
-        
+
         sampleSetJump = RNG::Random(RNGState, 0, CB.numSampleSets - 1) * CB.numSamplesPerSet;
 
         // Get a pixel ID within the shared set across neighboring pixels.
@@ -210,117 +179,86 @@ float CalculateAO(out uint numShadowRayHits, out float minHitDistance, in uint2 
         // to break group to group correlation resulting in square alias.
         uint numPixelsPerSet = CB.numPixelsPerDimPerSet * CB.numPixelsPerDimPerSet;
         sampleJump = pixeIDPerSet + RNG::Random(RNGState, 0, numPixelsPerSet - 1);
-        sampleJump *= CB.numSamplesToUse;
     }
-#if AO_PROGRESSIVE_SAMPLING
-    sampleJump += numSamples * g_texInputAOFrameAge[DTid];
-#endif
 
-#if AO_SPP_N_MAX == 1
-    uint i = 0;
-#else
-    for (uint i = 0; i < numSamples; i++)
-#endif
+    // Load a pregenerated random sample from the sample set.
+    float3 sample = g_sampleSets[sampleSetJump + (sampleJump % CB.numSamplesPerSet)].value;
+
+    // ToDo remove unnecessary normalize()
+    float3 rayDirection = normalize(sample.x * u + sample.y * v + sample.z * w);
+
+    Ray AORay = { hitPosition, rayDirection };
+
+    return AORay;
+}
+
+
+// Traces a given AO ray. 
+// Returns its tHit and a calculated ambient coefficient.
+float CalculateAO(out float tHit, in uint2 srcPixelIndex, in Ray AOray, in float3 surfaceNormal)
+{
+    float ambientCoef = 1;
+    const float tMax = CB.RTAO_maxShadowRayHitTime; // ToDo make sure its FLT_10BIT_MAX or less since we use 10bit origin depth in RaySort
+    if (TraceAORayAndReportIfHit(tHit, AOray, tMax, surfaceNormal))
     {
-        // Load a pregenerated random sample from the sample set.
-        float3 sample = g_sampleSets[sampleSetJump + ((sampleJump + i) % CB.numSamplesPerSet)].value;
-
-        // ToDo remove unnecessary normalize()
-        float3 rayDirection = normalize(sample.x * u + sample.y * v + sample.z * w);
-        //rayDirection = normalize(float3(1, 1, 1));
-        if (CB.RTAO_UseSortedRays)
+        float occlusionCoef = 1;
+        if (CB.RTAO_IsExponentialFalloffEnabled)
         {
-            uint2 DTid = DispatchRaysIndex().xy;
-            g_rtAORaysDirectionOriginDepth[DTid] = float4(EncodeNormal(rayDirection), linearDepth, 0);
+            float theoreticalTMax = CB.RTAO_maxTheoreticalShadowRayHitTime;
+            float t = tHit / theoreticalTMax;
+            float lambda = CB.RTAO_exponentialFalloffDecayConstant;
+            occlusionCoef = exp(-lambda * t * t);
         }
 
-        // ToDo hitPosition adjustment - fix crease artifacts
-        // Todo fix noise on flat surface / box
-        Ray shadowRay = { hitPosition + CB.RTAO_TraceRayOffsetAlongNormal * surfaceNormal, rayDirection };
+        ambientCoef = 1 - (1 - occlusionCoef) * CB.RTAO_MinimumAmbientIllumination;
 
-        const float tMax = CB.RTAO_maxShadowRayHitTime;
-        float tHit;
-        if (TraceAORayAndReportIfHit(tHit, shadowRay, CB.useShadowRayHitTime, tMax, true))
+        // Approximate interreflections of light from blocking surfaces which are generally not completely dark and tend to have similar radiance.
+        // Ref: Ch 11.3.3 Accounting for Interreflections, Real-Time Rendering (4th edition).
+        // The approximation assumes:
+        //      o All surfaces incoming and outgoing radiance is the same 
+        //      o Current surface color is the same as that of the occluders
+        // Since this sample uses scalar ambient coefficient, we use the scalar luminance of the surface color.
+        // This will generally brighten the AO making it closer to the result of full Global Illumination, including interreflections.
+        if (CB.RTAO_approximateInterreflections)
         {
-            float occlusionCoef = 1;
-            if (CB.RTAO_IsExponentialFalloffEnabled)
-            {
-                float theoreticalTMax = CB.RTAO_maxTheoreticalShadowRayHitTime;
-                float t = tHit / theoreticalTMax;
-                float lambda = CB.RTAO_exponentialFalloffDecayConstant;
-                // Note: update tMax calculation on falloff expression change.
-                occlusionCoef = exp(-lambda * t*t);
-            }
-            occlussionCoefSum += (1.f - CB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
+            // ToDo test perf impact of reading the texture and move this to compose pass
+            uint2 materialInfo = g_texGBufferMaterialInfo[srcPixelIndex];
+            UINT materialID;
+            float3 surfaceAlbedo;
+            DecodeMaterial16b(materialInfo, materialID, surfaceAlbedo);
 
-            minHitDistance = min(tHit, minHitDistance);
-            numShadowRayHits++;
+            float kA = ambientCoef;
+            float rho = CB.RTAO_diffuseReflectanceScale * RGBtoLuminance(surfaceAlbedo);
+
+            ambientCoef = kA / (1 - rho * (1 - kA));
         }
-    }
-#if AO_ANY_HIT_FULL_OCCLUSION
-    float ambientCoef = numShadowRayHits > 0 ? 0 : 1;
-#else
-    float occlusionCoef = saturate(occlussionCoefSum / (float)numSamples);
-    float ambientCoef = 1.f - occlusionCoef;
-#endif
-	
-    // Approximate interreflections of light from blocking surfaces which are generally not completely dark and tend to have similar radiance.
-    // Ref: Ch 11.3.3 Accounting for Interreflections, Real-Time Rendering (4th edition).
-    // The approximation assumes:
-    //      o All surfaces incoming and outgoing radiance is the same 
-    //      o Current surface color is the same as that of the occluders
-    // Since this sample uses scalar ambient coefficient, we use the scalar luminance of the surface color.
-    // This will generally brighten the AO making it closer to the result of full Global Illumination, including interreflections.
-    if (CB.RTAO_approximateInterreflections)
-    {
-        float kA = ambientCoef;
-        float rho = CB.RTAO_diffuseReflectanceScale * RGBtoLuminance(surfaceAlbedo);
-
-        ambientCoef = kA / (1 - rho * (1 - kA));
     }
 
     return ambientCoef;
 }
 
-
-float CalculateAO(in float3 hitPosition, in uint2 DTid, UINT numSamples, in float3 surfaceNormal)
-{
-	uint numShadowRayHits;
-    float minHitDistance;
-	return CalculateAO(numShadowRayHits, minHitDistance, DTid, numSamples, hitPosition, surfaceNormal);
-}
-
-
 //***************************************************************************
 //********************------ Ray gen shader.. -------************************
 //***************************************************************************
-
 
 [shader("raygeneration")]
 void RayGenShader()
 {
 
-#if DEBUG_RTAO
-    return;
-#endif
+    // ToDo move to a CS if always using a raysort.
     uint2 DTid = DispatchRaysIndex().xy;
 
-
-	bool hit = g_texGBufferPositionHits[DTid] > 0;
-	uint numShadowRayHits = 0;
-	float ambientCoef = 1;  // ToDo 1 or 0?
-    float minHitDistance = HitDistanceOnMiss;
+    float3 encodedNormalDepth = g_texGBufferNormalDepth[DTid].xyz;
+    float depth = encodedNormalDepth.z;
+	bool calculateAO = depth > 0;
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
-#if COMPRES_NORMALS
-        float4 normalDepth = g_texGBufferNormal[DTid];
+        float4 normalDepth = g_texGBufferNormalDepth[DTid];
         float3 surfaceNormal = DecodeNormal(normalDepth.xy);
-        float linearDepth = normalDepth.z;
-#else
-		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
-#endif
+        float depth = normalDepth.z;
 
+        // ToDo test perf impact and move this to compose pass
         float3 surfaceAlbedo = float3(1, 1, 1);
         if (CB.RTAO_approximateInterreflections)
         {
@@ -330,34 +268,42 @@ void RayGenShader()
             surfaceAlbedo = surfaceAlbedo;
         }
 
-        UINT numSamples = CB.numSamplesToUse;
+        //if (CB.RTAO_UseAdaptiveSampling)
+        //{
+        //    float filterWeightSum = g_filterWeightSum[DTid].x;
+        //    float clampedFilterWeightSum = min(filterWeightSum, CB.RTAO_AdaptiveSamplingMaxWeightSum);
+        //    float sampleScale = 1 - (clampedFilterWeightSum / CB.RTAO_AdaptiveSamplingMaxWeightSum);
+        //    
+        //    UINT minSamples = CB.RTAO_AdaptiveSamplingMinSamples;
+        //    UINT extraSamples = CB.numSamplesToUse - minSamples;
 
-        if (CB.RTAO_UseAdaptiveSampling)
+        //    if (CB.RTAO_AdaptiveSamplingMinMaxSampling)
+        //    {
+        //        numSamples = minSamples + (sampleScale >= 0.001 ? extraSamples : 0);
+        //    }
+        //    else
+        //    {
+        //        float scaleExponent = CB.RTAO_AdaptiveSamplingScaleExponent;
+        //        numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
+        //    }
+        //}
+
+
+        float tHit;
+        Ray AORay = GenerateRandomAORay(DTid, hitPosition, surfaceNormal);
+        ambientCoef = CalculateAO(tHit, DTid, AORay, surfaceNormal);
+
+        if (CB.RTAO_UseSortedRays)
         {
-            float filterWeightSum = g_filterWeightSum[DTid].x;
-            float clampedFilterWeightSum = min(filterWeightSum, CB.RTAO_AdaptiveSamplingMaxWeightSum);
-            float sampleScale = 1 - (clampedFilterWeightSum / CB.RTAO_AdaptiveSamplingMaxWeightSum);
-            
-            UINT minSamples = CB.RTAO_AdaptiveSamplingMinSamples;
-            UINT extraSamples = CB.numSamplesToUse - minSamples;
-
-            if (CB.RTAO_AdaptiveSamplingMinMaxSampling)
-            {
-                numSamples = minSamples + (sampleScale >= 0.001 ? extraSamples : 0);
-            }
-            else
-            {
-                float scaleExponent = CB.RTAO_AdaptiveSamplingScaleExponent;
-                numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
-            }
+            uint2 DTid = DispatchRaysIndex().xy;
+            g_rtAORaysDirectionOriginDepth[DTid] = float4(EncodeNormal(rayDirection), depth, 0);
         }
-		ambientCoef = CalculateAO(numShadowRayHits, minHitDistance, DTid, numSamples, hitPosition, surfaceNormal, surfaceAlbedo, linearDepth);
 	}
     else
     {
         if (CB.RTAO_UseSortedRays)
         {
-            g_rtAORaysDirectionOriginDepth[DTid] = float4(0, 0, 0, 0);
+            g_rtAORaysDirectionOriginDepth[DTid] = 0;
         }
     }
 
@@ -367,7 +313,7 @@ void RayGenShader()
     }
 #if GBUFFER_AO_COUNT_AO_HITS
 	// ToDo test perf impact of writing this
-	g_rtAORayHits[DTid] = numShadowRayHits;
+	g_rtAORayHits[DTid] = tHit;
 #endif
 
     if (CB.useShadowRayHitTime)
@@ -375,32 +321,24 @@ void RayGenShader()
 #if USE_NORMALIZED_Z
         minHitDistance *= 1 / (CB.Zmax - CB.Zmin); // ToDo pass by CB? 
 #endif
-      g_rtAORayHitDistance[DTid] = minHitDistance;
+      g_rtAORayHitDistance[DTid] = tHit;
     }
 }
 
-[shader("raygeneration")]
-void RayGenShader_sortedRays()
+// Calculate 2D DTid from a 1D index where
+// - every valid 1D index maps to a valid 2D index within ray tracing buffer dimensions.
+// - pixels are row major within a ray group.
+// - ray groups are row major within the raytracing buffer dimensions.
+// Overflowing ray group dimensions on the borders are clipped to valid raytracing dimnesions.
+uint2 Calculate2DRayIndex(in uint index1D)
 {
-#if DEBUG_RTAO
-    return;
-#endif
-#if RTAO_RAY_SORT_1DRAYTRACE
-    uint index1D = DispatchRaysIndex().x; 
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
-
-    // Calculate 2D DTid from a 1D index where
-    // - 1D index maps to a valid index with ray tracing buffer dimensions
-    // - pixels are row major within a ray group.
-    // - ray groups are row major within the raytracing buffer dimensions.
-    // Adjust for the fact ray groups may go beyond raytracing dimension.
 
     // Find the ray group row index.
     uint numValidPixelsInRow = CB.raytracingDim.x;
     uint rowOfRayGroupSize = rayGroupDim.y * numValidPixelsInRow;
     uint rayGroupRowIndex = index1D / rowOfRayGroupSize;
-    
-    // ToDo replace module with subtraction
+
     // Find the ray group column index.
     uint numValidPixelsInColumn = CB.raytracingDim.y;
     uint numRowsInCurrentRayGroup = min((rayGroupRowIndex + 1) * rayGroupDim.y, numValidPixelsInColumn) - rayGroupRowIndex * rayGroupDim.y;
@@ -415,19 +353,29 @@ void RayGenShader_sortedRays()
     uint rayThreadRowIndex = currentRayGroup_index1D / currentRayGroupWidth;
     uint rayThreadColumnIndex = currentRayGroup_index1D - rayThreadRowIndex * currentRayGroupWidth;
     uint2 rayThreadIndex = uint2(rayThreadColumnIndex, rayThreadRowIndex);
-    
-    uint2 DTid = rayGroupIndex * rayGroupDim + rayThreadIndex;
+
+    uint2 index2D = rayGroupIndex * rayGroupDim + rayThreadIndex;
+
+    return index2D;
+}
+
+[shader("raygeneration")]
+void RayGenShader_sortedRays()
+{
+#if RTAO_RAY_SORT_1DRAYTRACE
+    // Get 2D valid index for a given 1D index.
+    uint DTid1D = DispatchRaysIndex().x; 
+    uint2 DTid = Calculate2DRayIndex | (DTid1D);
+
+    // Get the corresponding source index
     uint2 rayGroupBase = rayGroupIndex * rayGroupDim;
     uint2 rayGroupRayIndex = g_texAOSourceToSortedRayIndex[DTid];
     uint2 rayIndex = rayGroupBase + rayGroupRayIndex;
     
 
-    uint numShadowRayHits = 0;
-    float ambientCoef = 1;  // ToDo 1 or 0?
-    float occlussionCoefSum = 0;
+    float ambientCoef = 1;  
     float minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
-    uint numSamples = 1;
-
+    bool hasAORayHit = false;
     if (IsActiveRay(rayGroupRayIndex))
     {
 #else
@@ -439,101 +387,42 @@ void RayGenShader_sortedRays()
     ToDo
 #endif
 
-        //    bool hit = g_texGBufferPositionHits[DTid] > 0;
-        float3 rayDirectionOrigin = g_texAORaysDirectionOriginDepthHit[rayIndex].xyz;
-        float rayOriginDepth = rayDirectionOrigin.z;
-
-        float3 rayDirection = DecodeNormal(rayDirectionOrigin.xy);
+        float3 encodedRayDirection = g_texAORaysDirectionOriginDepthHit[rayIndex].xy;
+        float3 rayDirection = DecodeNormal(encodedRayDirection.xy);
         float3 hitPosition = g_texGBufferPositionRT[rayIndex].xyz;
 
-        // ToDo remove?
-        float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[rayIndex].xy);
+        // ToDo test trading for using ray direction insteads
+        float3 surfaceNormal = DecodeNormal(g_texGBufferNormalDepth[rayIndex].xy);
 
+        Ray AORay = { hitPosition, rayDirection };
+        ambientCoef = CalculateAO(tHit, rayIndex, AORay, surfaceNormal);
 
-        // ToDo hitPosition adjustment - fix crease artifacts
-        // Todo fix noise on flat surface / box
-        // ToDo use normal
-        Ray shadowRay = { hitPosition + CB.RTAO_TraceRayOffsetAlongNormal * surfaceNormal, rayDirection };
-        //Ray shadowRay = { hitPosition + CB.RTAO_TraceRayOffsetAlongNormal * rayDirection, rayDirection };
+        hasAORayHit = HasAORayHitAnyGeometry(tHit);
 
-        const float tMax = CB.RTAO_maxShadowRayHitTime; // ToDo make sure its FLT_10BIT_MAX or less since we use 10bit origin depth in RaySort
-        float tHit;
-        if (TraceAORayAndReportIfHit(tHit, shadowRay, CB.useShadowRayHitTime, tMax, true))
+        // ToDo test writing out for all pixels.
+        if (hasAORayHit)
         {
-            float occlusionCoef = 1;
-            if (CB.RTAO_IsExponentialFalloffEnabled)
-            {
-                float theoreticalTMax = CB.RTAO_maxTheoreticalShadowRayHitTime;
-                float t = tHit / theoreticalTMax;
-                float lambda = CB.RTAO_exponentialFalloffDecayConstant;
-                // Note: update tMax calculation on falloff expression change.
-                occlusionCoef = exp(-lambda * t * t);
-            }
-            occlussionCoefSum += (1.f - CB.RTAO_minimumAmbientIllumnination) * occlusionCoef;
-
-            minHitDistance = min(tHit, minHitDistance);
-            numShadowRayHits++;
-        }
-    
-#if AO_ANY_HIT_FULL_OCCLUSION
-        ambientCoef = numShadowRayHits > 0 ? 0 : 1;
-#else
-        float occlusionCoef = saturate(occlussionCoefSum / (float)numSamples);
-        ambientCoef = 1.f - occlusionCoef;
-#endif
-
-        // Approximate interreflections of light from blocking surfaces which are generally not completely dark and tend to have similar radiance.
-        // Ref: Ch 11.3.3 Accounting for Interreflections, Real-Time Rendering (4th edition).
-        // The approximation assumes:
-        //      o All surfaces incoming and outgoing radiance is the same 
-        //      o Current surface color is the same as that of the occluders
-        // Since this sample uses scalar ambient coefficient, we use the scalar luminance of the surface color.
-        // This will generally brighten the AO making it closer to the result of full Global Illumination, including interreflections.
-        if (CB.RTAO_approximateInterreflections)
-        {
-            uint2 materialInfo = g_texGBufferMaterialInfo[rayIndex];
-            UINT materialID;
-            float3 surfaceAlbedo;
-            DecodeMaterial16b(materialInfo, materialID, surfaceAlbedo);
-
-            float kA = ambientCoef;
-            float rho = CB.RTAO_diffuseReflectanceScale * RGBtoLuminance(surfaceAlbedo);
-
-            ambientCoef = kA / (1 - rho * (1 - kA));
-        }
-    }
-
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
-    g_rtAOcoefficient[DTid] = ambientCoef;
-#if GBUFFER_AO_COUNT_AO_HITS
-    // ToDo test perf impact of writing this
-    g_rtAORayHits[DTid] = numShadowRayHits;
-#endif
-
-    if (CB.useShadowRayHitTime)
-    {
-#if USE_NORMALIZED_Z
-        minHitDistance *= 1 / (CB.Zmax - CB.Zmin); // ToDo pass by CB? 
-#endif
-        //g_rtAORayHitDistance[DTid] = minHitDistance;
-        g_rtAORayHitDistance[DTid] = minHitDistance;
-    }
+            uint2 outPixel = DTid;
 #else
-    g_rtAOcoefficient[rayIndex] = ambientCoef;
+            uint2 outPixel = rayIndex;
+#endif
+            g_rtAOcoefficient[outPixel] = ambientCoef;
+            g_rtAORayHitDistance[outPixel] = minHitDistance;
+        }
+    }
+
 #if GBUFFER_AO_COUNT_AO_HITS
-    // ToDo test perf impact of writing this
-    g_rtAORayHits[rayIndex] = numShadowRayHits;
+#if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
+    uint2 outPixel = DTid;
+#else
+    uint2 outPixel = rayIndex;
 #endif
 
-    if (CB.useShadowRayHitTime)
-    {
-#if USE_NORMALIZED_Z
-        minHitDistance *= 1 / (CB.Zmax - CB.Zmin); // ToDo pass by CB? 
+    // ToDo test perf impact of writing this
+    g_rtAORayHits[outPixel] = hasAORayHit;
 #endif
-        //g_rtAORayHitDistance[DTid] = minHitDistance;
-        g_rtAORayHitDistance[rayIndex] = minHitDistance;
-    }
-#endif
+
 }
 
 

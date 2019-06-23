@@ -77,6 +77,7 @@ namespace SceneArgs
     // ToDo cleanup RTAO... vs RTAO_..
     IntVar RTAOAdaptiveSamplingMinSamples(L"Render/AO/RTAO/Adaptive Sampling/Min samples", 1, 1, AO_SPP_N* AO_SPP_N, 1);
 
+    // ToDo remove
     IntVar AOSampleCountPerDimension(L"Render/AO/RTAO/Samples per pixel NxN", AO_SPP_N, 1, AO_SPP_N_MAX, 1, OnRecreateSamples, nullptr);
     IntVar AOSampleSetDistributedAcrossPixels(L"Render/AO/RTAO/Sample set distribution across NxN pixels ", 8, 1, 8, 1, OnRecreateSamples, nullptr);
 #if LOAD_PBRT_SCENE
@@ -86,7 +87,7 @@ namespace SceneArgs
 #endif
     BoolVar RTAOApproximateInterreflections(L"Render/AO/RTAO/Approximate Interreflections/Enabled", true);
     NumVar RTAODiffuseReflectanceScale(L"Render/AO/RTAO/Approximate Interreflections/Diffuse Reflectance Scale", 0.5f, 0.0f, 1.0f, 0.1f);
-    NumVar  minimumAmbientIllumination(L"Render/AO/RTAO/Minimum Ambient Illumination", 0.07f, 0.0f, 1.0f, 0.01f);
+    NumVar  RTAO_MinimumAmbientIllumination(L"Render/AO/RTAO/Minimum Ambient Illumination", 0.07f, 0.0f, 1.0f, 0.01f);
     BoolVar RTAOIsExponentialFalloffEnabled(L"Render/AO/RTAO/Exponential Falloff", true);
     NumVar RTAO_ExponentialFalloffDecayConstant(L"Render/AO/RTAO/Exponential Falloff Decay Constant", 2.f, 0.0f, 20.f, 0.25f);
     NumVar RTAO_ExponentialFalloffMinOcclusionCutoff(L"Render/AO/RTAO/Exponential Falloff Min Occlusion Cutoff", 0.4f, 0.0f, 1.f, 0.05f);       // ToDo Finetune document perf.
@@ -419,13 +420,14 @@ void RTAO::CreateTextureResources()
     m_sourceToSortedRayIndex.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
     CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sourceToSortedRayIndex, initialResourceState, L"Source To Sorted Ray Index");
 
-    m_sortedToSourceRayIndex.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedToSourceRayIndex, initialResourceState, L"Sorted To Source Ray Index");
+    m_sortedToSourceRayIndexOffset.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedToSourceRayIndexOffset, initialResourceState, L"Sorted To Source Ray Index");
 
     m_sortedRayGroupDebug.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
     CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupDebug, initialResourceState, L"Sorted Ray Group Debug");
 
     m_AORayDirectionOriginDepth.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    // ToDo test precision
     CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AORayDirectionOriginDepth, initialResourceState, L"AO Rays Direction, Origin Depth and Hit");
 }
 
@@ -705,7 +707,6 @@ void RTAO::OnUpdate()
 
     m_CB->numSamplesPerSet = m_randomSampler.NumSamples();
     m_CB->numSampleSets = m_randomSampler.NumSampleSets();
-    m_CB->numSamplesToUse = SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension;
     m_CB->numPixelsPerDimPerSet = SceneArgs::AOSampleSetDistributedAcrossPixels;
 
     // ToDo move
@@ -727,7 +728,7 @@ void RTAO::OnUpdate()
     m_CB->RTAO_maxShadowRayHitTime = SceneArgs::RTAOMaxRayHitTime;
     m_CB->RTAO_approximateInterreflections = SceneArgs::RTAOApproximateInterreflections;
     m_CB->RTAO_diffuseReflectanceScale = SceneArgs::RTAODiffuseReflectanceScale;
-    m_CB->RTAO_minimumAmbientIllumnination = SceneArgs::minimumAmbientIllumination;
+    m_CB->RTAO_MinimumAmbientIllumination = SceneArgs::RTAO_MinimumAmbientIllumination;
     m_CB->RTAO_IsExponentialFalloffEnabled = SceneArgs::RTAOIsExponentialFalloffEnabled;
     m_CB->RTAO_exponentialFalloffDecayConstant = SceneArgs::RTAO_ExponentialFalloffDecayConstant;
 
@@ -764,8 +765,13 @@ void RTAO::OnRender(
         CalculateAdaptiveSamplingCounts();
     }
 
-    // ToDo Copy only if necessary?
-    m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
+
+    // Copy dynamic buffers to GPU.
+    {
+        // ToDo copy on change
+        m_CB.CopyStagingToGpu(frameIndex);
+        m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
+    }
 
     ScopedTimer _prof(L"CalculateAmbientOcclusion", commandList);
 
@@ -778,7 +784,7 @@ void RTAO::OnRender(
             CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_sourceToSortedRayIndex.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndex.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndexOffset.resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
         };
@@ -806,24 +812,6 @@ void RTAO::OnRender(
 
     DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOFullRes].Get());
 
-#if DEBUG_RTAO
-
-    // Transition AO resources to shader resource state.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_sourceToSortedRayIndex.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndex.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
-#else
     // ToDo Remove
     //DispatchRays(m_rayGenShaderTables[SceneArgs::QuarterResAO ? RTAORayGenShaderType::AOQuarterRes : RTAORayGenShaderType::AOFullRes].Get(),
     //    &m_gpuTimers[GpuTimers::Raytracing_AO], m_raytracingWidth, m_raytracingHeight);
@@ -852,8 +840,8 @@ void RTAO::OnRender(
             SceneArgs::RTAORaySortingUseOctahedralRayDirectionQuantization,
             m_cbvSrvUavHeap->GetHeap(),
             m_AORayDirectionOriginDepth.gpuDescriptorReadAccess,
+            m_sortedToSourceRayIndexOffset.gpuDescriptorWriteAccess,
             m_sourceToSortedRayIndex.gpuDescriptorWriteAccess,
-            m_sortedToSourceRayIndex.gpuDescriptorWriteAccess,
             m_sortedRayGroupDebug.gpuDescriptorWriteAccess);
 
         // Transition the output to SRV state. 
@@ -862,10 +850,10 @@ void RTAO::OnRender(
             D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
             D3D12_RESOURCE_BARRIER barriers[] = {
                 CD3DX12_RESOURCE_BARRIER::Transition(m_sourceToSortedRayIndex.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndex.resource.Get(), before, after),
+                CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndexOffset.resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::UAV(m_sourceToSortedRayIndex.resource.Get()),
-                CD3DX12_RESOURCE_BARRIER::UAV(m_sortedToSourceRayIndex.resource.Get())
+                CD3DX12_RESOURCE_BARRIER::UAV(m_sortedToSourceRayIndexOffset.resource.Get())
             };
             commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
         }
@@ -917,7 +905,7 @@ void RTAO::OnRender(
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
-#endif
+
     // Calculate AO ray hit count.
     if (m_calculateRayHitCounts)
     {

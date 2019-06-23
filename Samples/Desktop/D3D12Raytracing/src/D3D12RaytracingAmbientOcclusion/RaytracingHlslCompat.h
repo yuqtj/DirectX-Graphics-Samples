@@ -14,8 +14,6 @@
 
 #include "SSAO//GlobalSharedHlslCompat.h"
 
-#define DEBUG_RTAO 1
-
 /*
 //ToDo
 - overblur on mouse camera movement
@@ -564,13 +562,13 @@ struct RTAOConstantBuffer
     UINT seed;
     UINT numSamplesPerSet;
     UINT numSampleSets;
-    UINT numSamplesToUse;       // ToDo rename to max samples
+    float padding;
 
 
     float RTAO_maxShadowRayHitTime;             // Max shadow ray hit time used for tMax in TraceRay.
     BOOL RTAO_approximateInterreflections;      // Approximate interreflections. 
     float RTAO_diffuseReflectanceScale;              // Diffuse reflectance from occluding surfaces. 
-    float RTAO_minimumAmbientIllumnination;       // Ambient illumination coef when a ray is occluded.
+    float RTAO_MinimumAmbientIllumination;       // Ambient illumination coef when a ray is occluded.
 
     // toDo rename shadow to AO
     float RTAO_maxTheoreticalShadowRayHitTime;  // Max shadow ray hit time used in falloff computation accounting for
@@ -928,6 +926,14 @@ namespace RayType {
     };
 }
 
+namespace RTAORayType {
+    enum Enum {
+        AO = 0,	
+        Count
+    };
+}
+
+
 namespace TraceRayParameters
 {
     static const UINT InstanceMask = ~0;   // Everything is visible.
@@ -948,6 +954,26 @@ namespace TraceRayParameters
         };
     }
 }
+
+namespace RTAOTraceRayParameters
+{
+    static const UINT InstanceMask = ~0;   // Everything is visible.
+    namespace HitGroup {
+        static const UINT Offset[RTAORayType::Count] =
+        {
+            0, // AO ray
+        };
+        // ToDo For now all geometries reusing shader records
+        static const UINT GeometryStride = RTAORayType::Count;
+    }
+    namespace MissShader {
+        static const UINT Offset[RTAORayType::Count] =
+        {
+            0, // AO ray
+        };
+    }
+}
+
 
 static const XMFLOAT4 BackgroundColor = XMFLOAT4(0.79f, 0.88f, 0.98f, 1.0f);
 // ToDo
