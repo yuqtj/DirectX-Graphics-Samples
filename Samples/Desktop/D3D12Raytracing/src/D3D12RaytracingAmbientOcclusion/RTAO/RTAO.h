@@ -49,6 +49,7 @@ public:
 
     // ToDo return only a subset
     RWGpuResource (&AOResources())[AOResource::Count]{ return m_AOResources; }
+    RWGpuResource* GetAOResources(){ return m_AOResources; }
 
     void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
     void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }

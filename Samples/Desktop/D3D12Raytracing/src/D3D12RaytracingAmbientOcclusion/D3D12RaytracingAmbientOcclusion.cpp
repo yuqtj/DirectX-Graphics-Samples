@@ -131,7 +131,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::PhongLighting, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_RawOneFrame, CompositionType::Count, CompositionModes);
 
 
     //**********************************************************************************************************************************
@@ -4693,7 +4693,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
             RenderPass_GenerateGBuffers();
 #if 1
             // AO. 
-            if (SceneArgs::AOMode == SceneArgs::AOType::RTAO)
+            if (0)//SceneArgs::AOMode == SceneArgs::AOType::RTAO)
             {
                 ScopedTimer _prof(L"RTAO", commandList);
 
@@ -4702,14 +4702,11 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                     m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
                     GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
                     GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess);
+
                 RenderPass_TemporalCacheReverseProjection();
 
 #if BLUR_AO
 #if ATROUS_DENOISER
-
-#if 0
-                ApplyAtrousWaveletTransformFilter();
-#else
                 if (SceneArgs::RTAODenoisingUseMultiscale)
                 {
                     ApplyMultiScaleAtrousWaveletTransformFilter();
@@ -4718,7 +4715,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 {
                     ApplyAtrousWaveletTransformFilter();
                 }
-#endif
 #else
                 ToDo - fix up resources
                     RenderPass_BlurAmbientOcclusion();
@@ -4755,7 +4751,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #endif
 
 #endif
-            RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOResources : m_RTAO.AOResources();
+            RWGpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOResources : m_RTAO.GetAOResources();
             D3D12_GPU_DESCRIPTOR_HANDLE AOSRV = SceneArgs::AOMode == SceneArgs::AOType::RTAO ? AOResources[AOResource::Smoothed].gpuDescriptorReadAccess : SSAOgpuDescriptorReadAccess;
 
             // ToDo cleanup

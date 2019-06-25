@@ -234,6 +234,9 @@ void RayGenShader()
     // ToDo move to a CS if always using a raysort.
     uint2 srcRayIndex = DispatchRaysIndex().xy;
 
+    g_rtAOcoefficient[srcRayIndex] = 0.4;
+    return;
+
     // ToDo
     float3 encodedNormalDepth = g_texRayOriginSurfaceNormalDepth[srcRayIndex].xyz;
     float depth = encodedNormalDepth.z;
