@@ -59,7 +59,7 @@ namespace ComputeShader {
                     AORayHitDistance,
                     FrameAge,   // ToDo use same name as in the shader
                     Color,
-                    AODiffuse,
+                    AOSurfaceAlbedo,
                     Count
 				};
 			}
@@ -133,13 +133,36 @@ namespace GlobalRootSignature {
             MotionVector,
             ReprojectedHitPosition,
             Color,
-            AODiffuse,
+            AOSurfaceAlbedo,
             ShadowMapUAV,   // ToDo Standardize nmaming
             ShadowMapSRV,
             Count
         };
     }
 }
+
+// ToDo move to RTAO specific defines
+namespace RTAOGlobalRootSignature {
+    namespace Slot {
+        enum Enum {
+            AccelerationStructure = 0,
+            RayOriginPosition,
+            RayOriginSurfaceNormalDepth,
+            AOResourcesOut,	// ToDo cleanup, move to local root sigs 
+            AORayHitDistance,
+            AORayDirectionOriginDepthHitSRV,
+            AORayDirectionOriginDepthHitUAV,
+            FilterWeightSum,
+            AOFrameAge,
+            AOSortedToSourceRayIndex,
+            AOSurfaceAlbedo,
+            ConstantBuffer,
+            SampleBuffers,
+            Count
+        };
+    }
+}
+
 
 namespace LocalRootSignature {
     namespace Type {
@@ -211,7 +234,7 @@ namespace GBufferResource {
         MotionVector,
         ReprojectedHitPosition,
         Color,
-        AODiffuse, 
+        AOSurfaceAlbedo, 
 		Count
 	};
 }

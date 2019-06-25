@@ -12,15 +12,12 @@
 #ifndef RAYTRACING_HLSL
 #define RAYTRACING_HLSL
 
-// Remove /Zpr and use column-major? It might be slightly faster
-
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
 #include "RandomNumberGenerator.hlsli"
 #include "RaySorting.hlsli"
-
-#define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS - should be 0 as we're using non-negative low precision formats
+#include "RTAO.hlsli"
 
 // ToDo split to Raytracing for GBUffer and AO?
 
@@ -36,17 +33,15 @@
 // Scene wide resources.
 //  g_* - bound via a global root signature.
 //  l_* - bound via a local root signature.
-RaytracingAccelerationStructure g_scene : register(t0, space0);
+RaytracingAccelerationStructure g_scene : register(t0);
 
-
+// ToDo remove unneccessary, move ray computation to CS
 // ToDo switch to depth == 0 for hit/no hit?
-Texture2D<uint> g_texGBufferPositionHits : register(t5); 
-
-Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Material Id, 3x Diffuse.RGB}       // ToDo rename to material like in composerenderpasses
-Texture2D<float4> g_texGBufferPositionRT : register(t7);
-Texture2D<float4> g_texGBufferNormalDepth : register(t8);        // ToDo use 32bit format?
+Texture2D<float4> g_texRayOriginPosition : register(t7);
+Texture2D<float4> g_texRayOriginSurfaceNormalDepth : register(t8);
 Texture2D<float4> g_texAORaysDirectionOriginDepthHit : register(t22);
-Texture2D<uint2> g_texAOSourceToSortedRayIndex : register(t23);
+Texture2D<uint2> g_texAOSortedToSourceRayIndexOffset : register(t23);
+Texture2D<float4> g_texAOSurfaceAlbedo : register(t24);
 
 
 // ToDo remove ? 
@@ -59,17 +54,12 @@ RWTexture2D<float> g_rtAOcoefficient : register(u10);
 RWTexture2D<uint> g_rtAORayHits : register(u11);
 RWTexture2D<float> g_rtAORayHitDistance : register(u15);
 RWTexture2D<float4> g_rtAORaysDirectionOriginDepth : register(u22);
-RWTexture2D<float4> g_rtGBufferNormalDepthLowPrecision : register(u23);
 
 ConstantBuffer<RTAOConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
 
 
 
-bool HasAORayHitAnyGeometry(in float tHit)
-{
-    return tHit != HitDistanceOnMiss;
-}
 
 
 //***************************************************************************
@@ -132,11 +122,11 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float TMax, in floa
     tHit = shadowPayload.tHit;
 
     // Report a hit if Miss Shader didn't set the value to HitDistanceOnMiss.
-    return HasAORayHitAnyGeometry(tHit);
+    return RTAO::HasAORayHitAnyGeometry(tHit);
 }
 
 
-Ray GenerateRandomAORay(in uint2 DTid, in float3 hitPosition, in float3 surfaceNormal)
+Ray GenerateRandomAORay(in uint2 srcRayIndex, in float3 hitPosition, in float3 surfaceNormal)
 {
     // Calculate coordinate system for the hemisphere.
     // ToDo AO has square alias due to same hemisphere
@@ -159,20 +149,20 @@ Ray GenerateRandomAORay(in uint2 DTid, in float3 hitPosition, in float3 surfaceN
 
         // Get a common sample set ID and seed shared across neighboring pixels.
         uint numSampleSetsInX = (DispatchRaysDimensions().x + CB.numPixelsPerDimPerSet - 1) / CB.numPixelsPerDimPerSet;
-        uint2 sampleSetId = DTid / CB.numPixelsPerDimPerSet;
+        uint2 sampleSetId = srcRayIndex / CB.numPixelsPerDimPerSet;
 
         // Get a common hitPosition to adjust the sampleSeed by. 
         // This breaks noise correlation on camera movement which otherwise results 
         // in noise pattern swimming across the screen on camera movement.
         uint2 pixelZeroId = sampleSetId * CB.numPixelsPerDimPerSet;
-        float3 pixelZeroHitPosition = g_texGBufferPositionRT[pixelZeroId].xyz;      // ToDo remove?
+        float3 pixelZeroHitPosition = g_texRayOriginPosition[pixelZeroId].xyz;      // ToDo remove?
         uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + CB.seed;
         uint RNGState = RNG::SeedThread(sampleSetSeed);
 
         sampleSetJump = RNG::Random(RNGState, 0, CB.numSampleSets - 1) * CB.numSamplesPerSet;
 
         // Get a pixel ID within the shared set across neighboring pixels.
-        uint2 pixeIDPerSet2D = DTid % CB.numPixelsPerDimPerSet;
+        uint2 pixeIDPerSet2D = srcRayIndex % CB.numPixelsPerDimPerSet;
         uint pixeIDPerSet = pixeIDPerSet2D.y * CB.numPixelsPerDimPerSet + pixeIDPerSet2D.x;
 
         // Randomize starting sample position within a sample set per neighbor group 
@@ -222,10 +212,7 @@ float CalculateAO(out float tHit, in uint2 srcPixelIndex, in Ray AOray, in float
         if (CB.RTAO_approximateInterreflections)
         {
             // ToDo test perf impact of reading the texture and move this to compose pass
-            uint2 materialInfo = g_texGBufferMaterialInfo[srcPixelIndex];
-            UINT materialID;
-            float3 surfaceAlbedo;
-            DecodeMaterial16b(materialInfo, materialID, surfaceAlbedo);
+            float3 surfaceAlbedo = g_texAOSurfaceAlbedo[srcPixelIndex].xyz;
 
             float kA = ambientCoef;
             float rho = CB.RTAO_diffuseReflectanceScale * RGBtoLuminance(surfaceAlbedo);
@@ -244,33 +231,23 @@ float CalculateAO(out float tHit, in uint2 srcPixelIndex, in Ray AOray, in float
 [shader("raygeneration")]
 void RayGenShader()
 {
-
     // ToDo move to a CS if always using a raysort.
-    uint2 DTid = DispatchRaysIndex().xy;
+    uint2 srcRayIndex = DispatchRaysIndex().xy;
 
-    float3 encodedNormalDepth = g_texGBufferNormalDepth[DTid].xyz;
+    // ToDo
+    float3 encodedNormalDepth = g_texRayOriginSurfaceNormalDepth[srcRayIndex].xyz;
     float depth = encodedNormalDepth.z;
-	bool calculateAO = depth > 0;
+	bool hit = depth > 0;   // ToDo use a common func to determine
 	if (hit)
 	{
-		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
-        float4 normalDepth = g_texGBufferNormalDepth[DTid];
+		float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;
+        float4 normalDepth = g_texRayOriginSurfaceNormalDepth[srcRayIndex];
         float3 surfaceNormal = DecodeNormal(normalDepth.xy);
         float depth = normalDepth.z;
-
-        // ToDo test perf impact and move this to compose pass
-        float3 surfaceAlbedo = float3(1, 1, 1);
-        if (CB.RTAO_approximateInterreflections)
-        {
-            uint2 materialInfo = g_texGBufferMaterialInfo[DTid];
-            UINT materialID;
-            DecodeMaterial16b(materialInfo, materialID, surfaceAlbedo);
-            surfaceAlbedo = surfaceAlbedo;
-        }
-
+        
         //if (CB.RTAO_UseAdaptiveSampling)
         //{
-        //    float filterWeightSum = g_filterWeightSum[DTid].x;
+        //    float filterWeightSum = g_filterWeightSum[srcRayIndex].x;
         //    float clampedFilterWeightSum = min(filterWeightSum, CB.RTAO_AdaptiveSamplingMaxWeightSum);
         //    float sampleScale = 1 - (clampedFilterWeightSum / CB.RTAO_AdaptiveSamplingMaxWeightSum);
         //    
@@ -290,47 +267,44 @@ void RayGenShader()
 
 
         float tHit;
-        Ray AORay = GenerateRandomAORay(DTid, hitPosition, surfaceNormal);
-        ambientCoef = CalculateAO(tHit, DTid, AORay, surfaceNormal);
+        Ray AORay = GenerateRandomAORay(srcRayIndex, hitPosition, surfaceNormal);
+        float ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
 
         if (CB.RTAO_UseSortedRays)
         {
-            uint2 DTid = DispatchRaysIndex().xy;
-            g_rtAORaysDirectionOriginDepth[DTid] = float4(EncodeNormal(rayDirection), depth, 0);
+            g_rtAORaysDirectionOriginDepth[srcRayIndex] = float4(EncodeNormal(AORay.direction), depth, 0);
         }
+
+        g_rtAOcoefficient[srcRayIndex] = ambientCoef;
+
+#if GBUFFER_AO_COUNT_AO_HITS
+        // ToDo test perf impact of writing this
+        g_rtAORayHits[srcRayIndex] = RTAO::HasAORayHitAnyGeometry(tHit);
+#endif
+        g_rtAORayHitDistance[srcRayIndex] = tHit;
 	}
     else
     {
         if (CB.RTAO_UseSortedRays)
         {
-            g_rtAORaysDirectionOriginDepth[DTid] = 0;
+            g_rtAORaysDirectionOriginDepth[srcRayIndex] = 0;
         }
-    }
 
-    if (!CB.RTAO_UseSortedRays)
-    {
-        g_rtAOcoefficient[DTid] = ambientCoef;
-    }
 #if GBUFFER_AO_COUNT_AO_HITS
-	// ToDo test perf impact of writing this
-	g_rtAORayHits[DTid] = tHit;
+        // ToDo test perf impact of writing this
+        g_rtAORayHits[srcRayIndex] = 0;
 #endif
-
-    if (CB.useShadowRayHitTime)
-    {
-#if USE_NORMALIZED_Z
-        minHitDistance *= 1 / (CB.Zmax - CB.Zmin); // ToDo pass by CB? 
-#endif
-      g_rtAORayHitDistance[DTid] = tHit;
     }
 }
 
-// Calculate 2D DTid from a 1D index where
-// - every valid 1D index maps to a valid 2D index within ray tracing buffer dimensions.
+// Retrieves 2D source and sorted ray indices from a 1D ray index where
+// - every valid (i.e. is within ray tracing buffer dimensions) 1D index maps to a valid 2D index.
 // - pixels are row major within a ray group.
 // - ray groups are row major within the raytracing buffer dimensions.
+// - rays are sorted per ray group.
 // Overflowing ray group dimensions on the borders are clipped to valid raytracing dimnesions.
-uint2 Calculate2DRayIndex(in uint index1D)
+// Returns whether the retrieved ray is active.
+bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uint index1D)
 {
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
 
@@ -354,77 +328,66 @@ uint2 Calculate2DRayIndex(in uint index1D)
     uint rayThreadColumnIndex = currentRayGroup_index1D - rayThreadRowIndex * currentRayGroupWidth;
     uint2 rayThreadIndex = uint2(rayThreadColumnIndex, rayThreadRowIndex);
 
-    uint2 index2D = rayGroupIndex * rayGroupDim + rayThreadIndex;
+    // Get the corresponding source index
+    sortedRayIndex2D = rayGroupIndex * rayGroupDim + rayThreadIndex;
+    uint2 rayGroupBase = rayGroupIndex * rayGroupDim;
+    uint2 rayGroupRayIndexOffset = g_texAOSortedToSourceRayIndexOffset[sortedRayIndex2D];
+    srcRayIndex2D = rayGroupBase + GetRawRayIndexOffset(rayGroupRayIndexOffset);
 
-    return index2D;
+    return IsActiveRay(rayGroupRayIndexOffset);
 }
 
 [shader("raygeneration")]
 void RayGenShader_sortedRays()
 {
 #if RTAO_RAY_SORT_1DRAYTRACE
-    // Get 2D valid index for a given 1D index.
-    uint DTid1D = DispatchRaysIndex().x; 
-    uint2 DTid = Calculate2DRayIndex | (DTid1D);
+    uint DTid_1D = DispatchRaysIndex().x; 
+    uint2 srcRayIndex;
+    uint2 sortedRayIndex;
+    bool isActiveRay = Get2DRayIndices(sortedRayIndex, srcRayIndex, DTid_1D);
 
-    // Get the corresponding source index
-    uint2 rayGroupBase = rayGroupIndex * rayGroupDim;
-    uint2 rayGroupRayIndex = g_texAOSourceToSortedRayIndex[DTid];
-    uint2 rayIndex = rayGroupBase + rayGroupRayIndex;
-    
-
-    float ambientCoef = 1;  
     float minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
-    bool hasAORayHit = false;
-    if (IsActiveRay(rayGroupRayIndex))
+    float tHit = RTAO::RayHitDistanceOnMiss;
+    if (isActiveRay)
     {
 #else
-    uint2 DTid = DispatchRaysIndex().xy;
+    uint2 srcRayIndex = DispatchRaysIndex().xy;
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
-    uint2 rayGroupBase = (DTid / rayGroupDim) * rayGroupDim;
-    uint2 rayGroupRayIndex = g_texAOSourceToSortedRayIndex[DTid];
-    uint2 rayIndex = rayGroupBase + rayGroupThreadIndex;
+    uint2 rayGroupBase = (srcRayIndex / rayGroupDim) * rayGroupDim;
+    uint2 rayGroupRayIndex = g_texAOSortedToSourceRayIndexOffset[srcRayIndex];
+    uint2 sortedRayIndex = rayGroupBase + rayGroupThreadIndex;
     ToDo
 #endif
-
-        float3 encodedRayDirection = g_texAORaysDirectionOriginDepthHit[rayIndex].xy;
+        float2 encodedRayDirection = g_texAORaysDirectionOriginDepthHit[sortedRayIndex].xy;
         float3 rayDirection = DecodeNormal(encodedRayDirection.xy);
-        float3 hitPosition = g_texGBufferPositionRT[rayIndex].xyz;
+        float3 hitPosition = g_texRayOriginPosition[sortedRayIndex].xyz;
 
         // ToDo test trading for using ray direction insteads
-        float3 surfaceNormal = DecodeNormal(g_texGBufferNormalDepth[rayIndex].xy);
+        float3 surfaceNormal = DecodeNormal(g_texRayOriginSurfaceNormalDepth[sortedRayIndex].xy);
 
         Ray AORay = { hitPosition, rayDirection };
-        ambientCoef = CalculateAO(tHit, rayIndex, AORay, surfaceNormal);
+        float ambientCoef = CalculateAO(tHit, sortedRayIndex, AORay, surfaceNormal);
 
-        hasAORayHit = HasAORayHitAnyGeometry(tHit);
 
-        // ToDo test writing out for all pixels.
-        if (hasAORayHit)
-        {
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
-            uint2 outPixel = DTid;
+        uint2 outPixel = srcRayIndex;
 #else
-            uint2 outPixel = rayIndex;
+        uint2 outPixel = sortedRayIndex;
 #endif
-            g_rtAOcoefficient[outPixel] = ambientCoef;
-            g_rtAORayHitDistance[outPixel] = minHitDistance;
-        }
+        g_rtAOcoefficient[outPixel] = ambientCoef;
+        g_rtAORayHitDistance[outPixel] = tHit;
     }
 
 #if GBUFFER_AO_COUNT_AO_HITS
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
-    uint2 outPixel = DTid;
+    uint2 outPixel = srcRayIndex;
 #else
-    uint2 outPixel = rayIndex;
+    uint2 outPixel = sortedRayIndex;
 #endif
-
     // ToDo test perf impact of writing this
-    g_rtAORayHits[outPixel] = hasAORayHit;
+    g_rtAORayHits[outPixel] = HasAORayHitAnyGeometry(tHit); hasAORayHitGeometry;
 #endif
-
 }
-
 
 //***************************************************************************
 //******************------ Closest hit shaders -------***********************
@@ -443,7 +406,7 @@ void ClosestHitShader(inout ShadowRayPayload rayPayload, in BuiltInTriangleInter
 [shader("miss")]
 void MissShader(inout ShadowRayPayload rayPayload)
 {
-    rayPayload.tHit = HitDistanceOnMiss;
+    rayPayload.tHit = RTAO::RayHitDistanceOnMiss;
 }
 
 

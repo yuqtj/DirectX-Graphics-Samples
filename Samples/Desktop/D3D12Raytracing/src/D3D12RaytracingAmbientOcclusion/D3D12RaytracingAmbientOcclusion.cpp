@@ -131,7 +131,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_TemporallySupersampled, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::PhongLighting, CompositionType::Count, CompositionModes);
 
 
     //**********************************************************************************************************************************
@@ -872,7 +872,7 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
         ranges[Slot::AORayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // 1 input AO ray hit distance texture
         ranges[Slot::FrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // 1 input disocclusion map texture
         ranges[Slot::Color].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 11); // 1 input color texture
-        ranges[Slot::AODiffuse].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12); // 1 input AO diffuse texture
+        ranges[Slot::AOSurfaceAlbedo].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12); // 1 input AO diffuse texture
         
 
 		CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
@@ -884,7 +884,7 @@ void D3D12RaytracingAmbientOcclusion::CreateComposeRenderPassesCSResources()
         rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::AORayHitDistance]);
         rootParameters[Slot::FrameAge].InitAsDescriptorTable(1, &ranges[Slot::FrameAge]);
         rootParameters[Slot::Color].InitAsDescriptorTable(1, &ranges[Slot::Color]);
-        rootParameters[Slot::AODiffuse].InitAsDescriptorTable(1, &ranges[Slot::AODiffuse]);
+        rootParameters[Slot::AOSurfaceAlbedo].InitAsDescriptorTable(1, &ranges[Slot::AOSurfaceAlbedo]);
 		rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(7);
 		rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
@@ -1035,7 +1035,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         ranges[Slot::MotionVector].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 17);  // 1 output texture space motion vector.
         ranges[Slot::ReprojectedHitPosition].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 18);  // 1 output texture reprojected hit position
         ranges[Slot::Color].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 19);  // 1 output texture shaded color
-        ranges[Slot::AODiffuse].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 20);  // 1 output texture AO diffuse
+        ranges[Slot::AOSurfaceAlbedo].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 20);  // 1 output texture AO diffuse
         ranges[Slot::ShadowMapUAV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 21);  // 1 output ShadowMap texture
         ranges[Slot::AORayDirectionOriginDepthHitUAV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 22);  // 1 output AO ray direction and origin depth texture
         
@@ -1073,7 +1073,7 @@ void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
         rootParameters[Slot::MotionVector].InitAsDescriptorTable(1, &ranges[Slot::MotionVector]);
         rootParameters[Slot::ReprojectedHitPosition].InitAsDescriptorTable(1, &ranges[Slot::ReprojectedHitPosition]);
         rootParameters[Slot::Color].InitAsDescriptorTable(1, &ranges[Slot::Color]);
-        rootParameters[Slot::AODiffuse].InitAsDescriptorTable(1, &ranges[Slot::AODiffuse]);
+        rootParameters[Slot::AOSurfaceAlbedo].InitAsDescriptorTable(1, &ranges[Slot::AOSurfaceAlbedo]);
         rootParameters[Slot::ShadowMapSRV].InitAsDescriptorTable(1, &ranges[Slot::ShadowMapSRV]);
         rootParameters[Slot::ShadowMapUAV].InitAsDescriptorTable(1, &ranges[Slot::ShadowMapUAV]);
         rootParameters[Slot::AORayDirectionOriginDepthHitUAV].InitAsDescriptorTable(1, &ranges[Slot::AORayDirectionOriginDepthHitUAV]);
@@ -1309,7 +1309,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         
         CreateRenderTargetResource(device, backbufferFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Color], initialResourceState, L"GBuffer Color");
 
-        CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::AODiffuse], initialResourceState, L"GBuffer AO Diffuse");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer AO Surface Albedo");
 
     }
     
@@ -2681,7 +2681,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
     RWGpuResource* AOTSSCoefficient = SceneArgs::QuarterResAO ? m_lowResAOTSSCoefficient : m_AOTSSCoefficient;
     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
     
-    RWGpuResource& NormalDeptLowPrecisionResource = SceneArgs::QuarterResAO ? 
+    RWGpuResource& NormalDepthLowPrecisionResource = SceneArgs::QuarterResAO ? 
             m_normalDepthLowResLowPrecision[m_normalDepthCurrentFrameResourceIndex]
         :   m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
     
@@ -2719,7 +2719,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             m_cbvSrvUavHeap->GetHeap(),
             static_cast<GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType>(static_cast<UINT>(SceneArgs::DenoisingMode)),
            AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].gpuDescriptorReadAccess,
-            NormalDeptLowPrecisionResource.gpuDescriptorReadAccess,
+            NormalDepthLowPrecisionResource.gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
 #if PACK_MEAN_VARIANCE
             m_smoothedMeanVarianceResource.gpuDescriptorReadAccess,
@@ -2774,7 +2774,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
     {
         ScopedTimer _prof(L"DownsampleValueBuffers", commandList);
 
-        RWGpuResource* inputResources[] = { &AOResources[AOResource::TSSCoefficient], &NormalDeptLowPrecisionResource };
+        RWGpuResource* inputResources[] = { &AOResources[AOResource::TSSCoefficient], &NormalDepthLowPrecisionResource };
       
         for (int i = 0; i < SceneArgs::RTAODenoisingMultiscaleLevels; i++)
         {
@@ -2804,13 +2804,13 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                     CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_normalDepth.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
                     CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_partialDistanceDerivatives.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
                     CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::TSSCoefficient].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
-                    CD3DX12_RESOURCE_BARRIER::Transition(NormalDeptLowPrecisionResource.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+                    CD3DX12_RESOURCE_BARRIER::Transition(NormalDepthLowPrecisionResource.resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
                     CD3DX12_RESOURCE_BARRIER::Transition(GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE)
                 };
                 commandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
 
                 commandList->CopyResource(msResource.m_value.resource.Get(), AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].resource.Get());
-                commandList->CopyResource(msResource.m_normalDepth.resource.Get(), NormalDeptLowPrecisionResource.resource.Get());
+                commandList->CopyResource(msResource.m_normalDepth.resource.Get(), NormalDepthLowPrecisionResource.resource.Get());
                 commandList->CopyResource(msResource.m_partialDistanceDerivatives.resource.Get(), GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get());
 
                 D3D12_RESOURCE_BARRIER postCopyBarriers[] = {
@@ -2818,7 +2818,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                     CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_normalDepth.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
                     CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_partialDistanceDerivatives.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
                     CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::TSSCoefficient].resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-                    CD3DX12_RESOURCE_BARRIER::Transition(NormalDeptLowPrecisionResource.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+                    CD3DX12_RESOURCE_BARRIER::Transition(NormalDepthLowPrecisionResource.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
                     CD3DX12_RESOURCE_BARRIER::Transition(GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
                 };
                 commandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
@@ -3209,7 +3209,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 
 
     m_normalDepthCurrentFrameResourceIndex = (m_normalDepthCurrentFrameResourceIndex + 1) % 2;
-    RWGpuResource& NormalDeptLowPrecisionResource = m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
+    RWGpuResource& NormalDepthLowPrecisionResource = m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
     
     m_sceneCB->useDiffuseFromMaterial = SceneArgs::CompositionMode == CompositionType::Diffuse;
     m_sceneCB->doShading = SceneArgs::CompositionMode == CompositionType::PhongLighting;
@@ -3273,8 +3273,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MotionVector].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::ReprojectedHitPosition].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Color].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::AODiffuse].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(NormalDeptLowPrecisionResource.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::AOSurfaceAlbedo].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(NormalDepthLowPrecisionResource.resource.Get(), before, after),
             // ToDo remove
             //CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after) ,
             //CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after)
@@ -3295,12 +3295,12 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 	// Bind output RTs.
 	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferDepth, m_GBufferResources[GBufferResource::Depth].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::NormalDepthLowPrecision, NormalDeptLowPrecisionResource.gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::NormalDepthLowPrecision, NormalDepthLowPrecisionResource.gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GbufferNormalRGB, m_GBufferResources[GBufferResource::SurfaceNormalRGB].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::MotionVector, m_GBufferResources[GBufferResource::MotionVector].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ReprojectedHitPosition, m_GBufferResources[GBufferResource::ReprojectedHitPosition].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Color, m_GBufferResources[GBufferResource::Color].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AODiffuse, m_GBufferResources[GBufferResource::AODiffuse].gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOSurfaceAlbedo, m_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorWriteAccess);
     
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::PartialDepthDerivatives, m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
@@ -3319,7 +3319,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormal].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Distance].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Depth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(NormalDeptLowPrecisionResource.resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(NormalDepthLowPrecisionResource.resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormalRGB].resource.Get(), before, after),
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
@@ -3327,7 +3327,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MotionVector].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::ReprojectedHitPosition].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Color].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::AODiffuse].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::AOSurfaceAlbedo].resource.Get(), before, after),
 		};
 		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 	}
@@ -3365,7 +3365,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
 {
     auto commandList = m_deviceResources->GetCommandList();
-    RWGpuResource& NormalDeptLowPrecisionResource = m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
+    RWGpuResource& NormalDepthLowPrecisionResource = m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
     RWGpuResource& NormalDeptLowResLowPrecisionResource = m_normalDepthLowResLowPrecision[m_normalDepthCurrentFrameResourceIndex];
 
     // ToDo move this/part(AO,..) of transitions out?
@@ -3392,7 +3392,7 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
         m_GBufferWidth,
         m_GBufferHeight,
         m_cbvSrvUavHeap->GetHeap(),
-        NormalDeptLowPrecisionResource.gpuDescriptorReadAccess,
+        NormalDepthLowPrecisionResource.gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::Hit].gpuDescriptorReadAccess,
         m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
@@ -3760,14 +3760,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
     RWGpuResource* AOResources = m_RTAO.AOResources();
     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
 
-    RWGpuResource& NormalDeptLowPrecisionResource = SceneArgs::QuarterResAO ?
+    RWGpuResource& NormalDepthLowPrecisionResource = SceneArgs::QuarterResAO ?
             m_normalDepthLowResLowPrecision[m_normalDepthCurrentFrameResourceIndex]
         : m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
 
 	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
 	commandList->SetComputeRootSignature(m_computeRootSigs[CSType::AoBlurCS].Get());
 	commandList->SetPipelineState(m_computePSOs[SceneArgs::QuarterResAO ? CSType::AoBlurAndUpsampleCS : CSType::AoBlurCS].Get());
-	commandList->SetComputeRootDescriptorTable(Slot::Normal, NormalDeptLowPrecisionResource.gpuDescriptorReadAccess);
+	commandList->SetComputeRootDescriptorTable(Slot::Normal, NormalDepthLowPrecisionResource.gpuDescriptorReadAccess);
     commandList->SetComputeRootDescriptorTable(Slot::Distance, GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess);
 	commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csAoBlurCB.GpuVirtualAddress(frameIndex));
 	XMUINT2 groupCount;
@@ -3870,7 +3870,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
         commandList->SetComputeRootDescriptorTable(Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
         commandList->SetComputeRootDescriptorTable(Slot::AORayHitDistance, m_AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess);
         commandList->SetComputeRootDescriptorTable(Slot::Color, m_GBufferResources[GBufferResource::Color].gpuDescriptorReadAccess);
-        commandList->SetComputeRootDescriptorTable(Slot::AODiffuse, m_GBufferResources[GBufferResource::AODiffuse].gpuDescriptorReadAccess);
+        commandList->SetComputeRootDescriptorTable(Slot::AOSurfaceAlbedo, m_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
 
         
         commandList->SetComputeRootDescriptorTable(Slot::FrameAge, m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalCache::FrameAge].gpuDescriptorReadAccess);
@@ -4253,7 +4253,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
 
     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
     RWGpuResource* AOResources = m_RTAO.AOResources();
-    RWGpuResource& NormalDeptLowPrecisionResource = SceneArgs::QuarterResAO ?
+    RWGpuResource& NormalDepthLowPrecisionResource = SceneArgs::QuarterResAO ?
         m_normalDepthLowResLowPrecision[m_normalDepthCurrentFrameResourceIndex]
         : m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
 
@@ -4430,7 +4430,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_raytracingHeight,
         m_cbvSrvUavHeap->GetHeap(),
         AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
-        NormalDeptLowPrecisionResource.gpuDescriptorReadAccess,
+        NormalDepthLowPrecisionResource.gpuDescriptorReadAccess,
 #if PACK_MEAN_VARIANCE
         m_smoothedMeanVarianceResource.gpuDescriptorReadAccess,
 #else
@@ -4700,7 +4700,8 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
                 m_RTAO.OnRender(
                     m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
-                    GBufferResources[0].gpuDescriptorReadAccess);
+                    GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
+                    GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess);
                 RenderPass_TemporalCacheReverseProjection();
 
 #if BLUR_AO

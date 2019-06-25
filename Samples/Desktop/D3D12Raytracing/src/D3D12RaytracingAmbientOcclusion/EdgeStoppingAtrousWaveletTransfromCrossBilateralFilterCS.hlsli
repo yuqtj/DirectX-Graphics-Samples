@@ -259,6 +259,7 @@ void AddFilterContribution(
 [numthreads(AtrousWaveletTransformFilterCS::ThreadGroup::Width, AtrousWaveletTransformFilterCS::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 {
+    // ToDo add early exit if this pixel is processing inactive result.
     // ToDo double check all CS for out of bounds.
     if (DTid.x >= g_CB.textureDim.x || DTid.y >= g_CB.textureDim.y)
         return;

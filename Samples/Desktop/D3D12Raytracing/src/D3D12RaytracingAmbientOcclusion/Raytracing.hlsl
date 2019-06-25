@@ -78,7 +78,7 @@ RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
 RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18);
 RWTexture2D<float4> g_rtColor : register(u19);
-RWTexture2D<float4> g_rtAODiffuse : register(u20);
+RWTexture2D<float4> g_rtAOSurfaceAlbedo : register(u20);
 RWTexture2D<float> g_rtShadowMap : register(u21);
 RWTexture2D<float4> g_rtAORaysDirectionOriginDepth : register(u22);
 RWTexture2D<float4> g_rtGBufferNormalDepthLowPrecision : register(u23);
@@ -870,7 +870,7 @@ void MyRayGenShader_GBuffer()
         // ToDo don't write on no hit?
         g_rtGBufferNormalRGB[DTid] = float4(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), 0);
 
-        g_rtAODiffuse[DTid] = float4(Byte3ToNormalizedFloat3(rayPayload.AOGBuffer.diffuseByte3), 0);
+        g_rtAOSurfaceAlbedo[DTid] = float4(Byte3ToNormalizedFloat3(rayPayload.AOGBuffer.diffuseByte3), 0);
     }
     else // No geometry hit.
     {

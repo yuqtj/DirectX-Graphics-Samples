@@ -30,7 +30,7 @@ Texture2D<float> g_texFilterWeightSum : register(t8);
 Texture2D<float> g_texRayHitDistance : register(t9);
 Texture2D<uint> g_texTemporalCacheDisocclusionMap : register(t10);
 Texture2D<float4> g_texColor : register(t11);
-Texture2D<float4> g_texAODiffuse : register(t12);
+Texture2D<float4> g_texAOSurfaceAlbedo : register(t12);
 
 SamplerState LinearWrapSampler : register(s0);
 
@@ -90,7 +90,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
             // Subtract the default ambient illuminatation that has already been added to the color in raytrace pass.
             ambientCoef -= g_CB.defaultAmbientIntensity;
 
-            float3 ambientColor = ambientCoef * g_texAODiffuse[DTid].xyz;
+            float3 ambientColor = ambientCoef * g_texAOSurfaceAlbedo[DTid].xyz;
             color = float4(phongColor + ambientColor, 1);
 #elif 0
             float3 phongColor = CalculatePhongLighting(surfaceNormal, hitPosition, toEyeRay, visibilityCoefficient, ambientCoef, diffuse, specular, material.specularPower);

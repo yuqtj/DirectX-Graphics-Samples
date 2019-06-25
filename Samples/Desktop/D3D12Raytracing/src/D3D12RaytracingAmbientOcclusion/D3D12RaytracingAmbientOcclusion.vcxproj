@@ -19,7 +19,7 @@
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>D3D12Raytracing</RootNamespace>
     <ProjectName>D3D12RaytracingAmbientOcclusion</ProjectName>
-    <WindowsTargetPlatformVersion>10.0.18362.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.18343.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -1054,6 +1054,7 @@
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">true</DeploymentContent>
     </CustomBuild>
     <None Include="RTAO\Shaders\RaySorting.hlsli" />
+    <None Include="RTAO\Shaders\RTAO.hlsli" />
     <None Include="SSAO\Shaders\SSAOBlurAndUpsampleCS.hlsli" />
     <None Include="SSAO\Shaders\SSAORenderCS.hlsli" />
     <FxCompile Include="util\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl">

@@ -12,12 +12,12 @@
 // Desc: Counting Sort of rays based on their origin depth and direction.
 // Supports:
 // - Up to {8K rays per ray group + 12 bit hash key} | {4K rays per ray group + 13 bit hash key}
-// - Max Ray Group dimensions: 64x256
+// - Max Ray Group dimensions: 64x128
 // Rays can be disabled by setting their depth to less than 0. Such rays will get moved
 // to the end of the sorted ray group and have a source index offset of [0xff, 0xff]. 
 // Performance:
-//  2080 Ti, 1spp@4K, 128x64 ray groups, 10 bit hash key: 0.235ms
-//  2080 Ti, 1spp@4K, 128x64 ray groups, 12 bit hash key: 0.275ms
+//  2080 Ti, 1spp@4K, 64x128 ray groups, 10 bit hash key: 0.235ms
+//  2080 Ti, 1spp@4K, 64x128 ray groups, 12 bit hash key: 0.275ms
 
 
 // Algorithm: Counting Sort
@@ -37,17 +37,19 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RaySorting.hlsli"
 
-Texture2D<float4> g_inRayDirectionOriginDepth : register(t0);    // R11G11B10 texture. Note this format doesn't store negative values.
+Texture2D<float4> g_inRayDirectionOriginDepth : register(t0);    // R11G11B10 texture. Note that this format doesn't store negative values.
 
 // Source ray index offset for a given sorted ray index offset within a ray group.
 // This is essentially a sorted source ray index offsets buffer within a ray group.
-RWTexture2D<uint2> g_outSortedToSourceRayIndexOffset  : register(u0);   
+// Inactive rays have a valid index but have INACTIVE_RAY_INDEX_BIT_Y bit set in the y coordinate to 1.
+RWTexture2D<uint2> g_outSortedToSourceRayIndexOffset : register(u0);   
 
 // Test perf
 // Sorted ray index offset for a given source ray index offset within a ray group.
 // This is essentially an inverted mapping to SortedToSourceRayIndexOffset to
-// help avoid scatter writes from sorted rays, and instead do gather reads
+// avoid scatter writes from sorted rays, and instead do gather reads
 // in a pass reading from sorted AO pass output.
+// Inactive rays have a valid index but have INACTIVE_RAY_INDEX_BIT_Y bit set in the y coordinate to 1.
 RWTexture2D<uint2> g_outSourceToSortedRayIndexOffset: register(u1);  // Thread group per-pixel index offsets within each 128x64 pixel group.
 RWTexture2D<float4> g_outDebug : register(u2);  // Thread group per-pixel index offsets within each 128x64 pixel group.
 
@@ -897,16 +899,16 @@ void PrefixSumWave(in uint GI)
 }
 #endif
 
-// Flattens a [64,128] ray index into 13 bit flat index.
-// Preserves inactive ray 8th bit information of y coordinate in the 14th bit of the flattened index.
-uint EncodeRayIndex(in uint2 index)
+// Flattens a [64,128] ray index into a 13 bit flat index.
+// Preserves inactive ray bit in the 8th bit of the y coordinate in the outputs 14th bit.
+uint FlattenRayIndex(in uint2 index)
 {
     return index.x + (index.y << 6);
 }
 
 // Expands a 13 bit flat index into a [64,128] ray index.
 // Preserves inactive ray 14th bit information of the flat index in the 8th bit of the y coordinate.
-uint2 DecodeRayIndex(in uint index)
+uint2 UnflattenRayIndex(in uint index)
 {
     return uint2(index & 0x3F, index >> 6);
 }
@@ -961,7 +963,7 @@ void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2
 
             // To avoid costly scatter writes to VRAM, cache indices into SMem here instead.
             
-            uint encodedRayIndex = EncodeRayIndex(rayIndex);
+            uint encodedRayIndex = FlattenRayIndex(rayIndex);
             encodedRayIndex |= isRayValid ? 0 : INACTIVE_RAY_INDEX_BIT;
             encodedRayIndex |= INVALID_16BIT_KEY_BIT;     // Denote the target cache entry doesn't store a key no more.
             Store16bitUintInSMem(index, encodedRayIndex, SMem::Offset::RayIndex);
@@ -992,20 +994,19 @@ void SpillCachedIndicesToVRAMAndCacheInvertedSortedIndices(in uint2 Gid, in uint
         uint packedSrcIndex = Load16bitUintFromSMem(index, SMem::Offset::RayIndex);
         bool isActiveRay = !(packedSrcIndex & INACTIVE_RAY_INDEX_BIT);
 
-        // Strip the tag bit.
-        packedSrcIndex &= ~INVALID_16BIT_KEY_BIT;
+        // Strip the tag bits.
+        packedSrcIndex &= ~(INVALID_16BIT_KEY_BIT | INACTIVE_RAY_INDEX_BIT);
 
-        uint2 srcIndex = DecodeRayIndex(packedSrcIndex);    // The inactive ray bit information will get preserved.
         uint2 sortedIndex = uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
         uint2 outPixel = GroupStart + sortedIndex;
-        g_outSourceToSortedRayIndex[outPixel] = srcIndex;   // Output the source index for this sorted ray index.
+        g_outSortedToSourceRayIndexOffset[outPixel] = UnflattenRayIndex(packedSrcIndex);   // Output the source index for this sorted ray index.
 
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
         // Cache the sorted index in Shared Memory.
         // The available Shared Memory space for the sorted index is not continuous, 
         // account for the two segment split.
         {
-            uint flatSortedIndex = EncodeRayIndex(sortedIndex) + !isActiveRay * INACTIVE_RAY_INDEX_BIT;
+            uint flatSortedIndex = FlattenRayIndex(sortedIndex) + isActiveRay * INACTIVE_RAY_INDEX_BIT;
             uint flatSrcIndex = packedSrcIndex & ~INACTIVE_RAY_INDEX_BIT;   // Strip the inactive tag bit.
 
             bool isInFirstSegment = flatSrcIndex < SMem::Size::SortedRayIndexFirstSegment;
@@ -1017,7 +1018,7 @@ void SpillCachedIndicesToVRAMAndCacheInvertedSortedIndices(in uint2 Gid, in uint
     }
 }
 
-void SpillCInvertedSortedIndicesToVRAM(in uint2 Gid, in uint GI)
+void SpillCachedInvertedSortedIndicesToVRAM(in uint2 Gid, in uint GI)
 {
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 GroupStart = Gid * RayGroupDim;
@@ -1034,7 +1035,7 @@ void SpillCInvertedSortedIndicesToVRAM(in uint2 Gid, in uint GI)
 
         uint2 srcIndex = uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
         uint2 outPixel = GroupStart + srcIndex;
-        g_outSortedToSourceRayIndexOffset[outPixel] = packedSortedIndex;   // Output the sorted index for this source ray index.
+        g_outSourceToSortedRayIndexOffset[outPixel] = UnflattenRayIndex(packedSortedIndex);   // Output the sorted index for this source ray index.
     }
 }
 
@@ -1053,6 +1054,6 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
     SpillCachedIndicesToVRAMAndCacheInvertedSortedIndices(Gid, GI);
 
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
-    SpillCInvertedSortedIndicesToVRAM(Gid, GI);
+    SpillCachedInvertedSortedIndicesToVRAM(Gid, GI);
 #endif
 }

@@ -23,4 +23,9 @@
 #define NUM_KEYS (1 << KEY_NUM_BITS)        // Largest key is reserved for an invalid key.
 #define INACTIVE_RAY_KEY (NUM_KEYS - 1)     // Hash key for an invalid/disabled ray. These rays will get sorted to the end and are not to be ray traced.
 #define INACTIVE_RAY_INDEX_BIT 0x2000
-#define IsActiveRay(RayGroupRayIndexOffset) (((RayGroupRayIndexOffset.y << 6) & INACTIVE_RAY_INDEX_BIT) == 0)
+#define INACTIVE_RAY_INDEX_BIT_Y 0x80
+
+
+// If the ray is inactive, the ray index offset contains INACTIVE_RAY_INDEX_BIT
+#define IsActiveRay(RayGroupRayIndexOffset) (RayGroupRayIndexOffset.y & INACTIVE_RAY_INDEX_BIT_Y)
+#define GetRawRayIndexOffset(RayGroupRayIndexOffset) uint2(RayGroupRayIndexOffset.x, RayGroupRayIndexOffset.y & ~(INACTIVE_RAY_INDEX_BIT_Y))

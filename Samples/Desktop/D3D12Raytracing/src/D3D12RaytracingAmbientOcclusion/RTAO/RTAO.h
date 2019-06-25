@@ -39,7 +39,7 @@ public:
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
     void OnUpdate();
-    void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE GBufferResourcesIn);
+    void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource);
     void ReleaseDeviceDependentResources();
     void ReleaseWindowSizeDependentResources() {}; // ToDo
 
@@ -91,7 +91,7 @@ private:
     RWGpuResource   m_AOResources[AOResource::Count];
     RWGpuResource   m_AORayDirectionOriginDepth;
     RWGpuResource   m_sortedToSourceRayIndexOffset;   // Index of a ray in the source array given a sorted index.
-    RWGpuResource   m_sourceToSortedRayIndex;         // Index of a ray in the sorted array given a source index.
+    RWGpuResource   m_sourceToSortedRayIndexOffset;   // Index of a ray in the sorted array given a source index.
     RWGpuResource   m_sortedRayGroupDebug;            // ToDo remove
     ConstantBuffer<RTAOConstantBuffer> m_CB;
     Samplers::MultiJittered m_randomSampler;
