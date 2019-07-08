@@ -313,7 +313,7 @@ void RTAO::CreateRaytracingPipelineStateObject()
 
         // Local root signature and shader association
         // This is a root signature that enables a shader to have unique arguments that come from shader tables.
-        CreateLocalRootSignatureSubobjects(&raytracingPipeline);
+       // TODo remove CreateLocalRootSignatureSubobjects(&raytracingPipeline);
 
         // Global root signature
         // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
