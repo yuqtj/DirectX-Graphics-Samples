@@ -93,9 +93,10 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float TMax, in floa
 #else
         0
 #endif
-        // Skip transparent objects.in bool acceptFirstHit = false
+        // Skip transparent objects.
         | RAY_FLAG_CULL_NON_OPAQUE;        
 
+    // ToDo remove?
     // ToDo test perf impact
     bool acceptFirstHit = true;
     if (acceptFirstHit || !CB.useShadowRayHitTime)
@@ -199,8 +200,7 @@ float CalculateAO(out float tHit, in uint2 srcPixelIndex, in Ray AOray, in float
             float lambda = CB.RTAO_exponentialFalloffDecayConstant;
             occlusionCoef = exp(-lambda * t * t);
         }
-
-        ambientCoef = 1 - (1 - occlusionCoef) * CB.RTAO_MinimumAmbientIllumination;
+        ambientCoef = 1 - (1 - CB.RTAO_MinimumAmbientIllumination) * occlusionCoef;
 
         // Approximate interreflections of light from blocking surfaces which are generally not completely dark and tend to have similar radiance.
         // Ref: Ch 11.3.3 Accounting for Interreflections, Real-Time Rendering (4th edition).
@@ -233,10 +233,7 @@ void RayGenShader()
 {
     // ToDo move to a CS if always using a raysort.
     uint2 srcRayIndex = DispatchRaysIndex().xy;
-
-    g_rtAOcoefficient[srcRayIndex] = 0.4;
-    return;
-
+    
     // ToDo
     float3 encodedNormalDepth = g_texRayOriginSurfaceNormalDepth[srcRayIndex].xyz;
     float depth = encodedNormalDepth.z;

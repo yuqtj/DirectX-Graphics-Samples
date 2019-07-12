@@ -148,7 +148,7 @@
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
-#define LOAD_ONLY_ONE_PBRT_MESH 1   // for LOAD_PBRT_SCENE == 1 only
+#define LOAD_ONLY_ONE_PBRT_MESH 0   // for LOAD_PBRT_SCENE == 1 only
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
@@ -540,7 +540,6 @@ struct SceneConstantBuffer
 	float Zmin;     // ToDo rename to zNear
 	float Zmax;
         
-    BOOL useShadowRayHitTime;           // ToDo Rename "use"
     XMFLOAT2 cameraJitter;
     XMUINT2 raytracingDim;
 
@@ -552,20 +551,22 @@ struct SceneConstantBuffer
     BOOL useShadowMap;                      // Use shadow map (true). Trace visibility rays (false).
     float RTAO_minimumFrBounceCoefficient;  // Minimum bounce coefficient for reflection ray to consider executing a TraceRay for it.
     float RTAO_minimumFtBounceCoefficient;  // Minimum bounce coefficient for transmission ray to consider executing a TraceRay for it.
-    BOOL RTAO_UseNormalMaps; 
+    BOOL RTAO_UseNormalMaps;
+
+    BOOL useShadowRayHitTime;           // ToDo Rename "use"
+    float padding[3];
 };
 
 // ToDo split CB?
 // ToDo capitalize?
-// ToDo padding?
+// ToDo cleanup padding?
+// ToDo remove RTAO prefix
 struct RTAOConstantBuffer
 {
-
     UINT seed;
     UINT numSamplesPerSet;
     UINT numSampleSets;
-    float padding;
-
+    UINT numPixelsPerDimPerSet;
 
     float RTAO_maxShadowRayHitTime;             // Max shadow ray hit time used for tMax in TraceRay.
     BOOL RTAO_approximateInterreflections;      // Approximate interreflections. 
@@ -574,9 +575,9 @@ struct RTAOConstantBuffer
 
     // toDo rename shadow to AO
     float RTAO_maxTheoreticalShadowRayHitTime;  // Max shadow ray hit time used in falloff computation accounting for
-                                                // RTAO_ExponentialFalloffMinOcclusionCutoff and RTAO_maxShadowRayHitTime.
-    UINT numPixelsPerDimPerSet;
+                                                // RTAO_ExponentialFalloffMinOcclusionCutoff and RTAO_maxShadowRayHitTime.    
     BOOL useShadowRayHitTime;           // ToDo Rename "use"
+    XMUINT2 raytracingDim;
 
     BOOL RTAO_IsExponentialFalloffEnabled;               // Apply exponential falloff to AO coefficient based on ray hit distance.    
     float RTAO_exponentialFalloffDecayConstant;
@@ -586,12 +587,12 @@ struct RTAOConstantBuffer
     float RTAO_AdaptiveSamplingScaleExponent;   // ToDo weight exponent instead?
     BOOL RTAO_AdaptiveSamplingMinMaxSampling;
     UINT RTAO_AdaptiveSamplingMinSamples;
-    XMUINT2 raytracingDim;
+    float padding;
 
     float RTAO_TraceRayOffsetAlongNormal;
     float RTAO_TraceRayOffsetAlongRayDirection;
     BOOL RTAO_UseSortedRays;
-    float defaultAmbientIntensity;
+    float padding2;
 };
 
  
@@ -965,8 +966,13 @@ namespace RTAOTraceRayParameters
         {
             0, // AO ray
         };
-        // ToDo For now all geometries reusing shader records
-        static const UINT GeometryStride = RTAORayType::Count;
+        // Since there is only one closest hit shader across shader records in RTAO, 
+        // always access the first shader record of each BLAS instance shader record range.
+        // Optimally, we should specify just a single shader record, but because
+        // the TLAS is reused with other RTPSOs and per 2+ BLAS instance shader records,
+        // we have to make sure indexing due InstanceContributionToHitGroupIndex > 0 lands on
+        // a valid shader record.
+        static const UINT GeometryStride = 0;
     }
     namespace MissShader {
         static const UINT Offset[RTAORayType::Count] =

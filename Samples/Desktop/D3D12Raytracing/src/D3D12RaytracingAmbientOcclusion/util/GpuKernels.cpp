@@ -2012,6 +2012,8 @@ namespace GpuKernels
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
 
+        // ToDo - streak artifacts on dragons nose on reprojection
+
         // Dispatch.
         XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
         commandList->Dispatch(groupSize.x, groupSize.y, 1);

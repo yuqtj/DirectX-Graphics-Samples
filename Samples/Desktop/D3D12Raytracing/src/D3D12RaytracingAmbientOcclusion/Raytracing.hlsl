@@ -76,7 +76,7 @@ RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 #endif
 // ToDo pack motion vector, depth and normal into float4
 RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
-RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18);
+RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18); // ToDo rename
 RWTexture2D<float4> g_rtColor : register(u19);
 RWTexture2D<float4> g_rtAOSurfaceAlbedo : register(u20);
 RWTexture2D<float> g_rtShadowMap : register(u21);
@@ -266,8 +266,9 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRay
     if (acceptFirstHit || !retrieveTHit)
     {
         // Performance TIP: Accept first hit if true hit is not neeeded,
-        // or has minimal to no impact (in AO). The peformance gain can
+        // or has minimal to no impact. The peformance gain can
         // be substantial.
+        // ToDo test perf impact
         rayFlags |= RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
     }
 

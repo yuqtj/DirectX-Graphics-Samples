@@ -69,7 +69,12 @@ void main(uint2 DTid : SV_DispatchThreadID )
 		float visibilityCoefficient = g_texVisibility[DTid];
 
         // ToDo rename to enable dynamic AO?
-        float ambientCoef = g_CB.enableAO ? g_texAO[DTid] : g_CB.defaultAmbientIntensity;
+        float ambientCoef = g_CB.defaultAmbientIntensity;
+        
+        if (hit)
+        {
+            ambientCoef  = g_CB.enableAO ? g_texAO[DTid] : g_CB.defaultAmbientIntensity;
+        }
 
         // ToDo use switch?
         // Calculate final color.

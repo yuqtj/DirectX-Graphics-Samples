@@ -131,7 +131,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_RawOneFrame, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_TemporallySupersampled, CompositionType::Count, CompositionModes);
 
 
     //**********************************************************************************************************************************
@@ -325,11 +325,11 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 
 
     PBRTScene pbrtSceneDefinitions[] = {
-        {L"Dragon", "Assets\\dragon\\scene.pbrt"},
+        {L"Spaceship", "Assets\\spaceship\\scene.pbrt"},
         {L"GroundPlane", "Assets\\groundplane\\scene.pbrt"},
 #if !LOAD_ONLY_ONE_PBRT_MESH 
-        {L"Spaceship", "Assets\\spaceship\\scene.pbrt"},
         {L"Car", "Assets\\car2\\scene.pbrt"},
+        {L"Dragon", "Assets\\dragon\\scene.pbrt"},
         {L"House", "Assets\\house\\scene.pbrt"},
 
         {L"MirrorQuad", "Assets\\mirrorquad\\scene.pbrt"},
@@ -2125,10 +2125,10 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 
 #if LOAD_PBRT_SCENE
     wstring bottomLevelASnames[] = {
-        L"Dragon",
+        L"Spaceship",
         L"GroundPlane",
 #if !LOAD_ONLY_ONE_PBRT_MESH
-        L"Spaceship",
+        L"Dragon",
         L"Car",
         L"House",
 #endif    
@@ -2587,7 +2587,6 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
     }
 
     // ToDo move
-    m_sceneCB->defaultAmbientIntensity = SceneArgs::DefaultAmbientIntensity;
     m_sceneCB->maxRadianceRayRecursionDepth = SceneArgs::MaxRadianceRayRecursionDepth;
     m_sceneCB->maxShadowRayRecursionDepth = SceneArgs::MaxShadowRayRecursionDepth;
     m_sceneCB->useShadowMap = SceneArgs::UseShadowMap;
@@ -4693,7 +4692,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
             RenderPass_GenerateGBuffers();
 #if 1
             // AO. 
-            if (0)//SceneArgs::AOMode == SceneArgs::AOType::RTAO)
+            if (SceneArgs::AOMode == SceneArgs::AOType::RTAO)
             {
                 ScopedTimer _prof(L"RTAO", commandList);
 
@@ -4701,7 +4700,8 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 m_RTAO.OnRender(
                     m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
                     GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
-                    GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess);
+                    GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
+                    GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
 
                 RenderPass_TemporalCacheReverseProjection();
 
