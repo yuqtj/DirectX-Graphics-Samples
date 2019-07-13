@@ -266,7 +266,20 @@ void main(uint2 DTid : SV_DispatchThreadID)
 #endif
         weights /= weightSum;   // Normalize the weights.
         float cachedValue = dot(weights, vCacheValues);
-        float cacheFrameAge = dot(weights, vCacheFrameAge);
+
+
+        // ToDo revisit this and potentially make it UI adjustable - weight ^ 2 ?,...
+        // Scale the frame age by the total weight. This is to keep the frame age low for 
+        // total contributions that have very low reprojection weight. While its preferred to get 
+        // a weighted value even for reprojections that have low weights but still
+        // satisfy consistency tests, the frame age needs to be kept small so that the actual calculated values
+        // are quickly filled in over few frames. Otherwise bad estimates from reprojections,
+        // such as on disocclussions of surfaces on rotation, are kept around long enough to create 
+        // visible streaks that just slowly fade away.
+        // Example: rotating camera around dragon's nose up close. 
+        float frameAgeScale = saturate(weightSum);
+
+        float cacheFrameAge = frameAgeScale * dot(weights, vCacheFrameAge);
         frameAge = round(cacheFrameAge);
 
         // Clamp value to mean +/- std.dev of local neighborhood to surpress ghosting on value changing due to other occluder movements.
