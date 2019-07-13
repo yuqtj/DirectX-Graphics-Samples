@@ -179,6 +179,12 @@ inline void SetNameIndexed(ID3D12Object*, LPCWSTR, UINT)
 }
 #endif
 
+template <typename T>
+inline bool IsInRange(const T& a, const T& _min, const T& _max)
+{
+    return a >= _min && a <= _max;
+}
+
 // Naming helper for ComPtr<T>.
 // Assigns the name of the variable as the name of the object.
 // The indexed variant will include the index in the name of the object.

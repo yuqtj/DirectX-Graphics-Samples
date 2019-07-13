@@ -4589,7 +4589,9 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
             {
                 int z = i - 15;
                 int x = j - 15;
-                if (x < -1 || x > 2 || z < -2 || z > 1)
+                if ((x < -1 || x > 2 || z < -2 || z > 1) &&
+                    (IsInRange(x, -2, 3) && IsInRange(z, -3, 2)))
+
                 {
                     UINT instanceIndex = i * NumGrassPatchesX + j;
 
