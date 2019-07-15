@@ -282,7 +282,7 @@ void RTAO::CreateRaytracingPipelineStateObject()
         CreateHitGroupSubobjects(&raytracingPipeline);
 
         // ToDo try 2B float payload
-#define AO_4B_RAYPAYLOAD 0
+#define AO_4B_RAYPAYLOAD 1
         // Shader config
         // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
         auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();

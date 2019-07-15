@@ -97,7 +97,8 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float TMax, in floa
         | RAY_FLAG_CULL_NON_OPAQUE;        
 
     // ToDo remove?
-    // ToDo test perf impact
+    // ToDo test visual impact
+    // ToDo test perf impact 1.7 -> 1.55 ms
     bool acceptFirstHit = true;
     if (acceptFirstHit || !CB.useShadowRayHitTime)
     {
@@ -125,7 +126,6 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float TMax, in floa
     // Report a hit if Miss Shader didn't set the value to HitDistanceOnMiss.
     return RTAO::HasAORayHitAnyGeometry(tHit);
 }
-
 
 Ray GenerateRandomAORay(in uint2 srcRayIndex, in float3 hitPosition, in float3 surfaceNormal)
 {
@@ -241,7 +241,7 @@ void RayGenShader()
 	if (hit)
 	{
 		float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;
-        float4 normalDepth = g_texRayOriginSurfaceNormalDepth[srcRayIndex];
+        float3 normalDepth = g_texRayOriginSurfaceNormalDepth[srcRayIndex].xyz;
         float3 surfaceNormal = DecodeNormal(normalDepth.xy);
         float depth = normalDepth.z;
         
@@ -264,10 +264,13 @@ void RayGenShader()
         //        numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
         //    }
         //}
-
-
+        
         float tHit;
+#if 0
         Ray AORay = GenerateRandomAORay(srcRayIndex, hitPosition, surfaceNormal);
+#else
+        Ray AORay = { hitPosition, normalize(float3(0.2, 0.4, 0.2)) };
+#endif
         float ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
 
         if (CB.RTAO_UseSortedRays)

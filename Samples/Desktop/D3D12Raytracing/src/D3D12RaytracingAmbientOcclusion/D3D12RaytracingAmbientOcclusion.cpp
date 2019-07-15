@@ -105,7 +105,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -131,7 +131,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionAndDisocclusionMap, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition mode", CompositionType::AmbientOcclusionOnly_TemporallySupersampled, CompositionType::Count, CompositionModes);
 
 
     //**********************************************************************************************************************************
@@ -4589,6 +4589,7 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
             {
                 int z = i - 15;
                 int x = j - 15;
+
                 if ((x < -1 || x > 2 || z < -2 || z > 1) &&
                     (IsInRange(x, -2, 3) && IsInRange(z, -3, 2)))
 

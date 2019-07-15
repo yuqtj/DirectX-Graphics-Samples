@@ -29,7 +29,7 @@ void AccelerationStructure::ReleaseD3DResources()
 	m_accelerationStructure.Reset();
 }
 
-void AccelerationStructure::AllocateResource(ID3D12Device5* device, const wchar_t* resourceName)
+void AccelerationStructure::AllocateResource(ID3D12Device5* device)
 {
 	// Allocate resource for acceleration structures.
 	// Acceleration structures can only be placed in resources that are created in the default heap (or custom heap equivalent). 
@@ -38,8 +38,9 @@ void AccelerationStructure::AllocateResource(ID3D12Device5* device, const wchar_
 	// and must have resource flag D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS. The ALLOW_UNORDERED_ACCESS requirement simply acknowledges both: 
 	//  - the system will be doing this type of access in its implementation of acceleration structure builds behind the scenes.
 	//  - from the app point of view, synchronization of writes/reads to acceleration structures is accomplished using UAV barriers.
+    // ToDo force D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT alignment 
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-	AllocateUAVBuffer(device, m_prebuildInfo.ResultDataMaxSizeInBytes, &m_accelerationStructure, initialResourceState, resourceName);
+	AllocateUAVBuffer(device, m_prebuildInfo.ResultDataMaxSizeInBytes, &m_accelerationStructure, initialResourceState, m_name.c_str());
 }
 
 
@@ -102,25 +103,41 @@ void BottomLevelAccelerationStructure::Initialize(
 	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, 
     BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry, 
     bool allowUpdate,
-    bool bUpdateOnBuild)
+    bool bUpdateOnBuild, 
+    bool performCompaction = false)
 {
     m_allowUpdate = allowUpdate;
     m_updateOnBuild = bUpdateOnBuild;
-    
+    m_compact = performCompaction;
+
     m_buildFlags = buildFlags;
+    m_name = bottomLevelASGeometry.GetName();
     
     if (allowUpdate)
     {
         m_buildFlags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
     }
 
+    if (m_compact)
+    {
+        m_buildFlags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION;
+    }
+
 	BuildGeometryDescs(bottomLevelASGeometry);
 	ComputePrebuildInfo(device);
-	AllocateResource(device, bottomLevelASGeometry.GetName().c_str());
+	AllocateResource(device);
+    if (m_compact)
+    {
+        D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        AllocateUAVBuffer(device, sizeof(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_COMPACTED_SIZE_DESC), &m_compactionQueryDesc, initialResourceState, L"AS Compaction Query Desc");
+        AllocateReadBackBuffer(device, sizeof(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_COMPACTED_SIZE_DESC), &m_compactionQueryReadBack, D3D12_RESOURCE_STATE_COPY_DEST, L"AS Compaction Query Desc");     
+    }
+
 	m_isDirty = true;
     m_isBuilt = false;
 }
 
+// The caller must add a UAV barrier before using the resource.
 void BottomLevelAccelerationStructure::Build(
     ID3D12GraphicsCommandList4* commandList, 
     ID3D12Resource* scratch, 
@@ -158,10 +175,70 @@ void BottomLevelAccelerationStructure::Build(
 	}
 
 	commandList->SetDescriptorHeaps(1, &descriptorHeap);
-    commandList->BuildRaytracingAccelerationStructure(&bottomLevelBuildDesc, 0, nullptr);
+
+    if (m_compact)
+    {
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_DESC postBuildDesc;
+        postBuildDesc.DestBuffer = m_compactionQueryDesc->GetGPUVirtualAddress();
+        postBuildDesc.InfoType = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_COMPACTED_SIZE;
+
+        commandList->BuildRaytracingAccelerationStructure(&bottomLevelBuildDesc, 1, &postBuildDesc);
+    }
+    else
+    {
+        commandList->BuildRaytracingAccelerationStructure(&bottomLevelBuildDesc, 0, nullptr);
+    }
 
 	m_isDirty = false;
     m_isBuilt = true;
+}
+
+// This must be called after an UAV barrier after Build().
+void BottomLevelAccelerationStructure::PostBuild_QueryCompactedSize(
+    ID3D12GraphicsCommandList4* commandList,
+    ID3D12DescriptorHeap* descriptorHeap)
+{
+    if (m_compact)
+    {
+        // Copy the compaction desc result to the readback buffer.
+        commandList->CopyResource(m_compactionQueryReadBack.Get(), m_compactionQueryDesc.Get());
+        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_compactionQueryDesc.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+    }
+}
+
+// This must be called after GPU is finished with after PostBuild_QueryCompactedSize().
+// The caller must add a UAV barrier before using the resource.
+void BottomLevelAccelerationStructure::PostBuild_PerformCompaction(
+    ID3D12Device5* device,
+    ID3D12GraphicsCommandList4* commandList,
+    ID3D12DescriptorHeap* descriptorHeap)
+{
+    if (m_compact)
+    {
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_COMPACTED_SIZE_DESC compactedSizeDesc;
+
+        // Readback the compacted size.
+        UINT* mappedData = nullptr;
+        CD3DX12_RANGE readRange(0, sizeof(compactedSizeDesc));
+        ThrowIfFailed(m_compactionQueryReadBack->Map(0, &readRange, reinterpret_cast<void**>(&mappedData)));
+        memcpy(&compactedSizeDesc, mappedData, sizeof(compactedSizeDesc));
+        m_compactionQueryReadBack->Unmap(0, &CD3DX12_RANGE(0, 0));
+
+        // Create the resource for compacted AS.
+        D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+        wstring resourceName = m_name + wstring(L" (Compacted)");
+        ComPtr<ID3D12Resource> compactedAccelerationStructure;
+        AllocateUAVBuffer(device, compactedSizeDesc.CompactedSizeInBytes, &compactedAccelerationStructure, initialResourceState, resourceName.c_str());
+
+        // Compact the AS.
+        D3D12_GPU_VIRTUAL_ADDRESS_RANGE dest;
+        dest.SizeInBytes = compactedSizeDesc.CompactedSizeInBytes;
+        dest.StartAddress = compactedAccelerationStructure->GetGPUVirtualAddress();
+        commandList->CopyRaytracingAccelerationStructure(compactedAccelerationStructure->GetGPUVirtualAddress(), m_accelerationStructure->GetGPUVirtualAddress(), D3D12_RAYTRACING_ACCELERATION_STRUCTURE_COPY_MODE_COMPACT);
+
+        // Replace the stored AS with the compacted one.
+        m_accelerationStructure = compactedAccelerationStructure;
+    }
 }
 
 void TopLevelAccelerationStructure::ComputePrebuildInfo(ID3D12Device5* device, UINT numBottomLevelASInstanceDescs)
@@ -189,13 +266,16 @@ void TopLevelAccelerationStructure::Initialize(
     m_allowUpdate = allowUpdate;
     m_updateOnBuild = bUpdateOnBuild; 
 	m_buildFlags = buildFlags;
+
+    m_name = resourceName;
+
     if (allowUpdate)
     {
         m_buildFlags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
     }
 
 	ComputePrebuildInfo(device, numBottomLevelASInstanceDescs);
-	AllocateResource(device, resourceName);
+	AllocateResource(device);
 
     m_isDirty = true;
     m_isBuilt = false;
@@ -233,20 +313,21 @@ RaytracingAccelerationStructureManager::RaytracingAccelerationStructureManager(I
 
 // Adds a bottom-level Acceleration Structure.
 // The passed in bottom-level AS geometry must have a unique name.
-// Requires a corresponding 1 or more AddBottomLevelASInstance() calls to be added to top-level AS to be included.
+// Requires a corresponding 1 or more AddBottomLevelASInstance() calls to be added to the top-level AS for the bottom-level AS to be included.
 void RaytracingAccelerationStructureManager::AddBottomLevelAS(
     ID3D12Device5* device,
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags,
     BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry,
     bool allowUpdate,
-    bool performUpdateOnBuild)
+    bool performUpdateOnBuild,
+    bool performCompaction)
 {
     ThrowIfFalse(m_vBottomLevelAS.find(bottomLevelASGeometry.GetName()) == m_vBottomLevelAS.end(),
         L"A bottom level acceleration structure with that name already exists.");
 
     auto& bottomLevelAS = m_vBottomLevelAS[bottomLevelASGeometry.GetName()];
 
-    bottomLevelAS.Initialize(device, buildFlags, bottomLevelASGeometry, allowUpdate, performUpdateOnBuild);
+    bottomLevelAS.Initialize(device, buildFlags, bottomLevelASGeometry, allowUpdate, performUpdateOnBuild, performCompaction);
 
     m_ASmemoryFootprint += bottomLevelAS.RequiredResultDataSizeInBytes();
     m_scratchResourceSize = max(bottomLevelAS.RequiredScratchSize(), m_scratchResourceSize);

@@ -14,6 +14,7 @@
 #include "..\RaytracingShaderHelper.hlsli"
 
 // ToDo some pixels here and there on mirror boundaries fail temporal reprojection even for static scene/camera
+// ToDo sharp edges fail temporal reprojection due to clamping even for static scene
 
 // ToDO pack value and depth beforehand?
 Texture2D<float4> g_texInputCachedNormalDepth : register(t0);        // ToDo standardize cache vs cached

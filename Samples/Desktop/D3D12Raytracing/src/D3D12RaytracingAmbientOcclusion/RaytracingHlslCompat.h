@@ -145,6 +145,7 @@
 
 #define USE_GRASS_GEOMETRY 1
 
+
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
@@ -384,7 +385,6 @@ struct GBufferRayPayload
 
 struct ShadowRayPayload
 {
-    // ToDo use 1 byte value for true/false?
     float tHit;         // Hit time <0,..> on Hit. -1 on miss.
 };
 
