@@ -203,6 +203,8 @@ namespace GpuKernels
 				}
 			}
 
+            // ToDo move copy to CPU out to separate kernel
+
 			// Copy the sum result to the readback buffer.
             // ToDo should the readback take frameIndex into consideration in addition to invocationIndex if we dont wait on GPU below?
 			auto destDesc = m_readbackResources[invocationIndex]->GetDesc();
