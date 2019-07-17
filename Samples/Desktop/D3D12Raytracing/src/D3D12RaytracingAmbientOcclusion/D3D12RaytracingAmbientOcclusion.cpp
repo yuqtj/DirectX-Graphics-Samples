@@ -2106,12 +2106,20 @@ void D3D12RaytracingAmbientOcclusion::InitializeAllBottomLevelAccelerationStruct
     {
         auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
         bool updateOnBuild = false;
+        bool compactAS = false;
         // ToDO parametrize?
         if (bottomLevelASGeometry.GetName().find(L"Grass Patch LOD") != wstring::npos)
         {
             updateOnBuild = true;
         }
-        m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, updateOnBuild, updateOnBuild);
+        if (bottomLevelASGeometry.GetName().find(L"Spaceship") != wstring::npos ||
+            bottomLevelASGeometry.GetName().find(L"Dragon") != wstring::npos ||
+            bottomLevelASGeometry.GetName().find(L"House") != wstring::npos ||
+            bottomLevelASGeometry.GetName().find(L"Car") != wstring::npos)
+        {
+            compactAS = true;
+        }
+        m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, updateOnBuild, updateOnBuild, compactAS);
     }
 }
 

@@ -149,7 +149,7 @@
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
-#define LOAD_ONLY_ONE_PBRT_MESH 1   // for LOAD_PBRT_SCENE == 1 only
+#define LOAD_ONLY_ONE_PBRT_MESH 0   // for LOAD_PBRT_SCENE == 1 only
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE

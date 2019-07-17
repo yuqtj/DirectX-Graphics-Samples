@@ -34,11 +34,11 @@ ID3D12Resource* AccelerationStructure::GetResource()
 {
     if (m_compact)
     {
-        return m_accelerationStructure.Get();
+        return m_compactedAccelerationStructure.Get();
     }
     else
     {
-        return m_compactedAccelerationStructure.Get();
+        return m_accelerationStructure.Get();
     }
 }
 
@@ -204,7 +204,7 @@ void BottomLevelAccelerationStructure::Build(
 
         // Copy the compaction desc result to the readback buffer.      
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::UAV(GetResource()),
+            CD3DX12_RESOURCE_BARRIER::UAV(m_accelerationStructure.Get()),
             CD3DX12_RESOURCE_BARRIER::Transition(m_compactionQueryDesc.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
@@ -220,6 +220,22 @@ void BottomLevelAccelerationStructure::Build(
     m_isBuilt = true;
 }
 
+// ToDo remove
+void BottomLevelAccelerationStructure::ReadbackCompactedSize()
+{
+    if (m_compact)
+    {
+        // Readback the compacted size desc.
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_COMPACTED_SIZE_DESC compactedSizeDesc;
+        UINT* mappedData = nullptr;
+        CD3DX12_RANGE readRange(0, sizeof(compactedSizeDesc));
+        ThrowIfFailed(m_compactionQueryReadBack->Map(0, &readRange, reinterpret_cast<void**>(&mappedData)));
+        memcpy(&compactedSizeDesc, mappedData, sizeof(compactedSizeDesc));
+        m_compactionQueryReadBack->Unmap(0, &CD3DX12_RANGE(0, 0));
+    }
+}
+
+
 // Performs compaction, if enabled, of the acceleration structure.
 void BottomLevelAccelerationStructure::PostBuild(
     ID3D12GraphicsCommandList4* commandList)
@@ -227,8 +243,11 @@ void BottomLevelAccelerationStructure::PostBuild(
     if (m_compact)
     {
         // Make sure the readback is done being written to.
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_compactionQueryReadBack.Get()));
+        //commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_compactionQueryReadBack.Get()));
 
+#if 0
+        // ToDo this has to be read back once GPU CPU synced
+     
         // Readback the compacted size desc.
         D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_COMPACTED_SIZE_DESC compactedSizeDesc;
         UINT* mappedData = nullptr;
@@ -241,11 +260,8 @@ void BottomLevelAccelerationStructure::PostBuild(
         // Create the resource for compacted AS.
         //wstring resourceName = m_name + wstring(L" (Compacted)");
         //AllocateUAVBuffer(device, compactedSizeDesc.CompactedSizeInBytes, &m_compactedAccelerationStructure, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, resourceName.c_str());
-
+#endif
         // Compact the AS.
-        D3D12_GPU_VIRTUAL_ADDRESS_RANGE dest;
-        dest.SizeInBytes = compactedSizeDesc.CompactedSizeInBytes;
-        dest.StartAddress = m_compactedAccelerationStructure->GetGPUVirtualAddress();
         commandList->CopyRaytracingAccelerationStructure(m_compactedAccelerationStructure->GetGPUVirtualAddress(), m_accelerationStructure->GetGPUVirtualAddress(), D3D12_RAYTRACING_ACCELERATION_STRUCTURE_COPY_MODE_COMPACT);
 
         // ToDo remove the UAV barrier.
@@ -417,6 +433,8 @@ void RaytracingAccelerationStructureManager::Build(
 
                 bottomLevelAS.PostBuild(commandList);
             }
+            // ToDo call just once when the CPU GPU synced
+            bottomLevelAS.ReadbackCompactedSize();
         }
     }
     
