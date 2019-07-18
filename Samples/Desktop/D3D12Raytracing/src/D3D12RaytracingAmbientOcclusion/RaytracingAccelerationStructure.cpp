@@ -429,6 +429,7 @@ void RaytracingAccelerationStructureManager::Build(
 
                 // Since a single scratch resource is reused, put a barrier in-between each call.
                 // ToDo add option to use per BLAS scratch with one UAV barrier
+                // ToDo fix this for compaction. The get resource will return the compacted resource not source AS. But there's an UAV in Build in that case.
                 commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(bottomLevelAS.GetResource()));
 
                 bottomLevelAS.PostBuild(commandList);
