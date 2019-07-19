@@ -40,17 +40,18 @@ public:
 	void ReleaseD3DResources();
 	UINT64 RequiredScratchSize() { return std::max(m_prebuildInfo.ScratchDataSizeInBytes, m_prebuildInfo.UpdateScratchDataSizeInBytes); }
 	UINT64 RequiredResultDataSizeInBytes() { return m_prebuildInfo.ResultDataMaxSizeInBytes; }
-	ID3D12Resource* GetResource() { return m_accelerationStructure.Get(); }
+    ID3D12Resource* GetResource();
 	const D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO& PrebuildInfo() { return m_prebuildInfo; }
     const std::wstring& GetName() { return m_name; }
 
     
     void SetDirty(bool isDirty) { m_isDirty = isDirty; }
     bool IsDirty() { return m_isDirty; }
-    UINT ResourceSize() { return m_accelerationStructure->GetDesc().Width; }
+    UINT64 ResourceSize() { return GetResource()->GetDesc().Width; }
 
 protected:
     ComPtr<ID3D12Resource> m_accelerationStructure;
+    ComPtr<ID3D12Resource> m_compactedAccelerationStructure;
     ComPtr<ID3D12Resource> m_compactionQueryDesc;
     ComPtr<ID3D12Resource> m_compactionQueryReadBack;
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS m_buildFlags;
@@ -74,10 +75,10 @@ public:
     std::vector<D3DGeometry>        m_geometries;
     std::vector<D3DTexture>         m_textures;
     UINT                            m_numTriangles = 0;
-    DXGI_FORMAT                     m_indexFormat;
-    UINT                            m_ibStrideInBytes;
-    DXGI_FORMAT                     m_vertexFormat;
-    UINT                            m_vbStrideInBytes;
+    DXGI_FORMAT                     m_indexFormat = DXGI_FORMAT_UNKNOWN;
+    UINT                            m_ibStrideInBytes = 0;
+    DXGI_FORMAT                     m_vertexFormat = DXGI_FORMAT_UNKNOWN;
+    UINT                            m_vbStrideInBytes = 0;
 
     BottomLevelAccelerationStructureGeometry() {}
     BottomLevelAccelerationStructureGeometry(const wchar_t* name) : m_name(name) {}
@@ -98,8 +99,8 @@ public:
 
     void Initialize(ID3D12Device5* device, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags, BottomLevelAccelerationStructureGeometry& bottomLevelASGeometry, bool allowUpdate = false, bool bUpdateOnBuild = false, bool performCompaction = false);
     void Build(ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratch, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress = 0);
-    void PostBuild_QueryCompactedSize(ID3D12GraphicsCommandList4* commandList, ID3D12DescriptorHeap* descriptorHeap);
-    void PostBuild_PerformCompaction(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12DescriptorHeap* descriptorHeap);
+    void PostBuild(ID3D12GraphicsCommandList4* commandList);
+    void ReadbackCompactedSize();
 
     void UpdateGeometryDescsTransform(D3D12_GPU_VIRTUAL_ADDRESS baseGeometryTransformGPUAddress);
     

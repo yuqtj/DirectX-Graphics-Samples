@@ -105,7 +105,7 @@ namespace SceneArgs
  #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
 	EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::GaussianFilter9Tap, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
 
     // ToDo test tessFactor 16
@@ -2106,12 +2106,20 @@ void D3D12RaytracingAmbientOcclusion::InitializeAllBottomLevelAccelerationStruct
     {
         auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
         bool updateOnBuild = false;
+        bool compactAS = false;
         // ToDO parametrize?
         if (bottomLevelASGeometry.GetName().find(L"Grass Patch LOD") != wstring::npos)
         {
             updateOnBuild = true;
         }
-        m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, updateOnBuild, updateOnBuild);
+        if (bottomLevelASGeometry.GetName().find(L"Spaceship") != wstring::npos ||
+            bottomLevelASGeometry.GetName().find(L"Dragon") != wstring::npos ||
+            bottomLevelASGeometry.GetName().find(L"House") != wstring::npos ||
+            bottomLevelASGeometry.GetName().find(L"Car") != wstring::npos)
+        {
+            compactAS = true;
+        }
+        m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, updateOnBuild, updateOnBuild, compactAS);
     }
 }
 
