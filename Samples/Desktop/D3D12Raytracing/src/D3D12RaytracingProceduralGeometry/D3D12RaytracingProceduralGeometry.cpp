@@ -648,11 +648,16 @@ void D3D12RaytracingProceduralGeometry::BuildPlaneGeometry()
         { XMFLOAT3(0.0f, 0.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
     };
 
-    AllocateUploadBuffer(device, indices, sizeof(indices), &m_indexBuffer.resource);
-    AllocateUploadBuffer(device, vertices, sizeof(vertices), &m_vertexBuffer.resource);
+	// Index buffer is created with a ByteAddressBuffer SRV. 
+	// ByteAddressBuffer SRV is created with an ElementSize = 0 and NumElements = number of 32 - bit words.
+	UINT indexBufferSize = CeilDivide(sizeof(indices), sizeof(UINT)) * sizeof(UINT);	// Pad the buffer to fit numIndexBufferElements of 32bit words.
+	UINT numIndexBufferElements = indexBufferSize / sizeof(UINT);
 
-    // Vertex buffer is passed to the shader along with index buffer as a descriptor range.
-    UINT descriptorIndexIB = CreateBufferSRV(&m_indexBuffer, sizeof(indices) / 4, 0);
+	AllocateUploadBuffer(device, indices, indexBufferSize, &m_indexBuffer.resource);
+	AllocateUploadBuffer(device, vertices, sizeof(vertices), &m_vertexBuffer.resource);
+
+	// Vertex buffer is passed to the shader along with index buffer as a descriptor table.
+	UINT descriptorIndexIB = CreateBufferSRV(&m_indexBuffer, numIndexBufferElements, 0);
     UINT descriptorIndexVB = CreateBufferSRV(&m_vertexBuffer, ARRAYSIZE(vertices), sizeof(vertices[0]));
     ThrowIfFalse(descriptorIndexVB == descriptorIndexIB + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 }
@@ -796,7 +801,7 @@ void D3D12RaytracingProceduralGeometry::BuildBotomLevelASInstanceDescs(BLASPtrTy
         // Scale in XZ dimensions.
         XMMATRIX mScale = XMMatrixScaling(fWidth.x, fWidth.y, fWidth.z);
         XMMATRIX mTranslation = XMMatrixTranslationFromVector(vBasePosition);
-        XMMATRIX mTransform = mScale * mTranslation;  
+        XMMATRIX mTransform = mScale * mTranslation;
         XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(instanceDesc.Transform), mTransform);
     }
 
@@ -1274,7 +1279,6 @@ void D3D12RaytracingProceduralGeometry::OnRender()
         return;
     }
 
-    auto device = m_deviceResources->GetD3DDevice();
     auto commandList = m_deviceResources->GetCommandList();
 
     // Begin frame.
