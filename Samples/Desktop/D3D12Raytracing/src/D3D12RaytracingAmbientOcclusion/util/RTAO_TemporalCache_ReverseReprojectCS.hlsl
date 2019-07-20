@@ -86,9 +86,9 @@ float CalculateAdjustedDepthThreshold(
 }
 
 
-float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float2 offset, in uint2 actualIndex, in uint2 sampleIndices[4], in float cacheDdxy)
+float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float2 offset, in uint2 actualIndex, in int2 sampleIndices[4], in float cacheDdxy)
 {
-    uint4 isWithinBounds = uint4(
+    bool4 isWithinBounds = bool4(
         IsWithinBounds(sampleIndices[0], cb.textureDim),
         IsWithinBounds(sampleIndices[1], cb.textureDim),
         IsWithinBounds(sampleIndices[2], cb.textureDim),
@@ -176,9 +176,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     float2 cachePixelOffset = cacheFrameTexturePos * cb.textureDim - topLeftCacheFrameIndex - 0.5;
 
-    const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
+    const int2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
 
-    uint2 cacheIndices[4] = {
+    int2 cacheIndices[4] = {
         topLeftCacheFrameIndex + srcIndexOffsets[0],
         topLeftCacheFrameIndex + srcIndexOffsets[1],
         topLeftCacheFrameIndex + srcIndexOffsets[2],

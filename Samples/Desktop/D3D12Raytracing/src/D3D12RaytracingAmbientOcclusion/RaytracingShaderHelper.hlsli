@@ -59,7 +59,7 @@ uint2 EncodeMaterial16b(uint materialID, float3 diffuse)
     return result;
 }
 
-uint IsWithinBounds(in int2 index, in uint2 dimensions)
+bool IsWithinBounds(in int2 index, in int2 dimensions)
 {
     return index.x >= 0 && index.y >= 0 && index.x < dimensions.x && index.y < dimensions.y;
 }
