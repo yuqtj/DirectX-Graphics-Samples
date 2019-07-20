@@ -51,7 +51,7 @@ void AccelerationStructure::AllocateResource(ID3D12Device5* device)
 	// and must have resource flag D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS. The ALLOW_UNORDERED_ACCESS requirement simply acknowledges both: 
 	//  - the system will be doing this type of access in its implementation of acceleration structure builds behind the scenes.
 	//  - from the app point of view, synchronization of writes/reads to acceleration structures is accomplished using UAV barriers.
-    // ToDo force D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT alignment 
+    // Buffer resources must have 64KB alignment which satisfies the AS resource requirement to have alignment of 256 (D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT).
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
 	AllocateUAVBuffer(device, m_prebuildInfo.ResultDataMaxSizeInBytes, &m_accelerationStructure, initialResourceState, m_name.c_str());
 
@@ -183,6 +183,7 @@ void BottomLevelAccelerationStructure::Build(
 		if (m_isBuilt && m_allowUpdate && m_updateOnBuild)
 		{
             bottomLevelInputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
+            bottomLevelBuildDesc.SourceAccelerationStructureData = m_accelerationStructure->GetGPUVirtualAddress();
 		}
         bottomLevelInputs.NumDescs = static_cast<UINT>(m_cacheGeometryDescs[currentID].size());
         bottomLevelInputs.pGeometryDescs = m_cacheGeometryDescs[currentID].data();
