@@ -41,7 +41,6 @@ public:
 
     // Messages
     virtual void OnInit();
-    virtual void OnKeyDown(UINT8 key);
     virtual void OnUpdate();
     virtual void OnRender();
     virtual void OnSizeChanged(UINT width, UINT height, bool minimized);
@@ -52,11 +51,10 @@ private:
 
     static const UINT FrameCount = 3;
         
-	// DirectX Raytracing (DXR) attributes
+    // DirectX Raytracing (DXR) attributes
     ComPtr<ID3D12Device5> m_dxrDevice;
     ComPtr<ID3D12GraphicsCommandList4> m_dxrCommandList;
     ComPtr<ID3D12StateObject> m_dxrStateObject;
-    bool m_isDxrSupported;
 
     // Root signatures
     ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
@@ -98,8 +96,6 @@ private:
     // Application state
     StepTimer m_timer;
 
-    void EnableDirectXRaytracing(IDXGIAdapter1* adapter);
-    void ParseCommandLineArgs(WCHAR* argv[], int argc);
     void RecreateD3D();
     void DoRaytracing();   
     void CreateDeviceDependentResources();

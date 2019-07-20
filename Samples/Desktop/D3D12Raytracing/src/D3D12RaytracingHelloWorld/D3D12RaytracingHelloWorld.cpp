@@ -24,17 +24,10 @@ const wchar_t* D3D12RaytracingHelloWorld::c_missShaderName = L"MyMissShader";
 
 D3D12RaytracingHelloWorld::D3D12RaytracingHelloWorld(UINT width, UINT height, std::wstring name) :
     DXSample(width, height, name),
-    m_raytracingOutputResourceUAVDescriptorHeapIndex(UINT_MAX),
-    m_isDxrSupported(false)
+    m_raytracingOutputResourceUAVDescriptorHeapIndex(UINT_MAX)
 {
     m_rayGenCB.viewport = { -1.0f, -1.0f, 1.0f, 1.0f };
     UpdateForSizeChange(width, height);
-}
-
-void D3D12RaytracingHelloWorld::EnableDirectXRaytracing(IDXGIAdapter1* adapter)
-{
-	ThrowIfFalse(IsDirectXRaytracingSupported(m_deviceResources->GetAdapter()),
-		L"ERROR: DirectX Raytracing is not supported by your GPU and driver.\n\n");
 }
 
 void D3D12RaytracingHelloWorld::OnInit()
@@ -45,14 +38,16 @@ void D3D12RaytracingHelloWorld::OnInit()
         FrameCount,
         D3D_FEATURE_LEVEL_11_0,
         // Sample shows handling of use cases with tearing support, which is OS dependent and has been supported since TH2.
-        // Since the Fallback Layer requires Fall Creator's update (RS3), we don't need to handle non-tearing cases.
+        // Since the sample requires build 1809 (RS5) or higher, we don't need to handle non-tearing cases.
         DeviceResources::c_RequireTearingSupport,
         m_adapterIDoverride
         );
     m_deviceResources->RegisterDeviceNotify(this);
     m_deviceResources->SetWindow(Win32Application::GetHwnd(), m_width, m_height);
     m_deviceResources->InitializeDXGIAdapter();
-    EnableDirectXRaytracing(m_deviceResources->GetAdapter());
+
+    ThrowIfFalse(IsDirectXRaytracingSupported(m_deviceResources->GetAdapter()),
+        L"ERROR: DirectX Raytracing is not supported by your OS, GPU and/or driver.\n\n");
 
     m_deviceResources->CreateDeviceResources();
     m_deviceResources->CreateWindowSizeDependentResources();
@@ -97,7 +92,6 @@ void D3D12RaytracingHelloWorld::SerializeAndCreateRaytracingRootSignature(D3D12_
     ComPtr<ID3DBlob> blob;
     ComPtr<ID3DBlob> error;
 
-
     ThrowIfFailed(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error), error ? static_cast<wchar_t*>(error->GetBufferPointer()) : nullptr);
     ThrowIfFailed(device->CreateRootSignature(1, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&(*rootSig))));
 }
@@ -132,7 +126,6 @@ void D3D12RaytracingHelloWorld::CreateRaytracingInterfaces()
 {
     auto device = m_deviceResources->GetD3DDevice();
     auto commandList = m_deviceResources->GetCommandList();
-
 
     ThrowIfFailed(device->QueryInterface(IID_PPV_ARGS(&m_dxrDevice)), L"Couldn't get DirectX Raytracing interface for the device.\n");
     ThrowIfFailed(commandList->QueryInterface(IID_PPV_ARGS(&m_dxrCommandList)), L"Couldn't get DirectX Raytracing interface for the command list.\n");
@@ -225,6 +218,7 @@ void D3D12RaytracingHelloWorld::CreateRaytracingPipelineStateObject()
     PrintStateObjectDesc(raytracingPipeline);
 #endif
 
+    // Create the state object.
     ThrowIfFailed(m_dxrDevice->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object.\n");
 }
 
@@ -256,9 +250,8 @@ void D3D12RaytracingHelloWorld::CreateDescriptorHeap()
 
     D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
     // Allocate a heap for 3 descriptors:
-    // 2 - bottom and top level acceleration structure fallback wrapped pointers
     // 1 - raytracing output texture SRV
-    descriptorHeapDesc.NumDescriptors = 3; 
+    descriptorHeapDesc.NumDescriptors = 1; 
     descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     descriptorHeapDesc.NodeMask = 0;
@@ -326,15 +319,10 @@ void D3D12RaytracingHelloWorld::BuildAccelerationStructures()
     topLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
     topLevelInputs.Flags = buildFlags;
     topLevelInputs.NumDescs = 1;
+    topLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO topLevelPrebuildInfo = {};
-
-    topLevelInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-    topLevelInputs.Flags = buildFlags;
-    topLevelInputs.NumDescs = 1;
-    topLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-	m_dxrDevice->GetRaytracingAccelerationStructurePrebuildInfo(&topLevelInputs, &topLevelPrebuildInfo);
-    
+    m_dxrDevice->GetRaytracingAccelerationStructurePrebuildInfo(&topLevelInputs, &topLevelPrebuildInfo);
     ThrowIfFalse(topLevelPrebuildInfo.ResultDataMaxSizeInBytes > 0);
 
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO bottomLevelPrebuildInfo = {};
@@ -342,7 +330,6 @@ void D3D12RaytracingHelloWorld::BuildAccelerationStructures()
     bottomLevelInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
     bottomLevelInputs.pGeometryDescs = &geometryDesc;
     m_dxrDevice->GetRaytracingAccelerationStructurePrebuildInfo(&bottomLevelInputs, &bottomLevelPrebuildInfo);
-    
     ThrowIfFalse(bottomLevelPrebuildInfo.ResultDataMaxSizeInBytes > 0);
 
     ComPtr<ID3D12Resource> scratchResource;
@@ -356,27 +343,14 @@ void D3D12RaytracingHelloWorld::BuildAccelerationStructures()
     //  - the system will be doing this type of access in its implementation of acceleration structure builds behind the scenes.
     //  - from the app point of view, synchronization of writes/reads to acceleration structures is accomplished using UAV barriers.
     {
-        D3D12_RESOURCE_STATES initialResourceState;
-        initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-        
+        D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+    
         AllocateUAVBuffer(device, bottomLevelPrebuildInfo.ResultDataMaxSizeInBytes, &m_bottomLevelAccelerationStructure, initialResourceState, L"BottomLevelAccelerationStructure");
         AllocateUAVBuffer(device, topLevelPrebuildInfo.ResultDataMaxSizeInBytes, &m_topLevelAccelerationStructure, initialResourceState, L"TopLevelAccelerationStructure");
     }
 
-    // Note on Emulated GPU pointers (AKA Wrapped pointers) requirement in Fallback Layer:
-    // The primary point of divergence between the DXR API and the compute-based Fallback layer is the handling of GPU pointers. 
-    // DXR fundamentally requires that GPUs be able to dynamically read from arbitrary addresses in GPU memory. 
-    // The existing Direct Compute API today is more rigid than DXR and requires apps to explicitly inform the GPU what blocks of memory it will access with SRVs/UAVs.
-    // In order to handle the requirements of DXR, the Fallback Layer uses the concept of Emulated GPU pointers, 
-    // which requires apps to create views around all memory they will access for raytracing, 
-    // but retains the DXR-like flexibility of only needing to bind the top level acceleration structure at DispatchRays.
-    //
-    // The Fallback Layer interface uses WRAPPED_GPU_POINTER to encapsulate the underlying pointer
-    // which will either be an emulated GPU pointer for the compute - based path or a GPU_VIRTUAL_ADDRESS for the DXR path.
-
     // Create an instance desc for the bottom-level acceleration structure.
     ComPtr<ID3D12Resource> instanceDescs;
-
     D3D12_RAYTRACING_INSTANCE_DESC instanceDesc = {};
     instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1;
     instanceDesc.InstanceMask = 1;
@@ -392,7 +366,7 @@ void D3D12RaytracingHelloWorld::BuildAccelerationStructures()
     }
 
     // Top Level Acceleration Structure desc
-    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = bottomLevelBuildDesc;
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = {};
     {
         topLevelInputs.InstanceDescs = instanceDescs->GetGPUVirtualAddress();
         topLevelBuildDesc.Inputs = topLevelInputs;
@@ -407,9 +381,9 @@ void D3D12RaytracingHelloWorld::BuildAccelerationStructures()
         raytracingCommandList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
     };
 
+    // Build acceleration structure.
     BuildAccelerationStructure(m_dxrCommandList.Get());
- 
-
+    
     // Kick off acceleration structure construction.
     m_deviceResources->ExecuteCommandList();
 
@@ -436,12 +410,12 @@ void D3D12RaytracingHelloWorld::BuildShaderTables()
 
     // Get shader identifiers.
     UINT shaderIdentifierSize;
-
-    ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
-    ThrowIfFailed(m_dxrStateObject.As(&stateObjectProperties));
-    GetShaderIdentifiers(stateObjectProperties.Get());
-    shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-
+    {
+        ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
+        ThrowIfFailed(m_dxrStateObject.As(&stateObjectProperties));
+        GetShaderIdentifiers(stateObjectProperties.Get());
+        shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+    }
 
     // Ray gen shader table
     {
@@ -475,22 +449,12 @@ void D3D12RaytracingHelloWorld::BuildShaderTables()
         m_hitGroupShaderTable = hitGroupShaderTable.GetResource();
     }
 }
-void D3D12RaytracingHelloWorld::OnKeyDown(UINT8 key)
-{
-}
 
 // Update frame-based values.
 void D3D12RaytracingHelloWorld::OnUpdate()
 {
     m_timer.Tick();
     CalculateFrameStats();
-}
-
-
-// Parse supplied command line args.
-void D3D12RaytracingHelloWorld::ParseCommandLineArgs(WCHAR* argv[], int argc)
-{
-    DXSample::ParseCommandLineArgs(argv, argc);
 }
 
 void D3D12RaytracingHelloWorld::DoRaytracing()

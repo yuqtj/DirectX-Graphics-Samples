@@ -27,6 +27,8 @@ D3D12xGPU::D3D12xGPU(UINT width, UINT height, wstring name) :
     m_activeGpuPreference(DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE),
     m_fps(0.0f),
     m_manualAdapterSelection(false),
+    m_adapterChangeEvent(NULL),
+    m_adapterChangeRegistrationCookie(0),
     m_fenceValues{},
     m_windowVisible(true),
     m_dxgiFactoryFlags(0),
@@ -90,6 +92,19 @@ void D3D12xGPU::LoadPipeline()
     }
 #endif
     ThrowIfFailed(CreateDXGIFactory2(m_dxgiFactoryFlags, IID_PPV_ARGS(&m_dxgiFactory)));
+
+#ifdef USE_DXGI_1_6
+    ComPtr<IDXGIFactory7> spDxgiFactory7;
+    if (SUCCEEDED(m_dxgiFactory->QueryInterface(IID_PPV_ARGS(&spDxgiFactory7))))
+    {
+        m_adapterChangeEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (m_adapterChangeEvent == nullptr)
+        {
+            ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+        }
+        ThrowIfFailed(spDxgiFactory7->RegisterAdaptersChangedEvent(m_adapterChangeEvent, &m_adapterChangeRegistrationCookie));
+    }
+#endif
 
     EnumerateGPUadapters();
 
@@ -173,10 +188,33 @@ void D3D12xGPU::LoadAssets()
     {
         m_scene = make_unique<ShadowsFogScatteringSquidScene>(FrameCount, this);
     }
-    m_scene->Initialize(m_device.Get(), m_commandQueue.Get(), m_frameIndex );
+
+    // Create a temporary command queue and command list for initializing data on the GPU.
+    // Performance tip: Copy command queues are optimized for transfer over PCIe.
+    D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
+
+    ComPtr<ID3D12CommandQueue> copyCommandQueue;
+    ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&copyCommandQueue)));
+    NAME_D3D12_OBJECT(copyCommandQueue);
+
+    ComPtr<ID3D12CommandAllocator> commandAllocator;
+    ThrowIfFailed(m_device->CreateCommandAllocator(queueDesc.Type, IID_PPV_ARGS(&commandAllocator)));
+    NAME_D3D12_OBJECT(commandAllocator);
+
+    ComPtr<ID3D12GraphicsCommandList> commandList;
+    ThrowIfFailed(m_device->CreateCommandList(0, queueDesc.Type, commandAllocator.Get(), nullptr, IID_PPV_ARGS(&commandList)));
+    NAME_D3D12_OBJECT(commandList);
+
+    m_scene->Initialize(m_device.Get(), m_commandQueue.Get(), commandList.Get(), m_frameIndex);
+
+    ThrowIfFailed(commandList->Close());
+
+    ID3D12CommandList* ppCommandLists[] = { commandList.Get() };
+    copyCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
     // Wait until assets have been uploaded to the GPU.
-    WaitForGpu();
+    WaitForGpu(copyCommandQueue.Get());
 }
 
 // Load resources that are dependent on the size of the main window.
@@ -275,6 +313,17 @@ void D3D12xGPU::ReleaseD3DObjects()
     m_commandQueue.Reset();
     m_swapChain.Reset();
     m_device.Reset();
+
+#ifdef USE_DXGI_1_6
+    ComPtr<IDXGIFactory7> spDxgiFactory7;
+    if (m_adapterChangeRegistrationCookie != 0 && SUCCEEDED(m_dxgiFactory->QueryInterface(IID_PPV_ARGS(&spDxgiFactory7))))
+    {
+        ThrowIfFailed(spDxgiFactory7->UnregisterAdaptersChangedEvent(m_adapterChangeRegistrationCookie));
+        m_adapterChangeRegistrationCookie = 0;
+        CloseHandle(m_adapterChangeEvent);
+        m_adapterChangeEvent = NULL;
+    }
+#endif
     m_dxgiFactory.Reset();
 
 #if defined(_DEBUG)
@@ -355,7 +404,7 @@ void D3D12xGPU::OnSizeChanged(UINT width, UINT height, bool minimized)
         try
         {
             // Flush all current GPU commands.
-            WaitForGpu();
+            WaitForGpu(m_commandQueue.Get());
 
             // Release the resources holding references to the swap chain (requirement of
             // IDXGISwapChain::ResizeBuffers) and reset the frame fence values to the
@@ -420,10 +469,23 @@ void D3D12xGPU::OnRender()
         try
         {
             // Check for any adapter changes, such as a new adapter being available.
-            if (!m_dxgiFactory->IsCurrent())
+            if (QueryForAdapterEnumerationChanges())
             {
                 // Dxgi factory needs to be recreated on a change.
                 ThrowIfFailed(CreateDXGIFactory2(m_dxgiFactoryFlags, IID_PPV_ARGS(&m_dxgiFactory)));
+
+#ifdef USE_DXGI_1_6
+                ComPtr<IDXGIFactory7> spDxgiFactory7;
+                if (SUCCEEDED(m_dxgiFactory->QueryInterface(IID_PPV_ARGS(&spDxgiFactory7))))
+                {
+                    m_adapterChangeEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+                    if (m_adapterChangeEvent == nullptr)
+                    {
+                        ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+                    }
+                    ThrowIfFailed(spDxgiFactory7->RegisterAdaptersChangedEvent(m_adapterChangeEvent, &m_adapterChangeRegistrationCookie));
+                }
+#endif
 
                 // Check if the application should switch to a different adapter.
                 ThrowIfFailed(ValidateActiveAdapter());
@@ -466,7 +528,7 @@ void D3D12xGPU::RecreateD3Dresources()
     // Give GPU a chance to finish its execution in progress.
     try
     {
-        WaitForGpu();
+        WaitForGpu(m_commandQueue.Get());
     }
     catch (HrException&)
     {
@@ -482,13 +544,17 @@ void D3D12xGPU::OnDestroy()
     // cleaned up by the destructor.
     try
     {
-        WaitForGpu();
+        WaitForGpu(m_commandQueue.Get());
     }
     catch (HrException&)
     {
         // Do nothing, currently attached adapter is unresponsive.
     }
     CloseHandle(m_fenceEvent);
+    if (m_adapterChangeEvent)
+    {
+        CloseHandle(m_adapterChangeEvent);
+    }
 }
 
 void D3D12xGPU::SelectAdapter(UINT index)
@@ -555,7 +621,39 @@ HRESULT D3D12xGPU::ValidateActiveAdapter()
     return S_OK;
 }
 
+// Returns whether there have been adapter enumeration changes in the system
+bool D3D12xGPU::QueryForAdapterEnumerationChanges()
+{
+    bool bChangeInAdapterEnumeration = false;
+    if (m_adapterChangeEvent)
+    {
+#ifdef USE_DXGI_1_6
+        // If QueryInterface for IDXGIFactory7 succeeded, then use RegisterAdaptersChangedEvent notifications.
+        DWORD waitResult = WaitForSingleObject(m_adapterChangeEvent, 0);
+        bChangeInAdapterEnumeration = (waitResult == WAIT_OBJECT_0);
 
+        if (bChangeInAdapterEnumeration)
+        {
+            // Before recreating the factory, unregister the adapter event
+            ComPtr<IDXGIFactory7> spDxgiFactory7;
+            if (SUCCEEDED(m_dxgiFactory->QueryInterface(IID_PPV_ARGS(&spDxgiFactory7))))
+            {
+                ThrowIfFailed(spDxgiFactory7->UnregisterAdaptersChangedEvent(m_adapterChangeRegistrationCookie));
+                m_adapterChangeRegistrationCookie = 0;
+                CloseHandle(m_adapterChangeEvent);
+                m_adapterChangeEvent = NULL;
+            }
+        }
+#endif
+    }
+    else
+    {
+        // Otherwise, IDXGIFactory7 doesn't exist, so continue using the polling solution of IsCurrent.
+        bChangeInAdapterEnumeration = !m_dxgiFactory->IsCurrent();
+    }
+
+    return bChangeInAdapterEnumeration;
+}
 
 // Retrieves information about available GPU adapters.
 void D3D12xGPU::EnumerateGPUadapters()
@@ -629,10 +727,10 @@ void D3D12xGPU::CalculateFrameStats()
 }
 
 // Wait for pending GPU work to complete.
-void D3D12xGPU::WaitForGpu()
+void D3D12xGPU::WaitForGpu(ID3D12CommandQueue* pCommandQueue)
 {
     // Schedule a Signal command in the queue.
-    ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), m_fenceValues[m_frameIndex]));
+    ThrowIfFailed(pCommandQueue->Signal(m_fence.Get(), m_fenceValues[m_frameIndex]));
 
     // Wait until the fence has been processed.
     ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent));
