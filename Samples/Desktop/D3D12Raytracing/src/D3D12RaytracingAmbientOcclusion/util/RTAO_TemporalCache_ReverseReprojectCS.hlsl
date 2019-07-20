@@ -42,7 +42,7 @@ ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> cb : register(
 SamplerState LinearSampler : register(s0);
 SamplerState ClampSampler : register(s1);
 
-#define DEBUG_OUTPUT 0 // ToDo remove
+#define DEBUG_OUTPUT 1 // ToDo remove
 
 // ToDo
 // - Fix heavy disocclusion on min/magnifaction. Use bilateraly downsampled mip maps?
@@ -105,9 +105,7 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         float depthTolerance = max(cb.depthSigma * depthThreshold, depthFloatPrecision);
         float4 depthWeigths = min(depthTolerance / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
         depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise - this is same as comparing to depth tolerance
-#if DEBUG_OUTPUT
-        g_texOutputDebug2[actualIndex] = float4(depthWeigths);
-#endif
+
         // ToDo handle invalid distances, i.e disabled pixels?
         //weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
 
@@ -140,6 +138,12 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
     // ToDo can we prevent diffusion across plane?
     float4 weights = isWithinBounds * bilinearWeights * depthMask * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
 
+
+#if DEBUG_OUTPUT
+    g_texOutputDebug1[actualIndex] = float4(isWithinBounds);
+    g_texOutputDebug2[actualIndex] = float4(depthMask);
+#endif
+
     return weights;
 }
 
@@ -169,7 +173,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float2 texturePos = (DTid.xy + 0.5f) * cb.invTextureDim;
     float2 cacheFrameTexturePos = texturePos - g_texInputTextureSpaceMotionVector[DTid];
     
-    int2 topLeftCacheFrameIndex = int2(cacheFrameTexturePos * cb.textureDim - 0.5);
+    // Find the nearest integer index smaller than the texture position.
+    int2 topLeftCacheFrameIndex = floor(cacheFrameTexturePos * cb.textureDim - 0.5);
 
     // ToDo why this doesn't match cacheFrameTexturePos??
     float2 adjustedCacheFrameTexturePos = (topLeftCacheFrameIndex + 0.5) * cb.invTextureDim;
@@ -235,9 +240,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float weightSum = dot(1, weights);
 
 
-#if DEBUG_OUTPUT
-    g_texOutputDebug1[actualIndex] = float4(ActualDistance, cacheDdxy, weightSum, 0);
-#endif
 
 #if 0
     // ToDo dedupe with GetClipSpacePosition()...
@@ -265,8 +267,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         uint4 vCacheFrameAge = g_texInputCacheFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
 #endif
-        weights /= weightSum;   // Normalize the weights.
-        float cachedValue = dot(weights, vCacheValues);
+        float4 nWeights = weights / weightSum;   // Normalize the weights.
+        float cachedValue = dot(nWeights, vCacheValues);
 
 
         // ToDo revisit this and potentially make it UI adjustable - weight ^ 2 ?,...
@@ -280,7 +282,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         // Example: rotating camera around dragon's nose up close. 
         float frameAgeScale = saturate(weightSum);
 
-        float cacheFrameAge = frameAgeScale * dot(weights, vCacheFrameAge);
+        float cacheFrameAge = frameAgeScale * dot(nWeights, vCacheFrameAge);
         frameAge = round(cacheFrameAge);
 
         // Clamp value to mean +/- std.dev of local neighborhood to surpress ghosting on value changing due to other occluder movements.
