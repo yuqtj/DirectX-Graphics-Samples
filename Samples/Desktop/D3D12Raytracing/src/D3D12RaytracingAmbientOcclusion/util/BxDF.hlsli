@@ -230,7 +230,6 @@ namespace BxDF {
             in float3 Albedo,
             in float3 Fo,
             in float3 Radiance,
-            in float AmbientCoef,
             in bool inShadow,
             in float Roughness,
             in float3 N,
@@ -270,6 +269,7 @@ namespace BxDF {
 
     namespace IndirectLighting
     {
+        // ToDo revisit this
         // Returns max Ambient color radiance 
         float3 MaxAmbientRadiance(in float3 Albedo)
         {

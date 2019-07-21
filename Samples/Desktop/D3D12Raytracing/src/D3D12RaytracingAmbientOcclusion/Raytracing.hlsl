@@ -421,18 +421,21 @@ float3 TraceReflectedGBufferRay(in float3 hitPosition, in float3 wi, in float3 N
     rayPayload = TraceGBufferRay(ray, rayPayload.rayRecursionDepth, tMin, tMax);
 #endif
 #endif
-    // Get the current planar mirror in the previous frame.
-    float3x4 _mirrorBLASTransform = g_prevFrameBottomLevelASInstanceTransform[InstanceIndex()];
-    float3 _mirrorHitPosition = mul(_mirrorBLASTransform, float4(hitPosition, 1));
+    if (rayPayload.AOGBuffer.tHit != HitDistanceOnMiss)
+    {
+        // Get the current planar mirror in the previous frame.
+        float3x4 _mirrorBLASTransform = g_prevFrameBottomLevelASInstanceTransform[InstanceIndex()];
+        float3 _mirrorHitPosition = mul(_mirrorBLASTransform, float4(hitPosition, 1));
 
-    // Pass the virtual hit position reflected across the current mirror surface upstream 
-    // as if the ray went through the mirror to be able to recursively reflect at correct ray depths and then projecting to the screen.
-    // Skipping normalization as it's not required for the uses of the transformed normal here.
-    float3 _mirrorNormal = mul((float3x3)_mirrorBLASTransform, objectNormal);
-    rayPayload.AOGBuffer._virtualHitPosition = ReflectFrontPointThroughPlane(rayPayload.AOGBuffer._virtualHitPosition, _mirrorHitPosition, _mirrorNormal);
+        // Pass the virtual hit position reflected across the current mirror surface upstream 
+        // as if the ray went through the mirror to be able to recursively reflect at correct ray depths and then projecting to the screen.
+        // Skipping normalization as it's not required for the uses of the transformed normal here.
+        float3 _mirrorNormal = mul((float3x3)_mirrorBLASTransform, objectNormal);
+        rayPayload.AOGBuffer._virtualHitPosition = ReflectFrontPointThroughPlane(rayPayload.AOGBuffer._virtualHitPosition, _mirrorHitPosition, _mirrorNormal);
 
-    // Add current thit and the added offset to the thit of the traced ray.
-    rayPayload.AOGBuffer.tHit += RayTCurrent() + tOffset; 
+        // Add current thit and the added offset to the thit of the traced ray.
+        rayPayload.AOGBuffer.tHit += RayTCurrent() + tOffset;
+    }
 
     return rayPayload.radiance;
 }
@@ -473,8 +476,11 @@ float3 TraceRefractedGBufferRay(in float3 hitPosition, in float3 wt, in float3 N
     rayPayload = TraceGBufferRay(ray, rayPayload.rayRecursionDepth, tMin, tMax, 0, cullNonOpaque);
 #endif
 #endif
-    // Add current thit and the added offset to the thit of the traced ray.
-    rayPayload.AOGBuffer.tHit += RayTCurrent() + tOffset;
+    if (rayPayload.AOGBuffer.tHit != HitDistanceOnMiss)
+    {
+        // Add current thit and the added offset to the thit of the traced ray.
+        rayPayload.AOGBuffer.tHit += RayTCurrent() + tOffset;
+    }
 
     return rayPayload.radiance;
 }
@@ -485,7 +491,7 @@ bool TraceShadowRayAndReportIfHit(in float3 hitPosition, in float3 direction, in
 {
     float tOffset = 0.001f;
     Ray visibilityRay = { hitPosition + tOffset * N, direction };
-    float dummyTHit;
+    float dummyTHit;    // ToDo remove
     return TraceShadowRayAndReportIfHit(dummyTHit, visibilityRay, N, rayPayload.rayRecursionDepth, false, TMax);
 }
 
@@ -493,7 +499,7 @@ bool TraceShadowRayAndReportIfHit(in float3 hitPosition, in float3 direction, in
 // Update AO GBuffer with the hit that has the largest diffuse component.
 // Prioritize larger diffuse component hits as it is a direct scale of the AO contribution to the final color value.
 // This doesn't always result in the largest AO contribution as the final color contribution depends on the AO coefficient as well,
-// but this is the best we can do in the GBuffer pass.
+// but this is the best estimate at this stage.
 void UpdateAOGBufferOnLargerDiffuseComponent(inout GBufferRayPayload rayPayload, in GBufferRayPayload _rayPayload, in float3 diffuseScale)
 {
     float3 diffuse = Byte3ToNormalizedFloat3(rayPayload.AOGBuffer.diffuseByte3);
@@ -501,7 +507,7 @@ void UpdateAOGBufferOnLargerDiffuseComponent(inout GBufferRayPayload rayPayload,
     // Adjust the diffuse by the diffuse scale, i.e. BRDF value of the returned ray.
     float3 _diffuse = Byte3ToNormalizedFloat3(_rayPayload.AOGBuffer.diffuseByte3) * diffuseScale;
     
-    if (_rayPayload.AOGBuffer.tHit > 0 && RGBtoLuminance(diffuse) < RGBtoLuminance(_diffuse))
+    if (_rayPayload.AOGBuffer.tHit != HitDistanceOnMiss && RGBtoLuminance(diffuse) < RGBtoLuminance(_diffuse))
     {
         rayPayload.AOGBuffer = _rayPayload.AOGBuffer;
         rayPayload.AOGBuffer.diffuseByte3 = NormalizedFloat3ToByte3(_diffuse);
@@ -600,7 +606,6 @@ float3 Shade(
             Kd,
             Ks,
             CB.lightColor.xyz,
-            0,  // use non-zero ambient coef?
             isInShadow,
             roughness,
             N,
@@ -1075,7 +1080,8 @@ void MyClosestHitShader_ShadowRay(inout ShadowRayPayload rayPayload, in BuiltInT
 [shader("miss")]
 void MyMissShader_GBuffer(inout GBufferRayPayload rayPayload)
 {
-    rayPayload.AOGBuffer.tHit = HitDistanceOnMiss;
+    rayPayload.AOGBuffer.tHit = HitDistanceOnMiss;      // ToDo redundant
+
 #if USE_ENVIRONMENT_MAP
     rayPayload.radiance = g_texEnvironmentMap.SampleLevel(LinearWrapSampler, WorldRayDirection(), 0).xyz;
 #endif

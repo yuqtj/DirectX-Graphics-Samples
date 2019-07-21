@@ -2154,6 +2154,23 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
         m_accelerationStructure->AddBottomLevelASInstance(bottomLevelASname);
     }
 #if GENERATE_GRASS
+#if GRASS_NO_DEGENERATE_INSTANCES
+    UINT grassInstanceIndex = 0;
+    for (int i = 0; i < NumGrassPatchesZ; i++)
+        for (int j = 0; j < NumGrassPatchesX; j++)
+        {
+            int z = i - 15;
+            int x = j - 15;
+
+            if ((x < -1 || x > 2 || z < -2 || z > 1) &&
+                (IsInRange(x, -2, 3) && IsInRange(z, -3, 2)))
+
+            {
+                m_grassInstanceIndices[grassInstanceIndex] = m_accelerationStructure->AddBottomLevelASInstance(L"Grass Patch LOD 0", UINT_MAX, XMMatrixIdentity());
+                grassInstanceIndex++;
+            }
+        }
+#else
     for (UINT i = 0; i < NumGrassPatchesX * NumGrassPatchesZ; i++)
     {
         // Initialize all grass patches to be "inactive" by way of making them to contain only degenerate triangles.
@@ -2166,6 +2183,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
             0.f, 0.f, 0.f, 0.f);
         m_grassInstanceIndices[i] = m_accelerationStructure->AddBottomLevelASInstance(L"Grass Patch LOD 0", UINT_MAX, degenerateTransform);
     }
+#endif
 #endif
 
     // Initialize the top-level AS.
@@ -4592,6 +4610,9 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
         XMVECTOR patchOffset = XMLoadFloat3(&g_UIparameters.GrassCommon.PatchOffset);
         float width = g_UIparameters.GrassCommon.PatchWidth;
 
+#if GRASS_NO_DEGENERATE_INSTANCES
+        UINT grassInstanceIndex = 0;
+#endif
         for (int i = 0; i < NumGrassPatchesZ; i++)
             for (int j = 0; j < NumGrassPatchesX; j++)
             {
@@ -4602,9 +4623,11 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
                     (IsInRange(x, -2, 3) && IsInRange(z, -3, 2)))
 
                 {
-                    UINT instanceIndex = i * NumGrassPatchesX + j;
+#if !GRASS_NO_DEGENERATE_INSTANCES
+                    UINT grassInstanceIndex = i * NumGrassPatchesX + j;
+#endif
 
-                    auto& BLASinstance = m_accelerationStructure->GetBottomLevelASInstance(m_grassInstanceIndices[instanceIndex]);
+                    auto& BLASinstance = m_accelerationStructure->GetBottomLevelASInstance(m_grassInstanceIndices[grassInstanceIndex]);
                     
                     float jitterX = 2 * GetRandomFloat01inclusive() - 1;
                     float jitterZ = 2 * GetRandomFloat01inclusive() - 1;
@@ -4647,13 +4670,16 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
                     };
 
                     UINT shaderRecordIndexOffset;
-                    GetShaderRecordIndexOffset(&shaderRecordIndexOffset, instanceIndex, LOD, m_prevFrameLODs[instanceIndex]);
+                    GetShaderRecordIndexOffset(&shaderRecordIndexOffset, grassInstanceIndex, LOD, m_prevFrameLODs[grassInstanceIndex]);
 
                     // Point the instance at BLAS at the LOD.
                     BLASinstance.InstanceContributionToHitGroupIndex = shaderRecordIndexOffset;
                     BLASinstance.AccelerationStructure = grassBottomLevelAS[LOD]->GetResource()->GetGPUVirtualAddress();
 
-                    m_prevFrameLODs[instanceIndex] = LOD;
+                    m_prevFrameLODs[grassInstanceIndex] = LOD;
+#if GRASS_NO_DEGENERATE_INSTANCES
+                    grassInstanceIndex++;
+#endif
                 }
             }
     }

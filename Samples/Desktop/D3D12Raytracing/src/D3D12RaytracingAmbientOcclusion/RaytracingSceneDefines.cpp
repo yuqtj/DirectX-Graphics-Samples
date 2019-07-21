@@ -74,7 +74,11 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 0       // Close up w/o grass
+#if 0 // View causing highly variable AO dispatch rays perf
+            camera.position.at = { -22.5434f, 5.21661f, -12.1047f, 1};
+            camera.position.up = { 0.337317f, 0.84326f, 0.418463f, 0 };
+            camera.position.eye = { -23.1121f, 5.65628f, -12.8004f, 1 };
+#elif 0       // Close up w/o grass
             camera.position.eye = { -24.9321f, 5.40853f, -6.91243f, 1 };
             camera.position.at = { -24.3795f, 4.87608f, -6.27072f, 1 };
             camera.position.up = { 0.404126f, 0.781539f, 0.475253f, 0 };

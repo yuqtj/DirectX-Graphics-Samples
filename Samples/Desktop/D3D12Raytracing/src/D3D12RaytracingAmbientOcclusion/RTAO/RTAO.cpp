@@ -144,6 +144,11 @@ void RTAO::CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroup
 
     // ToDo rename
     CreateSamplesRNG();
+
+
+#if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
+    dispatchRayTime.RestoreDevice(device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetBackBufferCount());
+#endif
 }
 
 
@@ -635,6 +640,15 @@ void RTAO::OnUpdate()
 
     uniform_int_distribution<UINT> seedDistribution(0, UINT_MAX);
 
+#if 0
+    if (SceneArgs::RTAORandomFrameSeed)
+    {
+        m_CB->seed = seedDistribution(m_generatorURNG);
+        SceneArgs::RTAORandomFrameSeed.Bang();
+    }
+#elif 0
+    m_CB->seed = 287535318;
+#else
     if (SceneArgs::RTAORandomFrameSeed)
     {
         m_CB->seed = seedDistribution(m_generatorURNG);
@@ -643,6 +657,15 @@ void RTAO::OnUpdate()
     {
         m_CB->seed = 1879;
     }
+#endif
+#if DEBUG_PRINT_OUT_SEED_VALUE
+    std::wstringstream wstr;
+    static UINT frameIndex = 0;
+    m_deviceResources->GetCurrentFrameIndex();
+    wstr << L"Frame " << frameIndex++ << L"\n"; 
+    wstr << L" Seed: " << m_CB->seed << L"\n";
+    OutputDebugStringW(wstr.str().c_str());
+#endif
 
     m_CB->numSamplesPerSet = m_randomSampler.NumSamples();
     m_CB->numSampleSets = m_randomSampler.NumSampleSets();
@@ -770,8 +793,21 @@ void RTAO::OnRender(
     // Bind the heaps, acceleration structure and dispatch rays. 
     commandList->SetComputeRootShaderResourceView(RTAOGlobalRootSignature::Slot::AccelerationStructure, accelerationStructure);
 
+#if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
+    dispatchRayTime.BeginFrame(commandList);
+    dispatchRayTime.Start(commandList);
+#endif
+
     DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOFullRes].Get());
 
+#if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
+    dispatchRayTime.Stop(commandList);
+    dispatchRayTime.EndFrame(commandList);
+
+    std::wstringstream wstr;
+    wstr << L"RTAO DispatchRays[FrameCount ago] " << dispatchRayTime.GetElapsedMS() << L"\n";
+    OutputDebugStringW(wstr.str().c_str());
+#endif
     // ToDo Remove
     //DispatchRays(m_rayGenShaderTables[SceneArgs::QuarterResAO ? RTAORayGenShaderType::AOQuarterRes : RTAORayGenShaderType::AOFullRes].Get(),
     //    &m_gpuTimers[GpuTimers::Raytracing_AO], m_raytracingWidth, m_raytracingHeight);

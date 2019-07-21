@@ -134,8 +134,13 @@ Ray GenerateRandomAORay(in uint2 srcRayIndex, in float3 hitPosition, in float3 s
     float3 u, v, w;
     w = surfaceNormal;
 
-    // ToDo test using rand instead.
+    // ToDo revisit this
+    // Get a vector that's not parallel to w;
+#if 0
     float3 right = float3(0.0072, 0.999994132f, 0.0034);
+#else
+    float3 right = 0.3 * w + float3(-0.72, 0.56f, -0.34);
+#endif
     v = normalize(cross(w, right));
     u = cross(v, w);
 
@@ -243,6 +248,16 @@ void RayGenShader()
     // ToDo move to a CS if always using a raysort.
     uint2 srcRayIndex = DispatchRaysIndex().xy;
     
+#if 0
+    uint2 windowSize = uint2(1920, 1080) / 8;
+    uint2 topLeft = uint2(6,1) * windowSize;
+    uint2 botRight = topLeft + windowSize;
+    if (!(srcRayIndex.x >= topLeft.x && srcRayIndex.y >= topLeft.y &&
+        srcRayIndex.x < botRight.x && srcRayIndex.y < botRight.y))
+    {
+        return;
+    }
+#endif
     // ToDo
     float3 encodedNormalDepth = g_texRayOriginSurfaceNormalDepth[srcRayIndex].xyz;
     float depth = encodedNormalDepth.z;
@@ -282,6 +297,7 @@ void RayGenShader()
 #endif
         float ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
 
+        g_rtAORaysDirectionOriginDepth[srcRayIndex] = float4(AORay.direction, 0);// EncodeNormal(AORay.direction), depth, 0);
         if (CB.RTAO_UseSortedRays)
         {
             g_rtAORaysDirectionOriginDepth[srcRayIndex] = float4(EncodeNormal(AORay.direction), depth, 0);

@@ -96,6 +96,8 @@
 #define PRINT_OUT_TC_MATRICES 0
 #define DEBUG_CAMERA_POS 1
 #define PRINT_OUT_CAMERA_CONFIG 1
+#define DEBUG_PRINT_OUT_SEED_VALUE 0
+#define DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME 0
 
 #define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
 
@@ -144,7 +146,7 @@
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0 // ToDo spec requires it but it works without it?
 
 #define USE_GRASS_GEOMETRY 1
-
+#define GRASS_NO_DEGENERATE_INSTANCES 1 // Degenerate instances cause long trace ray times
 
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
