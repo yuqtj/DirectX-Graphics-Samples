@@ -83,14 +83,6 @@ namespace Scene
             camera.position.eye = { 14.5624f, 1.7015f, 5.19217f, 1 };
             camera.position.at = { 13.7216f, 1.1706f, 5.08329f, 1 };
             camera.position.up = { -0.616774f, 0.782659f, -0.0837646f, 0 };
-#elif 1 // expensive sort rays
-            camera.position.eye = { 15.6955f, 4.65965f, 15.4011f, 1 };
-            camera.position.at = { 14.9259f, 4.24932f, 14.9112f, 1 };
-            camera.position.up = { -0.428202f, 0.86023f, -0.276821f, 0 };
-#elif 0 // View causing highly variable AO dispatch rays perf
-            camera.position.at = { -22.5434f, 5.21661f, -12.1047f, 1};
-            camera.position.up = { 0.337317f, 0.84326f, 0.418463f, 0 };
-            camera.position.eye = { -23.1121f, 5.65628f, -12.8004f, 1 };
 #elif 0       // Close up w/o grass
             camera.position.eye = { -24.9321f, 5.40853f, -6.91243f, 1 };
             camera.position.at = { -24.3795f, 4.87608f, -6.27072f, 1 };
