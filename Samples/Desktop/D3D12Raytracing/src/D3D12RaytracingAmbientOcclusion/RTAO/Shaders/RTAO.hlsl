@@ -137,9 +137,9 @@ Ray GenerateRandomAORay(in uint2 srcRayIndex, in float3 hitPosition, in float3 s
     // ToDo revisit this
     // Get a vector that's not parallel to w;
 #if 0
-    float3 right = float3(0.0072, 0.999994132f, 0.0034);
+    float3 right = float3(0.0072f, 0.999994132f, 0.0034f);
 #else
-    float3 right = 0.3 * w + float3(-0.72, 0.56f, -0.34);
+    float3 right = 0.3f * w + float3(-0.72f, 0.56f, -0.34f);
 #endif
     v = normalize(cross(w, right));
     u = cross(v, w);
@@ -302,14 +302,16 @@ void RayGenShader()
         {
             g_rtAORaysDirectionOriginDepth[srcRayIndex] = float4(EncodeNormal(AORay.direction), depth, 0);
         }
-
-        g_rtAOcoefficient[srcRayIndex] = ambientCoef;
+        else
+        {
+            g_rtAOcoefficient[srcRayIndex] = ambientCoef;
+            g_rtAORayHitDistance[srcRayIndex] = tHit;
+        }
 
 #if GBUFFER_AO_COUNT_AO_HITS
         // ToDo test perf impact of writing this
         g_rtAORayHits[srcRayIndex] = RTAO::HasAORayHitAnyGeometry(tHit);
 #endif
-        g_rtAORayHitDistance[srcRayIndex] = tHit;
 	}
     else
     {
@@ -360,7 +362,7 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
     // Get the corresponding source index
     sortedRayIndex2D = rayGroupIndex * rayGroupDim + rayThreadIndex;
     uint2 rayGroupBase = rayGroupIndex * rayGroupDim;
-    uint2 rayGroupRayIndexOffset = g_texAOSortedToSourceRayIndexOffset[sortedRayIndex2D];
+    uint2 rayGroupRayIndexOffset = g_texAOSortedToSourceRayIndexOffset[sortedRayIndex2D];   // ToDo rename to encoded
     srcRayIndex2D = rayGroupBase + GetRawRayIndexOffset(rayGroupRayIndexOffset);
 
     return IsActiveRay(rayGroupRayIndexOffset);

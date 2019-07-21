@@ -52,7 +52,7 @@ namespace SceneArgs
     IntVar AOTileX(L"Render/AO/Tile X", 1, 1, 128, 1);
     IntVar AOTileY(L"Render/AO/Tile Y", 1, 1, 128, 1);
 
-    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", false);
+    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", true);
     NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 0.1f, 0.01f, 10.f, 0.01f);
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
@@ -765,7 +765,6 @@ void RTAO::OnRender(
                 CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
             };
             commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
         }
@@ -812,19 +811,19 @@ void RTAO::OnRender(
     //DispatchRays(m_rayGenShaderTables[SceneArgs::QuarterResAO ? RTAORayGenShaderType::AOQuarterRes : RTAORayGenShaderType::AOFullRes].Get(),
     //    &m_gpuTimers[GpuTimers::Raytracing_AO], m_raytracingWidth, m_raytracingHeight);
 
-    // Transition AO resources to shader resource state.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::UAV(m_AORayDirectionOriginDepth.resource.Get()),  // ToDo
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
-
     if (SceneArgs::RTAOUseRaySorting)
     {
+        // Transition AO resources to shader resource state.
+        {
+            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            D3D12_RESOURCE_BARRIER barriers[] = {
+                CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
+                CD3DX12_RESOURCE_BARRIER::UAV(m_AORayDirectionOriginDepth.resource.Get()),  // ToDo
+            };
+            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        }
+
         float rayBinDepthSize = SceneArgs::RTAORayBinDepthSizeMultiplier * SceneArgs::RTAOMaxRayHitTime;
         m_raySorter.Execute(
             commandList,
@@ -867,6 +866,7 @@ void RTAO::OnRender(
             commandList->SetComputeRootShaderResourceView(RTAOGlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
             commandList->SetComputeRootConstantBufferView(RTAOGlobalRootSignature::Slot::ConstantBuffer, m_CB.GpuVirtualAddress(frameIndex));   // ToDo let AO have its own CB.
             commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
+            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedo);
 
             // ToDo remove
             commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AORayDirectionOriginDepthHitSRV, m_AORayDirectionOriginDepth.gpuDescriptorReadAccess);

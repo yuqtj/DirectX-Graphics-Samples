@@ -1271,7 +1271,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
     // ToDo move depth out of normal resource and switch normal to 16bit precision
     DXGI_FORMAT normalFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;       // ToDo rename to coefficient or avoid using same variable for different types.
-    DXGI_FORMAT hitPositionFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;// DXGI_FORMAT_R16G16B16A16_FLOAT; // ToDo change to 16bit? or DXGI_FORMAT_R32G32B32_FLOAT
+    DXGI_FORMAT hitPositionFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;// DXGI_FORMAT_R16G16B16A16_FLOAT; // ToDo change to 16bit? or encode as 64bits
 	// ToDo tune formats
     // ToDo change this to non-PS resouce since we use CS?
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;

@@ -420,8 +420,8 @@ void CalculatePartialRayDirectionHashKeyAndCacheDepth(in uint2 Gid, in uint GI)
             bool isRayValid = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH; 
 
             // The ray direction hash key doesn't need to store if the ray value is valid for now, 
-            // as there's no space when storing it as 8bit. The reason the hash from 
-            // ray direction needs to be stored as 8 bit is to leave room in Shared Memory 
+            // as there's no space when storing it as 8bit. The reason the hash from the
+            // ray direction needs to be stored as 8bit is to leave room in Shared Memory 
             // for Ray Origin Depth Min Max reduction values. Once that is computed, 
             // ray origin depth hash can be computed and the final 16bit hash key will reserve 
             // bits for invalid rays. Until then the ray origin depth is used to identify
@@ -994,8 +994,8 @@ void SpillCachedIndicesToVRAMAndCacheInvertedSortedIndices(in uint2 Gid, in uint
         uint packedSrcIndex = Load16bitUintFromSMem(index, SMem::Offset::RayIndex);
         bool isActiveRay = !(packedSrcIndex & INACTIVE_RAY_INDEX_BIT);
 
-        // Strip the tag bits.
-        packedSrcIndex &= ~(INVALID_16BIT_KEY_BIT | INACTIVE_RAY_INDEX_BIT);
+        // Strip the invalid tag bit.
+        packedSrcIndex &= ~INVALID_16BIT_KEY_BIT;
 
         uint2 sortedIndex = uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
         uint2 outPixel = GroupStart + sortedIndex;
