@@ -97,7 +97,7 @@
 #define DEBUG_CAMERA_POS 1
 #define PRINT_OUT_CAMERA_CONFIG 1
 #define DEBUG_PRINT_OUT_SEED_VALUE 0
-#define DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME 0
+#define DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME 1
 
 #define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
 

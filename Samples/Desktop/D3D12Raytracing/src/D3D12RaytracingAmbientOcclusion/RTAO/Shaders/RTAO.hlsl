@@ -239,7 +239,7 @@ void RayGenShader()
 #if 0
     uint2 srcRayIndex = DispatchRaysIndex().xy;
     float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;
-    Ray AORay = { hitPosition, float3(0.2, 0.4, 0.2)) };
+    Ray AORay = { hitPosition, float3(0.2, 0.4, 0.2) };
     const float tMax = CB.RTAO_maxShadowRayHitTime; // ToDo make sure its FLT_10BIT_MAX or less since we use 10bit origin depth in RaySort
     float3 surfaceNormal = float3(0, 1, 0);
     float tHit;
