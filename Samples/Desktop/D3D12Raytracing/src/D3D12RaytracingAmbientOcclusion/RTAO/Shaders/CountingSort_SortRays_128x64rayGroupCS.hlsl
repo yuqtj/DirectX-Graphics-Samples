@@ -122,8 +122,6 @@ its stored in 8bit format.
 #endif
 
 
-#define INVALID_16BIT_KEY_BIT 0x8000      // A value used to denote if the SMEM entry is a 16bit key value or not.
-#define INVALID_RAY_ORIGIN_DEPTH 0
 //********************************************************************
 
 
@@ -913,8 +911,8 @@ uint2 UnflattenRayIndex(in uint index)
     return uint2(index & 0x3F, index >> 6);
 }
 
-// Write the sorted indices to shared memory to avoid costly scatter write to VRAM.
-// These can then be later linearly spilled to VRAM.
+// Write the sorted indices to shared memory to avoid costly scatter writes to VRAM.
+// Later, these are linearly spilled from shared memory to VRAM.
 void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2 rayGroupMinMaxDepth)
 {
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
@@ -961,8 +959,7 @@ void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2
             
             uint index = AddTo16bitValueInSMem(key, 1, SMem::Offset::Histogram);
 
-            // To avoid costly scatter writes to VRAM, cache indices into SMem here instead.
-            
+            // To avoid costly scatter writes to VRAM, cache indices into SMem here instead.            
             uint encodedRayIndex = FlattenRayIndex(rayIndex);
             encodedRayIndex |= isRayValid ? 0 : INACTIVE_RAY_INDEX_BIT;
             encodedRayIndex |= INVALID_16BIT_KEY_BIT;     // Denote the target cache entry doesn't store a key no more.
