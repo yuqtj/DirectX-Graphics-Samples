@@ -42,7 +42,7 @@ ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> cb : register(
 SamplerState LinearSampler : register(s0);
 SamplerState ClampSampler : register(s1);
 
-#define DEBUG_OUTPUT 1 // ToDo remove
+#define DEBUG_OUTPUT 0 // ToDo remove
 
 // ToDo
 // - Fix heavy disocclusion on min/magnifaction. Use bilateraly downsampled mip maps?
