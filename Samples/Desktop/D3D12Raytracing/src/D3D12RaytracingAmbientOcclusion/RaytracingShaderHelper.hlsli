@@ -449,9 +449,9 @@ float3 ApplySRGB(float3 x)
 
 uint SmallestPowerOf2GreaterThan(in uint x)
 {
-    // Set all the bits behind most significant non-zero bit in x to 1.
+    // Set all the bits behind the most significant non-zero bit in x to 1.
     // Essentially giving us the largest value that is smaller than the
-    // next power of 2 we're looking for
+    // next power of 2 we're looking for.
     x |= x >> 1;
     x |= x >> 2;
     x |= x >> 4;

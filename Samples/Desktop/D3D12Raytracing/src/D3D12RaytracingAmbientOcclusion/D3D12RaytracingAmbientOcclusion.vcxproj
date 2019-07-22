@@ -1041,6 +1041,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilterCS.hlsli" />
+    <None Include="EdgeStoppingFilter.hlsli" />
     <None Include="Kernels.hlsli" />
     <ClInclude Include="RandomNumberGenerator.hlsli">
       <FileType>Document</FileType>

@@ -270,6 +270,9 @@
     <None Include="RTAO\Shaders\RTAO.hlsli">
       <Filter>Assets\Shaders\RTAO</Filter>
     </None>
+    <None Include="EdgeStoppingFilter.hlsli">
+      <Filter>Assets\Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Raytracing.hlsl">

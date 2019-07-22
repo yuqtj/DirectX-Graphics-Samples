@@ -115,7 +115,6 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
     float squaredValueSum = 0;
 
     // Accumulate for the whole kernel.
-
     for (uint c = 0; c < cb.kernelWidth; c++)
     {
         uint rowID = GTid.y + c;
