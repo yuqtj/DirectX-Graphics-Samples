@@ -82,7 +82,6 @@
 #define CORRECT_NORMALS 0
 
 #define PACK_CACHE_VALUE_FRAME_AGE 0
-#define PACK_MEAN_VARIANCE 1
 #define CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN 0
 
 //#define SAMPLER_FILTER D3D12_FILTER_MIN_MAG_MIP_LINEAR
@@ -155,7 +154,7 @@
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
-#define LOAD_ONLY_ONE_PBRT_MESH 0   // for LOAD_PBRT_SCENE == 1 only
+#define LOAD_ONLY_ONE_PBRT_MESH 0  // for LOAD_PBRT_SCENE == 1 only
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
@@ -414,7 +413,7 @@ struct AtrousWaveletTransformFilterConstantBuffer
     // ToDo pad?
     XMUINT2 textureDim;
     UINT kernelStepShift;
-    UINT scatterOutput;
+    UINT kernelWidth;
 
     float valueSigma;
     float depthSigma;
@@ -424,7 +423,7 @@ struct AtrousWaveletTransformFilterConstantBuffer
     UINT useApproximateVariance;
     BOOL outputFilteredValue;
     BOOL outputFilteredVariance;
-    BOOL outputFilterWeigthSum;
+    BOOL outputFilterWeightSum;
 
     BOOL pespectiveCorrectDepthInterpolation;
     BOOL useAdaptiveKernelSize;
@@ -436,8 +435,8 @@ struct AtrousWaveletTransformFilterConstantBuffer
     bool usingBilateralDownsampledBuffers;
     UINT DepthNumMantissaBits;
 
-    UINT kernelWidth;
-    UINT padding2[3];
+    float minVarianceToDenoise;
+    float padding[3];
 };
 
 // ToDo remove obsolete params in cbs
@@ -475,7 +474,6 @@ struct SortRaysConstantBuffer
     float binDepthSize;
 };
 
-#define RTAO_RAY_SORT_SORT_BY_SRCINDEX 1
 #define RTAO_RAY_SORT_1DRAYTRACE 1
 #define RTAO_RAY_SORT_ENUMERATE_ELEMENT_ID_IN_MORTON_CODE 0
 #define RTAO_RAY_SORT_STORE_RAYS_IN_MORTON_ORDER_X_MAJOR 0
@@ -611,6 +609,7 @@ enum CompositionType {
     AmbientOcclusionOnly_RawOneFrame,
     AmbientOcclusionHighResSamplingPixels,
     AmbientOcclusionAndDisocclusionMap, // ToDo quarter res support
+    Variance,
     RTAOHitDistance,    // ToDo standardize naming
     NormalsOnly,
     DepthOnly,
@@ -713,7 +712,10 @@ struct ComposeRenderPassesConstantBuffer
     UINT RTAO_MaxSPP;
     float RTAO_MaxRayHitDistance;   // ToDo standardize ray hit time vs distance
     float defaultAmbientIntensity;
-    float padding3[2];
+    BOOL variance_visualizeStdDeviation;
+
+    float variance_scale;
+    float padding3[3];
 };
 
 struct AoBlurConstantBuffer
@@ -771,6 +773,9 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     float minStdDevTolerance;
     float frameAgeAdjustmentDueClamping;
     UINT DepthNumMantissaBits;      // Number of Mantissa Bits in the floating format of the input depth resources format.
+
+    UINT minFrameAgeToUseTemporalVariance;
+    float padding[3];
 };
 
 struct CalculatePartialDerivativesConstantBuffer

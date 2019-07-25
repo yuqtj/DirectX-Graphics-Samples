@@ -42,10 +42,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
     LoadDepthAndEncodedNormal(topLeftSrcIndex + srcIndexOffsets[2], encodedNormalsAndDepths[2], depths[2]);
     LoadDepthAndEncodedNormal(topLeftSrcIndex + srcIndexOffsets[3], encodedNormalsAndDepths[3], depths[3]);
 
-    float outWeigths[4];
+    float outWeights[4];
     UINT outDepthIndex;
     // ToDo make it depth aware instead of defaulting to index 0
-    GetWeightsForDownsampleDepthBilateral2x2(outWeigths, outDepthIndex, depths, DTid);
+    GetWeightsForDownsampleDepthBilateral2x2(outWeights, outDepthIndex, depths, DTid);
 
     g_outNormalAndDepth[DTid] = encodedNormalsAndDepths[outDepthIndex];
 #if 1

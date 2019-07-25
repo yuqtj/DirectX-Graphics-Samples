@@ -85,7 +85,7 @@ namespace SceneArgs
 #else
     NumVar RTAOMaxRayHitTime(L"Render/AO/RTAO/Max ray hit time", AO_RAY_T_MAX, 0.0f, 1000.0f, 4);
 #endif
-    BoolVar RTAOApproximateInterreflections(L"Render/AO/RTAO/Approximate Interreflections/Enabled", true);
+    BoolVar RTAOApproximateInterreflections(L"Render/AO/RTAO/Approximate Interreflections/Enabled", false);
     NumVar RTAODiffuseReflectanceScale(L"Render/AO/RTAO/Approximate Interreflections/Diffuse Reflectance Scale", 0.5f, 0.0f, 1.0f, 0.1f);
     NumVar  RTAO_MinimumAmbientIllumination(L"Render/AO/RTAO/Minimum Ambient Illumination", 0.07f, 0.0f, 1.0f, 0.01f);
     BoolVar RTAOIsExponentialFalloffEnabled(L"Render/AO/RTAO/Exponential Falloff", true);
@@ -549,11 +549,7 @@ void RTAO::CalculateAdaptiveSamplingCounts()
             m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
             NormalDeptLowPrecisionResource.gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
-#if PACK_MEAN_VARIANCE
             m_smoothedMeanVarianceResource.gpuDescriptorReadAccess,
-#else
-            m_smoothedVarianceResource.gpuDescriptorReadAccess,
-#endif
             m_AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
             &m_AOResources[AOResource::FilterWeightSum],

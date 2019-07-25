@@ -74,10 +74,10 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 0 // Denoiser blurs accross edge on garage door
-            camera.position.eye = { -15.7459f, 1.32656f, 1.31908f, 1 };
-            camera.position.at = { -15.1891f, 1.1851f, 2.13795f, 1 };
-            camera.position.up = { 0.138709f, 0.967837f, 0.209835f, 0 };
+#if 1 // Denoiser blurs accross edge on garage door
+            camera.position.eye = { -28.1102f, 3.6525f, -2.17983f, 1 };
+            camera.position.at = { -27.3824f, 3.46128f, -1.52076f, 1 };
+            camera.position.up = { 0.220048f, 0.953938f, 0.203873f, 0 };
 #elif 0 // sorted rays much slower than non-sorted
 
             camera.position.eye = { 14.5624f, 1.7015f, 5.19217f, 1 };
@@ -87,11 +87,11 @@ namespace Scene
             camera.position.eye = { -24.9321f, 5.40853f, -6.91243f, 1 };
             camera.position.at = { -24.3795f, 4.87608f, -6.27072f, 1 };
             camera.position.up = { 0.404126f, 0.781539f, 0.475253f, 0 };
-#elif 1   // Isometric view of all objects and grass around
+#elif 0   // Isometric view of all objects and grass around
             camera.position.at = { -47.2277f, 27.3063f, -30.9273f, 1 };
             camera.position.up = { 0.483884f, 0.740712f, 0.466033f, 0 };
             camera.position.eye = { -47.8157f, 27.891f, -31.4868f, 1 };
-#elif 0 // Top-down spaceship front rod - long ray distances
+#elif 1 // Top-down spaceship front rod - long ray distances
     camera.position.at = { -4.02726f, 1.08747f, -14.9725f, 1 };
     camera.position.up = { 0.0153231f, -0.232894f, -0.972375f, 0 };
     camera.position.eye = { -4.02189f, 2.08023f, -15.0949f, 1 };

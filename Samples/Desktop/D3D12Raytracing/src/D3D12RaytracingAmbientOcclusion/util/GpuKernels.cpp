@@ -1221,7 +1221,7 @@ namespace GpuKernels
             m_maxFilterPasses = maxFilterPasses;
             UINT numInstancesPerFrame = maxFilterPasses * numCallsPerFrame;
             m_CB.Create(device, frameCount * numInstancesPerFrame, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter");
-            m_CBfilterWeigth.Create(device, frameCount * numInstancesPerFrame, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter FilterWeightSum");
+            m_CBfilterWeight.Create(device, frameCount * numInstancesPerFrame, L"Constant Buffer: AtrousWaveletTransformCrossBilateralFilter FilterWeightSum");
         }
     }
 
@@ -1262,7 +1262,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
         // ToDo document this assumes variance in the X component of the passed in resource.
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputSmoothedVarianceResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
         RWGpuResource* outputResource,
@@ -1281,7 +1281,8 @@ namespace GpuKernels
         UINT minKernelWidth,
         UINT maxKernelWidth,
         float varianceSigmaScaleOnSmallKernels,
-        bool usingBilateralDownsampledBuffers)
+        bool usingBilateralDownsampledBuffers,
+        float minVarianceToDenoise)
     {
 
         // ToDo: cleanup use of variance
@@ -1302,7 +1303,9 @@ namespace GpuKernels
             commandList->SetPipelineState(m_pipelineStateObjects[filterType].Get());
             commandList->SetComputeRootDescriptorTable(Slot::Normals, inputNormalsResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Depths, inputDepthsResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::SmoothedVariance, inputSmoothedVarianceResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Variance, inputVarianceResourceHandle);
+            // ToDo Smoothen input variance or remove the dupe
+            commandList->SetComputeRootDescriptorTable(Slot::SmoothedVariance, inputVarianceResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::RayHitDistance, inputHitDistanceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::PartialDistanceDerivatives, inputPartialDistanceDerivativesResourceHandle);
         }
@@ -1312,7 +1315,7 @@ namespace GpuKernels
         XMUINT2 resourceDim(static_cast<UINT>(resourceDesc.Width), static_cast<UINT>(resourceDesc.Height));
 
         // ToDo split these into separate GpuKernels?
-        auto& CB = filterMode == OutputFilteredValue ? m_CB : m_CBfilterWeigth;
+        auto& CB = filterMode == OutputFilteredValue ? m_CB : m_CBfilterWeight;
         // Update the Constant Buffers.
         for (UINT i = 0; i < numFilterPasses; i++)
         {
@@ -1342,11 +1345,10 @@ namespace GpuKernels
             CB->kernelStepShift = _i;
 #endif
             // Move vars not changing inside loop outside of it.
-            CB->scatterOutput = _i == numFilterPasses - 1;
             CB->useCalculatedVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
             CB->outputFilteredVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
             CB->outputFilteredValue = filterMode == OutputFilteredValue;
-            CB->outputFilterWeigthSum = filterMode == OutputPerPixelFilterWeightSum;
+            CB->outputFilterWeightSum = filterMode == OutputPerPixelFilterWeightSum;
             CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation;
             CB->useAdaptiveKernelSize = useAdaptiveKernelSize;
             CB->minHitDistanceToKernelWidthScale = minHitDistanceToKernelWidthScale;
@@ -1355,6 +1357,7 @@ namespace GpuKernels
             CB->varianceSigmaScaleOnSmallKernels = varianceSigmaScaleOnSmallKernels;
             CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
             CB->textureDim = resourceDim;
+            CB->minVarianceToDenoise = minVarianceToDenoise;
 
             switch (normalDepthResourceFormat)
             {
@@ -1430,6 +1433,7 @@ namespace GpuKernels
                     // Flip input, output resources.
                     commandList->SetComputeRootDescriptorTable(Slot::Input, outValueResources[inputID]->gpuDescriptorReadAccess);
                     commandList->SetComputeRootDescriptorTable(Slot::Output, outValueResources[outputID]->gpuDescriptorWriteAccess);
+                    commandList->SetComputeRootDescriptorTable(Slot::Variance, m_intermediateVarianceOutputs[inputID].gpuDescriptorReadAccess);
                     commandList->SetComputeRootDescriptorTable(Slot::SmoothedVariance, m_intermediateVarianceOutputs[inputID].gpuDescriptorReadAccess);
                     commandList->SetComputeRootDescriptorTable(Slot::VarianceOutput, m_intermediateVarianceOutputs[outputID].gpuDescriptorWriteAccess);
                 }
@@ -1813,15 +1817,17 @@ namespace GpuKernels
             namespace Slot {
                 enum Enum {
                     OutputCachedValue = 0,
-                    OutputFrameAge,
+                    OutputCacheFrameAge,
+                    OutputCachedMeanSquareMean,
+                    OutputVariance,
                     InputCachedNormalDepth,
                     InputCachedValue,
+                    InputCachedMeanSquareMean,
                     InputCurrentFrameValue,
                     InputCurrentFrameNormalDepth,
                     InputReprojectedNormalDepth,
                     InputCacheFrameAge,
-                    InputCurrentFrameMean,
-                    InputCurrentFrameVariance,
+                    InputCurrentFrameSpatialMeanVariance,
                     InputCurrentFrameLinearDepthDerivative,
                     InputTextureSpaceMotionVector,
                     OutputDebug1,
@@ -1839,36 +1845,41 @@ namespace GpuKernels
         {
             using namespace RootSignature::RTAO_TemporalCache_ReverseReproject;
 
+            // ToDo remove comments from here and move descriptions to enum definition.
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[Slot::InputCachedNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);        // 1 input cached normal + depth
             ranges[Slot::InputCachedValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);         // 1 input cached value
+            ranges[Slot::InputCachedMeanSquareMean].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);
             ranges[Slot::InputCurrentFrameValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);   // 1 input current frame value
             ranges[Slot::InputCurrentFrameNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 input current frame normal + depth
             ranges[Slot::InputReprojectedNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);// 1 input reprojected normal + depth
             ranges[Slot::InputTextureSpaceMotionVector].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);// 1 input texture space motion vector from previous to current frame
             ranges[Slot::InputCacheFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);       // 1 input cache frame age
-            ranges[Slot::InputCurrentFrameMean].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);    // 1 input current frame mean
-            ranges[Slot::InputCurrentFrameVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);// 1 input current frame variance
+            ranges[Slot::InputCurrentFrameSpatialMeanVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);    // 1 input current frame mean and variance
             ranges[Slot::InputCurrentFrameLinearDepthDerivative].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);// 1 input current frame linear depth derivative
 
             ranges[Slot::OutputCachedValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);        // 1 output temporal cache value
-            ranges[Slot::OutputFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);           // 1 output temporal cache frame age
-            ranges[Slot::OutputDebug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);           // 1 output temporal cache frame age
-            ranges[Slot::OutputDebug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);           // 1 output temporal cache frame age
+            ranges[Slot::OutputCacheFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);           // 1 output temporal cache frame age
+            ranges[Slot::OutputCachedMeanSquareMean].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);
+            ranges[Slot::OutputVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);
+            ranges[Slot::OutputDebug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);           // 1 output temporal cache frame age
+            ranges[Slot::OutputDebug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 5);           // 1 output temporal cache frame age
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::InputCachedNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::InputCachedNormalDepth]);
             rootParameters[Slot::InputCurrentFrameValue].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameValue]);
             rootParameters[Slot::InputCachedValue].InitAsDescriptorTable(1, &ranges[Slot::InputCachedValue]);
+            rootParameters[Slot::InputCachedMeanSquareMean].InitAsDescriptorTable(1, &ranges[Slot::InputCachedMeanSquareMean]);
             rootParameters[Slot::InputCurrentFrameNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameNormalDepth]);
             rootParameters[Slot::InputCacheFrameAge].InitAsDescriptorTable(1, &ranges[Slot::InputCacheFrameAge]);
-            rootParameters[Slot::InputCurrentFrameMean].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameMean]);
-            rootParameters[Slot::InputCurrentFrameVariance].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameVariance]);
+            rootParameters[Slot::InputCurrentFrameSpatialMeanVariance].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameSpatialMeanVariance]);
             rootParameters[Slot::InputCurrentFrameLinearDepthDerivative].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameLinearDepthDerivative]);
             rootParameters[Slot::InputTextureSpaceMotionVector].InitAsDescriptorTable(1, &ranges[Slot::InputTextureSpaceMotionVector]);
             rootParameters[Slot::InputReprojectedNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::InputReprojectedNormalDepth]);
             rootParameters[Slot::OutputCachedValue].InitAsDescriptorTable(1, &ranges[Slot::OutputCachedValue]);
-            rootParameters[Slot::OutputFrameAge].InitAsDescriptorTable(1, &ranges[Slot::OutputFrameAge]);
+            rootParameters[Slot::OutputCacheFrameAge].InitAsDescriptorTable(1, &ranges[Slot::OutputCacheFrameAge]);
+            rootParameters[Slot::OutputCachedMeanSquareMean].InitAsDescriptorTable(1, &ranges[Slot::OutputCachedMeanSquareMean]);
+            rootParameters[Slot::OutputVariance].InitAsDescriptorTable(1, &ranges[Slot::OutputVariance]);
             rootParameters[Slot::OutputDebug1].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug1]);
             rootParameters[Slot::OutputDebug2].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug2]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
@@ -1906,20 +1917,18 @@ namespace GpuKernels
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalDepthResourceHandle, 
-#if PACK_MEAN_VARIANCE
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanVarianceResourceHandle,
-#else
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameVarianceResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanResourceHandle,
-#endif
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameSpatialMeanVarianceResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameLinearDepthDerivativeResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheFrameAgeResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheCoefficientSquaredMeanResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputTextureSpaceMotionVectorResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputReprojectedNormalDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheFrameAgeResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheCoefficientSquaredMeanResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputVarianceResourceHandle,
         float minSmoothingFactor,
         const XMMATRIX& invView,
         const XMMATRIX& invProj,
@@ -1929,8 +1938,8 @@ namespace GpuKernels
         float zNear,
         float zFar,
         float depthTolerance,
-        bool useDepthWeigths,
-        bool useNormalWeigths,
+        bool useDepthWeights,
+        bool useNormalWeights,
         bool forceUseMinSmoothingFactor,
         bool clampCachedValues,
         float clampStdDevGamma,
@@ -1939,6 +1948,7 @@ namespace GpuKernels
         float depthDistanceBasedDepthTolerance,
         float depthSigma,
         bool useWorldSpaceDistance,
+        UINT minFrameAgeToUseTemporalVariance,
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
         RWGpuResource debugResources[2],
         const XMVECTOR& currentFrameCameraPosition,
@@ -1960,8 +1970,8 @@ namespace GpuKernels
         m_CB->forceUseMinSmoothingFactor = forceUseMinSmoothingFactor;
         m_CB->zNear = zNear;
         m_CB->zFar = zFar;
-        m_CB->useDepthWeights = useDepthWeigths;
-        m_CB->useNormalWeights = useNormalWeigths;
+        m_CB->useDepthWeights = useDepthWeights;
+        m_CB->useNormalWeights = useNormalWeights;
         m_CB->depthTolerance = depthTolerance;
         m_CB->textureDim = XMUINT2(width, height);
         m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
@@ -1976,7 +1986,7 @@ namespace GpuKernels
         m_CB->prevToCurrentFrameCameraTranslation = prevToCurrentFrameCameraTranslation;
         m_CB->prevProjectionToWorldWithCameraEyeAtOrigin = XMMatrixTranspose(prevProjectionToWorldWithCameraEyeAtOrigin);
         m_CB->useWorldSpaceDistance = useWorldSpaceDistance;
-
+        m_CB->minFrameAgeToUseTemporalVariance = minFrameAgeToUseTemporalVariance;
         switch (normalDepthResourceFormat)
         {
         case TextureResourceFormatRGB::R32G32B32A32_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(32); break;
@@ -1997,17 +2007,15 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputCachedNormalDepth, inputTemporalCacheNormalDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameNormalDepth, inputCurrentFrameNormalDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCacheFrameAge, inputTemporalCacheFrameAgeResourceHandle);
-#if PACK_MEAN_VARIANCE
-            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameMean, inputCurrentFrameMeanVarianceResourceHandle);
-#else
-            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameMean, inputCurrentFrameMeanResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameVariance, inputCurrentFrameVarianceResourceHandle); 
-#endif
+            commandList->SetComputeRootDescriptorTable(Slot::InputCachedMeanSquareMean, inputTemporalCacheCoefficientSquaredMeanResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameSpatialMeanVariance, inputCurrentFrameSpatialMeanVarianceResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCurrentFrameLinearDepthDerivative, inputCurrentFrameLinearDepthDerivativeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputTextureSpaceMotionVector, inputTextureSpaceMotionVectorResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputReprojectedNormalDepth, inputReprojectedNormalDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputCachedValue, outputTemporalCacheValueResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::OutputFrameAge, outputTemporalCacheFrameAgeResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputCacheFrameAge, outputTemporalCacheFrameAgeResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputCachedMeanSquareMean, outputTemporalCacheCoefficientSquaredMeanResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputVariance, outputVarianceResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug2, debugResources[1].gpuDescriptorWriteAccess);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));

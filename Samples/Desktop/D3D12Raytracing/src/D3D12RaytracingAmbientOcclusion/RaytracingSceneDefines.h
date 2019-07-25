@@ -56,6 +56,7 @@ namespace ComputeShader {
 					MaterialBuffer,
 					ConstantBuffer,
                     FilterWeightSum,
+                    Variance,
                     AORayHitDistance,
                     FrameAge,   // ToDo use same name as in the shader
                     Color,
@@ -253,6 +254,7 @@ namespace AOResource {
 namespace TemporalCache {
     enum Enum {
         FrameAge = 0,
+        CoefficientSquaredMean,
         Count
     };
 }

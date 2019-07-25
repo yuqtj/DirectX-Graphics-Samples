@@ -201,7 +201,7 @@ private:
 
     RWGpuResource m_AOSmoothedResource[2];
 
-    RWGpuResource m_AOTSSCoefficient[2];
+    RWGpuResource m_AOTSSCoefficient[2];    // ToDo why is this not part of m_temporalCache?
     RWGpuResource m_lowResAOTSSCoefficient[2];
 	RWGpuResource m_VisibilityResource;
 
@@ -219,10 +219,8 @@ private:
 
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;
-    RWGpuResource m_meanResource;
-    RWGpuResource m_smoothedMeanResource;
-    RWGpuResource m_meanVarianceResource;
-    RWGpuResource m_smoothedMeanVarianceResource;
+    RWGpuResource m_spatialMeanVarianceResource;
+    RWGpuResource m_smoothedSpatialMeanVarianceResource;
 
     // Multi-scale
     // ToDo Cleanup

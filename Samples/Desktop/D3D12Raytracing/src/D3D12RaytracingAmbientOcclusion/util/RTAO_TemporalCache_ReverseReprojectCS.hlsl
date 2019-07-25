@@ -17,6 +17,7 @@
 // ToDo sharp edges fail temporal reprojection due to clamping even for static scene
 
 // ToDO pack value and depth beforehand?
+// ToDo standardize in vs input, out vs output
 Texture2D<float4> g_texInputCachedNormalDepth : register(t0);        // ToDo standardize cache vs cached
 Texture2D<float> g_texInputCachedValue : register(t1);
 Texture2D<float> g_texInputCurrentFrameValue : register(t2);
@@ -24,18 +25,19 @@ Texture2D<float4> g_texInputCurrentFrameNormalDepth : register(t3);
 Texture2D<float4> g_texInputReprojectedNormalDepth : register(t4); // ToDo standardize naming across files
 Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t5); // ToDo standardize naming across files
 Texture2D<uint> g_texInputCacheFrameAge : register(t6);
-#if PACK_MEAN_VARIANCE
-Texture2D<float2> g_texInputCurrentFrameMeanVariance : register(t7);
-#else
-Texture2D<float> g_texInputCurrentFrameMean : register(t7);
-#endif
-Texture2D<float> g_texInputCurrentFrameVariance : register(t8);
+
+Texture2D<float2> g_texInputCurrentFrameSpatialMeanVariance : register(t7);
+Texture2D<float> g_texInputCachedCoefficientSquaredMean : register(t8);
+
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t9); // ToDo standardize naming across files
 
+// ToDo combine some outputs?
 RWTexture2D<float> g_texOutputCachedValue : register(u0);
 RWTexture2D<uint> g_texOutputCacheFrameAge : register(u1);
-RWTexture2D<float4> g_texOutputDebug1 : register(u2);
-RWTexture2D<float4> g_texOutputDebug2 : register(u3);
+RWTexture2D<float> g_texOutputCoefficientSquaredMean: register(u2);
+RWTexture2D<float> g_texOutputVariance: register(u3);
+RWTexture2D<float4> g_texOutputDebug1 : register(u4);
+RWTexture2D<float4> g_texOutputDebug2 : register(u5);
 
 ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> cb : register(b0);
 
@@ -103,8 +105,8 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         float depthFloatPrecision = 1.25f * FloatPrecision(ActualDistance, cb.DepthNumMantissaBits);
        
         float depthTolerance = max(cb.depthSigma * depthThreshold, depthFloatPrecision);
-        float4 depthWeigths = min(depthTolerance / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
-        depthMask = depthWeigths >= 1 ? depthWeigths : 0;   // ToDo revise - this is same as comparing to depth tolerance
+        float4 depthWeights = min(depthTolerance / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
+        depthMask = depthWeights >= 1 ? depthWeights : 0;   // ToDo revise - this is same as comparing to depth tolerance
 
         // ToDo handle invalid distances, i.e disabled pixels?
         //weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
@@ -254,21 +256,29 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     bool isCacheValueValid = weightSum > 1e-3f; // ToDo
     //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
-    uint isDisoccluded;
     uint frameAge;
+    float mergedValueSquaredMean;      // ToDo better prefix than merged?
+    float outVariance;
+
+
+    // ToDo spatial vs local
+    float2 localMeanVariance = g_texInputCurrentFrameSpatialMeanVariance[DTid];
+    float localMean = localMeanVariance.x;
+    float localVariance = localMeanVariance.y;
 
     uint maxFrameAge = 1 / cb.minSmoothingFactor - 1;// minSmoothingFactor;
     if (isCacheValueValid)
     {
-        isDisoccluded = false;
 
 #if PACK_CACHE_VALUE_FRAME_AGE
 #else
         float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         uint4 vCacheFrameAge = g_texInputCacheFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+        float4 vCacheValueSquaredMean = g_texInputCachedCoefficientSquaredMean.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
 #endif
         float4 nWeights = weights / weightSum;   // Normalize the weights.
         float cachedValue = dot(nWeights, vCacheValues);
+        float cachedValueSquaredMean = dot(nWeights, vCacheValueSquaredMean);
 
 
         // ToDo revisit this and potentially make it UI adjustable - weight ^ 2 ?,...
@@ -276,9 +286,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
         // total contributions that have very low reprojection weight. While its preferred to get 
         // a weighted value even for reprojections that have low weights but still
         // satisfy consistency tests, the frame age needs to be kept small so that the actual calculated values
-        // are quickly filled in over few frames. Otherwise bad estimates from reprojections,
+        // are quickly filled in over a few frames. Otherwise, bad estimates from reprojections,
         // such as on disocclussions of surfaces on rotation, are kept around long enough to create 
-        // visible streaks that just slowly fade away.
+        // visible streaks that fade away very slow.
         // Example: rotating camera around dragon's nose up close. 
         float frameAgeScale = saturate(weightSum);
 
@@ -290,16 +300,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
         // Ref: Salvi2016, Temporal Super-Sampling
         float frameAgeClamp = 0;
 
+
         if (cb.clampCachedValues)
         {
-#if PACK_MEAN_VARIANCE
-            float2 localMeanVariance = g_texInputCurrentFrameMeanVariance[DTid];
-            float localMean = localMeanVariance.y;
-            float localVariance = localMeanVariance.x;
-#else
-            float localMean = g_texInputCurrentFrameMean[DTid];
-            float localVariance = g_texInputCurrentFrameVariance[DTid];
-#endif
             float localStdDev = max(cb.stdDevGamma * sqrt(localVariance), cb.minStdDevTolerance);
             float prevCachedValue = cachedValue;
             cachedValue = clamp(cachedValue, localMean - localStdDev, localMean + localStdDev); 
@@ -316,7 +319,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float invFrameAge = 1.f / (frameAge + 1.f);
         float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
         mergedValue = lerp(cachedValue, value, a);
-        
+        mergedValueSquaredMean = lerp(cachedValueSquaredMean, value * value, a);
+
+
+        float temporalVariance = mergedValueSquaredMean - mergedValue * mergedValue;
+        temporalVariance = max(0, temporalVariance);    // Ensure variance doesn't go negative due to imprecision.
+
+        outVariance = frameAge >= cb.minFrameAgeToUseTemporalVariance ? temporalVariance : localVariance;
         // ToDo If no valid samples found:
         //  - use largest motion vector from 3x3
         //  - try 3x3 area
@@ -324,11 +333,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
     else // ToDo initialize values to this instead of branch?
     {
-        isDisoccluded = true;
         mergedValue = value;
+        mergedValueSquaredMean = value * value;
         frameAge = 0;
+        outVariance = localVariance;
     }
-   
     g_texOutputCachedValue[DTid] = mergedValue;
     g_texOutputCacheFrameAge[DTid] = min(frameAge + 1, maxFrameAge);
+    g_texOutputCoefficientSquaredMean[DTid] = mergedValueSquaredMean;
+    g_texOutputVariance[DTid] = outVariance;
+
 }

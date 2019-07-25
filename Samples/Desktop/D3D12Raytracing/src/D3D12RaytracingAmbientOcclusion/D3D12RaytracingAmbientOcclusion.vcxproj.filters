@@ -52,6 +52,9 @@
     <Filter Include="RTAO">
       <UniqueIdentifier>{09737061-0eea-4880-bd21-08a05295f874}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Assets\Shaders\RTAO\Denoising">
+      <UniqueIdentifier>{15d32f45-7439-4bb1-94c9-53c49f5f62dd}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -270,7 +273,7 @@
     <None Include="RTAO\Shaders\RTAO.hlsli">
       <Filter>Assets\Shaders\RTAO</Filter>
     </None>
-    <None Include="EdgeStoppingFilter.hlsli">
+    <None Include="EdgeStoppingFilterCS.hlsli">
       <Filter>Assets\Shaders</Filter>
     </None>
   </ItemGroup>
@@ -413,6 +416,9 @@
     </FxCompile>
     <FxCompile Include="RTAO\Shaders\CountingSort_SortRays_128x64rayGroupCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\Denoising\EdgeStoppingSeparableGaussian3x3FilterCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\Denoising</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

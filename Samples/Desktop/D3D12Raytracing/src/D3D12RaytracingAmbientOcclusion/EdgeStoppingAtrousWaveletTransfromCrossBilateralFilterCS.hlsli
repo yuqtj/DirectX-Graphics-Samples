@@ -18,14 +18,14 @@ Texture2D<float> g_inValues : register(t0); // ToDo input is 3841x2161 instead o
 
 Texture2D<float4> g_inNormalDepth : register(t1);
 Texture2D<float> g_inVariance : register(t4);   // ToDo remove
-Texture2D<float> g_inSmoothedVariance : register(t5);   // ToDo rename
+Texture2D<float> g_inSmoothedVariance : register(t5); 
 Texture2D<float> g_inHitDistance : register(t6);   // ToDo remove?
 Texture2D<float2> g_inPartialDistanceDerivatives : register(t7);   // ToDo remove?
 
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
 #if !WORKAROUND_ATROUS_VARYING_OUTPUTS 
-RWTexture2D<float> g_outFilterWeigthSum : register(u2);
+RWTexture2D<float> g_outFilterWeightSum : register(u2);
 #endif
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> g_CB: register(b0);
 
@@ -50,9 +50,6 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
     }
     else
     {
-        depthThreshold = length(pixelOffset * ddxy) + fEpsilon;
-
-
 #if 1
         // Todo rename ddxy to dxdy?
         // ToDo use a common helper
@@ -71,12 +68,14 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
          
             float z0 = distance;
             float2 zxy = (z0 + ddxy) / (1 + ((1 - pixelOffset) / z0) * ddxy);
-            depthThreshold = dot(1, abs(zxy - z0));
+            depthThreshold = dot(1, abs(zxy - z0)); // ToDo this should be sqrt(dot(zxy - z0, zxy - z0))
         }
         else
         {
             depthThreshold = dot(1, abs(pixelOffset * ddxy));
         }
+#else
+        depthThreshold = length(pixelOffset * ddxy);
 #endif
     }
 
@@ -145,7 +144,7 @@ void AddFilterContribution(
 
     int2 id = int2(DTid)+pixelOffset;
 
-    if (id.x >= 0 && id.y >= 0 && id.x < g_CB.textureDim.x && id.y < g_CB.textureDim.y)
+    if (IsWithinBounds(id, g_CB.textureDim))
     {
         float iValue = 0.f;
         float iVariance;
@@ -156,15 +155,8 @@ void AddFilterContribution(
             iValue = g_inValues[id];
             iVariance = g_inVariance[id];
 
-            if (g_CB.useCalculatedVariance)
-            {
-                const float errorOffset = 0.005f;
-                e_x = valueSigma > 0.01f ? -abs(value - iValue) / (varianceScale * valueSigma * stdDeviation + errorOffset) : 0;
-            }
-            else
-            {
-                e_x = valueSigma > 0.01f ? g_CB.kernelStepShift > 0 ? exp(-abs(value - iValue) / (varianceScale * valueSigma * valueSigma)) : 0 : 0;
-            }
+            const float errorOffset = 0.005f;
+            e_x = -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset);
         }
 
         // ToDo standardize index vs id
@@ -175,17 +167,6 @@ void AddFilterContribution(
         // Ref: SVGF
         float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1;
 
-#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
-        float surfaceDistance = obliqueness;
-        float iSurfaceDistance = iObliqueness;
-
-        float e_surfaceDistance = w_n > 0.8 && depthSigma > 0.01f ? -abs(surfaceDistance - iSurfaceDistance) / (depthSigma) : 0;
-        float e_d = -abs(depth - iDepth) / (0.5 * 0.5);
-        e_d += e_surfaceDistance;
-#else
-
-#define USE_PARTIAL_DERIVATIVES 1
-#if USE_PARTIAL_DERIVATIVES
         // ToDo explain 1 -
         // Make the 0 start at 1 == depthDelta/depthTolerance
         // ToDo finalize obliqueness
@@ -208,26 +189,17 @@ void AddFilterContribution(
 
         float depthTolerance = max(depthSigma * depthThreshold, depthFloatPrecision);
         //float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) / (depthTolerance + FLT_EPSILON) : 0;
-        float w_d = depthSigma > 0.01f ? min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1) : 0;
+        float w_d = depthSigma > 0.01f ? min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1) : 1;
 #else
         float fMinEpsilon = 512 * FLT_EPSILON; // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations.
         float fMinDepthScaledEpsilon = 48 * 1e-6  * depth;  // Depth threshold to surpress differences that surface at larger depth from the camera.
         float fEpsilon = fMinEpsilon + fMinDepthScaledEpsilon;
         // ToDo revvise divEpsilon
         float divEpsilon = 1e-6f;
-        float depthWeigth = min((depthSigma * depthThreshold + fEpsilon) / (abs(depth - iDepth) + divEpsilon), 1);
-
-        //float w_d = depthWeigth;
-        //float e_d = depthSigma > 0.01f  ? min(1 - abs(depth - iDepth) / (1 * depthThreshold), 0) : 0;
-        //fload e_d = depth abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance
-        // ToD revise "1 - "
-        // ToDo should be depthSigma ^ 2
+        float depthWeight = min((depthSigma * depthThreshold + fEpsilon) / (abs(depth - iDepth) + divEpsilon), 1);
         float w_d = exp(e_d);
 #endif
-#else
-        float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) * obliqueness / (depthSigma * depthSigma) : 0;
-#endif
-#endif
+
         float w_h = FilterKernel::Kernel[row][col];
 
         // ToDo apply exp combination where applicable 
@@ -249,7 +221,7 @@ void AddFilterContribution(
         // ToDo standardize g_CB naming
         if (g_CB.outputFilteredVariance)
         {
-            weightedVarianceSum += w * w * iVariance;   // ToDo rename to sqWeigth...
+            weightedVarianceSum += w * w * iVariance;   // ToDo rename to sqWeight...
         }
     }
 }
@@ -297,28 +269,32 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
     {
         minHitDistance = g_inHitDistance[DTid];
     }
-    // Add contributions from the neighborhood.
-    [unroll]
-    for (UINT r = 0; r < FilterKernel::Width; r++)
-    [unroll]
-    for (UINT c = 0; c < FilterKernel::Width; c++)
-        if (r != FilterKernel::Radius || c != FilterKernel::Radius)
-             AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, obliqueness, ddxy, r, c, minHitDistance, DTid);
+    if (variance >= g_CB.minVarianceToDenoise)
+    {
+        // Add contributions from the neighborhood.
+        [unroll]
+        for (UINT r = 0; r < FilterKernel::Width; r++)
+            [unroll]
+            for (UINT c = 0; c < FilterKernel::Width; c++)
+                if (r != FilterKernel::Radius || c != FilterKernel::Radius)
+                    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, obliqueness, ddxy, r, c, minHitDistance, DTid);
+    }
 
 #if WORKAROUND_ATROUS_VARYING_OUTPUTS
-    float outputValue = (g_CB.outputFilterWeigthSum) ? weightSum : weightedValueSum / weightSum;
+    float outputValue = (g_CB.outputFilterWeightSum) ? weightSum : weightedValueSum / weightSum;
     g_outFilteredValues[DTid] = outputValue;
 #else
     // ToDo why the resource doesnt get picked up in PIX if its written to under condition?
-    if (g_CB.outputFilterWeigthSum)
+    if (g_CB.outputFilterWeightSum)
     {
-        g_outFilterWeigthSum[DTid] = weightSum;
+        g_outFilterWeightSum[DTid] = weightSum;
     }
 
     // ToDo separate output filtered value and weight sum into two shaders?
     if (g_CB.outputFilteredValue)
     {
         g_outFilteredValues[DTid] = weightedValueSum / weightSum;
+        //g_outFilteredValues[DTid] = lerp(value, weightedValueSum / weightSum, stdDeviation);
     }
 #endif
     if (g_CB.outputFilteredVariance)

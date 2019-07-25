@@ -118,7 +118,7 @@ void BlurVertically(uint2 DTid, uint topMostIndex)
 
     variance = max(0, variance);    // Ensure variance doesn't go negative due to imprecision.
     
-    g_outMeanVariance[DTid] = float2(variance, mean);
+    g_outMeanVariance[DTid] = float2(mean, variance);
 }
 
 

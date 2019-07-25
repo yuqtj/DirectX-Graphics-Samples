@@ -352,7 +352,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputSmoothedVarianceResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,   // ToDo standardize depth vs distance
             RWGpuResource* outputResourceHandle,
@@ -371,7 +371,8 @@ namespace GpuKernels
             UINT minKernelWidth = 5,
             UINT maxKernelWidth = 101,
             float varianceSigmaScaleOnSmallKernels = 2.f,
-            bool usingBilateralDownsampledBuffers = false);
+            bool usingBilateralDownsampledBuffers = false,
+            float minVarianceToDenoise = 0);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -380,7 +381,7 @@ namespace GpuKernels
         RWGpuResource			            m_intermediateVarianceOutputs[2];
         RWGpuResource			            m_filterWeightOutput;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
-        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CBfilterWeigth;
+        ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CBfilterWeight;
         UINT                                m_CBinstanceID = 0;
         UINT                                m_maxFilterPasses = 0;
     };
@@ -527,20 +528,18 @@ namespace GpuKernels
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalDepthResourceHandle,
-#if PACK_MEAN_VARIANCE
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanVarianceResourceHandle,
-#else
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameVarianceResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameMeanResourceHandle,
-#endif
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameSpatialMeanVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameLinearDepthDerivativeResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheFrameAgeResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheCoefficientSquaredMeanResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputTextureSpaceMotionVectorResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputReprojectedNormalDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheFrameAgeResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheCoefficientSquaredMeanResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputVarianceResourceHandle,
             float minSmoothingFactor,
             const XMMATRIX& invView,
             const XMMATRIX& invProj,
@@ -551,7 +550,7 @@ namespace GpuKernels
             float zFar,
             float depthTolerance,
             bool useDepthWeights,
-            bool useNormalWeigths,
+            bool useNormalWeights,
             bool forceUseMinSmoothingFactor,
             bool clampCachedValues,
             float clampStdDevGamma,
@@ -560,6 +559,7 @@ namespace GpuKernels
             float depthDistanceBasedDepthTolerance,
             float depthSigma,
             bool useWorldSpaceDistance,
+            UINT minFrameAgeToUseTemporalVariance,
             TextureResourceFormatRGB::Type normalDepthResourceFormat,
             RWGpuResource debugResources[2],
             const XMVECTOR& currentFrameCameraPosition,

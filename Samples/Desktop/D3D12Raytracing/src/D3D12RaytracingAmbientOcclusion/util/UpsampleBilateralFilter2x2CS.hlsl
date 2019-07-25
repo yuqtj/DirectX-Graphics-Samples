@@ -55,7 +55,7 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
             // ToDo perspective correction?
             depthThreshold = maxPixelDistance * max(ddxy.x, ddxy.y);
         }
-        // ToDo correct weights to weigths in the whole project same for treshold and weigth
+        // ToDo correct weights to weights in the whole project same for treshold and weight
         float fScale = 1.f / depthThreshold;
         depthWeights = min(1.0 / (fScale * abs(SampleDistances - ActualDistance) + fEpsilon), 1);
     }

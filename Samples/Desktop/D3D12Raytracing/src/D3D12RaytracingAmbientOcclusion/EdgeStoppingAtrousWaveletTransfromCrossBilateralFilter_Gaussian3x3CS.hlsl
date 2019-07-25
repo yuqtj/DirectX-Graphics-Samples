@@ -12,3 +12,4 @@
 #define HLSL
 #define GAUSSIAN_KERNEL_3X3
 #include "EdgeStoppingAtrousWaveletTransfromCrossBilateralFilterCS.hlsli"
+//#include "EdgeStoppingFilterCS.hlsli"
