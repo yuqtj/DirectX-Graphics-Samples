@@ -35,7 +35,7 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float dept
     // ToDo use a common helper
     // ToDo rename to: Perspective correct interpolation
     // Pespective correction for the non-linear interpolation
-    if (g_CB.pespectiveCorrectDepthInterpolation)
+    if (g_CB.perspectiveCorrectDepthInterpolation)
     {
         // Calculate depth via interpolation with perspective correction.
         // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation

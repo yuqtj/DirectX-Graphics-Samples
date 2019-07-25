@@ -1275,7 +1275,7 @@ namespace GpuKernels
         Mode filterMode,
         bool reverseFilterPassOrder,
         bool useCalculatedVariance,
-        bool pespectiveCorrectDepthInterpolation,
+        bool perspectiveCorrectDepthInterpolation,
         bool useAdaptiveKernelSize,
         float minHitDistanceToKernelWidthScale,
         UINT minKernelWidth,
@@ -1349,7 +1349,7 @@ namespace GpuKernels
             CB->outputFilteredVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
             CB->outputFilteredValue = filterMode == OutputFilteredValue;
             CB->outputFilterWeightSum = filterMode == OutputPerPixelFilterWeightSum;
-            CB->pespectiveCorrectDepthInterpolation = pespectiveCorrectDepthInterpolation;
+            CB->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
             CB->useAdaptiveKernelSize = useAdaptiveKernelSize;
             CB->minHitDistanceToKernelWidthScale = minHitDistanceToKernelWidthScale;
             CB->minKernelWidth = minKernelWidth;
@@ -1949,6 +1949,8 @@ namespace GpuKernels
         float depthSigma,
         bool useWorldSpaceDistance,
         UINT minFrameAgeToUseTemporalVariance,
+        bool usingBilateralDownsampledBuffers,
+        bool perspectiveCorrectDepthInterpolation,
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
         RWGpuResource debugResources[2],
         const XMVECTOR& currentFrameCameraPosition,
@@ -1987,6 +1989,9 @@ namespace GpuKernels
         m_CB->prevProjectionToWorldWithCameraEyeAtOrigin = XMMatrixTranspose(prevProjectionToWorldWithCameraEyeAtOrigin);
         m_CB->useWorldSpaceDistance = useWorldSpaceDistance;
         m_CB->minFrameAgeToUseTemporalVariance = minFrameAgeToUseTemporalVariance;
+        m_CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
+        m_CB->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
+
         switch (normalDepthResourceFormat)
         {
         case TextureResourceFormatRGB::R32G32B32A32_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(32); break;

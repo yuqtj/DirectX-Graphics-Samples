@@ -36,7 +36,7 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
 
     float fEpsilon = (1.001-distance) * g_CB.depthSigma * 1e-4f;// depth * 1e-6f;// *0.001;// 0.0024;// 12f;     // ToDo finalize the value
     // ToDo rename to perspective correction
-    if (0 && g_CB.pespectiveCorrectDepthInterpolation)
+    if (0 && g_CB.perspectiveCorrectDepthInterpolation)
     {
         float fovAngleY = FOVY;   // ToDO pass from the app
         float2 resolution = g_CB.textureDim;
@@ -55,7 +55,7 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
         // ToDo use a common helper
         // ToDo rename to: Perspective correct interpolation
         // Pespective correction for the non-linear interpolation
-        if (g_CB.pespectiveCorrectDepthInterpolation)
+        if (g_CB.perspectiveCorrectDepthInterpolation)
         {
             // Calculate depth via interpolation with perspective correction
             // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
@@ -183,11 +183,9 @@ void AddFilterContribution(
         float depthThreshold = DepthThreshold(depth, ddxy, pixelOffsetForDepth, obliqueness, depth - iDepth);
 
 #if 1
+        float depthFloatPrecision = FloatPrecision(max(depth, iDepth), g_CB.DepthNumMantissaBits);
 
-        // ToDo why is 2 needed to get rid of banding?
-        float depthFloatPrecision = 2.0f * FloatPrecision(max(depth, iDepth), g_CB.DepthNumMantissaBits);
-
-        float depthTolerance = max(depthSigma * depthThreshold, depthFloatPrecision);
+        float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
         //float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) / (depthTolerance + FLT_EPSILON) : 0;
         float w_d = depthSigma > 0.01f ? min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1) : 1;
 #else

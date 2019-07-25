@@ -425,7 +425,7 @@ struct AtrousWaveletTransformFilterConstantBuffer
     BOOL outputFilteredVariance;
     BOOL outputFilterWeightSum;
 
-    BOOL pespectiveCorrectDepthInterpolation;
+    BOOL perspectiveCorrectDepthInterpolation;
     BOOL useAdaptiveKernelSize;
     float minHitDistanceToKernelWidthScale;
     UINT minKernelWidth;
@@ -775,7 +775,9 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     UINT DepthNumMantissaBits;      // Number of Mantissa Bits in the floating format of the input depth resources format.
 
     UINT minFrameAgeToUseTemporalVariance;
-    float padding[3];
+    BOOL usingBilateralDownsampledBuffers;
+    BOOL perspectiveCorrectDepthInterpolation;
+    float padding;
 };
 
 struct CalculatePartialDerivativesConstantBuffer

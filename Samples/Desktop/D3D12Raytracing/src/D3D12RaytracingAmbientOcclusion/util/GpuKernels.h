@@ -365,7 +365,7 @@ namespace GpuKernels
             Mode filterMode = OutputFilteredValue,
             bool reverseFilterPassOrder = false,
             bool useCalculatedVariance = true,
-            bool pespectiveCorrectDepthInterpolation = false,
+            bool perspectiveCorrectDepthInterpolation = false,
             bool useAdaptiveKernelSize = false, // ToDo revise defaults
             float minHitDistanceToKernelWidthScale = 1.f,
             UINT minKernelWidth = 5,
@@ -560,6 +560,8 @@ namespace GpuKernels
             float depthSigma,
             bool useWorldSpaceDistance,
             UINT minFrameAgeToUseTemporalVariance,
+            bool usingBilateralDownsampledBuffers,
+            bool perspectiveCorrectDepthInterpolation,
             TextureResourceFormatRGB::Type normalDepthResourceFormat,
             RWGpuResource debugResources[2],
             const XMVECTOR& currentFrameCameraPosition,

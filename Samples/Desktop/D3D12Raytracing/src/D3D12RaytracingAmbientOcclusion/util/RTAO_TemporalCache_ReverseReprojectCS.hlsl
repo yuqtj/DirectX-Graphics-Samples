@@ -87,6 +87,38 @@ float CalculateAdjustedDepthThreshold(
     return CalculateAdjustedDepthThreshold(_d, alpha, beta, rho);
 }
 
+// ToDo cleanup with AdjustedDepth...
+// ToDO move this to DDXY computation?
+// ToDo rename to ddxy dxdy and standardize.
+float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset)
+{
+    float depthThreshold;
+    // Todo rename ddxy to dxdy?
+    // ToDo use a common helper
+    // ToDo rename to: Perspective correct interpolation
+    // Pespective correction for the non-linear interpolation
+    if (cb.perspectiveCorrectDepthInterpolation)
+    {
+        // Calculate depth via interpolation with perspective correction
+        // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
+        // Given depth buffer interpolation for finding z at offset q along z0 to z1
+        //      z =  1 / (1 / z0 * (1 - q) + 1 / z1 * q)
+        // and z1 = z0 + ddxy, where z1 is at a unit pixel offset [1, 1]
+        // z can be calculated via ddxy as
+        //
+        //      z = (z0 + ddxy) / (1 + (1-q) / z0 * ddxy) 
+
+        float z0 = distance;
+        float2 zxy = (z0 + ddxy) / (1 + ((1 - pixelOffset) / z0) * ddxy);
+        depthThreshold = dot(1, abs(zxy - z0)); // ToDo this should be sqrt(dot(zxy - z0, zxy - z0))?
+    }
+    else
+    {
+        depthThreshold = dot(1, abs(pixelOffset * ddxy));
+    }
+
+    return depthThreshold;
+}
 
 float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float2 offset, in uint2 actualIndex, in int2 sampleIndices[4], in float cacheDdxy)
 {
@@ -100,12 +132,14 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
     if (cb.useDepthWeights)
     {
         float depthThreshold = cacheDdxy;
-        // Using exact precision values fails the depth test on some views, particularly at smaller resolutions.
+
+// Using exact precision values fails the depth test on some views, particularly at smaller resolutions.
         // Scale the tolerance a bit.
-        float depthFloatPrecision = 1.25f * FloatPrecision(ActualDistance, cb.DepthNumMantissaBits);
+        float depthFloatPrecision = FloatPrecision(ActualDistance, cb.DepthNumMantissaBits);
        
-        float depthTolerance = max(cb.depthSigma * depthThreshold, depthFloatPrecision);
+        float depthTolerance = cb.depthSigma * depthThreshold + depthFloatPrecision;
         float4 depthWeights = min(depthTolerance / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
+        // ToDo Should there be a distance falloff with a cutoff below 1?
         depthMask = depthWeights >= 1 ? depthWeights : 0;   // ToDo revise - this is same as comparing to depth tolerance
 
         // ToDo handle invalid distances, i.e disabled pixels?
@@ -220,12 +254,20 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // ToDo should this be done separately for both X and Y dimensions?
     float  ddxy = dot(1, dxdy);
 
-    float cacheDdxy = ddxy;
     float3 _normal;
     float _depth;
     LoadDepthAndNormal(g_texInputReprojectedNormalDepth, DTid, _depth, _normal);
 
 
+    // Account for sample offset in bilateral downsampled partial depth derivative buffer.
+    if (cb.usingBilateralDownsampledBuffers)
+    {
+        float2 pixelOffset = float2(1.5, 1.5);
+        // ToDo review using _depth with current frame dxdy ...
+        ddxy = DepthThreshold(_depth, dxdy, pixelOffset);
+    }
+
+    float cacheDdxy = ddxy;
     if (cb.useWorldSpaceDistance)
     {
         float3 normal;
