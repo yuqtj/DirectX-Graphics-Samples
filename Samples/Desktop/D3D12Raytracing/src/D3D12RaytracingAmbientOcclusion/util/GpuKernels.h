@@ -343,7 +343,8 @@ namespace GpuKernels
             ID3D12Device5* device,
             DX::DescriptorHeap* descriptorHeap, // ToDo pass the same heap type in all inputs?
             UINT width,
-            UINT height);
+            UINT height,
+            DXGI_FORMAT format);
         void Execute(
             ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap, 
@@ -359,6 +360,7 @@ namespace GpuKernels
             float valueSigma,
             float depthSigma,
             float normalSigma,
+            float weightScale,
             TextureResourceFormatRGB::Type normalDepthResourceFormat,
             UINT kernelStepShifts[5],
             UINT numFilterPasses = 5,
@@ -373,6 +375,8 @@ namespace GpuKernels
             float varianceSigmaScaleOnSmallKernels = 2.f,
             bool usingBilateralDownsampledBuffers = false,
             float minVarianceToDenoise = 0);
+
+        RWGpuResource& VarianceOutputResource() { return m_intermediateVarianceOutputs[0]; }
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;

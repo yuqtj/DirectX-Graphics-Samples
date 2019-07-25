@@ -44,6 +44,11 @@ namespace SceneArgs
         global_pRTAO->RequestRecreateRaytracingResources();
     }
 
+    void OnRecreateSampleRaytracingResources(void*)
+    {
+        global_pSample->RequestRecreateRaytracingResources();
+    }
+
     void OnRecreateSamples(void*)
     {
         global_pRTAO->RequestRecreateAOSamples();
@@ -71,7 +76,7 @@ namespace SceneArgs
 
 
     const WCHAR* FloatingPointFormatsR[TextureResourceFormatR::Count] = { L"R32_FLOAT", L"R16_FLOAT", L"R8_UNORM" };
-    EnumVar RTAO_AmbientCoefficientResourceFormat(L"Render/Texture Formats/AO/RTAO/Ambient Coefficient", TextureResourceFormatR::R8_UNORM, TextureResourceFormatR::Count, FloatingPointFormatsR, OnRecreateRTAORaytracingResources);
+    EnumVar RTAO_AmbientCoefficientResourceFormat(L"Render/Texture Formats/AO/RTAO/Ambient Coefficient", TextureResourceFormatR::R16_FLOAT, TextureResourceFormatR::Count, FloatingPointFormatsR, OnRecreateSampleRaytracingResources);
 
   
     // ToDo cleanup RTAO... vs RTAO_..

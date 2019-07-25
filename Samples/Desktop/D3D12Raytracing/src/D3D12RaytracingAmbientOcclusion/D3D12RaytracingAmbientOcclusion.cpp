@@ -33,7 +33,7 @@ using namespace GameCore;
 // ToDo tighten shader visibility in Root Sigs - CS + DXR
 
 // Singleton instance.
-static D3D12RaytracingAmbientOcclusion* global_pSample;
+D3D12RaytracingAmbientOcclusion* global_pSample;
 UINT D3D12RaytracingAmbientOcclusion::s_numInstances = 0;
 
 
@@ -160,7 +160,7 @@ namespace SceneArgs
     IntVar MaxRadianceRayRecursionDepth(L"Render/PathTracing/Max Radiance Ray recursion depth", 2, 1, MAX_RAY_RECURSION_DEPTH, 1);   // ToDo Replace with 3/4 depth as it adds visible differences on spaceship/car
     IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 3, 1, MAX_RAY_RECURSION_DEPTH, 1);
     
-    BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", false);        // ToDO use enumeration
+    BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", true);        // ToDO use enumeration
 
     // Avoid tracing rays where they have close to zero visual impact.
     // todo test perf gain or remove.
@@ -196,7 +196,7 @@ namespace SceneArgs
 
 
     // ToDo remove
-    IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step RTAO_TemporalCache_PespectiveCorrectDepthInterpolationShifts/0", 0, 0, 10, 1);
+    IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 2, 0, 10, 1);
     IntVar RTAO_KernelStepShift1(L"Render/AO/RTAO/Kernel Step Shifts/1", 0, 0, 10, 1);
     IntVar RTAO_KernelStepShift2(L"Render/AO/RTAO/Kernel Step Shifts/2", 0, 0, 10, 1);
     IntVar RTAO_KernelStepShift3(L"Render/AO/RTAO/Kernel Step Shifts/3", 0, 0, 10, 1);
@@ -210,8 +210,9 @@ namespace SceneArgs
 
     // ToDo rename to temporal supersampling
     // ToDo address: Clamping causes rejection of samples in low density areas - such as on ground plane at the end of max ray distance from other objects.
-    BoolVar RTAO_TemporalCache_CacheDenoisedOutput(L"Render/AO/RTAO/Temporal Cache/Cache denoised output", false);
+    BoolVar RTAO_TemporalCache_CacheDenoisedOutput(L"Render/AO/RTAO/Temporal Cache/Cache denoised output", true);
     BoolVar RTAO_TemporalCache_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", false);
+    BoolVar RTAO_TemporalCache_CacheSquaredMean(L"Render/AO/RTAO/Temporal Cache/Cached SquaredMean", false);
     NumVar RTAO_TemporalCache_ClampCachedValues_StdDevGamma(L"Render/AO/RTAO/Temporal Cache/Clamping/Std.dev gamma", 1.0f, 0.1f, 20.f, 0.1f);
     NumVar RTAO_TemporalCache_ClampCachedValues_MinStdDevTolerance(L"Render/AO/RTAO/Temporal Cache/Clamping/Minimum std.dev", 0.04f, 0.0f, 1.f, 0.01f);   // ToDo finetune
     NumVar RTAO_TemporalCache_ClampCachedValues_AbsoluteDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Absolute depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
@@ -224,7 +225,6 @@ namespace SceneArgs
     const WCHAR* FloatingPointFormatsRGB[TextureResourceFormatRGB::Count] = { L"R32G32B32A32_FLOAT", L"R16G16B16A16_FLOAT", L"R11G11B10_FLOAT" };
     EnumVar RTAO_TemporalCache_NormalDepthResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Cache/Encoded Normal (RG) Depth (B) resource", TextureResourceFormatRGB::R32G32B32A32_FLOAT, TextureResourceFormatRGB::Count, FloatingPointFormatsRGB, OnRecreateRaytracingResources);
 
-    
     const WCHAR* FloatingPointFormatsRG[TextureResourceFormatRG::Count] = { L"R32G32_FLOAT", L"R16G16_FLOAT", L"R8G8_UNORM" };
     // ToDo  ddx needs to be in normalized to use UNORM.
     EnumVar RTAO_PartialDepthDerivativesResourceFormat(L"Render/Texture Formats/PartialDepthDerivatives", TextureResourceFormatRG::R16G16_FLOAT, TextureResourceFormatRG::Count, FloatingPointFormatsRG, OnRecreateRaytracingResources);
@@ -254,7 +254,7 @@ namespace SceneArgs
     BoolVar RTAODenoising_Variance_UseNormalWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true); 
     IntVar RTAODenoising_MinFrameAgeToUseTemporalVariance(L"Render/AO/RTAO/Denoising/Min Temporal Variance Frame Age", 4, 1, 40);
     NumVar RTAODenoisingMinVarianceToDenoise(L"Render/AO/RTAO/Denoising/Min Variance to denoise", 0.0f, 0.0f, 1.f, 0.01f);
-    BoolVar RTAODenoisingUseSmoothedVariance(L"Render/AO/RTAO/Denoising/Use smoothed variance", true);
+    BoolVar RTAODenoisingUseSmoothedVariance(L"Render/AO/RTAO/Denoising/Use smoothed variance", false);
     
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"Render/AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
@@ -262,10 +262,11 @@ namespace SceneArgs
     IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 1, 1, 8, 1);
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.011f, 0.0f, 30.0f, 0.1f);
 #else
-    IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 3, 1, 8, 1);
-    NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 1, 0.0f, 30.0f, 0.1f);
+    IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 1, 1, 8, 1);
+    NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.2, 0.0f, 30.0f, 0.1f);
 #endif
     BoolVar ReverseFilterOrder(L"Render/AO/RTAO/Denoising/Reverse filter order", false);
+    NumVar RTAODenoising_WeightScale(L"Render/AO/RTAO/Denoising/Weight Scale", 1, 0.0f, 5.0f, 0.01f);
 
     // ToDo why large depth sigma is needed?
     // ToDo the values don't scale to QuarterRes - see ImportaceMap viz
@@ -1420,7 +1421,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
             // ToDo cleanup raytracing resolution - twice for coefficient.
             CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::FrameAge], initialResourceState, L"Temporal Cache: Frame Age");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::CoefficientSquaredMean], initialResourceState, L"Temporal Cache: Coefficient Squared Mean");
+            CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalCache::CoefficientSquaredMean], initialResourceState, L"Temporal Cache: Coefficient Squared Mean");
 
             m_AOTSSCoefficient[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOTSSCoefficient[i], initialResourceState, L"Render/AO Temporally Supersampled Coefficient");
@@ -1460,7 +1461,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
     // ToDo specialize formats instead of using a common one?
 
-    DXGI_FORMAT varianceTexFormat = DXGI_FORMAT_R16_FLOAT;       // ToDo 8 bit suffers from loss of precision and clamps too much.
+    DXGI_FORMAT varianceTexFormat = m_RTAO.GetAOCoefficientFormat();       // ToDo 8 bit suffers from loss of precision and clamps too much.
     m_varianceResource.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
     CreateRenderTargetResource(device, varianceTexFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_varianceResource, initialResourceState, L"Post Temporal Reprojection Variance");
 
@@ -2772,6 +2773,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             SceneArgs::AODenoiseValueSigma,
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
+            SceneArgs::RTAODenoising_WeightScale,
             // ToDo rename this to be global normalDepth
             static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(SceneArgs::RTAO_TemporalCache_NormalDepthResourceFormat)),
             offsets,
@@ -3177,6 +3179,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             SceneArgs::AODenoiseValueSigma,
             SceneArgs::AODenoiseDepthSigma,
             SceneArgs::AODenoiseNormalSigma,
+            SceneArgs::RTAODenoising_WeightScale,
             static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(SceneArgs::RTAO_TemporalCache_NormalDepthResourceFormat)),
             offsets,
             SceneArgs::AtrousFilterPasses,
@@ -4113,7 +4116,7 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
 		FrameCount, 
 		m_GBufferWidth,
 		m_GBufferHeight);
-    m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_raytracingWidth, m_raytracingHeight);
+    m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_raytracingWidth, m_raytracingHeight, m_RTAO.GetAOCoefficientFormat());
     
     // SSAO
     {
@@ -4830,6 +4833,15 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                                 AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].resource.Get(),
                                 &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+                            if (SceneArgs::RTAO_TemporalCache_CacheSquaredMean)
+                            CopyTextureRegion(
+                                commandList,
+                                m_atrousWaveletTransformFilter.VarianceOutputResource().resource.Get(),
+                                m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalCache::CoefficientSquaredMean].resource.Get(),
+                                &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
+                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
                         }
 

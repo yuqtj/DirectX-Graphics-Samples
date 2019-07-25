@@ -1229,25 +1229,27 @@ namespace GpuKernels
         ID3D12Device5* device,
         DX::DescriptorHeap* descriptorHeap,
         UINT width,
-        UINT height)
+        UINT height,
+        DXGI_FORMAT format)
     {
         // Create shader resources
         {
             m_intermediateValueOutput.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, width, height, descriptorHeap,
+            // ToDo pass in the format
+            CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_intermediateValueOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate value output");
 
             m_intermediateVarianceOutputs[0].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, width, height, descriptorHeap,
+            CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_intermediateVarianceOutputs[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate variance output 0");
 
             m_intermediateVarianceOutputs[1].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, width, height, descriptorHeap,
+            CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_intermediateVarianceOutputs[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate variance output 1");
 
             // ToDo remove
             m_filterWeightOutput.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, width, height, descriptorHeap,
+            CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_filterWeightOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter filter weight sum output");
         }
     }
@@ -1269,6 +1271,7 @@ namespace GpuKernels
         float valueSigma,
         float depthSigma,
         float normalSigma,
+        float weightScale,
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
         UINT kernelStepShifts[5],
         UINT numFilterPasses,
@@ -1339,6 +1342,7 @@ namespace GpuKernels
             }
             CB->depthSigma = depthSigma;
             CB->normalSigma = normalSigma;
+            CB->weightScale = weightScale;
 #if RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS
             CB->kernelStepShift = kernelStepShifts[_i];
 #else

@@ -100,6 +100,7 @@ void AddFilterContribution(
     const float valueSigma = g_CB.valueSigma;
     const float normalSigma = g_CB.normalSigma;
     const float depthSigma = g_CB.depthSigma;
+    const float weightScale = g_CB.weightScale;
  
     int2 pixelOffset;
     float kernelWidth;
@@ -208,6 +209,7 @@ void AddFilterContribution(
         float w_xd = w_x * w_d;
 
         float w = w_h * w_n * w_xd;
+        w *= weightScale;
 
         if (g_CB.outputFilteredValue)
         {
@@ -297,7 +299,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 #endif
     if (g_CB.outputFilteredVariance)
     {
-        g_outFilteredVariance[DTid] = weightedVarianceSum / (weightSum * weightSum);
+        g_outFilteredVariance[DTid] = (weightedValueSum / weightSum) * (weightedValueSum / weightSum);// weightedVarianceSum / (weightSum * weightSum);
     }
 
 }

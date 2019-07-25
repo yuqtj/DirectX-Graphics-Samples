@@ -259,7 +259,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     LoadDepthAndNormal(g_texInputReprojectedNormalDepth, DTid, _depth, _normal);
 
 
-    // Account for sample offset in bilateral downsampled partial depth derivative buffer.
+    // Account for 0.5 sample offset in bilateral downsampled partial depth derivative buffer.
     if (cb.usingBilateralDownsampledBuffers)
     {
         float2 pixelOffset = float2(1.5, 1.5);

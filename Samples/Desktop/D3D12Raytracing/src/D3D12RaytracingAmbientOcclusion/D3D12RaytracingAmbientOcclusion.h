@@ -28,6 +28,7 @@
 #include "SceneParameters.h"
 #include "RTAO\RTAO.h"
 
+extern D3D12RaytracingAmbientOcclusion* global_pSample;
 
 class D3D12RaytracingAmbientOcclusion : public DXSample
 {

@@ -126,7 +126,7 @@
 
 #define AO_TEST_TILE_COHERENCY 0
 
-#define ENABLE_VSYNC 0
+#define ENABLE_VSYNC 1
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 1  
 #endif
@@ -436,7 +436,8 @@ struct AtrousWaveletTransformFilterConstantBuffer
     UINT DepthNumMantissaBits;
 
     float minVarianceToDenoise;
-    float padding[3];
+    float weightScale;
+    float padding[2];
 };
 
 // ToDo remove obsolete params in cbs
