@@ -2127,7 +2127,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAllBottomLevelAccelerationStruct
             bottomLevelASGeometry.GetName().find(L"House") != wstring::npos ||
             bottomLevelASGeometry.GetName().find(L"Car") != wstring::npos)
         {
-            compactAS = true;
+            compactAS = false;
         }
         m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, updateOnBuild, updateOnBuild, compactAS);
     }
