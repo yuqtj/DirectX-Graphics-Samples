@@ -9,7 +9,7 @@
 //
 //*********************************************************
 
-#define RAY_DIRECTION_HASH_KEY_BITS_1D 4    // Max 4 bits
+#define RAY_DIRECTION_HASH_KEY_BITS_1D 4   // Max 4 bits
 #define DEPTH_HASH_KEY_BITS 2  // ToDo test using 2 bits for RayGroupQuadrant
 #define INDEX_HASH_KEY_BITS 0 // (4 - DEPTH_HASH_KEY_BITS)   // ToDo test using 2 bits for RayGroupQuadrant
 #define NUM_RAYS SortRays::RayGroup::Size

@@ -349,9 +349,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
             float prevCachedValue = cachedValue;
             cachedValue = clamp(cachedValue, localMean - localStdDev, localMean + localStdDev); 
             
-            float frameAgeAdjustmentDueClamping = 1; // todo
             // Scale the frame age based on how strongly the cached value got clamped.
-            frameAgeClamp = frameAgeAdjustmentDueClamping * abs(cachedValue - prevCachedValue);
+            frameAgeClamp = cb.clampDifferenceToFrameAgeScale * abs(cachedValue - prevCachedValue);
             frameAge = lerp(frameAge, 0, frameAgeClamp);
         }
         //frameAgeClamp = screenSpaceReprojectionDistanceAsWidthPercentage / maxScreenSpaceReprojectionDistance;

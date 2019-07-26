@@ -91,11 +91,11 @@ namespace Scene
             camera.position.at = { -47.2277f, 27.3063f, -30.9273f, 1 };
             camera.position.up = { 0.483884f, 0.740712f, 0.466033f, 0 };
             camera.position.eye = { -47.8157f, 27.891f, -31.4868f, 1 };
-#elif 1 // Top-down spaceship front rod - long ray distances
+#elif 0 // Top-down spaceship front rod - long ray distances
     camera.position.at = { -4.02726f, 1.08747f, -14.9725f, 1 };
     camera.position.up = { 0.0153231f, -0.232894f, -0.972375f, 0 };
     camera.position.eye = { -4.02189f, 2.08023f, -15.0949f, 1 };
-#elif 1
+#elif 0
             // SpaceShip
             camera.position.at = { -4.69957f, 2.73596f, -18.8503f, 1 };
             camera.position.up = { 0.333712f, 0.88733f, 0.31823f, 0 };

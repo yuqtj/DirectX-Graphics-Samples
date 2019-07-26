@@ -1955,6 +1955,7 @@ namespace GpuKernels
         UINT minFrameAgeToUseTemporalVariance,
         bool usingBilateralDownsampledBuffers,
         bool perspectiveCorrectDepthInterpolation,
+        float clampDifferenceToFrameAgeScale,
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
         RWGpuResource debugResources[2],
         const XMVECTOR& currentFrameCameraPosition,
@@ -1995,6 +1996,7 @@ namespace GpuKernels
         m_CB->minFrameAgeToUseTemporalVariance = minFrameAgeToUseTemporalVariance;
         m_CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
         m_CB->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
+        m_CB->clampDifferenceToFrameAgeScale = clampDifferenceToFrameAgeScale;
 
         switch (normalDepthResourceFormat)
         {

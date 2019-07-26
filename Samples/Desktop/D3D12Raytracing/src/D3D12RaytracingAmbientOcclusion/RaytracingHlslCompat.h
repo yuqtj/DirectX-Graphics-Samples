@@ -17,7 +17,8 @@
 /*
 //ToDo
 - TAO fails on dragons surface on small rotaions
-
+- blur away disocclussions
+- add dynamic objects testing clamping
 - overblur on mouse camera movement
 -  no modes, no AOon phong, denoised artifacts onb normalMaps
 - Fireflies
@@ -128,7 +129,7 @@
 
 #define AO_TEST_TILE_COHERENCY 0
 
-#define ENABLE_VSYNC 1
+#define ENABLE_VSYNC 0
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 1  
 #endif
@@ -780,7 +781,7 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     UINT minFrameAgeToUseTemporalVariance;
     BOOL usingBilateralDownsampledBuffers;
     BOOL perspectiveCorrectDepthInterpolation;
-    float padding;
+    float clampDifferenceToFrameAgeScale;
 };
 
 struct CalculatePartialDerivativesConstantBuffer

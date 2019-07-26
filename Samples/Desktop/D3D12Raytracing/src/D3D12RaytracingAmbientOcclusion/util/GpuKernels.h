@@ -566,6 +566,7 @@ namespace GpuKernels
             UINT minFrameAgeToUseTemporalVariance,
             bool usingBilateralDownsampledBuffers,
             bool perspectiveCorrectDepthInterpolation,
+            float clampDifferenceToFrameAgeScale,
             TextureResourceFormatRGB::Type normalDepthResourceFormat,
             RWGpuResource debugResources[2],
             const XMVECTOR& currentFrameCameraPosition,
