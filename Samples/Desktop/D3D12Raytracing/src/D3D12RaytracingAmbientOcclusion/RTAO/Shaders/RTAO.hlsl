@@ -16,7 +16,8 @@
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
 #include "RandomNumberGenerator.hlsli"
-#include "RaySorting.hlsli"
+#include "Ray Sorting/RaySorting.hlsli"
+#include "Ray sorting/RayGen.hlsli"
 #include "RTAO.hlsli"
 
 // ToDo split to Raytracing for GBUffer and AO?

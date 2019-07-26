@@ -264,7 +264,7 @@ namespace SceneArgs
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.011f, 0.0f, 30.0f, 0.1f);
 #else
     IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 1, 1, 8, 1);
-    NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.2, 0.0f, 30.0f, 0.1f);
+    NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.2f, 0.0f, 30.0f, 0.1f);
 #endif
     BoolVar ReverseFilterOrder(L"Render/AO/RTAO/Denoising/Reverse filter order", false);
     NumVar RTAODenoising_WeightScale(L"Render/AO/RTAO/Denoising/Weight Scale", 1, 0.0f, 5.0f, 0.01f);
@@ -4810,7 +4810,8 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                         m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
                         GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
                         GBufferResources[GBufferResource::SurfaceNormal].gpuDescriptorReadAccess,
-                        GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
+                        GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess,
+                        m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalCache::FrameAge].gpuDescriptorReadAccess);
 
                     RenderPass_TemporalCacheReverseProjection();
 

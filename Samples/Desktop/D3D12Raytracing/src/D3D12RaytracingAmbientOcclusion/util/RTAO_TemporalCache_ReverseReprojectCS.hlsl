@@ -267,6 +267,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         ddxy = DepthThreshold(_depth, dxdy, pixelOffset);
     }
 
+    // ToDo retest/finetune depth testing. Moving car back and forth fails. Needs world space distance & depth sigma of 2+.
     float cacheDdxy = ddxy;
     if (cb.useWorldSpaceDistance)
     {

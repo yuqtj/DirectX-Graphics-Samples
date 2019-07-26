@@ -276,6 +276,9 @@
     <None Include="EdgeStoppingFilterCS.hlsli">
       <Filter>Assets\Shaders</Filter>
     </None>
+    <None Include="RTAO\Shaders\Ray sorting\RayGen.hlsli">
+      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Raytracing.hlsl">
@@ -419,6 +422,9 @@
     </FxCompile>
     <FxCompile Include="RTAO\Shaders\Denoising\EdgeStoppingSeparableGaussian3x3FilterCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Denoising</Filter>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\Ray sorting\AdaptiveRayGenCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

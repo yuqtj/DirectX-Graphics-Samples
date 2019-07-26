@@ -157,7 +157,7 @@
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
-#define LOAD_ONLY_ONE_PBRT_MESH 0  // for LOAD_PBRT_SCENE == 1 only
+#define LOAD_ONLY_ONE_PBRT_MESH 1  // for LOAD_PBRT_SCENE == 1 only
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
@@ -199,6 +199,7 @@
 // ToDo separate per-vertex attributes from VB
 // ToDo dedupe the ones matching default
 // ToDo move
+// ToDo encapsulate under CS namespace
 namespace ReduceSumCS {
 	namespace ThreadGroup {
 		enum Enum { Width = 8, Height = 16, Size = Width * Height, NumElementsToLoadPerThread = 10 };	
@@ -256,7 +257,7 @@ namespace DownsampleValueNormalDepthBilateralFilter {
 // ToDo combine and reuse a default 8x8 ?
 namespace DefaultComputeShaderParams {
     namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8 };
+        enum Enum { Width = 8, Height = 8, Size = Width * Height };
     }
 }
 
@@ -466,6 +467,25 @@ struct CalculateMeanVarianceConstantBuffer
     XMUINT2 textureDim;
     UINT kernelWidth;
     UINT kernelRadius;
+};
+
+
+
+// ToDo standardzie capitalization
+struct AdaptiveRayGenConstantBuffer
+{
+    XMUINT2 textureDim;
+    XMUINT2 QuadDim;
+
+    UINT MaxFrameAge;
+    UINT MinFrameAgeForAdaptiveSampling;    // Frame age at which the adaptive sampling kicks in.
+    UINT FrameID;       // Looping FrameID within <0, QuadDim.size - 1>
+    UINT padding;
+
+    UINT seed;
+    UINT numSamplesPerSet;
+    UINT numSampleSets;
+    UINT numPixelsPerDimPerSet;
 };
 
 struct SortRaysConstantBuffer

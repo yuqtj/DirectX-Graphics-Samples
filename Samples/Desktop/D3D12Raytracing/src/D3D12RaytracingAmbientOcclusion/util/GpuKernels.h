@@ -646,5 +646,48 @@ namespace GpuKernels
         UINT                                m_CBinstanceID = 0;
     };
 
+    /// ToDo add header desc to each kernel.
+    class AdaptiveRayGenerator
+    {
+    public:
+        enum AdaptiveQuadSizeType {
+            Quad2x2 = 0,
+            Quad4x4,
+            Count
+        };
+
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList4* commandList,
+            UINT width,
+            UINT height,
+            AdaptiveQuadSizeType adaptiveQuadSizetype,
+            UINT maxFrameAge,
+            UINT minFrameAgeForAdaptiveSampling,
+            UINT seed,
+            UINT numSamplesPerSet,
+            UINT numSampleSets,
+            UINT numPixelsPerDimPerSet,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginSurfaceNormalDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginPositionResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
+            const D3D12_GPU_VIRTUAL_ADDRESS& inputAlignedHemisphereSamplesBufferAddress,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputRayDirectionOriginDepthResourceHandle);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+
+        ConstantBuffer<AdaptiveRayGenConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
+    };
+
 }
 

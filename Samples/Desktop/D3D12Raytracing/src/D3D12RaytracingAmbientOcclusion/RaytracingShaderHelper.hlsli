@@ -537,6 +537,8 @@ float2 OctWrap(float2 v)
     return (1.0 - abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
 }
 
+// TODo rename to EncodeUnitVector?
+// Converts a 3D unit vector to a 2D vector with <0,1> range. 
 float2 EncodeNormal(float3 n)
 {
     n /= (abs(n.x) + abs(n.y) + abs(n.z));

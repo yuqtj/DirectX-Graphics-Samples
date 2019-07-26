@@ -39,7 +39,7 @@ public:
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
     void OnUpdate();
-    void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedo);
+    void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource, D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource);
     void ReleaseDeviceDependentResources();
     void ReleaseWindowSizeDependentResources() {}; // ToDo
 
@@ -121,6 +121,7 @@ private:
 
     // Compute shader & resources.
     GpuKernels::ReduceSum		m_reduceSumKernel;
+    GpuKernels::AdaptiveRayGenerator m_rayGen;
     GpuKernels::SortRays        m_raySorter;
 
 

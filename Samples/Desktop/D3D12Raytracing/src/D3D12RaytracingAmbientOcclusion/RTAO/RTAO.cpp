@@ -61,6 +61,12 @@ namespace SceneArgs
     NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 0.1f, 0.01f, 10.f, 0.01f);
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
+
+    const WCHAR* RayGenAdaptiveQuadSizeTypes[GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Count] = { L"2x2", L"4x4" };
+    EnumVar RTAORayGenAdaptiveQuadSize(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Ray Count Pixel Window", GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Quad2x2, GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Count, RayGenAdaptiveQuadSizeTypes);
+    IntVar RTAORayGen_MaxFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max frame age", 32, 1, 32, 1); // ToDo link this to smoothing factor?
+    IntVar RTAORayGen_MinAdaptiveFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Min frame age for adaptive sampling", 16, 1, 32, 1); 
+
     // RTAO
     // Adaptive Sampling.
     BoolVar RTAOAdaptiveSampling(L"Render/AO/RTAO/Adaptive Sampling/Enabled", false);
@@ -171,6 +177,7 @@ void RTAO::CreateAuxilaryDeviceResources()
 
     // ToDo move?
     m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
+    m_rayGen.Initialize(device, FrameCount);
     m_raySorter.Initialize(device, FrameCount);
 
     // Upload the resources to the GPU.
@@ -717,7 +724,8 @@ void RTAO::OnRender(
     D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure,
     D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource,
     D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource,
-    D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedo)
+    D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource,
+    D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource)
 {
     auto device = m_deviceResources->GetD3DDevice();
     auto commandList = m_deviceResources->GetCommandList();
@@ -779,7 +787,7 @@ void RTAO::OnRender(
     commandList->SetComputeRootShaderResourceView(RTAOGlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
     commandList->SetComputeRootConstantBufferView(RTAOGlobalRootSignature::Slot::ConstantBuffer, m_CB.GpuVirtualAddress(frameIndex));
     commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
-    commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedo);
+    commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedoResource);
 
     
     // Bind output RT.
@@ -813,6 +821,26 @@ void RTAO::OnRender(
 
     if (SceneArgs::RTAOUseRaySorting)
     {
+   
+        m_rayGen.Execute(
+            commandList,
+            m_raytracingWidth,
+            m_raytracingHeight,
+            static_cast<GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType>(static_cast<UINT>(SceneArgs::RTAORayGenAdaptiveQuadSize)),
+            SceneArgs::RTAORayGen_MaxFrameAge,
+            SceneArgs::RTAORayGen_MinAdaptiveFrameAge,
+            m_CB->seed, // ToDo retrieve from a nonCB variable
+            m_randomSampler.NumSamples(),
+            m_randomSampler.NumSampleSets(),
+            SceneArgs::AOSampleSetDistributedAcrossPixels,
+            m_cbvSrvUavHeap->GetHeap(),
+            rayOriginSurfaceNormalDepthResource,
+            rayOriginSurfaceHitPositionResource,
+            frameAgeResource,
+            m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex),
+            m_AORayDirectionOriginDepth.gpuDescriptorWriteAccess);
+
+
         // Transition AO resources to shader resource state.
         {
             D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -866,7 +894,7 @@ void RTAO::OnRender(
             commandList->SetComputeRootShaderResourceView(RTAOGlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
             commandList->SetComputeRootConstantBufferView(RTAOGlobalRootSignature::Slot::ConstantBuffer, m_CB.GpuVirtualAddress(frameIndex));   // ToDo let AO have its own CB.
             commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
-            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedo);
+            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedoResource);
 
             // ToDo remove
             commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AORayDirectionOriginDepthHitSRV, m_AORayDirectionOriginDepth.gpuDescriptorReadAccess);

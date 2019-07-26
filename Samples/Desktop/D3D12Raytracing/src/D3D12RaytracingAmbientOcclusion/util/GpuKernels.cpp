@@ -41,6 +41,7 @@
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
 #include "CompiledShaders\GenerateGrassStrawsCS.hlsl.h"
 #include "CompiledShaders\CountingSort_SortRays_128x64rayGroupCS.hlsl.h"
+#include "CompiledShaders\AdaptiveRayGenCS.hlsl.h"
 
 using namespace std;
 
@@ -2231,7 +2232,6 @@ namespace GpuKernels
     }
 
 
-
     namespace RootSignature {
         namespace SortRays {
             namespace Slot {
@@ -2335,6 +2335,124 @@ namespace GpuKernels
 
         // Dispatch.
         XMUINT2 groupSize(CeilDivide(width, RayGroup::Width), CeilDivide(height, RayGroup::Height));
+        commandList->Dispatch(groupSize.x, groupSize.y, 1);
+    }
+
+
+    namespace RootSignature {
+        namespace AdaptiveRayGenerator {
+            namespace Slot {
+                enum Enum {
+                    OutputRayDirectionOriginDepth = 0,
+                    InputRayOriginSurfaceNormalDepth,
+                    InputRayOriginPosition,
+                    InputFrameAge,
+                    InputAlignedHemisphereSamples,
+                    ConstantBuffer,
+                    Count
+                };
+            }
+        }
+    }
+
+    void AdaptiveRayGenerator::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::AdaptiveRayGenerator;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
+            ranges[Slot::InputRayOriginSurfaceNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+            ranges[Slot::InputRayOriginPosition].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+            ranges[Slot::InputFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
+            ranges[Slot::OutputRayDirectionOriginDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::InputRayOriginSurfaceNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::InputRayOriginSurfaceNormalDepth]);
+            rootParameters[Slot::InputRayOriginPosition].InitAsDescriptorTable(1, &ranges[Slot::InputRayOriginPosition]);
+            rootParameters[Slot::InputFrameAge].InitAsDescriptorTable(1, &ranges[Slot::InputFrameAge]);
+            rootParameters[Slot::OutputRayDirectionOriginDepth].InitAsDescriptorTable(1, &ranges[Slot::OutputRayDirectionOriginDepth]);
+            rootParameters[Slot::InputAlignedHemisphereSamples].InitAsShaderResourceView(3);
+            rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: Adaptive Ray Generator Rays");
+        }
+
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pAdaptiveRayGenCS), ARRAYSIZE(g_pAdaptiveRayGenCS));
+
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: Adaptive Ray Generator");
+        }
+
+        // Create shader resources
+        {
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: Adaptive Ray Generator");
+        }
+    }
+
+    // width, height - dimensions of the input resource.
+    void AdaptiveRayGenerator::Execute(
+        ID3D12GraphicsCommandList4* commandList,
+        UINT width,
+        UINT height,
+        AdaptiveQuadSizeType adaptiveQuadSizetype,
+        UINT maxFrameAge,
+        UINT minFrameAgeForAdaptiveSampling,
+        UINT seed,
+        UINT numSamplesPerSet,
+        UINT numSampleSets,
+        UINT numPixelsPerDimPerSet,
+        ID3D12DescriptorHeap* descriptorHeap,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginSurfaceNormalDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginPositionResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
+        const D3D12_GPU_VIRTUAL_ADDRESS& inputAlignedHemisphereSamplesBufferAddress,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputRayDirectionOriginDepthResourceHandle)
+    {
+        using namespace RootSignature::AdaptiveRayGenerator;
+        using namespace DefaultComputeShaderParams;
+
+        ScopedTimer _prof(L"Sort Rays", commandList);
+
+        m_CB->textureDim = XMUINT2(width, height);
+        switch (adaptiveQuadSizetype)
+        {
+        case Quad2x2: m_CB->QuadDim = XMUINT2(2, 2); break;
+        case Quad4x4: m_CB->QuadDim = XMUINT2(4, 4); break;
+        }
+        m_CB->MaxFrameAge = maxFrameAge;
+        m_CB->MinFrameAgeForAdaptiveSampling = minFrameAgeForAdaptiveSampling;
+        m_CB->seed = seed;
+        m_CB->numSamplesPerSet = numSamplesPerSet;
+        m_CB->numPixelsPerDimPerSet = numPixelsPerDimPerSet;
+
+        static UINT frameID = 0;
+        frameID = (frameID + 1) % (m_CB->QuadDim.x * m_CB->QuadDim.y);
+        m_CB->FrameID = frameID;
+
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
+
+        // Set pipeline state.
+        {
+            commandList->SetDescriptorHeaps(1, &descriptorHeap);
+            commandList->SetComputeRootSignature(m_rootSignature.Get());
+            commandList->SetComputeRootDescriptorTable(Slot::InputRayOriginSurfaceNormalDepth, inputRayOriginSurfaceNormalDepthResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputRayOriginPosition, inputRayOriginPositionResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputFrameAge, inputFrameAgeResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputRayDirectionOriginDepth, outputRayDirectionOriginDepthResourceHandle);
+            commandList->SetComputeRootShaderResourceView(Slot::InputAlignedHemisphereSamples, inputAlignedHemisphereSamplesBufferAddress);
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
+            commandList->SetPipelineState(m_pipelineStateObject.Get());
+        }
+
+        // Dispatch.
+        XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
     }
 }

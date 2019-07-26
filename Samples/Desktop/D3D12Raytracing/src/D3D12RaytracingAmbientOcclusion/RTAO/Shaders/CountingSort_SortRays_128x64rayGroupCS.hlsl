@@ -35,7 +35,7 @@
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
-#include "RaySorting.hlsli"
+#include "Ray Sorting/RaySorting.hlsli"
 
 Texture2D<float4> g_inRayDirectionOriginDepth : register(t0);    // R11G11B10 texture. Note that this format doesn't store negative values.
 
