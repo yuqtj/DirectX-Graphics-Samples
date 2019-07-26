@@ -385,9 +385,15 @@ uint CreateRayHashKey(in uint2 rayIndex, in uint rayDirectionHashKey, in float r
     uint rayOriginDepthHashKey = CreateDepthHashKey(rayOriginDepth, rayGroupMinMaxDepth);
     uint rayIndexHashKey = CreateIndexHashKey(rayIndex);
 
-    return  (rayOriginDepthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D + INDEX_HASH_KEY_BITS))
+    uint hashKey = (rayOriginDepthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D + INDEX_HASH_KEY_BITS))
             + (rayDirectionHashKey << (INDEX_HASH_KEY_BITS))
             + rayIndexHashKey;
+
+    // Avoid aliasing with inactive ray.
+    // ToDo can we fit it after the last valid index. Double check SMEM layout.
+    hashKey = min(hashKey, INACTIVE_RAY_KEY - 1);
+
+    return hashKey;
 }
 
 uint CreateRayHashKey(in uint2 rayIndex, in float2 encodedRayDirection, in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
@@ -396,9 +402,15 @@ uint CreateRayHashKey(in uint2 rayIndex, in float2 encodedRayDirection, in float
     uint rayOriginDepthHashKey = CreateDepthHashKey(rayOriginDepth, rayGroupMinMaxDepth);
     uint rayIndexHashKey = CreateIndexHashKey(rayIndex);
 
-    return  (rayOriginDepthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D + INDEX_HASH_KEY_BITS))
-            + (rayDirectionHashKey << (INDEX_HASH_KEY_BITS))
-            + rayIndexHashKey;
+    uint hashKey = (rayOriginDepthHashKey << (2 * RAY_DIRECTION_HASH_KEY_BITS_1D + INDEX_HASH_KEY_BITS))
+        + (rayDirectionHashKey << (INDEX_HASH_KEY_BITS))
+        + rayIndexHashKey;
+
+    // Avoid aliasing with inactive ray.
+    // ToDo can we fit it after the last valid index. Double check SMEM layout.
+    hashKey = min(hashKey, INACTIVE_RAY_KEY - 1);
+
+    return hashKey;
 }
 
 
@@ -483,7 +495,7 @@ float2 CalculateRayGroupMinMaxDepth(in uint GI, uint2 Gid)
         float rayOriginDepth = Load16bitFloatFromHi16bitSMem(index, SMem::Offset::Depth16b);
         bool isRayValid = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH;
         float MaxRayOriginDepthValue = FLT_10BIT_MAX;
-        float waveDepthMin = WaveActiveMin(isRayValid ? rayOriginDepth : MaxRayOriginDepthValue);
+        float waveDepthMin = WaveActiveMin(isRayValid ? rayOriginDepth : MaxRayOriginDepthValue);   // ToDo is use of ternary operator within an intrinsic valid?
         float waveDepthMax = WaveActiveMax(rayOriginDepth);
 
         if (WaveGetLaneIndex() == 0)    // ToDo remove?
@@ -597,10 +609,10 @@ void FinalizeHashKeyAndCalculateKeyHistogram(in uint GI, in float2 rayGroupMinMa
         {
             uint2 rayIndex = uint2(ray % SortRays::RayGroup::Width, ray / SortRays::RayGroup::Width);
             hashKey = CreateRayHashKey(rayIndex, rayDirectionHashKey, rayOriginDepth, rayGroupMinMaxDepth);
-
-            // Increase histogram bin count.
-            AddTo16bitValueInSMem(hashKey, 1, SMem::Offset::Histogram);
         }
+
+        // Increase histogram bin count.
+        AddTo16bitValueInSMem(hashKey, 1, SMem::Offset::Histogram);
 
         // Cache the key.
         Store16bitUintInSMem(ray, hashKey, SMem::Offset::Key16b);

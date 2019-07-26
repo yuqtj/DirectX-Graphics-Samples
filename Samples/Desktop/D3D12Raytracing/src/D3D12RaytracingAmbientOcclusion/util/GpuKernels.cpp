@@ -2417,7 +2417,7 @@ namespace GpuKernels
         using namespace RootSignature::AdaptiveRayGenerator;
         using namespace DefaultComputeShaderParams;
 
-        ScopedTimer _prof(L"Sort Rays", commandList);
+        ScopedTimer _prof(L"Adaptive Ray Gen", commandList);
 
         m_CB->textureDim = XMUINT2(width, height);
         switch (adaptiveQuadSizetype)
@@ -2430,7 +2430,7 @@ namespace GpuKernels
         m_CB->seed = seed;
         m_CB->numSamplesPerSet = numSamplesPerSet;
         m_CB->numPixelsPerDimPerSet = numPixelsPerDimPerSet;
-
+        m_CB->numSampleSets = numSampleSets;
         static UINT frameID = 0;
         frameID = (frameID + 1) % (m_CB->QuadDim.x * m_CB->QuadDim.y);
         m_CB->FrameID = frameID;

@@ -24,9 +24,10 @@
 
 // ToDo move this to a const?
 // ToDo enumerate all reserved bits in one place
-// INACTIVE_RAY_KEY must be greater than the max valid hash key but fit within 16bits.
+// INACTIVE_RAY_KEY must be greater than the max valid hash key but fit within 16bits and valid NUM_KEYS.
 // It must be exclusive to INACTIVE_RAY_INDEX_BIT. - todo cleanup/combine them?
-#define INACTIVE_RAY_KEY NUM_KEYS     // Hash key for an invalid/disabled ray. These rays will get sorted to the end and are not to be raytraced.
+#define INACTIVE_RAY_KEY (NUM_KEYS - 1)     // Hash key for an invalid/disabled ray. These rays will get sorted to the end and are not to be raytraced.
+
 // ToDo using ACTIVE instead of inactive may be easier to understand the code.
 #define INACTIVE_RAY_INDEX_BIT 0x2000
 #define INACTIVE_RAY_INDEX_BIT_Y 0x80

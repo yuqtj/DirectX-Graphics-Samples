@@ -300,7 +300,7 @@ void RayGenShader()
 
         if (CB.RTAO_UseSortedRays)
         {
-            g_rtAORaysDirectionOriginDepth[srcRayIndex] = float4(EncodeNormal(AORay.direction), depth, 0);
+            //g_rtAORaysDirectionOriginDepth[srcRayIndex] = float4(EncodeNormal(AORay.direction), depth, 0);
         }
         else
         {

@@ -267,9 +267,6 @@
     <None Include="util\BxDF.hlsli">
       <Filter>Assets\Shaders\Lighting</Filter>
     </None>
-    <None Include="RTAO\Shaders\RaySorting.hlsli">
-      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
-    </None>
     <None Include="RTAO\Shaders\RTAO.hlsli">
       <Filter>Assets\Shaders\RTAO</Filter>
     </None>
@@ -277,6 +274,9 @@
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="RTAO\Shaders\Ray sorting\RayGen.hlsli">
+      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
+    </None>
+    <None Include="RTAO\Shaders\Ray sorting\RaySorting.hlsli">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </None>
   </ItemGroup>

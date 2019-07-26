@@ -1098,7 +1098,7 @@
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">true</DeploymentContent>
     </CustomBuild>
     <None Include="RTAO\Shaders\Ray sorting\RayGen.hlsli" />
-    <None Include="RTAO\Shaders\RaySorting.hlsli" />
+    <None Include="RTAO\Shaders\Ray sorting\RaySorting.hlsli" />
     <None Include="RTAO\Shaders\RTAO.hlsli" />
     <None Include="SSAO\Shaders\SSAOBlurAndUpsampleCS.hlsli" />
     <None Include="SSAO\Shaders\SSAORenderCS.hlsli" />

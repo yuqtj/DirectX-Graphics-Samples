@@ -115,8 +115,8 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     GroupMemoryBarrierWithGroupSync();
 
     uint2 quadIndex = GTid / CB.QuadDim;
-    uint2 subQuadIndex = GTid % CB.QuadDim;
-    uint subQuadIndex1D = subQuadIndex.y * CB.QuadDim.x + subQuadIndex.x;
+    uint2 quadThreadIndex = GTid % CB.QuadDim;
+    uint quadThreadIndex1D = quadThreadIndex.y * CB.QuadDim.x + quadThreadIndex.x;
     uint2 quadStartGTid = quadIndex * CB.QuadDim;
     
     // Find the minimum frameAge per quad.
@@ -132,7 +132,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     uint numRaysToGeneratePerQuad = MaxNumRaysPerQuad;
     if (minQuadFrameAge >= CB.MinFrameAgeForAdaptiveSampling)
     {
-        //numRaysToGeneratePerQuad = lerp(MaxNumRaysPerQuad, 1, (minQuadFrameAge - CB.MinFrameAgeForAdaptiveSampling) / float(CB.MaxFrameAge - 1 - CB.MinFrameAgeForAdaptiveSampling));
+        numRaysToGeneratePerQuad = lerp(MaxNumRaysPerQuad, 1, (minQuadFrameAge - CB.MinFrameAgeForAdaptiveSampling) / float(CB.MaxFrameAge - CB.MinFrameAgeForAdaptiveSampling));
     }
 
 
@@ -141,9 +141,9 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     float rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;
     
     // Check whether this pixel is due to generate a ray.
-    if ((subQuadIndex1D >= CB.FrameID && subQuadIndex1D < CB.FrameID + numRaysToGeneratePerQuad) ||
-        // Check for when a valid sub quad index range wraps around.
-        (CB.FrameID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && subQuadIndex1D < (CB.FrameID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad))
+    if ((quadThreadIndex1D >= CB.FrameID && quadThreadIndex1D < CB.FrameID + numRaysToGeneratePerQuad) ||
+        // Check for when a valid quad thread index range wraps around.
+        (CB.FrameID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && quadThreadIndex1D < ((CB.FrameID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad)))
     {
         float3 surfaceNormal;
         LoadNormalAndDepth(g_texRayOriginSurfaceNormalDepth, DTid, surfaceNormal, rayOriginDepth);
