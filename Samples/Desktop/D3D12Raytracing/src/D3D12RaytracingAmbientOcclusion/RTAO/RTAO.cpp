@@ -283,8 +283,7 @@ void RTAO::CreateRaytracingPipelineStateObject()
         // 1 - Global root signature
         // 1 - Pipeline config
         CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
-
-        bool loadShadowShadersOnly = true;
+        
         // DXIL library
         CreateDxilLibrarySubobject(&raytracingPipeline);
 

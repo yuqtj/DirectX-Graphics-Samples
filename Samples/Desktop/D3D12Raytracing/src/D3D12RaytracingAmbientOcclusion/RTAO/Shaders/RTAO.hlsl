@@ -297,7 +297,6 @@ void RayGenShader()
 #endif
         float ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
 
-        g_rtAORaysDirectionOriginDepth[srcRayIndex] = float4(AORay.direction, 0);// EncodeNormal(AORay.direction), depth, 0);
         if (CB.RTAO_UseSortedRays)
         {
             g_rtAORaysDirectionOriginDepth[srcRayIndex] = float4(EncodeNormal(AORay.direction), depth, 0);
@@ -381,7 +380,7 @@ void RayGenShader_sortedRays()
     float tHit = RTAO::RayHitDistanceOnMiss;
     if (isActiveRay)
     {
-#else
+#else 
     uint2 srcRayIndex = DispatchRaysIndex().xy;
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 rayGroupBase = (srcRayIndex / rayGroupDim) * rayGroupDim;
@@ -389,21 +388,22 @@ void RayGenShader_sortedRays()
     uint2 sortedRayIndex = rayGroupBase + rayGroupThreadIndex;
     ToDo
 #endif
-        float2 encodedRayDirection = g_texAORaysDirectionOriginDepthHit[sortedRayIndex].xy;
+        // ToDo split raydirection and origin into two resources?
+        float2 encodedRayDirection = g_texAORaysDirectionOriginDepthHit[srcRayIndex].xy;
         float3 rayDirection = DecodeNormal(encodedRayDirection.xy);
-        float3 hitPosition = g_texRayOriginPosition[sortedRayIndex].xyz;
+        float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;
 
         // ToDo test trading for using ray direction insteads
-        float3 surfaceNormal = DecodeNormal(g_texRayOriginSurfaceNormalDepth[sortedRayIndex].xy);
+        float3 surfaceNormal = DecodeNormal(g_texRayOriginSurfaceNormalDepth[srcRayIndex].xy);
 
         Ray AORay = { hitPosition, rayDirection };
-        float ambientCoef = CalculateAO(tHit, sortedRayIndex, AORay, surfaceNormal);
+        float ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
 
 
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
-        uint2 outPixel = srcRayIndex;
-#else
         uint2 outPixel = sortedRayIndex;
+#else
+        uint2 outPixel = srcRayIndex;
 #endif
         g_rtAOcoefficient[outPixel] = ambientCoef;
         g_rtAORayHitDistance[outPixel] = tHit;
