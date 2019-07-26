@@ -16,6 +16,8 @@
 
 /*
 //ToDo
+- TAO fails on dragons surface on small rotaions
+
 - overblur on mouse camera movement
 -  no modes, no AOon phong, denoised artifacts onb normalMaps
 - Fireflies
