@@ -9,8 +9,10 @@
 //
 //*********************************************************
 
+// ToDo use defines or namespace?
 namespace RTAO {
     static const float RayHitDistanceOnMiss = -1;// ToDo unify with DISTANCE_ON_MISS - should be 0 as we're using non-negative low precision formats
+    static const float InvalidAOValue = -2; // ToDo - can't be -1, as Temporal uses hack to negate AO so that denoiser knows which values are new and which stale.
     bool HasAORayHitAnyGeometry(in float tHit)
     {
         return tHit != RayHitDistanceOnMiss;

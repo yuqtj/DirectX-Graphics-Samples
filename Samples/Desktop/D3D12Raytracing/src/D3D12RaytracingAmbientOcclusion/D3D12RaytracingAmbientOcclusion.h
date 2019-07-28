@@ -322,7 +322,7 @@ private:
 	void UpdateAccelerationStructure();
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width=0, UINT height=0);
 	void CalculateCameraRayHitCount();
-    void ApplyAtrousWaveletTransformFilter();
+    void ApplyAtrousWaveletTransformFilter(bool isFirstPass);
     void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter();
     void RenderPass_TemporalCacheReverseProjection();

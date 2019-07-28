@@ -356,6 +356,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,   // ToDo standardize depth vs distance
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
             RWGpuResource* outputResourceHandle,
             float valueSigma,
             float depthSigma,
@@ -374,7 +375,9 @@ namespace GpuKernels
             UINT maxKernelWidth = 101,
             float varianceSigmaScaleOnSmallKernels = 2.f,
             bool usingBilateralDownsampledBuffers = false,
-            float minVarianceToDenoise = 0);
+            float minVarianceToDenoise = 0,
+            float staleNeighborWeightScale = 1,
+            UINT maxFrameAgeToDenoise = 100);
 
         RWGpuResource& VarianceOutputResource() { return m_intermediateVarianceOutputs[0]; }
 
@@ -652,7 +655,8 @@ namespace GpuKernels
     {
     public:
         enum AdaptiveQuadSizeType {
-            Quad2x2 = 0,
+            Quad1x1 = 0,
+            Quad2x2,
             Quad4x4,
             Count
         };
@@ -676,6 +680,7 @@ namespace GpuKernels
             UINT numSampleSets,
             UINT numPixelsPerDimPerSet,
             ID3D12DescriptorHeap* descriptorHeap,
+            // ToDo remove const&?
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginSurfaceNormalDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,

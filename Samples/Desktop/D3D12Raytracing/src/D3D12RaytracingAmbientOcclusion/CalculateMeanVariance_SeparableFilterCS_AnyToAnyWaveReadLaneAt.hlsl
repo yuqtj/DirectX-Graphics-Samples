@@ -30,6 +30,10 @@ ConstantBuffer<CalculateMeanVarianceConstantBuffer> cb: register(b0);
 
 // Group shared memory cache for the row aggregated results.
 groupshared uint PackedRowResultCache[16][8];            // 16bit float valueSum, squaredValueSum.
+groupshared uint NumValuesCache[16][8]; 
+
+// ToDo use a commonly defined value.
+#define INVALID_VALUE -1
 
 // Load up to 16x16 pixels and filter them horizontally.
 // The output is cached in Shared Memory and contains NumRows x 8 results.
@@ -57,7 +61,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
 
         // Load all the contributing columns for each row.
         int2 pixel = KernelBasePixel + GTid16x4;
-        float value = 0;
+        float value = INVALID_VALUE;
 
         // The lane is out of bounds of the GroupDim + kernel, 
         // but could be within bounds of the input texture,
@@ -73,16 +77,18 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             // Accumulate for the whole kernel width.
             float valueSum = 0;
             float squaredValueSum = 0;
+            uint numValues = 0;
 
             // Since a row uses 16 lanes, but we only need to calculate the aggregate for the first half (8) lanes,
             // split the kernel wide aggregation among the first 8 and the second 8 lanes, and then combine them.
             
             // Initialize the first 8 lanes to the first cell contribution of the kernel. 
             // This covers the remainder of 1 in cb.kernelWidth / 2 used in the loop below. 
-            if (GTid16x4.x < GroupDim.x)
+            if (GTid16x4.x < GroupDim.x && value != INVALID_VALUE)
             {
                 valueSum = value;
                 squaredValueSum = value * value;
+                numValues++;
             }
 
             for (uint c = 0; c < cb.kernelRadius; c++)
@@ -90,8 +96,12 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
                 uint laneToReadFrom = Row_BaseWaveLaneIndex + 1 + c +
                                      (GTid16x4.x < GroupDim.x ? GTid16x4.x : (GTid16x4.x - GroupDim.x) + cb.kernelRadius);
                 float cValue = WaveReadLaneAt(value, laneToReadFrom);
-                valueSum += cValue;
-                squaredValueSum += cValue * cValue;
+                if (cValue != INVALID_VALUE)
+                {
+                    valueSum += cValue;
+                    squaredValueSum += cValue * cValue;
+                    numValues++;
+                }
             }
             
             // Combine the sub-results.
@@ -104,6 +114,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             {
                 // ToDo offset row start by rowIndex to avoid bank conflicts on read
                 PackedRowResultCache[GTid16x4.y][GTid16x4.x] = Float2ToHalf(float2(valueSum, squaredValueSum));
+                NumValuesCache[GTid16x4.y][GTid16x4.x] = numValues;
             }
         }
     }
@@ -113,6 +124,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
 {
     float valueSum = 0;
     float squaredValueSum = 0;
+    uint numValues = 0;
 
     // Accumulate for the whole kernel.
     for (uint c = 0; c < cb.kernelWidth; c++)
@@ -122,6 +134,8 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
 
         valueSum += unpackedRowSum.x;
         squaredValueSum += unpackedRowSum.y;
+
+        numValues += NumValuesCache[rowID][GTid.x];
     }
        
     // Calculate mean and variance.
@@ -135,18 +149,17 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
     uint bottomMostIndex = min(cb.textureDim.y - 1, DTid.y + cb.kernelRadius);
     uint kernelWidthY = bottomMostIndex - topMostIndex + 1;
 
-    uint N = kernelWidthX * kernelWidthY;
-    float invN = 1.f / N;
+    float invN = 1.f / max(numValues, 1);
     float mean = invN * valueSum;
 
     // Apply Bessel's correction to the estimated variance, divide by N-1, 
     // since the true population mean is not known. It is only estimated as the sample mean.
-    float besselCorrection = N / float(N - 1);
+    float besselCorrection = numValues / float(max(numValues, 2) - 1);
     float variance = besselCorrection * (invN * squaredValueSum - mean * mean);
 
     variance = max(0, variance);    // Ensure variance doesn't go negative due to imprecision.
     
-    g_outMeanVariance[DTid] = float2(mean, variance);
+    g_outMeanVariance[DTid] = numValues > 0 ? float2(mean, variance) : INVALID_VALUE;
 }
 
 

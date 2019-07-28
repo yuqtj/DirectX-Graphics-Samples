@@ -13,6 +13,7 @@
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
 #include "util/BxDF.hlsli"
+#include "RTAO/Shaders/RTAO.hlsli"
 
 // Output.
 RWTexture2D<float4> g_renderTarget : register(u0);
@@ -118,7 +119,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
                  g_CB.compositionType == CompositionType::AmbientOcclusionOnly_RawOneFrame ||
                  g_CB.compositionType == AmbientOcclusionAndDisocclusionMap)
         {
-            color = ambientCoef;
+            color = ambientCoef != RTAO::InvalidAOValue ? ambientCoef : 1;// g_CB.defaultAmbientIntensity;
             float4 albedo = float4(1, 1, 1, 1);// float4(0.75f, 0.75f, 0.75f, 1.0f);
             color *= albedo;
 

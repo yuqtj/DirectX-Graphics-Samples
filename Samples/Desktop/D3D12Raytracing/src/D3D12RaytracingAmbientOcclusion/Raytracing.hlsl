@@ -21,7 +21,6 @@
 #include "SSAO/GlobalSharedHlslCompat.h" // ToDo remove
 #include "util/AnalyticalTextures.hlsli"
 #include "util/BxDF.hlsli"
-
 #define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS
 
 // ToDo split to Raytracing for GBUffer and AO?
@@ -880,6 +879,7 @@ void MyRayGenShader_GBuffer()
     }
     else // No geometry hit.
     {
+        // ToDo use commonly defined values
         // Depth of 0 demarks no hit
         // as low precision normal depth resource R11G11B10 
         // can store non-negative numbers only.

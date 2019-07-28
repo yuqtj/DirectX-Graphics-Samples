@@ -16,6 +16,8 @@
 
 /*
 //ToDo
+- retain per window frame seed on static geometry
+
 - TAO fails on dragons surface on small rotaions
 - blur away disocclussions
 - add dynamic objects testing clamping
@@ -55,7 +57,7 @@
 #define USE_GPU_TRANSFORM 1
 
 #define WORKAROUND_ATROUS_VARYING_OUTPUTS 1
-
+#define VARIABLE_RATE_RAYTRACING 1
 #define RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS 1
 #define AO_SPP_N 1
 #define AO_SPP_N_MAX 1          // ToDo Uses no loop on 1 => saves 0.3 ms on TitanXp at 1080p
@@ -129,7 +131,7 @@
 
 #define AO_TEST_TILE_COHERENCY 0
 
-#define ENABLE_VSYNC 0
+#define ENABLE_VSYNC 1
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 1  
 #endif
@@ -146,7 +148,7 @@
 #define DEBUG_MULTI_BLAS_BUILD 0
 
 #define CAMERA_JITTER 0
-#define APPLY_SRGB_CORRECTION 0
+#define APPLY_SRGB_CORRECTION 1
 #define AO_ONLY 0
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0 // ToDo spec requires it but it works without it?
@@ -441,7 +443,8 @@ struct AtrousWaveletTransformFilterConstantBuffer
 
     float minVarianceToDenoise;
     float weightScale;
-    float padding[2];
+    float staleNeighborWeightScale;
+    UINT maxFrameAgeToDenoise;
 };
 
 // ToDo remove obsolete params in cbs

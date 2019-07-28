@@ -13,6 +13,7 @@
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
 #include "Kernels.hlsli"
+#include "RTAO/Shaders/RTAO.hlsli"
 
 Texture2D<float> g_inValues : register(t0); // ToDo input is 3841x2161 instead of 2160p..
 
@@ -21,6 +22,7 @@ Texture2D<float> g_inVariance : register(t4);   // ToDo remove
 Texture2D<float> g_inSmoothedVariance : register(t5); 
 Texture2D<float> g_inHitDistance : register(t6);   // ToDo remove?
 Texture2D<float2> g_inPartialDistanceDerivatives : register(t7);   // ToDo remove?
+Texture2D<uint> g_inFrameAge : register(t8);  
 
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
@@ -29,13 +31,15 @@ RWTexture2D<float> g_outFilterWeightSum : register(u2);
 #endif
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> g_CB: register(b0);
 
+#define MAX_FRAME_AGE 32    // ToDo pass
 
-float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obliqueness, float depthDelta)
+float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset)
 {
     float depthThreshold;
 
     float fEpsilon = (1.001-distance) * g_CB.depthSigma * 1e-4f;// depth * 1e-6f;// *0.001;// 0.0024;// 12f;     // ToDo finalize the value
     // ToDo rename to perspective correction
+#if 0
     if (0 && g_CB.perspectiveCorrectDepthInterpolation)
     {
         float fovAngleY = FOVY;   // ToDO pass from the app
@@ -49,6 +53,7 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
         depthThreshold = distance * (((sin(slopeAngle) / sin(slopeAngle - pixelAngle)) - 1) + fEpsilon);
     }
     else
+#endif
     {
 #if 1
         // Todo rename ddxy to dxdy?
@@ -82,21 +87,30 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float obli
     return depthThreshold;
 }
 
+void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texIndex, out float depth, out float3 normal)
+{
+    float3 encodedNormalAndDepth = inNormalDepthTexture[texIndex].xyz;
+    depth = encodedNormalAndDepth.z;
+    normal = DecodeNormal(encodedNormalAndDepth.xy);
+}
+
 void AddFilterContribution(
     inout float weightedValueSum, 
     inout float weightedVarianceSum, 
     inout float weightSum, 
+    inout float valueSum,
+    inout uint numValues,
     in float value, 
     in float stdDeviation,
     in float depth, 
     in float3 normal, 
-    in float obliqueness, 
     in float2 ddxy,
     in uint row, 
     in uint col,
     in float minHitDistance,
     in uint2 DTid)
 {
+
     const float valueSigma = g_CB.valueSigma;
     const float normalSigma = g_CB.normalSigma;
     const float depthSigma = g_CB.depthSigma;
@@ -105,6 +119,7 @@ void AddFilterContribution(
     int2 pixelOffset;
     float kernelWidth;
     float varianceScale = 1;
+#if 0
     if (g_CB.useAdaptiveKernelSize)
     {
         // Calculate kernel width as a ratio of hitDistance / projected surface width per pixel
@@ -139,40 +154,46 @@ void AddFilterContribution(
         pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) * curPixelOffsetDelta;
     }
     else
+#endif
     {
         pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) << g_CB.kernelStepShift;
     }
 
-    int2 id = int2(DTid)+pixelOffset;
+    int2 id = int2(DTid) + pixelOffset;
 
     if (IsWithinBounds(id, g_CB.textureDim))
     {
-        float iValue = 0.f;
-        float iVariance;
-        float e_x = 0;
+        float iDepth;
+        float3 iNormal;
+        LoadDepthAndNormal(g_inNormalDepth, id, iDepth, iNormal);
+        float iValue = g_inValues[id];
 
-        if (g_CB.outputFilteredValue)
+        if (iValue == RTAO::InvalidAOValue ||
+            iDepth == 0)
         {
-            iValue = g_inValues[id];
-            iVariance = g_inVariance[id];
-
-            const float errorOffset = 0.005f;
-            e_x = -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset);
+            return;
         }
 
+        float w_c = 1;
+        if (iValue < 0)
+        {
+            w_c = g_CB.staleNeighborWeightScale;// 0.065;
+            iValue = -iValue;
+        }
+        const float errorOffset = 0.005f;
+        float e_x = value != RTAO::InvalidAOValue ? -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset) : 0;
+ 
+        // ToDo loosen up weights for low frameAge? and/or 2nd+ pass
         // ToDo standardize index vs id
-        float4 packedNormalDepth = g_inNormalDepth[id];
-        float3 iNormal = DecodeNormal(packedNormalDepth.xy);
-        float iDepth = packedNormalDepth.z;
-
         // Ref: SVGF
-        float w_n = normalSigma > 0.01f ? pow(max(0, dot(normal, iNormal)), normalSigma) : 1;
+        // ToDo
+        float w_n = 1;// pow(max(0, dot(normal, iNormal)), normalSigma);
 
         // ToDo explain 1 -
         // Make the 0 start at 1 == depthDelta/depthTolerance
         // ToDo finalize obliqueness
         // ToDo obliqueness is incorrect for reflected rays
-        float minObliqueness = depthSigma;//  0.02; // Avoid weighting by depth at very sharp angles. Depend on weighting by normals.
+        //float minObliqueness = depthSigma;//  0.02; // Avoid weighting by depth at very sharp angles. Depend on weighting by normals.
         float2 pixelOffsetForDepth = pixelOffset;
         
         // ToDo use actial pixel offsets from bilateral downsample?
@@ -181,7 +202,7 @@ void AddFilterContribution(
         {
             pixelOffsetForDepth = abs(pixelOffset) + float2(0.5, 0.5);
         }
-        float depthThreshold = DepthThreshold(depth, ddxy, pixelOffsetForDepth, obliqueness, depth - iDepth);
+        float depthThreshold = DepthThreshold(depth, ddxy, pixelOffsetForDepth);
 
 #if 1
         float depthFloatPrecision = FloatPrecision(max(depth, iDepth), g_CB.DepthNumMantissaBits);
@@ -201,15 +222,15 @@ void AddFilterContribution(
 
         float w_h = FilterKernel::Kernel[row][col];
 
-        // ToDo apply exp combination where applicable 
-        // ToDo combine
-        //float w_xd = exp(e_x + e_d);        // exp(x) * exp(y) == exp(x + y)
-        float w_x = exp(e_x);
-        //float w_d = exp(e_d);
+        float w_x =  exp(e_x);
         float w_xd = w_x * w_d;
 
-        float w = w_h * w_n * w_xd;
-        w *= weightScale;
+        float w = w_h * w_n *w_xd;
+        w *= w_c * weightScale;
+
+
+        float iPixelWeight = g_inFrameAge[id];
+        w *= iPixelWeight;
 
         if (g_CB.outputFilteredValue)
         {
@@ -217,10 +238,13 @@ void AddFilterContribution(
         }
 
         weightSum += w;
+        valueSum += iValue;
+        numValues++;
 
         // ToDo standardize g_CB naming
         if (g_CB.outputFilteredVariance)
         {
+            float iVariance = g_inVariance[id];
             weightedVarianceSum += w * w * iVariance;   // ToDo rename to sqWeight...
         }
     }
@@ -233,73 +257,84 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 {
     // ToDo add early exit if this pixel is processing inactive result.
     // ToDo double check all CS for out of bounds.
-    if (DTid.x >= g_CB.textureDim.x || DTid.y >= g_CB.textureDim.y)
+    if (!IsWithinBounds(DTid, g_CB.textureDim))
+    {
         return;
-
-    // Initialize values to the current pixel / center filter kernel value.
-    float4 packedNormalDepth = g_inNormalDepth[DTid];
-    float3 normal = DecodeNormal(packedNormalDepth.xy);
-    float depth = packedNormalDepth.z;
-    float obliqueness = 1;  // ToDo remove
-
-    float value = 0;
-    if (g_CB.outputFilteredValue)
-    {
-        value = g_inValues[DTid];
     }
 
-    float2 ddxy = g_inPartialDistanceDerivatives[DTid];
+    float depth;
+    float3 normal;
+    LoadDepthAndNormal(g_inNormalDepth, DTid, depth, normal);
+    uint frameAge = g_inFrameAge[DTid];
+    float value = g_inValues[DTid];
+    float filteredValue = value;
 
-    float weightSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius];
-    float weightedValueSum = weightSum * value;
-    float weightedVarianceSum = 0;
-    float variance = 0;
-    float stdDeviation = 0;
-  
-    if (g_CB.useCalculatedVariance)
+    if (depth != 0 &&
+        frameAge <= g_CB.maxFrameAgeToDenoise)
     {
-        variance = g_inSmoothedVariance[DTid];
-        weightedVarianceSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius]
-                              * variance;
-        stdDeviation = sqrt(variance);
-    }
+        bool isValidValue = value == RTAO::InvalidAOValue;
+        float w_c = 1;
+        if (value < 0)
+        {
+            // ToDo
+            //w_c = g_CB.staleNeighborWeightScale;
+            value = -value;
+        }
 
-    float minHitDistance;
-    if (g_CB.useAdaptiveKernelSize)
-    {
-        minHitDistance = g_inHitDistance[DTid];
-    }
-    if (variance >= g_CB.minVarianceToDenoise)
-    {
-        // Add contributions from the neighborhood.
-        [unroll]
-        for (UINT r = 0; r < FilterKernel::Width; r++)
+        float2 ddxy = g_inPartialDistanceDerivatives[DTid];
+
+        float weightSum = 0;
+        float weightedValueSum = 0;
+        float valueSum = 0;
+        uint numValues = 0;
+        float weightedVarianceSum = 0;
+        float variance = 0;
+        float stdDeviation = 1;
+
+        if (isValidValue)
+        {
+            float pixelWeight = frameAge;
+            weightSum = pixelWeight * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius];
+            weightedValueSum = weightSum * value;
+            valueSum = value;
+            numValues = 1;
+            variance = g_inSmoothedVariance[DTid];
+            weightedVarianceSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius]
+                * variance;
+            stdDeviation = sqrt(variance);
+        }
+
+        float minHitDistance;
+        if (g_CB.useAdaptiveKernelSize)
+        {
+            minHitDistance = g_inHitDistance[DTid];
+        }
+        if (variance >= g_CB.minVarianceToDenoise)
+        {
+            // Add contributions from the neighborhood.
             [unroll]
+            for (UINT r = 0; r < FilterKernel::Width; r++)
+                [unroll]
             for (UINT c = 0; c < FilterKernel::Width; c++)
                 if (r != FilterKernel::Radius || c != FilterKernel::Radius)
-                    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, obliqueness, ddxy, r, c, minHitDistance, DTid);
+                    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, valueSum, numValues, value, stdDeviation, depth, normal, ddxy, r, c, minHitDistance, DTid);
+        }
+
+        if (numValues > 0)
+        {
+            //float filteredValue = weightSum > (FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] + 0.00001) ? weightedValueSum / weightSum : valueSum / numValues;
+            filteredValue = weightedValueSum / weightSum;
+        }
+        else
+        {
+            filteredValue = RTAO::InvalidAOValue;
+        }
     }
 
-#if WORKAROUND_ATROUS_VARYING_OUTPUTS
-    float outputValue = (g_CB.outputFilterWeightSum) ? weightSum : weightedValueSum / weightSum;
-    g_outFilteredValues[DTid] = outputValue;
-#else
-    // ToDo why the resource doesnt get picked up in PIX if its written to under condition?
-    if (g_CB.outputFilterWeightSum)
-    {
-        g_outFilterWeightSum[DTid] = weightSum;
-    }
-
-    // ToDo separate output filtered value and weight sum into two shaders?
-    if (g_CB.outputFilteredValue)
-    {
-        g_outFilteredValues[DTid] = weightedValueSum / weightSum;
-        //g_outFilteredValues[DTid] = lerp(value, weightedValueSum / weightSum, stdDeviation);
-    }
-#endif
+    g_outFilteredValues[DTid] = filteredValue;
     if (g_CB.outputFilteredVariance)
     {
-        g_outFilteredVariance[DTid] = (weightedValueSum / weightSum) * (weightedValueSum / weightSum);// weightedVarianceSum / (weightSum * weightSum);
+        g_outFilteredVariance[DTid] = filteredValue * filteredValue;// weightedVarianceSum / (weightSum * weightSum);
     }
 
 }

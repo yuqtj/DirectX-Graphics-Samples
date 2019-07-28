@@ -266,6 +266,7 @@ namespace SceneArgs
     IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 1, 1, 8, 1);
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.2f, 0.0f, 30.0f, 0.1f);
 #endif
+    IntVar RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass(L"Render/AO/RTAO/Denoising/Max Frame Age To Denoise 2nd+ pass", 16, 1, 32, 1);
     BoolVar ReverseFilterOrder(L"Render/AO/RTAO/Denoising/Reverse filter order", false);
     NumVar RTAODenoising_WeightScale(L"Render/AO/RTAO/Denoising/Weight Scale", 1, 0.0f, 5.0f, 0.01f);
 
@@ -2708,7 +2709,7 @@ void D3D12RaytracingAmbientOcclusion::CalculateCameraRayHitCount()
 		&m_numCameraRayGeometryHits);
 };
 
-void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
+void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isFirstPass)
 {
     auto commandList = m_deviceResources->GetCommandList();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
@@ -2734,30 +2735,39 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
     
 #if RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS
     static UINT frameID = 0;
-#if 1    
-    UINT offsets[5] = {
-        frameID++ % (static_cast<UINT>(SceneArgs::RTAO_KernelStepShift0)+1),
-        static_cast<UINT>(SceneArgs::RTAO_KernelStepShift1),
-        static_cast<UINT>(SceneArgs::RTAO_KernelStepShift2),
-        static_cast<UINT>(SceneArgs::RTAO_KernelStepShift3),
-        static_cast<UINT>(SceneArgs::RTAO_KernelStepShift4)};
-#else
+
     UINT offsets[5] = {
         static_cast<UINT>(SceneArgs::RTAO_KernelStepShift0),
         static_cast<UINT>(SceneArgs::RTAO_KernelStepShift1),
         static_cast<UINT>(SceneArgs::RTAO_KernelStepShift2),
         static_cast<UINT>(SceneArgs::RTAO_KernelStepShift3),
         static_cast<UINT>(SceneArgs::RTAO_KernelStepShift4)};
-#endif
-    UINT newStartId = 0;
-    for (UINT i = 0; i < 5; i++)
+
+    if (isFirstPass)
     {
-        offsets[i] = newStartId + offsets[i];
-        newStartId = offsets[i] + 1;
+        offsets[0] = frameID++ % (offsets[0] + 1);
+    }
+    else
+    {
+        for (UINT i = 1; i < 5; i++)
+        {
+            offsets[i-1] = offsets[i];
+        }
+
+        UINT newStartId = 0;
+        for (UINT i = 0; i < 5; i++)
+        {
+            offsets[i] = newStartId + offsets[i];
+            newStartId = offsets[i] + 1;
+        }
     }
 #endif
 
+    UINT numFilterPasses = isFirstPass ? 1 : SceneArgs::AtrousFilterPasses - 1;
+    float staleNeighborWeightScale = isFirstPass ? m_RTAO.GetSpp() : 1;
+    UINT maxFrameAgeToDenoise = isFirstPass ? 32 : SceneArgs::RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass;
     // A-trous edge-preserving wavelet tranform filter
+    if (numFilterPasses > 0)
     {
         ScopedTimer _prof(L"AtrousWaveletTransformFilter", commandList);
         m_atrousWaveletTransformFilter.Execute(
@@ -2770,6 +2780,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             VarianceResource->gpuDescriptorReadAccess,
             AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess,
             GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
+            m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalCache::FrameAge].gpuDescriptorReadAccess,
             &AOResources[AOResource::Smoothed],
             SceneArgs::AODenoiseValueSigma,
             SceneArgs::AODenoiseDepthSigma,
@@ -2778,7 +2789,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             // ToDo rename this to be global normalDepth
             static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(SceneArgs::RTAO_TemporalCache_NormalDepthResourceFormat)),
             offsets,
-            SceneArgs::AtrousFilterPasses,
+            numFilterPasses,
             GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
             SceneArgs::ReverseFilterOrder,
             SceneArgs::UseSpatialVariance,
@@ -2789,7 +2800,9 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter()
             static_cast<UINT>((SceneArgs::RTAODenoisingFilterMaxKernelWidthPercentage / 100) * m_raytracingWidth),
             SceneArgs::RTAODenoisingFilterVarianceSigmaScaleOnSmallKernels,
             SceneArgs::QuarterResAO,
-            SceneArgs::RTAODenoisingMinVarianceToDenoise);
+            SceneArgs::RTAODenoisingMinVarianceToDenoise,
+            staleNeighborWeightScale,
+            maxFrameAgeToDenoise);
     }
 
     // Transition the output resource to SRV.
@@ -3176,6 +3189,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             smoothedVarianceResource->gpuDescriptorReadAccess,
             inRayHitDistanceResource.gpuDescriptorReadAccess,
             inPartialDistanceDerivativesResource.gpuDescriptorReadAccess,
+            m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalCache::FrameAge].gpuDescriptorReadAccess,
             outSmoothedValueResource,
             SceneArgs::AODenoiseValueSigma,
             SceneArgs::AODenoiseDepthSigma,
@@ -4369,6 +4383,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
+#if !VARIABLE_RATE_RAYTRACING
     // ToDo should we be smoothing before temporal?
     // Smoothen the local variance which is prone to error due to undersampled input.
     {
@@ -4384,6 +4399,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
                 m_smoothedSpatialMeanVarianceResource.gpuDescriptorWriteAccess);
         }
     }
+#endif
 
     D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -4487,7 +4503,11 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         m_cbvSrvUavHeap->GetHeap(),
         AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
         NormalDepthLowPrecisionResource.gpuDescriptorReadAccess,
+#if VARIABLE_RATE_RAYTRACING
+        m_spatialMeanVarianceResource.gpuDescriptorReadAccess,
+#else
         m_smoothedSpatialMeanVarianceResource.gpuDescriptorReadAccess, 
+#endif
         GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
         AOTSSCoefficient[temporalCachePreviousFrameResourceIndex].gpuDescriptorReadAccess,
         PreviousFrameNormalDeptLowPrecisionResource.gpuDescriptorReadAccess,
@@ -4823,7 +4843,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                     }
                     else
                     {
-                        ApplyAtrousWaveletTransformFilter();
+                        ApplyAtrousWaveletTransformFilter(true);
 
                         if (SceneArgs::RTAO_TemporalCache_CacheDenoisedOutput)
                         {
@@ -4847,8 +4867,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
                         }
-
-
+                        ApplyAtrousWaveletTransformFilter(false);
                     }
 #else
                     ToDo - fix up resources

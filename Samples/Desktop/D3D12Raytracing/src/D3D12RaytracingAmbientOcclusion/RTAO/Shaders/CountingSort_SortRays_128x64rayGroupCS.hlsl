@@ -372,7 +372,9 @@ uint CreateIndexHashKey(in uint2 rayIndex)
 {
     const uint IndexHashKeyBins = 1 << INDEX_HASH_KEY_BITS;
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
-#if 0
+#if INDEX_HASH_KEY_BITS == 12
+    uint indexHashKey = ((rayIndex.y * RayGroupDim.x) + rayIndex.x) / 2;
+#elif 0
     uint indexHashKey = rayIndex.y / (RayGroupDim.y / 4);
 #else
     uint indexHashKey = ((rayIndex.y >= RayGroupDim.y / 2) << 1) + (rayIndex.x >= RayGroupDim.x / 2);

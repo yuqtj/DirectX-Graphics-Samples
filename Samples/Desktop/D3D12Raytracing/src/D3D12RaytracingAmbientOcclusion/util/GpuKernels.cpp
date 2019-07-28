@@ -1143,9 +1143,10 @@ namespace GpuKernels
                     Depths,
                     Variance,
                     SmoothedVariance,
-                    ConstantBuffer,
                     RayHitDistance,
                     PartialDistanceDerivatives,
+                    FrameAge,
+                    ConstantBuffer,
                     Count
                 };
             }
@@ -1171,6 +1172,7 @@ namespace GpuKernels
             ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // output filter weight sum
             ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // input hit distance
             ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);  // input hit distance
+            ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8); 
 
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
@@ -1186,6 +1188,7 @@ namespace GpuKernels
 #endif
             rootParameters[Slot::RayHitDistance].InitAsDescriptorTable(1, &ranges[9]);
             rootParameters[Slot::PartialDistanceDerivatives].InitAsDescriptorTable(1, &ranges[10]);
+            rootParameters[Slot::FrameAge].InitAsDescriptorTable(1, &ranges[11]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -1268,6 +1271,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
         RWGpuResource* outputResource,
         float valueSigma,
         float depthSigma,
@@ -1286,7 +1290,9 @@ namespace GpuKernels
         UINT maxKernelWidth,
         float varianceSigmaScaleOnSmallKernels,
         bool usingBilateralDownsampledBuffers,
-        float minVarianceToDenoise)
+        float minVarianceToDenoise,
+        float staleNeighborWeightScale,
+        UINT maxFrameAgeToDenoise)
     {
 
         // ToDo: cleanup use of variance
@@ -1312,6 +1318,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::SmoothedVariance, inputVarianceResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::RayHitDistance, inputHitDistanceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::PartialDistanceDerivatives, inputPartialDistanceDerivativesResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::FrameAge, inputFrameAgeResourceHandle);
         }
 
         // ToDo use input resource dims.
@@ -1363,6 +1370,8 @@ namespace GpuKernels
             CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
             CB->textureDim = resourceDim;
             CB->minVarianceToDenoise = minVarianceToDenoise;
+            CB->staleNeighborWeightScale = staleNeighborWeightScale;
+            CB->maxFrameAgeToDenoise = maxFrameAgeToDenoise;
 
             switch (normalDepthResourceFormat)
             {
@@ -2365,14 +2374,14 @@ namespace GpuKernels
             ranges[Slot::InputRayOriginSurfaceNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
             ranges[Slot::InputRayOriginPosition].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
             ranges[Slot::InputFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
-            ranges[Slot::OutputRayDirectionOriginDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  
+            ranges[Slot::OutputRayDirectionOriginDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::InputRayOriginSurfaceNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::InputRayOriginSurfaceNormalDepth]);
             rootParameters[Slot::InputRayOriginPosition].InitAsDescriptorTable(1, &ranges[Slot::InputRayOriginPosition]);
             rootParameters[Slot::InputFrameAge].InitAsDescriptorTable(1, &ranges[Slot::InputFrameAge]);
             rootParameters[Slot::OutputRayDirectionOriginDepth].InitAsDescriptorTable(1, &ranges[Slot::OutputRayDirectionOriginDepth]);
-            rootParameters[Slot::InputAlignedHemisphereSamples].InitAsShaderResourceView(3);
+           rootParameters[Slot::InputAlignedHemisphereSamples].InitAsShaderResourceView(3);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -2422,6 +2431,7 @@ namespace GpuKernels
         m_CB->textureDim = XMUINT2(width, height);
         switch (adaptiveQuadSizetype)
         {
+        case Quad1x1: m_CB->QuadDim = XMUINT2(1, 1); break;
         case Quad2x2: m_CB->QuadDim = XMUINT2(2, 2); break;
         case Quad4x4: m_CB->QuadDim = XMUINT2(4, 4); break;
         }

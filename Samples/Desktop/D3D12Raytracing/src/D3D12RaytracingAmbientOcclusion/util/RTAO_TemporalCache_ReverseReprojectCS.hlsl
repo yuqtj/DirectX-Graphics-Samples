@@ -12,6 +12,7 @@
 #define HLSL
 #include "..\RaytracingHlslCompat.h"
 #include "..\RaytracingShaderHelper.hlsli"
+#include "RTAO\Shaders\RTAO.hlsli"
 
 // ToDo some pixels here and there on mirror boundaries fail temporal reprojection even for static scene/camera
 // ToDo sharp edges fail temporal reprojection due to clamping even for static scene
@@ -140,7 +141,8 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         float depthTolerance = cb.depthSigma * depthThreshold + depthFloatPrecision;
         float4 depthWeights = min(depthTolerance / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
         // ToDo Should there be a distance falloff with a cutoff below 1?
-        depthMask = depthWeights >= 1 ? depthWeights : 0;   // ToDo revise - this is same as comparing to depth tolerance
+        // ToDo revise the coefficient
+        depthMask = depthWeights >= 0.5 ? depthWeights : 0;   // ToDo revise - this is same as comparing to depth tolerance
 
         // ToDo handle invalid distances, i.e disabled pixels?
         //weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
@@ -282,6 +284,17 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float mergedValue;
 
     float4 weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
+
+    float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+#if 1
+    bool4 isValidCacheValue = vCacheValues != RTAO::InvalidAOValue;
+
+    //weights = isValidValue ? weights : 0;
+    weights.x = vCacheValues.x != RTAO::InvalidAOValue ? weights.x : 0;
+    weights.y = vCacheValues.y != RTAO::InvalidAOValue ? weights.y : 0;
+    weights.z = vCacheValues.z != RTAO::InvalidAOValue ? weights.z : 0;
+    weights.w = vCacheValues.w != RTAO::InvalidAOValue ? weights.w : 0;
+#endif
     float weightSum = dot(1, weights);
 
 
@@ -310,15 +323,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float localVariance = localMeanVariance.y;
 
     uint maxFrameAge = 1 / cb.minSmoothingFactor - 1;// minSmoothingFactor;
+
     if (isCacheValueValid)
     {
-
-#if PACK_CACHE_VALUE_FRAME_AGE
-#else
-        float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         uint4 vCacheFrameAge = g_texInputCacheFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         float4 vCacheValueSquaredMean = g_texInputCachedCoefficientSquaredMean.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-#endif
+
         float4 nWeights = weights / weightSum;   // Normalize the weights.
         float cachedValue = dot(nWeights, vCacheValues);
         float cachedValueSquaredMean = dot(nWeights, vCacheValueSquaredMean);
@@ -333,7 +343,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         // such as on disocclussions of surfaces on rotation, are kept around long enough to create 
         // visible streaks that fade away very slow.
         // Example: rotating camera around dragon's nose up close. 
-        float frameAgeScale = saturate(weightSum);
+        float frameAgeScale = 1;// saturate(weightSum);
 
         float cacheFrameAge = frameAgeScale * dot(nWeights, vCacheFrameAge);
         frameAge = round(cacheFrameAge);
@@ -360,8 +370,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         float invFrameAge = 1.f / (frameAge + 1.f);
         float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
-        mergedValue = lerp(cachedValue, value, a);
-        mergedValueSquaredMean = lerp(cachedValueSquaredMean, value * value, a);
+
+        bool isValidValue = value != RTAO::InvalidAOValue;
+
+        mergedValue = isValidValue ? lerp(cachedValue, value, a) : cachedValue;
+        // ToDo hack - remove
+        mergedValue = isValidValue ? mergedValue : -mergedValue;
+        mergedValueSquaredMean = isValidValue ? lerp(cachedValueSquaredMean, value * value, a) : cachedValueSquaredMean;
 
 
         float temporalVariance = mergedValueSquaredMean - mergedValue * mergedValue;
@@ -372,16 +387,20 @@ void main(uint2 DTid : SV_DispatchThreadID)
         //  - use largest motion vector from 3x3
         //  - try 3x3 area
         //  - default to average?
+
+        frameAge = isValidValue ? min(frameAge + 1, maxFrameAge) : frameAge;
     }
     else // ToDo initialize values to this instead of branch?
     {
+        //ToDo interpolate from neighbors
+        bool isValidValue = value != RTAO::InvalidAOValue;
         mergedValue = value;
         mergedValueSquaredMean = value * value;
-        frameAge = 0;
+        frameAge = 1;
         outVariance = localVariance;
     }
     g_texOutputCachedValue[DTid] = mergedValue;
-    g_texOutputCacheFrameAge[DTid] = min(frameAge + 1, maxFrameAge);
+    g_texOutputCacheFrameAge[DTid] = frameAge;
     g_texOutputCoefficientSquaredMean[DTid] = mergedValueSquaredMean;
     g_texOutputVariance[DTid] = outVariance;
 

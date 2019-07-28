@@ -62,7 +62,7 @@ namespace SceneArgs
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
 
-    const WCHAR* RayGenAdaptiveQuadSizeTypes[GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Count] = { L"2x2", L"4x4" };
+    const WCHAR* RayGenAdaptiveQuadSizeTypes[GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Count] = { L"1x1", L"2x2", L"4x4" };
     EnumVar RTAORayGenAdaptiveQuadSize(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Ray Count Pixel Window", GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Quad2x2, GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Count, RayGenAdaptiveQuadSizeTypes);
     IntVar RTAORayGen_MaxFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max frame age", 32, 1, 32, 1); // ToDo link this to smoothing factor?
     IntVar RTAORayGen_MinAdaptiveFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Min frame age for adaptive sampling", 16, 1, 32, 1); 
@@ -81,7 +81,7 @@ namespace SceneArgs
 
 
 
-    const WCHAR* FloatingPointFormatsR[TextureResourceFormatR::Count] = { L"R32_FLOAT", L"R16_FLOAT", L"R8_UNORM" };
+    const WCHAR* FloatingPointFormatsR[TextureResourceFormatR::Count] = { L"R32_FLOAT", L"R16_FLOAT", L"R8_SNORM" };
     EnumVar RTAO_AmbientCoefficientResourceFormat(L"Render/Texture Formats/AO/RTAO/Ambient Coefficient", TextureResourceFormatR::R16_FLOAT, TextureResourceFormatR::Count, FloatingPointFormatsR, OnRecreateSampleRaytracingResources);
 
   
@@ -596,6 +596,16 @@ DXGI_FORMAT RTAO::GetAOCoefficientFormat()
     return TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat);
 }
 
+float RTAO::GetSpp()
+{
+    switch (SceneArgs::RTAORayGenAdaptiveQuadSize)
+    {
+    case GpuKernels::AdaptiveRayGenerator::Quad2x2: return 1.f / 4;
+    case GpuKernels::AdaptiveRayGenerator::Quad4x4: return 1.f / 16;
+    }
+    return 1;
+}
+
 void RTAO::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT height)
 {
     auto commandList = m_deviceResources->GetCommandList();
@@ -805,8 +815,10 @@ void RTAO::OnRender(
     dispatchRayTime.Start(commandList);
 #endif
 
-    DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOFullRes].Get());
-
+    if (!SceneArgs::RTAOUseRaySorting)
+    {
+        DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOFullRes].Get());
+    }
 #if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
     dispatchRayTime.Stop(commandList);
     dispatchRayTime.EndFrame(commandList);

@@ -46,6 +46,7 @@ public:
     // Getters & Setters.
     void SetResolution(UINT width, UINT height);
     DXGI_FORMAT GetAOCoefficientFormat();
+    float GetSpp();
 
     // ToDo return only a subset
     RWGpuResource (&AOResources())[AOResource::Count]{ return m_AOResources; }

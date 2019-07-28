@@ -110,8 +110,12 @@ void LoadNormalAndDepth(Texture2D<float4> normalDepthTexture, in int2 texIndex, 
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
 {
-    // Load the frame ages for the whole quad into shared memory.
-    FrameAgeCache[GTid.y][GTid.x] = g_texFrameAge[DTid];
+    float3 surfaceNormal;
+    float rayOriginDepth;
+    LoadNormalAndDepth(g_texRayOriginSurfaceNormalDepth, DTid, surfaceNormal, rayOriginDepth);
+
+    // Load the frame age for the whole quad into shared memory.
+    FrameAgeCache[GTid.y][GTid.x] = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH ? g_texFrameAge[DTid] : CB.MaxFrameAge;
     GroupMemoryBarrierWithGroupSync();
 
     uint2 quadIndex = GTid / CB.QuadDim;
@@ -134,22 +138,25 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     {
         numRaysToGeneratePerQuad = lerp(MaxNumRaysPerQuad, 1, (minQuadFrameAge - CB.MinFrameAgeForAdaptiveSampling) / float(CB.MaxFrameAge - CB.MinFrameAgeForAdaptiveSampling));
     }
-
+    numRaysToGeneratePerQuad = 1;
 
     // Generate the rays.
     float2 encodedRayDirection = 0;
-    float rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;
-    
-    // Check whether this pixel is due to generate a ray.
-    if ((quadThreadIndex1D >= CB.FrameID && quadThreadIndex1D < CB.FrameID + numRaysToGeneratePerQuad) ||
-        // Check for when a valid quad thread index range wraps around.
-        (CB.FrameID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && quadThreadIndex1D < ((CB.FrameID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad)))
+    if (rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH)
     {
-        float3 surfaceNormal;
-        LoadNormalAndDepth(g_texRayOriginSurfaceNormalDepth, DTid, surfaceNormal, rayOriginDepth);
-
-        float3 rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
-        encodedRayDirection = EncodeNormal(rayDirection);
+        // Check whether this pixel is due to generate a ray.
+        if ((quadThreadIndex1D >= CB.FrameID && quadThreadIndex1D < CB.FrameID + numRaysToGeneratePerQuad) ||
+            // Check for when a valid quad thread index range wraps around.
+            (CB.FrameID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && quadThreadIndex1D < ((CB.FrameID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad)))
+        {
+            float3 rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
+            encodedRayDirection = EncodeNormal(rayDirection);
+        }
+        else
+        {
+            // Invalidate this ray entry.
+            rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;
+        }
     }
 
     g_rtRaysDirectionOriginDepth[DTid] = float4(encodedRayDirection, rayOriginDepth, 0);

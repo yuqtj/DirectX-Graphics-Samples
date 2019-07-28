@@ -328,6 +328,8 @@ void RayGenShader()
 #endif
 }
 
+#define SKIP_INVALID_RAYS 0
+
 // Retrieves 2D source and sorted ray indices from a 1D ray index where
 // - every valid (i.e. is within ray tracing buffer dimensions) 1D index maps to a valid 2D index.
 // - pixels are row major within a ray group.
@@ -339,6 +341,26 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
 {
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
 
+#if SKIP_INVALID_RAYS
+    uint rayGroupSize = rayGroupDim.y * rayGroupDim.x;
+    uint indexMultiplier = 16;
+    uint _index1D = index1D * indexMultiplier;
+
+    uint2 rayGroupIndex;
+    uint2 rayThreadIndex;
+    if (_index1D < CB.raytracingDim.y * CB.raytracingDim.x)
+    {
+        uint rayGroupIndex1D = _index1D / rayGroupSize;
+        uint2 rayGroups = CB.raytracingDim / rayGroupDim;
+        rayGroupIndex = uint2(rayGroupIndex1D % rayGroups.x, rayGroupIndex1D / rayGroups.x);
+        uint rayThreadIndex1D = (_index1D % rayGroupSize) / indexMultiplier;
+        rayThreadIndex = uint2(rayThreadIndex1D % rayGroupDim.x, rayThreadIndex1D / rayGroupDim.x);
+    }
+    else
+    {
+        return false;
+    }
+#else
     // Find the ray group row index.
     uint numValidPixelsInRow = CB.raytracingDim.x;
     uint rowOfRayGroupSize = rayGroupDim.y * numValidPixelsInRow;
@@ -358,6 +380,7 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
     uint rayThreadRowIndex = currentRayGroup_index1D / currentRayGroupWidth;
     uint rayThreadColumnIndex = currentRayGroup_index1D - rayThreadRowIndex * currentRayGroupWidth;
     uint2 rayThreadIndex = uint2(rayThreadColumnIndex, rayThreadRowIndex);
+#endif
 
     // Get the corresponding source index
     sortedRayIndex2D = rayGroupIndex * rayGroupDim + rayThreadIndex;
@@ -371,24 +394,15 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
 [shader("raygeneration")]
 void RayGenShader_sortedRays()
 {
-#if RTAO_RAY_SORT_1DRAYTRACE
     uint DTid_1D = DispatchRaysIndex().x; 
     uint2 srcRayIndex;
     uint2 sortedRayIndex;
     bool isActiveRay = Get2DRayIndices(sortedRayIndex, srcRayIndex, DTid_1D);
 
-    float minHitDistance = CB.RTAO_maxTheoreticalShadowRayHitTime;
     float tHit = RTAO::RayHitDistanceOnMiss;
+    float ambientCoef = RTAO::InvalidAOValue;
     if (isActiveRay)
     {
-#else 
-    uint2 srcRayIndex = DispatchRaysIndex().xy;
-    uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
-    uint2 rayGroupBase = (srcRayIndex / rayGroupDim) * rayGroupDim;
-    uint2 rayGroupRayIndex = g_texAOSortedToSourceRayIndexOffset[srcRayIndex];
-    uint2 sortedRayIndex = rayGroupBase + rayGroupThreadIndex;
-    ToDo
-#endif
         // ToDo split raydirection and origin into two resources?
         float2 encodedRayDirection = g_texAORaysDirectionOriginDepthHit[srcRayIndex].xy;
         float3 rayDirection = DecodeNormal(encodedRayDirection.xy);
@@ -398,26 +412,21 @@ void RayGenShader_sortedRays()
         float3 surfaceNormal = DecodeNormal(g_texRayOriginSurfaceNormalDepth[srcRayIndex].xy);
 
         Ray AORay = { hitPosition, rayDirection };
-        float ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
-
-
-#if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
-        uint2 outPixel = sortedRayIndex;
-#else
-        uint2 outPixel = srcRayIndex;
-#endif
-        g_rtAOcoefficient[outPixel] = ambientCoef;
-        g_rtAORayHitDistance[outPixel] = tHit;
+        ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
     }
 
-#if GBUFFER_AO_COUNT_AO_HITS
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
-    uint2 outPixel = srcRayIndex;
-#else
     uint2 outPixel = sortedRayIndex;
+#else
+    uint2 outPixel = srcRayIndex;
 #endif
+
+    g_rtAOcoefficient[outPixel] = ambientCoef;
+    g_rtAORayHitDistance[outPixel] = tHit;
+
+#if GBUFFER_AO_COUNT_AO_HITS
     // ToDo test perf impact of writing this
-    g_rtAORayHits[outPixel] = HasAORayHitAnyGeometry(tHit); hasAORayHitGeometry;
+    g_rtAORayHits[outPixel] = HasAORayHitAnyGeometry(tHit);
 #endif
 }
 

@@ -74,7 +74,12 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 0 // Denoiser blurs accross edge on garage door
+#if 1
+
+            camera.position.eye = { -9.6936f, 10.8923f, -34.5319f, 1 };
+            camera.position.at = { -9.56653f, 10.3829f, -33.6805f, 1 };
+            camera.position.up = { 0.0850791f, 0.798098f, 0.596483f, 0 };
+#elif 0 // Denoiser blurs accross edge on garage door
             camera.position.eye = { -28.096f, 3.6525f, -2.19541f, 1 };
             camera.position.at = { -27.4426f, 3.21277f, -1.57872f, 1 };
             camera.position.up = { 0.388319f, 0.843261f, 0.371621f, 0 };
