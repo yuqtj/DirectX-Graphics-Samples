@@ -310,7 +310,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
 #endif
 
-    bool isCacheValueValid = weightSum > 1e-3f; // ToDo
     //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
     uint frameAge;
     float mergedValueSquaredMean;      // ToDo better prefix than merged?
@@ -324,6 +323,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     uint maxFrameAge = 1 / cb.minSmoothingFactor - 1;// minSmoothingFactor;
 
+    bool isCacheValueValid = weightSum > 1e-3f; // ToDo
     if (isCacheValueValid)
     {
         uint4 vCacheFrameAge = g_texInputCacheFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
@@ -374,6 +374,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
         bool isValidValue = value != RTAO::InvalidAOValue;
 
         mergedValue = isValidValue ? lerp(cachedValue, value, a) : cachedValue;
+
+        // ToDo remove/fix
+        //mergedValue = saturate(mergedValue);
         // ToDo hack - remove
         mergedValue = isValidValue ? mergedValue : -mergedValue;
         mergedValueSquaredMean = isValidValue ? lerp(cachedValueSquaredMean, value * value, a) : cachedValueSquaredMean;

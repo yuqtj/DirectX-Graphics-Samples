@@ -19,6 +19,8 @@
 - retain per window frame seed on static geometry
 
 - TAO fails on dragons surface on small rotaions
+- ToDo motion vector can be nan at some reflections and reprojected depth of bad value. [1638,647 x 1440p]
+- very large ddxy at 525 199
 - blur away disocclussions
 - add dynamic objects testing clamping
 - overblur on mouse camera movement
@@ -148,7 +150,7 @@
 #define DEBUG_MULTI_BLAS_BUILD 0
 
 #define CAMERA_JITTER 0
-#define APPLY_SRGB_CORRECTION 1
+#define APPLY_SRGB_CORRECTION 0
 #define AO_ONLY 0
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0 // ToDo spec requires it but it works without it?
@@ -380,7 +382,6 @@ struct GBufferRayPayload
     // Used to avoid tracing rays with very small contributions.
     float bounceContribution;  
 #endif
-
     XMFLOAT3 radiance;
 	//XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
     AmbientOcclusionGBuffer AOGBuffer;

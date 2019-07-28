@@ -74,7 +74,11 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 1
+#if 0 // RayRefelction debugging
+            camera.position.eye = { -1.77403f, -0.0881398f, -15.8002f, 1 };
+            camera.position.at = { -1.11226f, -0.370269f, -15.1052f, 1 };
+            camera.position.up = { 0.264896f, 0.92173f, 0.283253f, 0 };
+#elif 1 // RayRefelction debugging
 
             camera.position.eye = { -9.6936f, 10.8923f, -34.5319f, 1 };
             camera.position.at = { -9.56653f, 10.3829f, -33.6805f, 1 };

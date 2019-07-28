@@ -1147,6 +1147,9 @@ namespace GpuKernels
                     PartialDistanceDerivatives,
                     FrameAge,
                     ConstantBuffer,
+                    // ToDo remove
+                    Debug1,
+                    Debug2,
                     Count
                 };
             }
@@ -1161,7 +1164,7 @@ namespace GpuKernels
             using namespace RootSignature::AtrousWaveletTransformCrossBilateralFilter;
 
             // ToDo reorganize slots and descriptors
-            CD3DX12_DESCRIPTOR_RANGE ranges[12];
+            CD3DX12_DESCRIPTOR_RANGE ranges[14];
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // input normals
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // input depths
@@ -1172,7 +1175,9 @@ namespace GpuKernels
             ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // output filter weight sum
             ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // input hit distance
             ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);  // input hit distance
-            ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8); 
+            ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);
+            ranges[12].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);
+            ranges[13].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);
 
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
@@ -1189,6 +1194,8 @@ namespace GpuKernels
             rootParameters[Slot::RayHitDistance].InitAsDescriptorTable(1, &ranges[9]);
             rootParameters[Slot::PartialDistanceDerivatives].InitAsDescriptorTable(1, &ranges[10]);
             rootParameters[Slot::FrameAge].InitAsDescriptorTable(1, &ranges[11]);
+            rootParameters[Slot::Debug1].InitAsDescriptorTable(1, &ranges[12]);
+            rootParameters[Slot::Debug2].InitAsDescriptorTable(1, &ranges[13]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
@@ -1273,6 +1280,8 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
         RWGpuResource* outputResource,
+        RWGpuResource* outputDebug1Resource,
+        RWGpuResource* outputDebug2Resource,
         float valueSigma,
         float depthSigma,
         float normalSigma,
@@ -1319,6 +1328,8 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::RayHitDistance, inputHitDistanceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::PartialDistanceDerivatives, inputPartialDistanceDerivativesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::FrameAge, inputFrameAgeResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Debug1, outputDebug1Resource->gpuDescriptorWriteAccess);
+            commandList->SetComputeRootDescriptorTable(Slot::Debug2, outputDebug2Resource->gpuDescriptorWriteAccess);
         }
 
         // ToDo use input resource dims.

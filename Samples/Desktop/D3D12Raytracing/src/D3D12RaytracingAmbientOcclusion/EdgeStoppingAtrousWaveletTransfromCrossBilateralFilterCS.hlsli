@@ -22,13 +22,16 @@ Texture2D<float> g_inVariance : register(t4);   // ToDo remove
 Texture2D<float> g_inSmoothedVariance : register(t5); 
 Texture2D<float> g_inHitDistance : register(t6);   // ToDo remove?
 Texture2D<float2> g_inPartialDistanceDerivatives : register(t7);   // ToDo remove?
-Texture2D<uint> g_inFrameAge : register(t8);  
+Texture2D<uint> g_inFrameAge : register(t8);
 
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
 #if !WORKAROUND_ATROUS_VARYING_OUTPUTS 
 RWTexture2D<float> g_outFilterWeightSum : register(u2);
 #endif
+RWTexture2D<float4> g_outDebug1 : register(u3);
+RWTexture2D<float4> g_outDebug2 : register(u4);
+
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> g_CB: register(b0);
 
 #define MAX_FRAME_AGE 32    // ToDo pass
@@ -98,8 +101,6 @@ void AddFilterContribution(
     inout float weightedValueSum, 
     inout float weightedVarianceSum, 
     inout float weightSum, 
-    inout float valueSum,
-    inout uint numValues,
     in float value, 
     in float stdDeviation,
     in float depth, 
@@ -181,13 +182,13 @@ void AddFilterContribution(
             iValue = -iValue;
         }
         const float errorOffset = 0.005f;
-        float e_x = value != RTAO::InvalidAOValue ? -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset) : 0;
+        float e_x = -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset);
  
         // ToDo loosen up weights for low frameAge? and/or 2nd+ pass
         // ToDo standardize index vs id
         // Ref: SVGF
         // ToDo
-        float w_n = 1;// pow(max(0, dot(normal, iNormal)), normalSigma);
+        float w_n = pow(max(0, dot(normal, iNormal)), normalSigma);
 
         // ToDo explain 1 -
         // Make the 0 start at 1 == depthDelta/depthTolerance
@@ -231,15 +232,10 @@ void AddFilterContribution(
 
         float iPixelWeight = g_inFrameAge[id];
         w *= iPixelWeight;
-
-        if (g_CB.outputFilteredValue)
-        {
-            weightedValueSum += w * iValue;
-        }
-
+        
+        weightedValueSum += w * iValue;
         weightSum += w;
-        valueSum += iValue;
-        numValues++;
+
 
         // ToDo standardize g_CB naming
         if (g_CB.outputFilteredVariance)
@@ -272,7 +268,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
     if (depth != 0 &&
         frameAge <= g_CB.maxFrameAgeToDenoise)
     {
-        bool isValidValue = value == RTAO::InvalidAOValue;
+        bool isValidValue = value != RTAO::InvalidAOValue;
         float w_c = 1;
         if (value < 0)
         {
@@ -285,8 +281,6 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 
         float weightSum = 0;
         float weightedValueSum = 0;
-        float valueSum = 0;
-        uint numValues = 0;
         float weightedVarianceSum = 0;
         float variance = 0;
         float stdDeviation = 1;
@@ -296,8 +290,6 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
             float pixelWeight = frameAge;
             weightSum = pixelWeight * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius];
             weightedValueSum = weightSum * value;
-            valueSum = value;
-            numValues = 1;
             variance = g_inSmoothedVariance[DTid];
             weightedVarianceSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius]
                 * variance;
@@ -317,10 +309,11 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
                 [unroll]
             for (UINT c = 0; c < FilterKernel::Width; c++)
                 if (r != FilterKernel::Radius || c != FilterKernel::Radius)
-                    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, valueSum, numValues, value, stdDeviation, depth, normal, ddxy, r, c, minHitDistance, DTid);
+                    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, ddxy, r, c, minHitDistance, DTid);
         }
 
-        if (numValues > 0)
+        float smallValue = 1e-6f;
+        if (weightSum > smallValue)
         {
             //float filteredValue = weightSum > (FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] + 0.00001) ? weightedValueSum / weightSum : valueSum / numValues;
             filteredValue = weightedValueSum / weightSum;

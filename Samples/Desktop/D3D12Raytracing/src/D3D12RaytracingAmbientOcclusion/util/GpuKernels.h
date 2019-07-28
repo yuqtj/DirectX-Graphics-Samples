@@ -358,6 +358,8 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,   // ToDo standardize depth vs distance
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
             RWGpuResource* outputResourceHandle,
+            RWGpuResource* outputDebug1ResourceHandle,
+            RWGpuResource* outputDebug2ResourceHandle,
             float valueSigma,
             float depthSigma,
             float normalSigma,

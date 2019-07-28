@@ -125,7 +125,8 @@ namespace GlobalRootSignature {
             AORayHitDistance,
             AOFrameAge,
             AORayDirectionOriginDepthHitSRV,
-            AORayDirectionOriginDepthHitUAV,
+            Debug,
+            Debug2,
             AOSourceToSortedRayIndex,
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
             PartialDepthDerivatives,
@@ -236,6 +237,8 @@ namespace GBufferResource {
         ReprojectedHitPosition,
         Color,
         AOSurfaceAlbedo, 
+        Debug,
+        Debug2,
 		Count
 	};
 }

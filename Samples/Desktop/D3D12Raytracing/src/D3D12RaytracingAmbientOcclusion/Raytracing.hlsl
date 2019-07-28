@@ -61,7 +61,6 @@ Texture2D<float> g_texShadowMap : register(t21);
 Texture2D<float4> g_texAORaysDirectionOriginDepthHit : register(t22);
 Texture2D<uint2> g_texAOSourceToSortedRayIndex : register(t23);
 
-
 // ToDo remove AOcoefficient and use AO hits instead?
 //todo remove rt?
 RWTexture2D<float> g_rtAOcoefficient : register(u10);
@@ -79,8 +78,9 @@ RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18); // ToDo rename
 RWTexture2D<float4> g_rtColor : register(u19);
 RWTexture2D<float4> g_rtAOSurfaceAlbedo : register(u20);
 RWTexture2D<float> g_rtShadowMap : register(u21);
-RWTexture2D<float4> g_rtAORaysDirectionOriginDepth : register(u22);
+RWTexture2D<float4> g_rtDebug : register(u22);
 RWTexture2D<float4> g_rtGBufferNormalDepthLowPrecision : register(u23);
+RWTexture2D<float4> g_rtDebug2 : register(u24);
 
 ConstantBuffer<SceneConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
@@ -124,7 +124,7 @@ float GetPlaneConstant(in float3 planeNormal, in float3 pointOnThePlane)
 bool IsPointOnTheNormalSideOfPlane(in float3 P, in float3 planeNormal, in float3 pointOnThePlane)
 {
     float d = GetPlaneConstant(planeNormal, pointOnThePlane);
-    return dot(P, planeNormal) + d > 0;
+    return dot(P, planeNormal) + d >= 0;    // ToDo > ? >=
 }
 
 float3 ReflectPointThroughPlane(in float3 P, in float3 planeNormal, in float3 pointOnThePlane)
@@ -204,7 +204,8 @@ float3 GetWorldHitPositionInPreviousFrame(
 // Calculate a texture space motion vector from previous to current frame.
 float2 CalculateMotionVector(
     in float3 _hitPosition,
-    out float _depth)
+    out float _depth,
+    in uint2 DTid)
 {
     // Variables prefixed with underscore _ denote values in the previous frame.
     float3 _hitViewPosition = _hitPosition - CB.prevCameraPosition.xyz;
@@ -378,9 +379,16 @@ Ray ReflectedRay(in float3 hitPosition, in float3 incidentDirection, in float3 n
 // ToDo standardize variable names
 float3 TraceReflectedGBufferRay(in float3 hitPosition, in float3 wi, in float3 N, in float3 objectNormal, inout GBufferRayPayload rayPayload, in float TMax = 10000)
 {
+    
     float tOffset = 0.001f;
-    // ToDo offset in the ray direction so that the reflected ray projects to the same screen pixle. Otherwise it results in swimming in TAO 
-    float3 adjustedHitPosition = hitPosition + tOffset * wi;
+    // ToDo offset in the ray direction so that the reflected ray projects to the same screen pixel. Otherwise it results in swimming in TAO. 
+    float3 offsetAlongRay = tOffset * wi;
+
+    // In cases where a ray is grazing the surface, nudge the starting position along the surface normal a bit as well.
+    bool isRayGrazingTheSurface = dot(wi, N) < 0.1f;   // TODo finetune
+    float3 offsetAlongNormal = 0;// isRayGrazingTheSurface ? 10 * tOffset * N : 0;
+
+    float3 adjustedHitPosition = hitPosition + offsetAlongRay + offsetAlongNormal;
 
 
     // Intersection points of auxilary rays with the current surface
@@ -430,6 +438,7 @@ float3 TraceReflectedGBufferRay(in float3 hitPosition, in float3 wi, in float3 N
         // as if the ray went through the mirror to be able to recursively reflect at correct ray depths and then projecting to the screen.
         // Skipping normalization as it's not required for the uses of the transformed normal here.
         float3 _mirrorNormal = mul((float3x3)_mirrorBLASTransform, objectNormal);
+
         rayPayload.AOGBuffer._virtualHitPosition = ReflectFrontPointThroughPlane(rayPayload.AOGBuffer._virtualHitPosition, _mirrorHitPosition, _mirrorNormal);
 
         // Add current thit and the added offset to the thit of the traced ray.
@@ -621,6 +630,12 @@ float3 Shade(
     // Specular Indirect Illumination
     bool isReflective = !BxDF::IsBlack(Kr);
     bool isTransmissive = !BxDF::IsBlack(Kt);
+
+    // Handle cases where ray is coming from behind due error/imprecision,
+    // don't cast reflection rays in that case.
+    float smallValue = 1e-6f;
+    isReflective = dot(V, N) > smallValue ? isReflective : false;
+
     if (isReflective || isTransmissive)
     {
         if (isReflective 
@@ -635,8 +650,10 @@ float3 Shade(
                 reflectedRayPayLoad.bounceContribution = bounceContribution;
 #else
             {
-#endif
+#endif          
+                    
                 float3 wi = reflect(-V, N);
+                
                 L += Kr * TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
                 UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad, Kr);
             }
@@ -831,7 +848,7 @@ void MyRayGenShader_GBuffer()
     
         // Calculate the motion vector.
         float _depth;
-        float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth);
+        float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth, DTid);
         g_rtTextureSpaceMotionVector[DTid] = motionVector;
         g_rtReprojectedHitPosition[DTid] = float4(rayPayload.AOGBuffer._encodedNormal, _depth, 0);
 
