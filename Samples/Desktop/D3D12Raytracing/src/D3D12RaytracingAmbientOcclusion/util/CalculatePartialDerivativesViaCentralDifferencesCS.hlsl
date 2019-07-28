@@ -31,6 +31,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint2 right = clamp(DTid.xy + uint2(1, 0), 0, g_CB.textureDim - 1);
 
     // ToDo Pick 1 and update the file name
+    // ToDo use shader intrinsics?
 #if 1
     // Calculates partial derivatives as the min of absolute backward and forward differences. 
     // The min is taken to handle edges when calculating partial distance derivatives.
@@ -41,6 +42,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     // ToDO pick both dimensions from one or the other?
     // ToDo retain pos/negative sides?
+
+
+    // ToDo dont strip the sign
     g_outValue[DTid] = min(abs(backwardDifferences), abs(forwardDifferences));
 
 #else
