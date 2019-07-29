@@ -2177,6 +2177,10 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
     {
         m_accelerationStructure->AddBottomLevelASInstance(bottomLevelASname);
     }
+
+
+    m_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
+
 #if GENERATE_GRASS
 #if GRASS_NO_DEGENERATE_INSTANCES
     UINT grassInstanceIndex = 0;

@@ -74,10 +74,10 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 1 // partial derivatives leaking to background obk
-            camera.position.at = { -27.6782f, 3.63652f, 15.7007f, 1 };
-            camera.position.up = { 0.158396f, 0.981413f, 0.108302f, 0 };
-            camera.position.eye = { -28.511f, 3.71719f, 15.1525f, 1 };
+#if 1 
+            camera.position.eye = { -12.358f, 4.60442f, -19.4095f, 1 };
+            camera.position.at = { -12.1201f, 4.36224f, -18.4686f, 1 };
+            camera.position.up = { 0.0822575f, 0.936992f, 0.339515f, 0 };
 #elif 0 // Denoiser blurs accross edge on garage door
             camera.position.eye = { -28.096f, 3.6525f, -2.19541f, 1 };
             camera.position.at = { -27.4426f, 3.21277f, -1.57872f, 1 };

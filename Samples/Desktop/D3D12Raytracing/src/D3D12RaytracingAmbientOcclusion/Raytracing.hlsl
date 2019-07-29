@@ -124,7 +124,7 @@ float GetPlaneConstant(in float3 planeNormal, in float3 pointOnThePlane)
 bool IsPointOnTheNormalSideOfPlane(in float3 P, in float3 planeNormal, in float3 pointOnThePlane)
 {
     float d = GetPlaneConstant(planeNormal, pointOnThePlane);
-    return dot(P, planeNormal) + d >= 0;    // ToDo > ? >=
+    return dot(P, planeNormal) + d > 0;    // ToDo > ? >=
 }
 
 float3 ReflectPointThroughPlane(in float3 P, in float3 planeNormal, in float3 pointOnThePlane)
@@ -429,13 +429,15 @@ float3 TraceReflectedGBufferRay(in float3 hitPosition, in float3 wi, in float3 N
     {
         // Get the current planar mirror in the previous frame.
         float3x4 _mirrorBLASTransform = g_prevFrameBottomLevelASInstanceTransform[InstanceIndex()];
-        float3 _mirrorHitPosition = mul(_mirrorBLASTransform, float4(hitPosition, 1));
+        float3 _mirrorHitPosition = mul(_mirrorBLASTransform, float4(HitObjectPosition(), 1));
 
         // Pass the virtual hit position reflected across the current mirror surface upstream 
         // as if the ray went through the mirror to be able to recursively reflect at correct ray depths and then projecting to the screen.
         // Skipping normalization as it's not required for the uses of the transformed normal here.
         float3 _mirrorNormal = mul((float3x3)_mirrorBLASTransform, objectNormal);
 
+        //g_rtDebug[DispatchRaysIndex().xy] = float4(_mirrorHitPosition, 0);
+        //g_rtDebug2[DispatchRaysIndex().xy] = float4(_mirrorNormal, 0);
         rayPayload.AOGBuffer._virtualHitPosition = ReflectFrontPointThroughPlane(rayPayload.AOGBuffer._virtualHitPosition, _mirrorHitPosition, _mirrorNormal);
 
         // Add current thit and the added offset to the thit of the traced ray.
@@ -857,6 +859,7 @@ void MyRayGenShader_GBuffer()
     
         // Calculate the motion vector.
         float _depth;
+        //g_rtDebug2[DTid] = float4(rayPayload.AOGBuffer._virtualHitPosition, 0);
         float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth, DTid);
         g_rtTextureSpaceMotionVector[DTid] = motionVector;
         g_rtReprojectedHitPosition[DTid] = float4(rayPayload.AOGBuffer._encodedNormal, _depth, 0);
