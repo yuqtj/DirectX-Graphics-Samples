@@ -220,8 +220,8 @@ private:
 
     RWGpuResource m_varianceResource;
     RWGpuResource m_smoothedVarianceResource;
-    RWGpuResource m_spatialMeanVarianceResource;
-    RWGpuResource m_smoothedSpatialMeanVarianceResource;
+    RWGpuResource m_localMeanVarianceResource;
+    RWGpuResource m_smoothedLocalMeanVarianceResource;
 
     // Multi-scale
     // ToDo Cleanup

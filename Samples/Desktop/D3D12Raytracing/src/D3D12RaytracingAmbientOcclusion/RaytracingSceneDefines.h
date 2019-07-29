@@ -57,6 +57,7 @@ namespace ComputeShader {
 					ConstantBuffer,
                     FilterWeightSum,
                     Variance,
+                    LocalMeanVariance,
                     AORayHitDistance,
                     FrameAge,   // ToDo use same name as in the shader
                     Color,

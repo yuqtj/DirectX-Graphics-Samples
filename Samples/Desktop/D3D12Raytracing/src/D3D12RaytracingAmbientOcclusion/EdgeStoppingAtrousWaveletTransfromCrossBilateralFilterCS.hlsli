@@ -182,7 +182,7 @@ void AddFilterContribution(
             iValue = -iValue;
         }
         const float errorOffset = 0.005f;
-        float e_x = -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset);
+        float e_x = valueSigma  > 0.001f ? -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset) : 0;
  
         // ToDo loosen up weights for low frameAge? and/or 2nd+ pass
         // ToDo standardize index vs id

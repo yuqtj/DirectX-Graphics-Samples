@@ -74,15 +74,10 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 0 // RayRefelction debugging
-            camera.position.eye = { -1.77403f, -0.0881398f, -15.8002f, 1 };
-            camera.position.at = { -1.11226f, -0.370269f, -15.1052f, 1 };
-            camera.position.up = { 0.264896f, 0.92173f, 0.283253f, 0 };
-#elif 1 // RayRefelction debugging
-
-            camera.position.eye = { -9.6936f, 10.8923f, -34.5319f, 1 };
-            camera.position.at = { -9.56653f, 10.3829f, -33.6805f, 1 };
-            camera.position.up = { 0.0850791f, 0.798098f, 0.596483f, 0 };
+#if 1 // partial derivatives leaking to background obk
+            camera.position.at = { -27.6782f, 3.63652f, 15.7007f, 1 };
+            camera.position.up = { 0.158396f, 0.981413f, 0.108302f, 0 };
+            camera.position.eye = { -28.511f, 3.71719f, 15.1525f, 1 };
 #elif 0 // Denoiser blurs accross edge on garage door
             camera.position.eye = { -28.096f, 3.6525f, -2.19541f, 1 };
             camera.position.at = { -27.4426f, 3.21277f, -1.57872f, 1 };

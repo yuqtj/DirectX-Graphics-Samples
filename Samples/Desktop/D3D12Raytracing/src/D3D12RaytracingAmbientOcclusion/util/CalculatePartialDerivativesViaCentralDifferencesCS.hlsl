@@ -45,7 +45,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
 
     // ToDo dont strip the sign
-    g_outValue[DTid] = min(abs(backwardDifferences), abs(forwardDifferences));
+    float2 ddxy = min(abs(backwardDifferences), abs(forwardDifferences));
+
+#if HACK_CLAMP_DDXY_TO_BE_SMALL
+    float maxDdxy = 1;
+    ddxy = min(ddxy, maxDdxy);
+#endif
+    g_outValue[DTid] = ddxy;
 
 #else
     // Calculates central differences: (f(x+1, y) - f(x-1, y), f(x, y+1) - f(x, y-1))

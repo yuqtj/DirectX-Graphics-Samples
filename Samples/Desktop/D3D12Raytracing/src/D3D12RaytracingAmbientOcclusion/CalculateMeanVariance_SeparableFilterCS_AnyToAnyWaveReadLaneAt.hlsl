@@ -14,7 +14,7 @@
 // Requirements:
 // - wave lane size 16 or higher.
 // Performance: 
-// 0.235ms for 7x7 kernel at 4K on 2080Ti.
+// ToDo: 0.235ms for 7x7 kernel at 4K on 2080Ti.
 
 // ToDo handle inactive pixels
 // ToDo check WaveLaneCountMin cap to be 16 or higher and fail or disable using this shader.
@@ -22,6 +22,7 @@
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
+#include "RTAO/Shaders/RTAO.hlsli"
 
 Texture2D<float> g_inValues : register(t0);
 RWTexture2D<float2> g_outMeanVariance : register(u0);
@@ -31,9 +32,6 @@ ConstantBuffer<CalculateMeanVarianceConstantBuffer> cb: register(b0);
 // Group shared memory cache for the row aggregated results.
 groupshared uint PackedRowResultCache[16][8];            // 16bit float valueSum, squaredValueSum.
 groupshared uint NumValuesCache[16][8]; 
-
-// ToDo use a commonly defined value.
-#define INVALID_VALUE -1
 
 // Load up to 16x16 pixels and filter them horizontally.
 // The output is cached in Shared Memory and contains NumRows x 8 results.
@@ -61,13 +59,13 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
 
         // Load all the contributing columns for each row.
         int2 pixel = KernelBasePixel + GTid16x4;
-        float value = INVALID_VALUE;
+        float value = RTAO::InvalidAOValue;
 
         // The lane is out of bounds of the GroupDim + kernel, 
         // but could be within bounds of the input texture,
         // so don't read it from the texture.
         // but need to keep it as an active lane for a below split sum.
-        if (GTid16x4.x < NumValuesToLoadPerRowOrColumn)
+        if (GTid16x4.x < NumValuesToLoadPerRowOrColumn && IsWithinBounds(pixel, cb.textureDim))
         {
             value = g_inValues[pixel];
         }
@@ -84,7 +82,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             
             // Initialize the first 8 lanes to the first cell contribution of the kernel. 
             // This covers the remainder of 1 in cb.kernelWidth / 2 used in the loop below. 
-            if (GTid16x4.x < GroupDim.x && value != INVALID_VALUE)
+            if (GTid16x4.x < GroupDim.x && value != RTAO::InvalidAOValue)
             {
                 valueSum = value;
                 squaredValueSum = value * value;
@@ -96,7 +94,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
                 uint laneToReadFrom = Row_BaseWaveLaneIndex + 1 + c +
                                      (GTid16x4.x < GroupDim.x ? GTid16x4.x : (GTid16x4.x - GroupDim.x) + cb.kernelRadius);
                 float cValue = WaveReadLaneAt(value, laneToReadFrom);
-                if (cValue != INVALID_VALUE)
+                if (cValue != RTAO::InvalidAOValue)
                 {
                     valueSum += cValue;
                     squaredValueSum += cValue * cValue;
@@ -139,16 +137,6 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
     }
        
     // Calculate mean and variance.
-    // Adjust the kernel size for the valid pixels. 
-    // Out of texture bound reads return 0 and thus have no impact on the aggregates.
-    uint leftMostIndex = max(0, int(DTid.x) - int(cb.kernelRadius));
-    uint rightMostIndex = min(cb.textureDim.x - 1, DTid.x + cb.kernelRadius);
-    uint kernelWidthX = rightMostIndex - leftMostIndex + 1;
-
-    uint topMostIndex = max(0, int(DTid.y) - int(cb.kernelRadius));
-    uint bottomMostIndex = min(cb.textureDim.y - 1, DTid.y + cb.kernelRadius);
-    uint kernelWidthY = bottomMostIndex - topMostIndex + 1;
-
     float invN = 1.f / max(numValues, 1);
     float mean = invN * valueSum;
 
@@ -159,7 +147,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
 
     variance = max(0, variance);    // Ensure variance doesn't go negative due to imprecision.
     
-    g_outMeanVariance[DTid] = numValues > 0 ? float2(mean, variance) : INVALID_VALUE;
+    g_outMeanVariance[DTid] = numValues > 0 ? float2(mean, variance) : RTAO::InvalidAOValue;
 }
 
 

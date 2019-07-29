@@ -384,11 +384,7 @@ float3 TraceReflectedGBufferRay(in float3 hitPosition, in float3 wi, in float3 N
     // ToDo offset in the ray direction so that the reflected ray projects to the same screen pixel. Otherwise it results in swimming in TAO. 
     float3 offsetAlongRay = tOffset * wi;
 
-    // In cases where a ray is grazing the surface, nudge the starting position along the surface normal a bit as well.
-    bool isRayGrazingTheSurface = dot(wi, N) < 0.1f;   // TODo finetune
-    float3 offsetAlongNormal = 0;// isRayGrazingTheSurface ? 10 * tOffset * N : 0;
-
-    float3 adjustedHitPosition = hitPosition + offsetAlongRay + offsetAlongNormal;
+    float3 adjustedHitPosition = hitPosition + offsetAlongRay;
 
 
     // Intersection points of auxilary rays with the current surface
@@ -398,6 +394,7 @@ float3 TraceReflectedGBufferRay(in float3 hitPosition, in float3 wi, in float3 N
     float3 py = RayPlaneIntersection(adjustedHitPosition, N, rayPayload.ry.origin, rayPayload.ry.direction);
 
     // Calculate reflected rx, ry
+    // ToDo safeguard this agianst reflection going behind due to grazing angles
     Ray rx = { px, reflect(rayPayload.rx.direction, N) };
     Ray ry = { py, reflect(rayPayload.ry.direction, N) };
 #endif
@@ -455,8 +452,20 @@ float3 TraceRefractedGBufferRay(in float3 hitPosition, in float3 wt, in float3 N
     float tOffset = 0.001f;
     float3 adjustedHitPosition = hitPosition + tOffset * wt;
     
+#if USE_UV_DERIVATIVES
+    float3 px = RayPlaneIntersection(adjustedHitPosition, N, rayPayload.rx.origin, rayPayload.rx.direction);
+    float3 py = RayPlaneIntersection(adjustedHitPosition, N, rayPayload.ry.origin, rayPayload.ry.direction);
+
+    // ToDo currently refracted rays are simply transparent rays
+    Ray rx = { px, rayPayload.rx.direction };
+    Ray ry = { py, rayPayload.ry.direction };
+#endif
+
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-    ToDo
+    float3 rxRaySegment = px - rayPayload.rx.origin;
+    float3 ryRaySegment = py - rayPayload.ry.origin;
+    rayPayload.rxTHit += length(rxRaySegment);
+    rayPayload.ryTHit += length(ryRaySegment);
 #endif
 
     // ToDo offset along surface normal, and adjust tOffset subtraction below.
@@ -864,6 +873,7 @@ void MyRayGenShader_GBuffer()
         float linearDepth = linearDistance * dot(ray.direction, cameraDirection);
 
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+        // ToDo recalculate rx.direction to avoid live state?
         float rxLinearDepth = rayPayload.rxTHit * dot(rx.direction, cameraDirection);
         float ryLinearDepth = rayPayload.ryTHit * dot(ry.direction, cameraDirection);
         float2 ddxy = abs(float2(rxLinearDepth, ryLinearDepth) - linearDepth);

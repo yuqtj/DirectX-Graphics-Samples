@@ -33,6 +33,7 @@ Texture2D<uint> g_texTemporalCacheDisocclusionMap : register(t10);
 Texture2D<float4> g_texColor : register(t11);
 Texture2D<float4> g_texAOSurfaceAlbedo : register(t12);
 Texture2D<float4> g_texVariance : register(t13);
+Texture2D<float4> g_texLocalMeanVariance : register(t14);
 
 SamplerState LinearWrapSampler : register(s0);
 
@@ -166,12 +167,17 @@ void main(uint2 DTid : SV_DispatchThreadID )
             color = float4(lerp(minSampleColor, maxSampleColor, sppScale), 1);
 #endif
         }
-        else if (g_CB.compositionType == CompositionType::Variance)
+        else if (g_CB.compositionType == CompositionType::AmbientOcclusionVariance ||
+            g_CB.compositionType == CompositionType::AmbientOcclusionLocalVariance)
         {
+            float variance;
+            if (g_CB.compositionType == CompositionType::AmbientOcclusionVariance)
+                variance = g_texVariance[DTid].x;
+            else
+                variance = g_texLocalMeanVariance[DTid].y;
             // ToDo why is minHitDistance 0 or very dark on outer edges?
             float3 minSampleColor = float3(20, 20, 20) / 255;
             float3 maxSampleColor = float3(255, 255, 255) / 255;
-            float variance = g_texVariance[DTid].x;
             if (g_CB.variance_visualizeStdDeviation)
                 variance = sqrt(variance);
             variance *= g_CB.variance_scale;

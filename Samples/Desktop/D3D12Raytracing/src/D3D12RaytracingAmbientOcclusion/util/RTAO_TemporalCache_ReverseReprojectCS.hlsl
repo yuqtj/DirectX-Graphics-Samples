@@ -27,7 +27,7 @@ Texture2D<float4> g_texInputReprojectedNormalDepth : register(t4); // ToDo stand
 Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t5); // ToDo standardize naming across files
 Texture2D<uint> g_texInputCacheFrameAge : register(t6);
 
-Texture2D<float2> g_texInputCurrentFrameSpatialMeanVariance : register(t7);
+Texture2D<float2> g_texInputCurrentFrameLocalMeanVariance : register(t7);
 Texture2D<float> g_texInputCachedCoefficientSquaredMean : register(t8);
 
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t9); // ToDo standardize naming across files
@@ -315,13 +315,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float mergedValueSquaredMean;      // ToDo better prefix than merged?
     float outVariance;
 
+    
+    uint maxFrameAge = 1 / cb.minSmoothingFactor - 1;// minSmoothingFactor;
 
-    // ToDo spatial vs local
-    float2 localMeanVariance = g_texInputCurrentFrameSpatialMeanVariance[DTid];
+    float2 localMeanVariance = g_texInputCurrentFrameLocalMeanVariance[DTid];
     float localMean = localMeanVariance.x;
     float localVariance = localMeanVariance.y;
-
-    uint maxFrameAge = 1 / cb.minSmoothingFactor - 1;// minSmoothingFactor;
 
     bool isCacheValueValid = weightSum > 1e-3f; // ToDo
     if (isCacheValueValid)

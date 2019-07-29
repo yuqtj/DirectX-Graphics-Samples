@@ -16,6 +16,7 @@
 
 /*
 //ToDo
+- map local variance to only valid AO values
 - retain per window frame seed on static geometry
 
 - TAO fails on dragons surface on small rotaions
@@ -90,6 +91,8 @@
 
 #define PACK_CACHE_VALUE_FRAME_AGE 0
 #define CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN 0
+#define USE_UV_DERIVATIVES 0
+#define HACK_CLAMP_DDXY_TO_BE_SMALL 1
 
 //#define SAMPLER_FILTER D3D12_FILTER_MIN_MAG_MIP_LINEAR
 #define SAMPLER_FILTER D3D12_FILTER_ANISOTROPIC  // TODo blurry at various angles
@@ -353,7 +356,6 @@ struct Ray
     XMFLOAT3 direction;
 };
 
-#define USE_UV_DERIVATIVES 0
 #define LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION 0
 struct AmbientOcclusionGBuffer
 {
@@ -484,7 +486,7 @@ struct AdaptiveRayGenConstantBuffer
     UINT MaxFrameAge;
     UINT MinFrameAgeForAdaptiveSampling;    // Frame age at which the adaptive sampling kicks in.
     UINT FrameID;       // Looping FrameID within <0, QuadDim.size - 1>
-    UINT padding;
+    UINT MaxRaysPerQuad;
 
     UINT seed;
     UINT numSamplesPerSet;
@@ -637,7 +639,8 @@ enum CompositionType {
     AmbientOcclusionOnly_RawOneFrame,
     AmbientOcclusionHighResSamplingPixels,
     AmbientOcclusionAndDisocclusionMap, // ToDo quarter res support
-    Variance,
+    AmbientOcclusionVariance,
+    AmbientOcclusionLocalVariance,  // ToDo rename spatial to local variance references
     RTAOHitDistance,    // ToDo standardize naming
     NormalsOnly,
     DepthOnly,
