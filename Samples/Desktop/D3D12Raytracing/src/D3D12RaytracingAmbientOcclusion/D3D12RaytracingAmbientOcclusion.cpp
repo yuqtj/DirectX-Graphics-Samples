@@ -133,7 +133,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition/Mode", CompositionType::AmbientOcclusionOnly_Denoised, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition/Mode", CompositionType::AmbientOcclusionOnly_TemporallySupersampled, CompositionType::Count, CompositionModes);
     BoolVar Compose_VarianceVisualizeStdDeviation(L"Render/Render composition/Variance/Visualize std deviation", true);       
     NumVar Compose_VarianceScale(L"Render/Render composition/Variance/Variance scale", 1.0f, 0, 10, 0.1f);
 
@@ -180,6 +180,7 @@ namespace SceneArgs
 
 
     NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
+    BoolVar AnimateGrass(L"Scene2/Animate grass", false);
 
     BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
 
@@ -498,7 +499,7 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     DXSample(width, height, name),
     m_animateCamera(false),
     m_animateLight(false),
-    m_animateScene(false),
+    m_animateScene(true),
     m_isGeometryInitializationRequested(true),
     m_isASinitializationRequested(true),
 	m_isSceneInitializationRequested(false),
@@ -2161,6 +2162,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
         L"Dragon",
         L"Car",
         L"House",
+        L"MirrorQuad"
 #endif    
         //L"Tesselated Geometry"
     };
@@ -2450,7 +2452,7 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
         m_animateCamera = !m_animateCamera;
         break;
     case 'A':
-        m_animateScene = !m_animateScene;
+        //m_animateScene = !m_animateScene;
         break;
     case 'V':
         SceneArgs::TAO_LazyRender.Bang();// TODo remove
@@ -2543,7 +2545,7 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 
     if (m_animateScene)
     {
-        float animationDuration = 36.0f;
+        float animationDuration = 180.0f;
         float t = static_cast<float>(m_timer.GetTotalSeconds());
         float rotAngle1 = XMConvertToRadians(t * 360.0f / animationDuration);
         float rotAngle2 = XMConvertToRadians((t + 12) * 360.0f / animationDuration);
@@ -4691,7 +4693,7 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
     return;
 #endif
     auto commandList = m_deviceResources->GetCommandList();
-    float totalTime = 0;// static_cast<float>(m_timer.GetTotalSeconds());
+    float totalTime = SceneArgs::AnimateGrass ? static_cast<float>(m_timer.GetTotalSeconds()) : 0;
 
     m_currentGrassPatchVBIndex = (m_currentGrassPatchVBIndex + 1) % 2;
 

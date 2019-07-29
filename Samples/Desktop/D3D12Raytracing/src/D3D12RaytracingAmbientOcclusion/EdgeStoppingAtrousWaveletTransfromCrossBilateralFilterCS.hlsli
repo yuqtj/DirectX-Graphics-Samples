@@ -109,13 +109,14 @@ void AddFilterContribution(
     in uint row, 
     in uint col,
     in float minHitDistance,
-    in uint2 DTid)
+    in uint2 DTid,
+    in uint kernelStepShift,
+    in float weightScale)
 {
 
     const float valueSigma = g_CB.valueSigma;
     const float normalSigma = g_CB.normalSigma;
     const float depthSigma = g_CB.depthSigma;
-    const float weightScale = g_CB.weightScale;
  
     int2 pixelOffset;
     float kernelWidth;
@@ -157,7 +158,7 @@ void AddFilterContribution(
     else
 #endif
     {
-        pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) << g_CB.kernelStepShift;
+        pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) << kernelStepShift;
     }
 
     int2 id = int2(DTid) + pixelOffset;
@@ -268,6 +269,10 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
     if (depth != 0 &&
         frameAge <= g_CB.maxFrameAgeToDenoise)
     {
+        // Slow start fading away denoising strenght half way through.
+        float t = (2 * max(frameAge, (g_CB.maxFrameAgeToDenoise + 1) / 2) - g_CB.maxFrameAgeToDenoise) / g_CB.maxFrameAgeToDenoise;
+        float neighborWeightScale = g_CB.normalSigma < 64 ? g_CB.weightScale * lerp(1, 0, t) : 1;  // ToDo cleanup
+
         bool isValidValue = value != RTAO::InvalidAOValue;
         float w_c = 1;
         if (value < 0)
@@ -296,6 +301,8 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
             stdDeviation = sqrt(variance);
         }
 
+        uint kernelStepShift = frameAge >= 8 ? g_CB.kernelStepShift : frameAge % 3;
+
         float minHitDistance;
         if (g_CB.useAdaptiveKernelSize)
         {
@@ -309,7 +316,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
                 [unroll]
             for (UINT c = 0; c < FilterKernel::Width; c++)
                 if (r != FilterKernel::Radius || c != FilterKernel::Radius)
-                    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, ddxy, r, c, minHitDistance, DTid);
+                    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, ddxy, r, c, minHitDistance, DTid, kernelStepShift, neighborWeightScale);
         }
 
         float smallValue = 1e-6f;

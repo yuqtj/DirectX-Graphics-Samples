@@ -136,18 +136,21 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     uint numRaysToGeneratePerQuad = min(MaxNumRaysPerQuad, CB.MaxRaysPerQuad);
     if (minQuadFrameAge >= CB.MinFrameAgeForAdaptiveSampling)
     {
-        numRaysToGeneratePerQuad = lerp(MaxNumRaysPerQuad, 1, (minQuadFrameAge - CB.MinFrameAgeForAdaptiveSampling) / float(CB.MaxFrameAge - CB.MinFrameAgeForAdaptiveSampling));
+        float t = (minQuadFrameAge - CB.MinFrameAgeForAdaptiveSampling) / float(CB.MaxFrameAge - CB.MinFrameAgeForAdaptiveSampling);
+        numRaysToGeneratePerQuad = lerp(MaxNumRaysPerQuad, 1, t);
     }
     numRaysToGeneratePerQuad = min(numRaysToGeneratePerQuad, CB.MaxRaysPerQuad);
+
+    uint StartID = (CB.FrameID * numRaysToGeneratePerQuad) % MaxNumRaysPerQuad;
 
     // Generate the rays.
     float2 encodedRayDirection = 0;
     if (rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH)
     {
         // Check whether this pixel is due to generate a ray.
-        if ((quadThreadIndex1D >= CB.FrameID && quadThreadIndex1D < CB.FrameID + numRaysToGeneratePerQuad) ||
+        if ((quadThreadIndex1D >= StartID && quadThreadIndex1D < StartID + numRaysToGeneratePerQuad) ||
             // Check for when a valid quad thread index range wraps around.
-            (CB.FrameID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && quadThreadIndex1D < ((CB.FrameID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad)))
+            (StartID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && quadThreadIndex1D < ((StartID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad)))
         {
             float3 rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
             encodedRayDirection = EncodeNormal(rayDirection);

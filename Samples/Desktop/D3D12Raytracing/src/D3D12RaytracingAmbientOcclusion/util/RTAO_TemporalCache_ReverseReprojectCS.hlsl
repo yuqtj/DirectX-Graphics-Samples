@@ -397,8 +397,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
         //ToDo interpolate from neighbors
         bool isValidValue = value != RTAO::InvalidAOValue;
         mergedValue = value;
-        mergedValueSquaredMean = value * value;
-        frameAge = 1;
+        mergedValueSquaredMean = isValidValue ? value * value : RTAO::InvalidAOValue;
+        frameAge = isValidValue ? 1 : 0;
         outVariance = localVariance;
     }
     g_texOutputCachedValue[DTid] = mergedValue;
