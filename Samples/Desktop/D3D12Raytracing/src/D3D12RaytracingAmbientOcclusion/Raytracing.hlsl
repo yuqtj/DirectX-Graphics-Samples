@@ -820,10 +820,18 @@ void MyRayGenShader_GBuffer()
     GBufferRayPayload rayPayload = TraceGBufferRay(ray, currentRayRecursionDepth);
 #endif
 
+
+    // Invalidate perfect mirror reflections that missed. 
+    // There is no We don't need to calculate AO for those.
+    bool hasNonZeroDiffuse = rayPayload.AOGBuffer.diffuseByte3 != 0;
+    rayPayload.AOGBuffer.tHit = hasNonZeroDiffuse ? rayPayload.AOGBuffer.tHit : HitDistanceOnMiss;
+    bool hasCameraRayHitGeometry = rayPayload.AOGBuffer.tHit > 0;   // ToDo use helper fcn
+
+
 	// Write out GBuffer information to rendertargets.
 	// ToDo Test conditional write on all output 
-	g_rtGBufferCameraRayHits[DTid] = (rayPayload.AOGBuffer.tHit > 0 ? 1 : 0);
-   
+	g_rtGBufferCameraRayHits[DTid] = hasCameraRayHitGeometry ? 1 : 0;   // ToDo should this be 1 if we hit a perfect mirror reflecting into skybox?
+
     // g_rtGBufferMaterialInfo[DTid] = rayPayload.materialInfo;
 
     // ToDo Use calculated hitposition based on distance from GBuffer instead?
@@ -837,10 +845,10 @@ void MyRayGenShader_GBuffer()
     {
         float3 raySegment = rayPayload.hitPosition - CB.cameraPosition.xyz;
 #else
-
+    
+    // 
     // ToDo dedupe
     //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - CB.cameraPosition.xyz, 1);
-    bool hasCameraRayHitGeometry = rayPayload.AOGBuffer.tHit > 0;
     if (hasCameraRayHitGeometry)
     {
         // Calculate depth value.
