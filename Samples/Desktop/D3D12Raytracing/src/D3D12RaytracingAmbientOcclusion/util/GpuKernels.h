@@ -352,14 +352,15 @@ namespace GpuKernels
             ID3D12DescriptorHeap* descriptorHeap, 
             FilterType type,
             // ToDo use helper structs to pass the data in
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle, // ToDo remove const?
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,   // ToDo standardize depth vs distance
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
-            RWGpuResource* outputResourceHandle,
+            RWGpuResource* outputResource,  // ToDo pass these as handles
+            RWGpuResource* outputIntermediateResource,
             RWGpuResource* outputDebug1ResourceHandle,
             RWGpuResource* outputDebug2ResourceHandle,
             float valueSigma,
@@ -368,6 +369,7 @@ namespace GpuKernels
             float weightScale,
             TextureResourceFormatRGB::Type normalDepthResourceFormat,
             UINT kernelStepShifts[5],
+            UINT passNumberToOutputToIntermediateResource = 1,
             UINT numFilterPasses = 5,
             Mode filterMode = OutputFilteredValue,
             bool reverseFilterPassOrder = false,

@@ -75,7 +75,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
     
     float2 centerTexCoord = (topLeftSrcIndex + 0.5) * cb.invTextureDim;
-    float4 vDepths = g_inDepth.GatherRed(ClampSampler, centerTexCoord).wzxy;
+    float4 vDepths = g_inDepth.Gather(ClampSampler, centerTexCoord).wzxy;
 
     uint selectedOffset = GetIndexFromDepthAwareBilateralDownsample2x2(vDepths, DTid);
     uint2 selectedDTid = topLeftSrcIndex + srcIndexOffsets[selectedOffset];

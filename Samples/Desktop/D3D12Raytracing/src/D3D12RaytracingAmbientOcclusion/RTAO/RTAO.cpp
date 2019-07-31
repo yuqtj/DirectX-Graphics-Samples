@@ -337,7 +337,7 @@ void RTAO::CreateTextureResources()
     auto backbufferFormat = m_deviceResources->GetBackBufferFormat();
 
     // ToDo change this to non-PS resouce since we use CS?
-    D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
     // ToDo remove obsolete resources, QuarterResAO event triggers this so we may not need all low/gbuffer width AO resources.
 
@@ -546,7 +546,7 @@ void RTAO::CalculateAdaptiveSamplingCounts()
 
     // Transition the output resource to UAV state.
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::FilterWeightSum].resource.Get(), before, after));
     }
@@ -586,7 +586,7 @@ void RTAO::CalculateAdaptiveSamplingCounts()
     // Transition the output to SRV.
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::FilterWeightSum].resource.Get(), before, after));
     }
 #endif
@@ -763,7 +763,7 @@ void RTAO::OnRender(
         // ToDo remove the if-else
         if (SceneArgs::RTAOUseRaySorting)
         {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
             D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             D3D12_RESOURCE_BARRIER barriers[] = {
                 CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
@@ -778,7 +778,7 @@ void RTAO::OnRender(
         }
         else
         {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
             D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             D3D12_RESOURCE_BARRIER barriers[] = {
                 CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
@@ -858,7 +858,7 @@ void RTAO::OnRender(
         // Transition AO resources to shader resource state.
         {
             D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
             D3D12_RESOURCE_BARRIER barriers[] = {
                 CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::UAV(m_AORayDirectionOriginDepth.resource.Get()),  // ToDo
@@ -884,7 +884,7 @@ void RTAO::OnRender(
         // Transition the output to SRV state. 
         {
             D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
             D3D12_RESOURCE_BARRIER barriers[] = {
                 CD3DX12_RESOURCE_BARRIER::Transition(m_sourceToSortedRayIndexOffset.resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndexOffset.resource.Get(), before, after),
@@ -934,7 +934,7 @@ void RTAO::OnRender(
     // Transition AO resources to shader resource state.
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_BARRIER barriers[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),

@@ -54,6 +54,10 @@
 - Optimizations:
     - Encode ray hit distance to 8bit.
     - replace multiple loads with gathers.
+    - tighten texture format sizes
+
+- Cleanup:
+    - ToDo remove .f specifier from floating numbers in hlsl
 */
 // Workarounds - ToDo remove/document
 #define REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO 0

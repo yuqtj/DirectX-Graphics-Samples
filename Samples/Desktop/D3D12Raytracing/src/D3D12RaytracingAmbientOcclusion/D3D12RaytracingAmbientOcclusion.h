@@ -326,8 +326,7 @@ private:
     void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter();
     void RenderPass_TemporalCacheReverseProjection();
-
-	void DownsampleRaytracingOutput();
+    void DownsampleRaytracingOutput();
     void DownsampleGBuffer();
 
     void UpsampleResourcesForRenderComposePass();

@@ -32,6 +32,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint GIndex: SV_GroupIndex, uint2 Gi
 	uint2 index = DTid + uint2(Gid.x * ((ReduceSumCS::ThreadGroup::NumElementsToLoadPerThread - 1) * ReduceSumCS::ThreadGroup::Width), 0);
 	for (UINT i = 0; i < ReduceSumCS::ThreadGroup::NumElementsToLoadPerThread; i++)
 	{
+        // ToDo use gather
 		sum += g_texInput[index];
 		index += uint2(ReduceSumCS::ThreadGroup::Width, 0);
 	}

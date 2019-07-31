@@ -1445,7 +1445,7 @@ void SSAO::Run(
         else
         {
             D3D12_RESOURCE_BARRIER startBarrier[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(m_outFrameResources.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
+                CD3DX12_RESOURCE_BARRIER::Transition(m_outFrameResources.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
             };
             commandList->ResourceBarrier(_countof(startBarrier), startBarrier);
             CD3DX12_CPU_DESCRIPTOR_HANDLE renderTargetView = m_deviceResources->GetRenderTargetView();
@@ -1481,7 +1481,7 @@ void SSAO::Run(
             }
 
             D3D12_RESOURCE_BARRIER endBarrier[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(m_outFrameResources.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+                CD3DX12_RESOURCE_BARRIER::Transition(m_outFrameResources.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
             };
             commandList->ResourceBarrier(_countof(endBarrier), endBarrier);
         }

@@ -1282,7 +1282,8 @@ namespace GpuKernels
     }
 
     // ToDo add option to allow input, output being the same
-    // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
+    // Expects, and returns outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
+    // Expects, and returns outputIntermediateResource in D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE state.
     void AtrousWaveletTransformCrossBilateralFilter::Execute(
         ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -1296,6 +1297,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
         RWGpuResource* outputResource,
+        RWGpuResource* outputIntermediateResource,
         RWGpuResource* outputDebug1Resource,
         RWGpuResource* outputDebug2Resource,
         float valueSigma,
@@ -1304,6 +1306,7 @@ namespace GpuKernels
         float weightScale,
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
         UINT kernelStepShifts[5],
+        UINT passNumberToOutputToIntermediateResource,
         UINT numFilterPasses,
         Mode filterMode,
         bool reverseFilterPassOrder,
@@ -1397,7 +1400,7 @@ namespace GpuKernels
             CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
             CB->textureDim = resourceDim;
             CB->minVarianceToDenoise = minVarianceToDenoise;
-            CB->staleNeighborWeightScale = staleNeighborWeightScale;
+            CB->staleNeighborWeightScale = _i == 0 ? staleNeighborWeightScale : 1;  // ToDo revise
             CB->maxFrameAgeToDenoise = maxFrameAgeToDenoise;
 
             switch (normalDepthResourceFormat)
@@ -1440,6 +1443,7 @@ namespace GpuKernels
 #if WORKAROUND_ATROUS_VARYING_OUTPUTS
             commandList->SetComputeRootDescriptorTable(Slot::Output, outValueResources[0]->gpuDescriptorWriteAccess);
 #else
+            ToDo
             UINT outputSlot = (filterMode == Mode::OutputFilteredValue) ? Slot::Output : Slot::FilterWeightSumOutput; // ToDo Cleanup
             commandList->SetComputeRootDescriptorTable(outputSlot, outValueResources[0]->gpuDescriptorWriteAccess);
 #endif
@@ -1452,6 +1456,20 @@ namespace GpuKernels
                                 
                 // Dispatch.
                 commandList->Dispatch(groupSize.x, groupSize.y, 1);
+
+                // ToDo remove the copy, write directly to the resource instead.
+                if (outputIntermediateResource && i == passNumberToOutputToIntermediateResource)
+                {
+                    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(outValueResources[i % 2]->resource.Get()));
+
+                    CopyTextureRegion(
+                        commandList,
+                        outValueResources[i % 2]->resource.Get(),
+                        outputIntermediateResource->resource.Get(),
+                        &CD3DX12_BOX(0, 0, resourceDim.x, resourceDim.y),
+                        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                }
 
                 // Transition and bind resources for the next pass.
                 // Flip input/output. 

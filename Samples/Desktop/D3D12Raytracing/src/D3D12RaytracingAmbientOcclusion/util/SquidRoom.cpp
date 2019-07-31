@@ -213,7 +213,7 @@ void SquidRoomAssets::LoadGeometry(
                 textureData.SlicePitch = tex.Data->Size;
 
                 UpdateSubresources(commandList, (*textures)[i].resource.Get(), (*textures)[i].upload.Get(), 0, 0, subresourceCount, &textureData);
-                commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition((*textures)[i].resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+                commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition((*textures)[i].resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
             }
 
             CreateTextureSRV(device, (*textures)[i].resource.Get(), descriptorHeap, &(*textures)[i].heapIndex, &(*textures)[i].cpuDescriptorHandle, &(*textures)[i].gpuDescriptorHandle);
