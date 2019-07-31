@@ -106,6 +106,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             uint laneToReadFrom = min(WaveGetLaneCount() - 1, Row_BaseWaveLaneIndex + GTid16x4.x + 8);
             valueSum += WaveReadLaneAt(valueSum, laneToReadFrom);
             squaredValueSum += WaveReadLaneAt(squaredValueSum, laneToReadFrom);
+            numValues += WaveReadLaneAt(numValues, laneToReadFrom);
 
             // Store only the valid results, i.e. first GroupDim columns.
             if (GTid16x4.x < GroupDim.x)

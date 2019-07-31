@@ -16,6 +16,18 @@
 
 /*
 //ToDo
+- Multi-scale denoiser
+- consider alternating min/max pattern on downsampling
+- 3x3 vs 5x5 blur at lower resolutions
+- Atrous vs separable at lower resolutions
+- mirror weights
+- weigh samples with higher tspp more when up/down sampling
+- test energy conservation on ~4/16 spp at tspp up to 32
+
+- match denoised  AO at fidelity closer to that of temporal variance sharpness image
+- improve matching on TSS. Dragon surface hits lots of likely unnecessary disocclusions on camero movement/zoom.
+- fix the temporal variance shimmer on boundaries with skybox.
+- Make clamping great again.
 - map local variance to only valid AO values
 - retain per window frame seed on static geometry
 
@@ -41,7 +53,7 @@
 - Double check that passes either check whether a pixel value is valid from previous pass/frame or the value gets ignored.
 - Optimizations:
     - Encode ray hit distance to 8bit.
-   
+    - replace multiple loads with gathers.
 */
 // Workarounds - ToDo remove/document
 #define REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO 0
@@ -755,13 +767,14 @@ struct AoBlurConstantBuffer
 	float kDistanceTolerance;
 };
 
+// ToDo standardize Texture vs Tex, Dim ...
 struct DownsampleFilterConstantBuffer
 {
 	XMUINT2 inputTextureDimensions;
 	XMFLOAT2 invertedInputTextureDimensions;
 };
 
-struct GaussianFilterConstantBuffer
+struct TextureDimConstantBuffer
 {
     XMUINT2 textureDim;
     XMFLOAT2 invTextureDim;

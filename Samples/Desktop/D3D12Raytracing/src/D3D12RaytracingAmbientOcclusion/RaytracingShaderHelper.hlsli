@@ -786,6 +786,33 @@ void GetAuxilaryCameraRays(in float3 cameraPosition, in float4x4 projectionToWor
     ry = GenerateCameraRay(DispatchRaysIndex().xy + uint2(0, 1), cameraPosition, projectionToWorldWithCameraEyeAtOrigin);
 }
 
+// ToDo replace local implementations
+float min4(in float4 v)
+{
+    return min(min(v.x, v.y), min(v.z, v.w));
+}
 
+float max4(in float4 v)
+{
+    return max(max(v.x, v.y), max(v.z, v.w));
+}
+
+// ToDo replace local implementations with this
+// Remap partial depth derivatives at z0 from [1,1] pixel offset to a new pixel offset.
+float2 RemapPartialDepthDerivatives(in float z0, in float2 ddxy, in uint2 pixelOffset)
+{
+    // Perspective correction for non-linear depth interpolation.
+    // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
+    // Given a linear depth interpolation for finding z at offset q along z0 to z1
+    //      z =  1 / (1 / z0 * (1 - q) + 1 / z1 * q)
+    // and z1 = z0 + ddxy, where z1 is at a unit pixel offset [1, 1]
+    // z can be calculated via ddxy as
+    //
+    // ToDo ddxy vs dxdy
+    //      z = (z0 + ddxy) / (1 + (1-q) / z0 * ddxy) 
+    float2 z = (z0 + ddxy) / (1 + ((1 - pixelOffset) / z0) * ddxy);
+    
+    return z - z0;
+}
 
 #endif // RAYTRACINGSHADERHELPER_H

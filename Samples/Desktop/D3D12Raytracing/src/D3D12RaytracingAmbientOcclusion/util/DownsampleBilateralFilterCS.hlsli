@@ -155,17 +155,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
     g_outNormalAndDepth[DTid] = encodedNormalsAndDepths[outDepthIndex];
 
     // ToDo
-    // Since we're reducing the resolution by 2, multiple the partial derivatives by 2. Either that or the multiplier should be applied when calculating weights.
+    // Since we're reducing the resolution by 2, recalculate the partial derivatives at the new offset of 2 pixels.
     // ToDo it would be cleaner to apply that multiplier at weights calculation. Or recompute the partial derivatives on downsample?
-#if 1 // Pespective correction for the non-linear interpolation
     float2 ddxy = g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
     float z0 = depths[outDepthIndex];
     float pixelOffset = 2;
-    float2 zxy = (z0 + ddxy) / (1 + ((1 - pixelOffset) / z0) * ddxy);
-    g_outPartialDistanceDerivatives[DTid] = abs(zxy - z0);
-#else
-    g_outPartialDistanceDerivatives[DTid] = 2 * g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
-#endif
+    float2 remappedDdxy = RemapPartialDepthDerivatives(z0, ddxy, pixelOffset);
+    g_outPartialDistanceDerivatives[DTid] = remappedDdxy;
 
 #ifdef BILATERAL_DOWNSAMPLE_VALUE_POINT_SAMPLING
     g_outValue[DTid] = values[outDepthIndex];

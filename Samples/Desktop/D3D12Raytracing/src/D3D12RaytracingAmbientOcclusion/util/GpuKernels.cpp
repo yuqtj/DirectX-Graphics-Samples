@@ -323,7 +323,7 @@ namespace GpuKernels
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
 			commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
 			commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
-			commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress());
+			commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
 		}
 
@@ -420,7 +420,7 @@ namespace GpuKernels
 			commandList->SetComputeRootSignature(m_rootSignature.Get());
 			commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
 			commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
-			commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress());
+			commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
 			commandList->SetPipelineState(m_pipelineStateObject.Get());
 		}
 
@@ -453,6 +453,7 @@ namespace GpuKernels
                     InputMotionVector,
                     InputPrevFrameHitPosition,
                     InputDepth,
+                    ConstantBuffer,
                     Count
                 };
             }
@@ -460,7 +461,7 @@ namespace GpuKernels
     }
 
     // ToDo move the Type parameter to Execute?
-    void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Initialize(ID3D12Device5* device, Type type)
+    void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -504,8 +505,12 @@ namespace GpuKernels
             rootParameters[Slot::InputPrevFrameHitPosition].InitAsDescriptorTable(1, &ranges[14]);
             rootParameters[Slot::OutputPrevFrameHitPosition].InitAsDescriptorTable(1, &ranges[15]);
             rootParameters[Slot::OutputLowPrecisionNormal].InitAsDescriptorTable(1, &ranges[16]);
+            rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
-            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            CD3DX12_STATIC_SAMPLER_DESC staticSamplers[] = {
+                CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP) };
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, ARRAYSIZE(staticSamplers), staticSamplers);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
         }
 
@@ -522,6 +527,11 @@ namespace GpuKernels
 
             ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
             m_pipelineStateObject->SetName(L"Pipeline state object: DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
+        }
+
+        // Create shader resources
+        {
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: DownsampleNormalDepthHitPositionGeometryHitBilateralFilter");
         }
     }
 
@@ -553,6 +563,11 @@ namespace GpuKernels
 
         ScopedTimer _prof(L"DownsampleNormalDepthHitPositionGeometryHitBilateralFilter", commandList);
 
+        m_CB->textureDim = XMUINT2(width, height);
+        m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
+
         // Set pipeline state.
         {
             commandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -572,6 +587,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::OutputMotionVector, outputMotionVectorResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPrevFrameHitPosition, outputPrevFrameHitPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDepth, outputDepthResourceHandle);
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
 

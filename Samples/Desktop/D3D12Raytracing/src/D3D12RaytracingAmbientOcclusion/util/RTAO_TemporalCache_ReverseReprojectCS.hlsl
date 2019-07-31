@@ -212,6 +212,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float2 cacheFrameTexturePos = texturePos - g_texInputTextureSpaceMotionVector[DTid];
     
     // Find the nearest integer index smaller than the texture position.
+    // The floor() ensures the that value sign is taken into consideration.
     int2 topLeftCacheFrameIndex = floor(cacheFrameTexturePos * cb.textureDim - 0.5);
 
     // ToDo why this doesn't match cacheFrameTexturePos??
@@ -348,7 +349,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
         frameAge = round(cacheFrameAge);
 
         // Clamp value to mean +/- std.dev of local neighborhood to surpress ghosting on value changing due to other occluder movements.
-        // This will prevent reusing values outside the expected range.
         // Ref: Salvi2016, Temporal Super-Sampling
         float frameAgeClamp = 0;
 
@@ -356,11 +356,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
         if (cb.clampCachedValues)
         {
             float localStdDev = max(cb.stdDevGamma * sqrt(localVariance), cb.minStdDevTolerance);
-            float prevCachedValue = cachedValue;
+            float nonClampedCachedValue = cachedValue;
             cachedValue = clamp(cachedValue, localMean - localStdDev, localMean + localStdDev); 
             
             // Scale the frame age based on how strongly the cached value got clamped.
-            frameAgeClamp = cb.clampDifferenceToFrameAgeScale * abs(cachedValue - prevCachedValue);
+            // ToDo avoid saturate?
+            frameAgeClamp = saturate(cb.clampDifferenceToFrameAgeScale * abs(cachedValue - nonClampedCachedValue));
             frameAge = lerp(frameAge, 0, frameAgeClamp);
         }
         //frameAgeClamp = screenSpaceReprojectionDistanceAsWidthPercentage / maxScreenSpaceReprojectionDistance;

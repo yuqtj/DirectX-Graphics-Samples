@@ -34,66 +34,65 @@ RWTexture2D<float2> g_outMotionVector : register(u6);
 RWTexture2D<float4> g_outReprojectedHitPosition : register(u7);
 RWTexture2D<float4> g_outNormalLowPrecisionNormal : register(u8); // ToDo cleanup - pass two normal inputs instead?
 
+SamplerState ClampSampler : register(s0);
+
+ConstantBuffer<TextureDimConstantBuffer> cb : register(b0);
+
 // ToDo remove duplicate downsampling with the other ValudeDepthNormal
 
-// ToDo rename to DownsampleGBuffer
-
-void LoadDepthAndEncodedNormal(in uint2 texIndex, out float4 normal, out float depth)
+void LoadDepthAndEncodedNormal(in uint2 texIndex, out float4 encodedNormalDepth, out float depth)
 {
     // ToDo this is confusing as it doesn't decode the normal
-    normal = g_inNormal[texIndex];
-    depth = normal.z;
+    encodedNormalDepth = g_inNormal[texIndex];
+    depth = encodedNormalDepth.z;
 }
 
-//ToDo
 // ToDo dedupe - already in DownsampleBilateralFilterCS.hlsli
-// ToDo strip Bilateral from the name?
 // Returns a selected depth index when bilateral downsapling.
-void GetDepthIndexFromDownsampleDepthBilateral2x2(out UINT outDepthIndex, in float depths[4], in uint2 DTid)
+uint GetIndexFromDepthAwareBilateralDownsample2x2(in float4 vDepths, in uint2 DTid)
 {
     // Choose a alternate min max depth sample in a checkerboard 2x2 pattern to improve depth correlations for bilateral 2x2 upsampling.
     // Ref: http://c0de517e.blogspot.com/2016/02/downsampled-effects-with-depth-aware.html
     bool checkerboardTakeMin = ((DTid.x + DTid.y) & 1) == 0;
 
-    float lowResDepth = checkerboardTakeMin
-        ? min(min(min(depths[0], depths[1]), depths[2]), depths[3])
-        : max(max(max(depths[0], depths[1]), depths[2]), depths[3]);
+    float lowResDepth = checkerboardTakeMin ? min4(vDepths) : max4(vDepths);
 
     // Find the corresponding sample index to the the selected sample depth.
-    float4 vDepths = float4(depths[0], depths[1], depths[2], depths[3]);
     float4 depthDelta = abs(lowResDepth - vDepths);
 
-    outDepthIndex = depthDelta[0] < depthDelta[1] ? 0 : 1;
+    uint outDepthIndex = depthDelta[0] < depthDelta[1] ? 0 : 1;
     outDepthIndex = depthDelta[2] < depthDelta[outDepthIndex] ? 2 : outDepthIndex;
     outDepthIndex = depthDelta[3] < depthDelta[outDepthIndex] ? 3 : outDepthIndex;
+
+    return outDepthIndex;
 }
 
+// ToDo split into multiple per texture downsample (and use a mask input?)
 [numthreads(DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::ThreadGroup::Width, DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     uint2 topLeftSrcIndex = DTid << 1;
-
-    float4 encodedNormals[4];
-    float  depths[4];
-
     const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
-    LoadDepthAndEncodedNormal(topLeftSrcIndex, encodedNormals[0], depths[0]);
-    LoadDepthAndEncodedNormal(topLeftSrcIndex + srcIndexOffsets[1], encodedNormals[1], depths[1]);
-    LoadDepthAndEncodedNormal(topLeftSrcIndex + srcIndexOffsets[2], encodedNormals[2], depths[2]);
-    LoadDepthAndEncodedNormal(topLeftSrcIndex + srcIndexOffsets[3], encodedNormals[3], depths[3]);
+    
+    float2 centerTexCoord = (topLeftSrcIndex + 0.5) * cb.invTextureDim;
+    float4 vDepths = g_inDepth.GatherRed(ClampSampler, centerTexCoord).wzxy;
 
-    UINT outDepthIndex;
-    GetDepthIndexFromDownsampleDepthBilateral2x2(outDepthIndex, depths, DTid);
+    uint selectedOffset = GetIndexFromDepthAwareBilateralDownsample2x2(vDepths, DTid);
+    uint2 selectedDTid = topLeftSrcIndex + srcIndexOffsets[selectedOffset];
 
-    g_outNormalLowPrecisionNormal[DTid] = g_outNormal[DTid] = encodedNormals[outDepthIndex];
-    g_outHitPosition[DTid] = g_inHitPosition[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
-    g_outGeometryHit[DTid] = g_inGeometryHit[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
-    g_outDepth[DTid] = g_inDepth[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
+    g_outDepth[DTid] = vDepths[selectedOffset];
+    float4 encodedNormalDepth = g_inNormal[selectedDTid];
+    g_outNormal[DTid] = encodedNormalDepth;
+    g_outNormalLowPrecisionNormal[DTid] = encodedNormalDepth;
+
 
     // Since we're reducing the resolution by 2, multiple the partial derivatives by 2. Either that or the multiplier should be applied when calculating weights.
     // ToDo it would be cleaner to apply that multiplier at weights calculation. Or recompute the partial derivatives on downsample?
-    g_outPartialDistanceDerivatives[DTid] = 2 * g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
+    // ToDo use perspective correct
+    g_outPartialDistanceDerivatives[DTid] = 2 * g_inPartialDistanceDerivatives[selectedDTid];
 
-    g_outMotionVector[DTid] = g_inMotionVector[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
-    g_outReprojectedHitPosition[DTid] = g_inReprojectedHitPosition[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
+    g_outMotionVector[DTid] = g_inMotionVector[selectedDTid];
+    g_outReprojectedHitPosition[DTid] = g_inReprojectedHitPosition[selectedDTid];
+    g_outHitPosition[DTid] = g_inHitPosition[selectedDTid];
+    g_outGeometryHit[DTid] = g_inGeometryHit[selectedDTid];
 }

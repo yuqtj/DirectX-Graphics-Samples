@@ -1557,7 +1557,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 	m_downsampleBoxFilter2x2Kernel.Initialize(device, FrameCount);
 	m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9, FrameCount);
 	m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25, FrameCount); // ToDo Dedupe 9 and 25
-    m_downsampleGBufferBilateralFilterKernel.Initialize(device, GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::FilterDepthAware2x2);
+    m_downsampleGBufferBilateralFilterKernel.Initialize(device, GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::FilterDepthAware2x2, FrameCount);
     m_downsampleValueNormalDepthBilateralFilterKernel.Initialize(device, static_cast<GpuKernels::DownsampleValueNormalDepthBilateralFilter::Type>(static_cast<UINT>(SceneArgs::DownsamplingBilateralFilter)));
     m_upsampleBilateralFilterKernel.Initialize(device, GpuKernels::UpsampleBilateralFilter::Filter2x2, FrameCount);
     m_multiScale_upsampleBilateralFilterAndCombineKernel.Initialize(device, GpuKernels::MultiScale_UpsampleBilateralFilterAndCombine::Filter2x2);
@@ -2771,15 +2771,15 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
     {
         for (UINT i = 1; i < 5; i++)
         {
-            offsets[i-1] = offsets[i];
+            offsets[i - 1] = offsets[i];
         }
+    }
 
-        UINT newStartId = 0;
-        for (UINT i = 0; i < 5; i++)
-        {
-            offsets[i] = newStartId + offsets[i];
-            newStartId = offsets[i] + 1;
-        }
+    UINT newStartId = 0;
+    for (UINT i = 0; i < 5; i++)
+    {
+        offsets[i] = newStartId + offsets[i];
+        newStartId = offsets[i] + 1;
     }
 #endif
 
@@ -2860,7 +2860,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
 // Ref: Delbracio et al. 2014, Boosting Monte Carlo Rendering by Ray Histogram Fusion
 void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilter()
 {
-#if 1 
+#if 1
     ThrowIfFalse(false, L"ToDo");
 #else
     auto commandList = m_deviceResources->GetCommandList();
@@ -4441,8 +4441,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalCacheReverseProjection(
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
-#if !VARIABLE_RATE_RAYTRACING
-    ToDo - the filter needs to check for invalid values...
+#if 1 // !VARIABLE_RATE_RAYTRACING
+    // ToDo - the filter needs to check for invalid values...
     // ToDo should we be smoothing before temporal?
     // Smoothen the local variance which is prone to error due to undersampled input.
     {
@@ -4912,9 +4912,13 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
                         if (SceneArgs::RTAO_TemporalCache_CacheDenoisedOutput)
                         {
+
                             // Cache current frame's normal depth buffer.
                             RWGpuResource* AOTSSCoefficient = SceneArgs::QuarterResAO ? m_lowResAOTSSCoefficient : m_AOTSSCoefficient;
                             RWGpuResource* AOResources = m_RTAO.AOResources();
+
+                            commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Smoothed].resource.Get()));
+
                             CopyTextureRegion(
                                 commandList,
                                 AOResources[AOResource::Smoothed].resource.Get(),
@@ -4931,8 +4935,11 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                                 &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+                            commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].resource.Get()));
+
+                            ApplyAtrousWaveletTransformFilter(false);
                         }
-                        ApplyAtrousWaveletTransformFilter(false);
                     }
 #else
                     ToDo - fix up resources

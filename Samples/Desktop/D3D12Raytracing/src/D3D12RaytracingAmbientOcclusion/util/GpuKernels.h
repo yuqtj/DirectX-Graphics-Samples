@@ -125,7 +125,7 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device5* device, Type type);
+        void Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
@@ -150,6 +150,8 @@ namespace GpuKernels
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        ConstantBuffer<TextureDimConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
     };
 
     class DownsampleValueNormalDepthBilateralFilter
@@ -280,7 +282,7 @@ namespace GpuKernels
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
 
-        ConstantBuffer<GaussianFilterConstantBuffer> m_CB;
+        ConstantBuffer<TextureDimConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
     };
 

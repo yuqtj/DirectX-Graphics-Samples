@@ -148,6 +148,10 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     if (rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH)
     {
         // Check whether this pixel is due to generate a ray.
+#if 0
+        // ToDo make sure to generate no more than one ray per pixel.
+
+#else
         if ((quadThreadIndex1D >= StartID && quadThreadIndex1D < StartID + numRaysToGeneratePerQuad) ||
             // Check for when a valid quad thread index range wraps around.
             (StartID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && quadThreadIndex1D < ((StartID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad)))
@@ -155,6 +159,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
             float3 rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
             encodedRayDirection = EncodeNormal(rayDirection);
         }
+#endif
         else
         {
             // Invalidate this ray entry.

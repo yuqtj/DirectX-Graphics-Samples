@@ -301,7 +301,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
             stdDeviation = sqrt(variance);
         }
 
-        uint kernelStepShift = frameAge >= 8 ? g_CB.kernelStepShift : frameAge % 3;
+        uint kernelStepShift = g_CB.kernelStepShift;// frameAge >= 8 ? g_CB.kernelStepShift : (frameAge + 2) % 3;
 
         float minHitDistance;
         if (g_CB.useAdaptiveKernelSize)

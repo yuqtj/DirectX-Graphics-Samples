@@ -14,7 +14,7 @@
 
 Texture2D<float2> g_texInput : register(t0);
 RWTexture2D<float2> g_texOutput : register(u0);
-ConstantBuffer<GaussianFilterConstantBuffer> cb : register(b0);
+ConstantBuffer<TextureDimConstantBuffer> cb : register(b0);
 
 SamplerState MirroredLinearSampler : register(s0);
 
