@@ -362,12 +362,15 @@ void main(uint2 DTid : SV_DispatchThreadID)
             // Scale the frame age based on how strongly the cached value got clamped.
             // ToDo avoid saturate?
             frameAgeClamp = saturate(cb.clampDifferenceToFrameAgeScale * abs(cachedValue - nonClampedCachedValue));
+            // ToDo round to nearest integer?
             frameAge = lerp(frameAge, 0, frameAgeClamp);
         }
         //frameAgeClamp = screenSpaceReprojectionDistanceAsWidthPercentage / maxScreenSpaceReprojectionDistance;
         //uint maxFrame
         //frameAge = lerp(frameAge, 0, frameAgeClamp);
 
+        // ToDo: use moving average (Koskela2019) for the first few samples 
+        // to even out the weights for the noisy start instead of weighting first samples much more.
         float invFrameAge = 1.f / (frameAge + 1.f);
         float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
 
