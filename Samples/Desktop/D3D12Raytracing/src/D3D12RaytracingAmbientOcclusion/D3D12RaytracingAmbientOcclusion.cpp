@@ -133,7 +133,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition/Mode", CompositionType::AmbientOcclusionOnly_TemporallySupersampled, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition/Mode", CompositionType::AmbientOcclusionOnly_Denoised, CompositionType::Count, CompositionModes);
     BoolVar Compose_VarianceVisualizeStdDeviation(L"Render/Render composition/Variance/Visualize std deviation", true);       
     NumVar Compose_VarianceScale(L"Render/Render composition/Variance/Variance scale", 1.0f, 0, 10, 0.1f);
 
@@ -198,8 +198,8 @@ namespace SceneArgs
 
     
     // ToDo remove
-    IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 2, 0, 10, 1);
-    IntVar RTAO_KernelStepShift1(L"Render/AO/RTAO/Kernel Step Shifts/1", 0, 0, 10, 1);
+    IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 1, 0, 10, 1);
+    IntVar RTAO_KernelStepShift1(L"Render/AO/RTAO/Kernel Step Shifts/1", 1, 0, 10, 1);
     IntVar RTAO_KernelStepShift2(L"Render/AO/RTAO/Kernel Step Shifts/2", 0, 0, 10, 1);
     IntVar RTAO_KernelStepShift3(L"Render/AO/RTAO/Kernel Step Shifts/3", 0, 0, 10, 1);
     IntVar RTAO_KernelStepShift4(L"Render/AO/RTAO/Kernel Step Shifts/4", 0, 0, 10, 1);
@@ -266,8 +266,8 @@ namespace SceneArgs
     IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 1, 1, 8, 1);
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.011f, 0.0f, 30.0f, 0.1f);
 #else
-    IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 5, 1, 8, 1);
-    NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.2f, 0.0f, 30.0f, 0.1f);
+    IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 2, 1, 8, 1);
+    NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.3f, 0.0f, 30.0f, 0.1f);
     BoolVar RTAODenoising_2ndPass_UseVariance(L"Render/AO/RTAO/Denoising/2nd+ pass/Use variance", false);
     NumVar RTAODenoising_2ndPass_NormalSigma(L"Render/AO/RTAO/Denoising/2nd+ pass/Normal Sigma", 2, 1, 256, 2);  
     NumVar RTAODenoising_2ndPass_DepthSigma(L"Render/AO/RTAO/Denoising/2nd+ pass/Depth Sigma", 1.0f, 0.0f, 10.0f, 0.02f); 
@@ -2777,7 +2777,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
     }
 
     UINT newStartId = 0;
-    for (UINT i = 0; i < 5; i++)
+    for (UINT i = 1; i < 5; i++)
     {
         offsets[i] = newStartId + offsets[i];
         newStartId = offsets[i] + 1;
