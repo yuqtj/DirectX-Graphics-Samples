@@ -255,6 +255,14 @@ namespace AOResource {
 	};
 }
 
+namespace AOVarianceResource {
+    enum Enum {
+        Raw = 0,
+        Smoothed,
+        Count
+    };
+}
+
 namespace TemporalCache {
     enum Enum {
         FrameAge = 0,

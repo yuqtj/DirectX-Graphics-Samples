@@ -13,11 +13,11 @@
 #include "..\RaytracingHlslCompat.h"
 #include "..\RaytracingShaderHelper.hlsli"
 
-Texture2D<float> g_inValue : register(t0);
+Texture2D<ValueType> g_inValue : register(t0);
 Texture2D<float4> g_inLowResNormalDepth : register(t1);
 Texture2D<float4> g_inHiResNormalDepth : register(t2);
 Texture2D<float2> g_inHiResPartialDistanceDerivative : register(t3);
-RWTexture2D<float> g_outValue : register(u0);
+RWTexture2D<ValueType> g_outValue : register(u0);
 
 // ToDo standardize cb vs g_CB
 ConstantBuffer<DownAndUpsampleFilterConstantBuffer> g_CB : register(b0);
@@ -36,7 +36,8 @@ void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texInde
 
 // ToDo comment
 // ToDo reuse same in all resampling and atrous filter?
-float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float4 BilinearWeights, in float4 SampleValues, in uint2 hiResPixelIndex)
+// Returns normalized weights for Bilateral Upsample.
+float4 BilateralUpsampleWeights(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float4 BilinearWeights, in uint2 hiResPixelIndex)
 {
     float4 depthWeights = 1;
     float4 normalWeights = 1;
@@ -84,11 +85,11 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
        // weights = lerp(normalWeights, depthWeights,)
     }
 
-
-    float totalWeight = dot(weights, 1);
+    // ToDo revise
     weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0;
+    float4 nWeights = weights / dot(weights, 1); // ToDO add epsilon? Default to average if weight is too small?
 
-    return dot(weights, SampleValues) / dot(weights, 1);    // ToDo add epsilon to division?
+    return nWeights;
 }
 
 [numthreads(UpsampleBilateralFilter::ThreadGroup::Width, UpsampleBilateralFilter::ThreadGroup::Height, 1)]
@@ -100,7 +101,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
     int2 topLeftLowResIndex = (topLeftHiResIndex + int2(-1, -1)) >> 1;
     const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
 
-#if 1
     float  hiResDepths[4];
     float3 hiResNormals[4];
     {
@@ -123,11 +123,17 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
     float4 vLowResDepths = float4(lowResDepths[0], lowResDepths[1], lowResDepths[2], lowResDepths[3]);
 
-    float4 vLowResValues = float4(
+    // ToDo use gather
+#if VALUE_NUM_COMPONENTS == 1
+    float4 vLowResValues = {
+#elif VALUE_NUM_COMPONENTS == 2
+    float4x2 vLowResValues = {
+#endif
         g_inValue[topLeftLowResIndex + srcIndexOffsets[0]],
         g_inValue[topLeftLowResIndex + srcIndexOffsets[1]],
         g_inValue[topLeftLowResIndex + srcIndexOffsets[2]],
-        g_inValue[topLeftLowResIndex + srcIndexOffsets[3]]);
+        g_inValue[topLeftLowResIndex + srcIndexOffsets[3]]
+    };
 
     const float4 bilinearWeights[4] = {
         float4(9, 3, 3, 1),
@@ -142,36 +148,15 @@ void main(uint2 DTid : SV_DispatchThreadID)
             float actualDistance = hiResDepths[i];
             float3 actualNormal = hiResNormals[i];
 
-            float outValue = BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues, topLeftHiResIndex + srcIndexOffsets[i]);
-            // ToDo revise
+            float4 nWeights = BilateralUpsampleWeights(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], topLeftHiResIndex + srcIndexOffsets[i]);
+
+#if VALUE_NUM_COMPONENTS == 1
+            float outValue = dot(nWeights, vLowResValues);
+#elif VALUE_NUM_COMPONENTS == 2
+            float2 outValue = float2(dot(nWeights, vLowResValues._11_21_31_41), dot(nWeights, vLowResValues._12_22_32_42));
+#endif
+            // ToDo revise - take an average if none match?
             g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = actualDistance < DISTANCE_ON_MISS ? outValue : vLowResValues[i];
         }
     }
-#else
-
-    float4 hiResDepths = float4(
-        g_inHiResNormalDepth[topLeftHiResIndex].z,
-        g_inHiResNormalDepth[topLeftHiResIndex + int2(1, 0)].z,
-        g_inHiResNormalDepth[topLeftHiResIndex + int2(0, 1)].z,
-        g_inHiResNormalDepth[topLeftHiResIndex + int2(1, 1)].z);
-
-    float4  lowResDepths = float4(
-        g_inLowResNormalDepth[topLeftLowResIndex].z,
-        g_inLowResNormalDepth[topLeftLowResIndex + int2(1, 0)].z,
-        g_inLowResNormalDepth[topLeftLowResIndex + int2(0, 1)].z,
-        g_inLowResNormalDepth[topLeftLowResIndex + int2(1, 1)].z);
-
-    // ToDo perf with gather()?
-    // ToDo consider moving depth to x in normal if it makes a difference.
-    float4 values = float4(
-        g_inValue[topLeftLowResIndex],
-        g_inValue[topLeftLowResIndex + int2(1, 0)],
-        g_inValue[topLeftLowResIndex + int2(0, 1)],
-        g_inValue[topLeftLowResIndex + int2(1, 1)]);
-
-    g_outValue[topLeftHiResIndex] = BilateralUpsample(hiResDepths.x, lowResDepths.xyzw, values.xyzw);
-    g_outValue[topLeftHiResIndex + int2(1, 0)] = BilateralUpsample(hiResDepths.y, lowResDepths.yxwz, values.yxwz);
-    g_outValue[topLeftHiResIndex + int2(0, 1)] = BilateralUpsample(hiResDepths.z, lowResDepths.zwxy, values.zwxy);
-    g_outValue[topLeftHiResIndex + int2(1, 1)] = BilateralUpsample(hiResDepths.w, lowResDepths.wzyx, values.wzyx);
-#endif
 }

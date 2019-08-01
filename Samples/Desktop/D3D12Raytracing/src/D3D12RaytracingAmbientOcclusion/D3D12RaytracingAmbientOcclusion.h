@@ -218,10 +218,10 @@ private:
     UINT          m_temporalCacheCurrentFrameResourceIndex = 0;
     UINT          m_normalDepthCurrentFrameResourceIndex = 0;
 
-    RWGpuResource m_varianceResource;
-    RWGpuResource m_smoothedVarianceResource;
-    RWGpuResource m_localMeanVarianceResource;
-    RWGpuResource m_smoothedLocalMeanVarianceResource;
+    RWGpuResource m_varianceResource[AOVarianceResource::Count];
+    RWGpuResource m_lowResVarianceResource[AOVarianceResource::Count];
+    RWGpuResource m_localMeanVarianceResource[AOVarianceResource::Count];
+    RWGpuResource m_lowResLocalMeanVarianceResource[AOVarianceResource::Count];
 
     // Multi-scale
     // ToDo Cleanup
@@ -334,6 +334,7 @@ private:
     void BilateralUpsample(
         UINT hiResWidth,
         UINT hiResHeight,
+        GpuKernels::UpsampleBilateralFilter::FilterType filterType,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalDepthResourceHandle,

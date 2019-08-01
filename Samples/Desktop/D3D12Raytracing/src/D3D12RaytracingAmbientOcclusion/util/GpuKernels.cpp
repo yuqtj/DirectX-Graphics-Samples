@@ -23,7 +23,8 @@
 #include "CompiledShaders\DownsampleValueDepthNormal_DepthWeightedBilateralFilter2x2CS.hlsl.h"
 #include "CompiledShaders\DownsampleValueDepthNormal_PointSamplingBilateralFilter2x2CS.hlsl.h"
 #include "CompiledShaders\DownsampleValueDepthNormal_DepthNormalWeightedBilateralFilter2x2CS.hlsl.h"
-#include "CompiledShaders\UpsampleBilateralFilter2x2CS.hlsl.h"
+#include "CompiledShaders\UpsampleBilateralFilter2x2FloatCS.hlsl.h"
+#include "CompiledShaders\UpsampleBilateralFilter2x2Float2CS.hlsl.h"
 #include "CompiledShaders\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl.h"
 #include "CompiledShaders\GaussianFilter3x3CS.hlsl.h"
 #include "CompiledShaders\GaussianFilterRG3x3CS.hlsl.h"
@@ -720,7 +721,7 @@ namespace GpuKernels
     }
 
     // ToDo test downsample,upsample on odd resolution
-    void UpsampleBilateralFilter::Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame)
+    void UpsampleBilateralFilter::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
@@ -749,15 +750,22 @@ namespace GpuKernels
         {
             D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
             descComputePSO.pRootSignature = m_rootSignature.Get();
-            switch (type)
-            {
-            case Filter2x2:
-                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pUpsampleBilateralFilter2x2CS), ARRAYSIZE(g_pUpsampleBilateralFilter2x2CS));
-                break;
-            }
 
-            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-            m_pipelineStateObject->SetName(L"Pipeline state object: UpsampleBilateralFilter");
+            for (UINT i = 0; i < FilterType::Count; i++)
+            {
+                switch (i)
+                {
+                case Filter2x2R:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pUpsampleBilateralFilter2x2FloatCS), ARRAYSIZE(g_pUpsampleBilateralFilter2x2FloatCS));
+                    break;
+                case Filter2x2RG:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pUpsampleBilateralFilter2x2Float2CS), ARRAYSIZE(g_pUpsampleBilateralFilter2x2Float2CS));
+                    break;
+                }
+
+                ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
+                m_pipelineStateObjects[i]->SetName(L"Pipeline state object: UpsampleBilateralFilter");
+            }
         }
 
         // Create shader resources
@@ -773,6 +781,7 @@ namespace GpuKernels
         ID3D12GraphicsCommandList4* commandList,
         UINT width, // Todo remove and deduce from outputResourceInstead?
         UINT height,
+        FilterType type,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
@@ -811,7 +820,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputHiResPartialDistanceDerivative, inputHiResPartialDistanceDerivativeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
-            commandList->SetPipelineState(m_pipelineStateObject.Get());
+            commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
         }
 
         // ToDo handle misaligned input
@@ -976,10 +985,10 @@ namespace GpuKernels
             {
                 switch (i)
                 {
-                case Filter3X3:
+                case Filter3x3:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pGaussianFilter3x3CS), ARRAYSIZE(g_pGaussianFilter3x3CS));
                     break;
-                case FilterRG3X3:
+                case Filter3x3RG:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pGaussianFilterRG3x3CS), ARRAYSIZE(g_pGaussianFilterRG3x3CS));
                     break;
                 }

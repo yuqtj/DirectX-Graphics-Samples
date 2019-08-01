@@ -190,8 +190,10 @@ namespace GpuKernels
     class UpsampleBilateralFilter
     {
     public:
-        enum Type {
-            Filter2x2 = 0,
+        enum FilterType {
+            Filter2x2R = 0,
+            Filter2x2RG,
+            Count
         };
 
         void Release()
@@ -199,11 +201,12 @@ namespace GpuKernels
             assert(0 && L"ToDo");
         }
 
-        void Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
         void Execute(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
+            FilterType type,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
@@ -217,7 +220,7 @@ namespace GpuKernels
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
-        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
         ConstantBuffer<DownAndUpsampleFilterConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
     };
@@ -258,8 +261,8 @@ namespace GpuKernels
     {
     public:
         enum FilterType {
-            Filter3X3 = 0,
-            FilterRG3X3,
+            Filter3x3 = 0,
+            Filter3x3RG,
             Count
         };
 

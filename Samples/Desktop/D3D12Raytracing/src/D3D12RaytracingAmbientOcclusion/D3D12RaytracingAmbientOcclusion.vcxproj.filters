@@ -279,6 +279,11 @@
     <None Include="RTAO\Shaders\Ray sorting\RaySorting.hlsli">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </None>
+    <None Include="util\DownsampleBilateralFilterCS.hlsli" />
+    <None Include="util\DownsampleDepthAwareBilateralFilter2x2CS.hlsli" />
+    <None Include="util\UpsampleBilateralFilter2x2CS.hlsli">
+      <Filter>Assets\Shaders\Util</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Raytracing.hlsl">
@@ -332,9 +337,6 @@
     <FxCompile Include="util\DownsampleDepthAwareFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="util\UpsampleBilateralFilter2x2CS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="SSAO\Shaders\SSAOBlurUpsampleBlendOutCS.hlsl">
       <Filter>SSAO\Shaders</Filter>
     </FxCompile>
@@ -362,16 +364,10 @@
     <FxCompile Include="SSAO\Shaders\SSAORender2CS.hlsl">
       <Filter>SSAO\Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="util\DownsampleBilateralFilterCS.hlsli">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="util\DownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
     <FxCompile Include="util\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
-    <FxCompile Include="util\DownsampleDepthAwareBilateralFilter2x2CS.hlsli">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
     <FxCompile Include="util\DownsampleValueDepthNormal_PointSamplingBilateralFilter2x2CS.hlsl">
@@ -425,6 +421,12 @@
     </FxCompile>
     <FxCompile Include="RTAO\Shaders\Ray sorting\AdaptiveRayGenCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
+    </FxCompile>
+    <FxCompile Include="util\UpsampleBilateralFilter2x2Float2CS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="util\UpsampleBilateralFilter2x2FloatCS.hlsl">
+      <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
