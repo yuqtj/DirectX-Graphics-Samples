@@ -56,6 +56,8 @@
     - replace multiple loads with gathers.
     - tighten texture format sizes
 
+- Glitches
+    - RayHitDistance is wrong behind tires.
 - Cleanup:
     - ToDo remove .f specifier from floating numbers in hlsl
 */

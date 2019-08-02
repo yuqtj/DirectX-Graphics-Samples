@@ -305,7 +305,7 @@ void RayGenShader()
         else
         {
             g_rtAOcoefficient[srcRayIndex] = ambientCoef;
-            g_rtAORayHitDistance[srcRayIndex] = tHit;
+            g_rtAORayHitDistance[srcRayIndex] = RTAO::HasAORayHitAnyGeometry(tHit) ? tHit : CB.RTAO_maxTheoreticalShadowRayHitTime;
         }
 
 #if GBUFFER_AO_COUNT_AO_HITS
@@ -422,7 +422,7 @@ void RayGenShader_sortedRays()
 #endif
 
     g_rtAOcoefficient[outPixel] = ambientCoef;
-    g_rtAORayHitDistance[outPixel] = tHit;
+    g_rtAORayHitDistance[outPixel] = RTAO::HasAORayHitAnyGeometry(tHit) ? tHit : CB.RTAO_maxTheoreticalShadowRayHitTime;
 
 #if GBUFFER_AO_COUNT_AO_HITS
     // ToDo test perf impact of writing this
