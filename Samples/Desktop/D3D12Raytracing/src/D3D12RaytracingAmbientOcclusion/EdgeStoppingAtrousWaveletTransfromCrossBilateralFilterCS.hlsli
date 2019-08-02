@@ -15,6 +15,11 @@
 #include "Kernels.hlsli"
 #include "RTAO/Shaders/RTAO.hlsli"
 
+
+// ToDo
+// Optimization
+// - Frontload/limit to indices of valid neighbors to avoid stalling threads randomly on sparse inputs.
+
 Texture2D<float> g_inValues : register(t0); // ToDo input is 3841x2161 instead of 2160p..
 
 Texture2D<float4> g_inNormalDepth : register(t1);
@@ -121,7 +126,15 @@ void AddFilterContribution(
     int2 pixelOffset;
     float kernelWidth;
     float varianceScale = 1;
+
+    // ToDo
+    // Denoising improvemnts
+    // - 
 #if 0
+    // ToDo
+    // RTX Gems p314 - scale kernel width on avg hit distance and tspp. Higher tspp lower kernel.
+    // https://research.nvidia.com/sites/default/files/pubs/2018-05_Combining-Analytic-Direct//I3D2018_combining.pdf
+    // - scale kernel based on variance
     if (g_CB.useAdaptiveKernelSize)
     {
         // Calculate kernel width as a ratio of hitDistance / projected surface width per pixel

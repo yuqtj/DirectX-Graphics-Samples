@@ -46,6 +46,7 @@ public:
     // Getters & Setters.
     void SetResolution(UINT width, UINT height);
     DXGI_FORMAT GetAOCoefficientFormat();
+    float GetMaxRayHitTime();
     float GetSpp();
 
     // ToDo return only a subset

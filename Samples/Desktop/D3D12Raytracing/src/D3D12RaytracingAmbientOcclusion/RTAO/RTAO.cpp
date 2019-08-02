@@ -597,6 +597,11 @@ DXGI_FORMAT RTAO::GetAOCoefficientFormat()
     return TextureResourceFormatR::ToDXGIFormat(SceneArgs::RTAO_AmbientCoefficientResourceFormat);
 }
 
+float RTAO::GetMaxRayHitTime()
+{
+    return SceneArgs::RTAOMaxRayHitTime;
+}
+
 float RTAO::GetSpp()
 {
     switch (SceneArgs::RTAORayGenAdaptiveQuadSize)

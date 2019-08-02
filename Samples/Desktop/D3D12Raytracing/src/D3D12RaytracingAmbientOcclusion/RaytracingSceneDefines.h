@@ -266,6 +266,7 @@ namespace AOVarianceResource {
 namespace TemporalCache {
     enum Enum {
         FrameAge = 0,
+        RayHitDistance,
         CoefficientSquaredMean,
         Count
     };

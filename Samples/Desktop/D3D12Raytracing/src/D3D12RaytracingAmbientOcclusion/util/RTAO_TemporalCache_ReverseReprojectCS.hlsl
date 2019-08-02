@@ -25,12 +25,14 @@ Texture2D<float> g_texInputCurrentFrameValue : register(t2);
 Texture2D<float4> g_texInputCurrentFrameNormalDepth : register(t3);
 Texture2D<float4> g_texInputReprojectedNormalDepth : register(t4); // ToDo standardize naming across files
 Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t5); // ToDo standardize naming across files
-Texture2D<uint> g_texInputCacheFrameAge : register(t6);
+Texture2D<uint> g_texInputCachedFrameAge : register(t6);
+Texture2D<float> g_texInputCachedRayHitDistance : register(t10);
 
 Texture2D<float2> g_texInputCurrentFrameLocalMeanVariance : register(t7);
 Texture2D<float> g_texInputCachedCoefficientSquaredMean : register(t8);
 
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t9); // ToDo standardize naming across files
+Texture2D<float> g_texInputCurrentFrameRayHitDistance : register(t11); // ToDo standardize naming across files
 
 // ToDo combine some outputs?
 RWTexture2D<float> g_texOutputCachedValue : register(u0);
@@ -39,6 +41,7 @@ RWTexture2D<float> g_texOutputCoefficientSquaredMean: register(u2);
 RWTexture2D<float> g_texOutputVariance: register(u3);
 RWTexture2D<float4> g_texOutputDebug1 : register(u4);
 RWTexture2D<float4> g_texOutputDebug2 : register(u5);
+RWTexture2D<float> g_texOutputRayHitDistance: register(u6);
 
 ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> cb : register(b0);
 
@@ -50,7 +53,11 @@ SamplerState ClampSampler : register(s1);
 // ToDo
 // - Fix heavy disocclusion on min/magnifaction. Use bilateraly downsampled mip maps?
 //   - this happens only when starting to move not on smooth move.
-
+// standardize naming cache vs cached
+// Optimizations:
+//  - split into several passes>?
+//  - condition to only necessary reads on frameAge 1 and/or invalid value
+//  - on 0 motion vector read in only 1 cached value
 
 // Calculates a depth threshold for surface at angle beta from camera plane
 // based on threshold for a surface at angle alpha
@@ -322,16 +329,18 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float2 localMeanVariance = g_texInputCurrentFrameLocalMeanVariance[DTid];
     float localMean = localMeanVariance.x;
     float localVariance = localMeanVariance.y;
+    float mergedRayHitDistance = 0;
+    float rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
 
     bool isCacheValueValid = weightSum > 1e-3f; // ToDo
     if (isCacheValueValid)
     {
-        uint4 vCacheFrameAge = g_texInputCacheFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-        float4 vCacheValueSquaredMean = g_texInputCachedCoefficientSquaredMean.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+        uint4 vCachedFrameAge = g_texInputCachedFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+        float4 vCachedValueSquaredMean = g_texInputCachedCoefficientSquaredMean.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
 
         float4 nWeights = weights / weightSum;   // Normalize the weights.
         float cachedValue = dot(nWeights, vCacheValues);
-        float cachedValueSquaredMean = dot(nWeights, vCacheValueSquaredMean);
+        float cachedValueSquaredMean = dot(nWeights, vCachedValueSquaredMean);
 
 
         // ToDo revisit this and potentially make it UI adjustable - weight ^ 2 ?,...
@@ -345,8 +354,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
         // Example: rotating camera around dragon's nose up close. 
         float frameAgeScale = 1;// saturate(weightSum);
 
-        float cacheFrameAge = frameAgeScale * dot(nWeights, vCacheFrameAge);
-        frameAge = round(cacheFrameAge);
+        float cachedFrameAge = frameAgeScale * dot(nWeights, vCachedFrameAge);
+        frameAge = round(cachedFrameAge);
 
         // Clamp value to mean +/- std.dev of local neighborhood to surpress ghosting on value changing due to other occluder movements.
         // Ref: Salvi2016, Temporal Super-Sampling
@@ -395,6 +404,11 @@ void main(uint2 DTid : SV_DispatchThreadID)
         //  - default to average?
 
         frameAge = isValidValue ? min(frameAge + 1, maxFrameAge) : frameAge;
+
+        // RayHitDistance
+        float4 vCachedRayHitDistances = g_texInputCachedRayHitDistance.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+        float cachedRayHitDistance = dot(nWeights, vCachedRayHitDistances);
+        mergedRayHitDistance = isValidValue ? lerp(cachedRayHitDistance, rayHitDistance, a) : cachedRayHitDistance;
     }
     else // ToDo initialize values to this instead of branch?
     {
@@ -404,10 +418,11 @@ void main(uint2 DTid : SV_DispatchThreadID)
         mergedValueSquaredMean = isValidValue ? value * value : RTAO::InvalidAOValue;
         frameAge = isValidValue ? 1 : 0;
         outVariance = localVariance;
+        mergedRayHitDistance = rayHitDistance;
     }
     g_texOutputCachedValue[DTid] = mergedValue;
     g_texOutputCacheFrameAge[DTid] = frameAge;
     g_texOutputCoefficientSquaredMean[DTid] = mergedValueSquaredMean;
     g_texOutputVariance[DTid] = outVariance;
-
+    g_texOutputRayHitDistance[DTid] = mergedRayHitDistance;
 }
