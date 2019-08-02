@@ -38,7 +38,7 @@
 #include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
-#include "CompiledShaders\RTAO_TemporalCache_ReverseReprojectCS.hlsl.h"
+#include "CompiledShaders\TemporalSupersampling_CalculateBilateralWeightsCS.hlsl.h"
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
 #include "CompiledShaders\GenerateGrassStrawsCS.hlsl.h"
 #include "CompiledShaders\CountingSort_SortRays_128x64rayGroupCS.hlsl.h"
@@ -1974,7 +1974,7 @@ namespace GpuKernels
             D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
             descComputePSO.pRootSignature = m_rootSignature.Get();
 
-            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pRTAO_TemporalCache_ReverseReprojectCS), ARRAYSIZE(g_pRTAO_TemporalCache_ReverseReprojectCS));
+            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pTemporalSupersampling_CalculateBilateralWeightsCS), ARRAYSIZE(g_pTemporalSupersampling_CalculateBilateralWeightsCS));
 
             ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
             m_pipelineStateObject->SetName(L"Pipeline state object: RTAO_TemporalCache_ReverseReproject");

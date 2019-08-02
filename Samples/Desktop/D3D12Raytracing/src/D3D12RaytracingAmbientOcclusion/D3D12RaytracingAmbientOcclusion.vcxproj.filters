@@ -55,6 +55,9 @@
     <Filter Include="Assets\Shaders\RTAO\Denoising">
       <UniqueIdentifier>{15d32f45-7439-4bb1-94c9-53c49f5f62dd}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Assets\Shaders\RTAO\Temporal Supersampling">
+      <UniqueIdentifier>{0438e044-fa3b-461f-8c7b-a6cba747c717}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -382,9 +385,6 @@
     <FxCompile Include="util\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="util\RTAO_TemporalCache_ReverseReprojectCS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="util\WriteValueToTextureCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
@@ -427,6 +427,9 @@
     </FxCompile>
     <FxCompile Include="util\UpsampleBilateralFilter2x2FloatCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\Temporal Supersampling\TemporalSupersampling_CalculateBilateralWeightsCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\Temporal Supersampling</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

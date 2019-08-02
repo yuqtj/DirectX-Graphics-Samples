@@ -10,8 +10,8 @@
 //*********************************************************
 
 #define HLSL
-#include "..\RaytracingHlslCompat.h"
-#include "..\RaytracingShaderHelper.hlsli"
+#include "RaytracingHlslCompat.h"
+#include "RaytracingShaderHelper.hlsli"
 #include "RTAO\Shaders\RTAO.hlsli"
 
 // ToDo some pixels here and there on mirror boundaries fail temporal reprojection even for static scene/camera
@@ -239,6 +239,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float3 cacheNormals[4]; 
     float4 vCacheDepths;
     {
+        // ToDo use 3xgathers instead?
         [unroll]
         for (int i = 0; i < 4; i++)
         {
@@ -246,19 +247,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
             LoadDepthAndNormal(g_texInputCachedNormalDepth, cacheIndices[i], vCacheDepths[i], cacheNormals[i]);
         }
     }
-
-#if 0
-    // Calculate linear depth in the cache frame.
-    // We avoid converting depth between linear and log as log depth loses a lot of precision very quickly as depth increases.
-    float3 viewPos = ScreenPosToWorldPos(DTid, linearDepth, cb.textureDim, cb.zNear, float3(0,0,0), cb.projectionToWorldWithCameraEyeAtOrigin);
-
-    // Add the camera translation change 
-    viewPos += cb.prevToCurrentFrameCameraTranslation.xyz;
-
-    float3 cameraDirection = GenerateForwardCameraRayDirection(cb.projectionToWorldWithCameraEyeAtOrigin);
-    float3 cacheCameraDirection = GenerateForwardCameraRayDirection(cb.prevProjectionToWorldWithCameraEyeAtOrigin);
-    float cacheLinearDepth = dot(viewPos, cacheCameraDirection);
-#endif
 
     float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];
     // ToDo should this be done separately for both X and Y dimensions?
@@ -293,16 +281,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     float4 weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
 
-    float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-#if 1
-    bool4 isValidCacheValue = vCacheValues != RTAO::InvalidAOValue;
 
-    //weights = isValidValue ? weights : 0;
-    weights.x = vCacheValues.x != RTAO::InvalidAOValue ? weights.x : 0;
-    weights.y = vCacheValues.y != RTAO::InvalidAOValue ? weights.y : 0;
-    weights.z = vCacheValues.z != RTAO::InvalidAOValue ? weights.z : 0;
-    weights.w = vCacheValues.w != RTAO::InvalidAOValue ? weights.w : 0;
-#endif
+
+    float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+
+    bool4 isValidCacheValue = vCacheValues != RTAO::InvalidAOValue;
+    weights = vCacheValues != RTAO::InvalidAOValue ? weights: 0;
+
     float weightSum = dot(1, weights);
 
 
@@ -316,9 +301,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float maxScreenSpaceReprojectionDistance = 0.01;// cb.minSmoothingFactor * 0.1f; // ToDo
      ToDo scale this based on depth?
     float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
+     //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
 #endif
 
-    //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
     uint frameAge;
     float mergedValueSquaredMean;      // ToDo better prefix than merged?
     float outVariance;
