@@ -1987,13 +1987,6 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputReprojectedCacheFrameAgeResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputReprojectedCacheValuesResourceHandle,
         float minSmoothingFactor,
-        const XMMATRIX& invView,
-        const XMMATRIX& invProj,
-        const XMMATRIX& invViewProjAndCameraTranslation,
-        const XMMATRIX& reverseProjectionTransform,
-        const XMMATRIX& prevInvViewProj,
-        float zNear,
-        float zFar,
         float depthTolerance,
         bool useDepthWeights,
         bool useNormalWeights,
@@ -2005,9 +1998,7 @@ namespace GpuKernels
         bool perspectiveCorrectDepthInterpolation,
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
         RWGpuResource debugResources[2],
-        const XMVECTOR& currentFrameCameraPosition,
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
-        const XMVECTOR& prevToCurrentFrameCameraTranslation,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin)
     {
         using namespace RootSignature::RTAO_TemporalSupersampling_ReverseReproject;
@@ -2015,13 +2006,6 @@ namespace GpuKernels
 
         ScopedTimer _prof(L"RTAO_TemporalSupersampling_ReverseReproject", commandList);
 
-        m_CB->invProj = XMMatrixTranspose(invProj);
-        m_CB->invView = XMMatrixTranspose(invView);
-        m_CB->invViewProjAndCameraTranslation = XMMatrixTranspose(invViewProjAndCameraTranslation);
-        m_CB->reverseProjectionTransform = XMMatrixTranspose(reverseProjectionTransform);
-        m_CB->prevInvViewProj = XMMatrixTranspose(invViewProjAndCameraTranslation);
-        m_CB->zNear = zNear;
-        m_CB->zFar = zFar;
         m_CB->useDepthWeights = useDepthWeights;
         m_CB->useNormalWeights = useNormalWeights;
         m_CB->depthTolerance = depthTolerance;
@@ -2030,9 +2014,7 @@ namespace GpuKernels
         m_CB->floatEpsilonDepthTolerance = floatEpsilonDepthTolerance;
         m_CB->depthDistanceBasedDepthTolerance = depthDistanceBasedDepthTolerance;
         m_CB->depthSigma = depthSigma;
-        m_CB->cameraPosition = currentFrameCameraPosition;
         m_CB->projectionToWorldWithCameraEyeAtOrigin = XMMatrixTranspose(projectionToWorldWithCameraEyeAtOrigin);
-        m_CB->prevToCurrentFrameCameraTranslation = prevToCurrentFrameCameraTranslation;
         m_CB->prevProjectionToWorldWithCameraEyeAtOrigin = XMMatrixTranspose(prevProjectionToWorldWithCameraEyeAtOrigin);
         m_CB->useWorldSpaceDistance = useWorldSpaceDistance;
         m_CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;

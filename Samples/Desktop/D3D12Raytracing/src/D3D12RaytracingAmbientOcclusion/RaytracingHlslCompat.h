@@ -796,21 +796,12 @@ struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer
     XMUINT2 textureDim;
     XMFLOAT2 invTextureDim; // ToDo test what impact passing inv tex dim makes
 
-    // ToDo can we get by with one matrix?
-    XMMATRIX invProj;
-    XMMATRIX invView;
-    XMMATRIX reverseProjectionTransform;
-    XMMATRIX invViewProjAndCameraTranslation;
-    XMMATRIX prevInvViewProj;
-    XMVECTOR cameraPosition;
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;
-    XMVECTOR prevToCurrentFrameCameraTranslation;   // ToDo include this in one of the projection matrices?
     XMMATRIX prevProjectionToWorldWithCameraEyeAtOrigin;
 
-    float zNear; // ToDo take these from transform matrix directly?
-    float zFar;
     float floatEpsilonDepthTolerance;
     float depthDistanceBasedDepthTolerance;
+    float padding[2];
 
     // ToDo moving this 4Bs above XMFLOATs causes issues
     BOOL useDepthWeights;

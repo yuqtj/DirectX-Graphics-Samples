@@ -4481,54 +4481,12 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
     // GenerateCameraRay takes this into consideration in the raytracing shader.
     view = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_camera.At() - m_camera.Eye(), 1), m_camera.Up());
     prevView = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_prevFrameCamera.At() - m_prevFrameCamera.Eye(), 1), m_prevFrameCamera.Up());
-    XMMATRIX cameraTranslation = XMMatrixTranslationFromVector(m_camera.Eye() - m_prevFrameCamera.Eye());
-    XMVECTOR prevToCurrentFrameCameraTranslation = m_camera.Eye() - m_prevFrameCamera.Eye();
-
-    XMMATRIX invView = XMMatrixInverse(nullptr, view);
-    XMMATRIX invProj = XMMatrixInverse(nullptr, proj);
 
     XMMATRIX viewProj = view * proj;
     XMMATRIX prevViewProj = prevView * prevProj;
     XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
     XMMATRIX prevInvViewProj = XMMatrixInverse(nullptr, prevViewProj);
 
-#if 1
-    XMMATRIX invViewProjAndCameraTranslation = invViewProj * cameraTranslation;
-   // XMMATRIX reverseProjectionTransform = invViewProj * cameraTranslation * prevView * prevProj;
-    XMMATRIX reverseProjectionTransform = invViewProjAndCameraTranslation * prevView * prevProj;
-#else
-    XMMATRIX reverseProjectionTransform = cameraTranslation * prevView * prevProj;
-#endif
-
-#if PRINT_OUT_TC_MATRICES
-    auto MatrixToStr = [&](wstring* out, XMMATRIX& matrix, const WCHAR* name)
-    {
-        XMFLOAT4X4 fMatrix;
-        XMStoreFloat4x4(&fMatrix, matrix);
-
-        wstringstream wstream;
-        wstream << L"Matrix:" << name << L"\n";
-        for (UINT r = 0; r < 4; r++)
-        {
-            wstream << L" { ";
-            for (UINT c = 0; c < 4; c++)
-            {
-                wstream << fMatrix(r, c);
-                wstream << (c < 3 ? L", " : L"");
-            }
-            wstream << L" }\n";
-        }
-        *out += wstream.str();
-    };
-
-    wstring dbgText;
-    dbgText = L"\n=============================\n";
-    MatrixToStr(&dbgText, reverseProjectionTransform, L"ReverseProjectionTransform");
-    MatrixToStr(&dbgText, invViewProj, L"invViewProj");
-    MatrixToStr(&dbgText, viewProj, L"viewProj");
-    dbgText += L"=============================\n";
-    OutputDebugStringW(dbgText.c_str());
-#endif
 
     // Transition output resource to UAV state.        
     {
@@ -4559,13 +4517,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].gpuDescriptorWriteAccess,
         m_cachedFrameAgeValueSquaredValueRayHitDistance.gpuDescriptorWriteAccess,
         SceneArgs::RTAO_TemporalSupersampling_MinSmoothingFactor,
-        invView,
-        invProj,
-        invViewProjAndCameraTranslation,
-        reverseProjectionTransform,
-        prevInvViewProj,
-        m_camera.ZMin,
-        m_camera.ZMax,
         SceneArgs::RTAO_TemporalSupersampling_DepthTolerance,
         SceneArgs::RTAO_TemporalSupersampling_UseDepthWeights,
         SceneArgs::RTAO_TemporalSupersampling_UseNormalWeights,
@@ -4577,9 +4528,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
         SceneArgs::RTAO_TemporalSupersampling_PerspectiveCorrectDepthInterpolation,
         static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(SceneArgs::RTAO_TemporalSupersampling_NormalDepthResourceFormat)),
         m_debugOutput,
-        m_camera.Eye(),
         invViewProj,
-        prevToCurrentFrameCameraTranslation,
         prevInvViewProj);
 
     // Transition output resources to SRV state.        
@@ -4693,46 +4642,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
     };
     commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 
-
-    // ToDo
-    // Calculate reverse projection transform T to the previous frame's screen space coordinates.
-    //  xy(t-1) = xy(t) * T     // ToDo check mul order
-    // The reverse projection transform consists:
-    //  1) reverse projecting from current's frame screen space coordinates to world space coordinates
-    //  2) projecting from world space coordinates to previous frame's screen space coordinates
-    //
-    //  T = inverse(P(t)) * inverse(V(t)) * V(t-1) * P(t-1) 
-    //      where P is a projection transform and V is a view transform. 
-    // Ref: ToDo
-    XMMATRIX view, proj, prevView, prevProj;
-
-    m_camera.GetProj(&proj, m_raytracingWidth, m_raytracingHeight);
-    m_prevFrameCamera.GetProj(&prevProj, m_raytracingWidth, m_raytracingHeight);
-
-    // ToDO can we remove this or document.
-    // Calculate view matrix as if the camera was at (0,0,0) to avoid 
-    // precision issues when camera position is too far from (0,0,0).
-    // GenerateCameraRay takes this into consideration in the raytracing shader.
-    view = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_camera.At() - m_camera.Eye(), 1), m_camera.Up());
-    prevView = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_prevFrameCamera.At() - m_prevFrameCamera.Eye(), 1), m_prevFrameCamera.Up());
-    XMMATRIX cameraTranslation = XMMatrixTranslationFromVector(m_camera.Eye() - m_prevFrameCamera.Eye());
-    XMVECTOR prevToCurrentFrameCameraTranslation = m_camera.Eye() - m_prevFrameCamera.Eye();
-
-    XMMATRIX invView = XMMatrixInverse(nullptr, view);
-    XMMATRIX invProj = XMMatrixInverse(nullptr, proj);
-
-    XMMATRIX viewProj = view * proj;
-    XMMATRIX prevViewProj = prevView * prevProj;
-    XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
-    XMMATRIX prevInvViewProj = XMMatrixInverse(nullptr, prevViewProj);
-
-#if 1
-    XMMATRIX invViewProjAndCameraTranslation = invViewProj * cameraTranslation;
-    // XMMATRIX reverseProjectionTransform = invViewProj * cameraTranslation * prevView * prevProj;
-    XMMATRIX reverseProjectionTransform = invViewProjAndCameraTranslation * prevView * prevProj;
-#else
-    XMMATRIX reverseProjectionTransform = cameraTranslation * prevView * prevProj;
-#endif
 
     // Transition output resource to UAV state.      
     {
