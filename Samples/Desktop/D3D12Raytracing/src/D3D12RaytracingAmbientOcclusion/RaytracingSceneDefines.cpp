@@ -74,7 +74,11 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 1 
+#if 1   // test TSS split
+            camera.position.eye = { -23.7877f, 7.73889f, -14.802f, 1 };
+            camera.position.at = { -23.4918f, 7.24975f, -13.9812f, 1 };
+            camera.position.up = { 0.194256f, 0.811976f, 0.550408f, 0 };
+#elif 1 
             camera.position.eye = { -12.358f, 4.60442f, -19.4095f, 1 };
             camera.position.at = { -12.1201f, 4.36224f, -18.4686f, 1 };
             camera.position.up = { 0.0822575f, 0.936992f, 0.339515f, 0 };
