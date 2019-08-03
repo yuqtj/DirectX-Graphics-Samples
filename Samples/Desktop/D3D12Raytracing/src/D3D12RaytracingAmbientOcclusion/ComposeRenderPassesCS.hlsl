@@ -29,7 +29,7 @@ Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
 Texture2D<float> g_texFilterWeightSum : register(t8);
 Texture2D<float> g_texRayHitDistance : register(t9);
-Texture2D<uint> g_texTemporalCacheDisocclusionMap : register(t10);
+Texture2D<uint> g_texTemporalSupersamplingDisocclusionMap : register(t10);
 Texture2D<float4> g_texColor : register(t11);
 Texture2D<float4> g_texAOSurfaceAlbedo : register(t12);
 Texture2D<float4> g_texVariance : register(t13);
@@ -126,7 +126,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
 
             if (g_CB.compositionType == AmbientOcclusionAndDisocclusionMap)
             {
-                uint frameAge = g_texTemporalCacheDisocclusionMap[DTid].x;
+                uint frameAge = g_texTemporalSupersamplingDisocclusionMap[DTid].x;
                 color = frameAge == 1 ? float4(1, 0, 0, 1) : color;
 
 
@@ -211,7 +211,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
         }
         else if (g_CB.compositionType == CompositionType::DisocclusionMap)
         {
-            color = g_texTemporalCacheDisocclusionMap[DTid].x == 1 ? float4(1, 0, 0, 0) : float4(1, 1, 1, 1);
+            color = g_texTemporalSupersamplingDisocclusionMap[DTid].x == 1 ? float4(1, 0, 0, 0) : float4(1, 1, 1, 1);
         }
 	}
 	else

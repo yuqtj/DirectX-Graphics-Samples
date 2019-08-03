@@ -9,10 +9,6 @@
 //
 //*********************************************************
 
-// ToDo Desc
-// Desc: Sample temporal cache via reverse reprojection.
-// If no valid values have been retrieved from the cache, the frameAge is set to 0.
-
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
@@ -28,25 +24,22 @@ Texture2D<float4> g_texInputCurrentFrameNormalDepth : register(t0);
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t1); // ToDo standardize naming across files
 Texture2D<float4> g_texInputReprojectedNormalDepth : register(t2);  // ToDo add encoded prefix
 Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t3);
-
-Texture2D<float4> g_texInputCachedNormalDepth : register(t4);
-Texture2D<float> g_texInputCachedValue : register(t5);  // ToDo store 1bit 0/1 in an auxilary reseource instead?
+Texture2D<float> g_texInputCachedValue : register(t4);  // ToDo store 1bit 0/1 in an auxilary reseource instead?
+Texture2D<float4> g_texInputCachedNormalDepth : register(t5);
 Texture2D<uint> g_texInputCachedFrameAge : register(t6);
-Texture2D<float> g_texInputCachedValueSquaredMean : register(t7);
-Texture2D<float> g_texInputCachedRayHitDistance : register(t8);
 
 // ToDo combine some outputs?
-RWTexture2D<int2> g_texOutputFrameAge : register(u0);
-RWTexture2D<int2> g_texOutputCachedValue : register(u1);
-RWTexture2D<float4> g_texOutputCachedValueSquaredMean : register(u2);
-RWTexture2D<float4> g_texOutputRayHitDistance : register(u3);
+// ToDo combine pixel index with weights? Store only first three weights and fourth is 1 - weightSum?
+RWTexture2D<int2> g_texOutputTopLeftCacheFrameIndex : register(u0); // Top left cache frame index of the 2x2 pixel quad to interpolate a reprojected value from.
+RWTexture2D<float4> g_texOutputBilateralWeights : register(u1);     // Normalized bilateral weights for valid cached data.  0 otherwise.
+RWTexture2D<uint> g_texOutputFrameAge : register(u2);
 
 
 // ToDo remove
-RWTexture2D<float4> g_texOutputDebug1 : register(u10);
-RWTexture2D<float4> g_texOutputDebug2 : register(u11);
+RWTexture2D<float4> g_texOutputDebug1 : register(u3);
+RWTexture2D<float4> g_texOutputDebug2 : register(u4);
 
-ConstantBuffer<RTAO_TemporalSupersampling_CalculateBilateralWeightsConstantBuffer> cb : register(b0);
+ConstantBuffer<RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer> cb : register(b0);
 
 SamplerState ClampSampler : register(s0);
 
@@ -193,16 +186,18 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float3 _normal;
     float _depth;
     LoadDecodedNormalAndDepth(g_texInputReprojectedNormalDepth, DTid, _normal, _depth);
-    float2 textureSpaceMotionVector = g_texInputTextureSpaceMotionVector[DTid];
 
     // ToDo compare against common predefined value
-    if (_depth == 0 || textureSpaceMotionVector == 1e3)
+    if (_depth == 0)
     {
+        g_texOutputTopLeftCacheFrameIndex[DTid] = int2(-100,-100);
+        g_texOutputBilateralWeights[DTid] = 0;
         g_texOutputFrameAge[DTid] = 0;
         return;
     }
 
     float2 texturePos = (DTid.xy + 0.5f) * cb.invTextureDim;
+    float2 textureSpaceMotionVector = g_texInputTextureSpaceMotionVector[DTid];
     float2 cacheFrameTexturePos = texturePos - textureSpaceMotionVector;
     
     // Find the nearest integer index smaller than the texture position.
@@ -285,9 +280,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     //uint maxFrame
     //frameAge = lerp(frameAge, 0, frameAgeClamp);
 #endif
-    uint frameAge;
-    bool areCacheValuesValid = weightSum > 1e-3f; // ToDo
-    if (areCacheValueValid)
+
+    uint frameAge = 0;
+
+    float4 nWeights = 0;
+    bool isCacheValueValid = weightSum > 1e-3f; // ToDo
+    if (isCacheValueValid)
     {
         uint4 vCachedFrameAge = g_texInputCachedFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         nWeights = weights / weightSum;   // Normalize the weights.
@@ -306,28 +304,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         float cachedFrameAge = frameAgeScale * dot(nWeights, vCachedFrameAge);
         frameAge = round(cachedFrameAge);
-
-        // ToDo move this to a separate pass?
-        if (frameAge > 0)
-        {
-            float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-            float cachedValue = dot(nWeights, vCacheValues);
-            g_texOutputCachedValue[DTid] = cachedValue;
-
-            float4 vCachedValueSquaredMean = g_texInputCachedValueSquaredMean.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-            float cachedValueSquaredMean = dot(nWeights, vCachedValueSquaredMean);
-            g_texOutputCachedValueSquaredMean[DTid] = cachedValueSquareMean;
-
-            float4 vCachedRayHitDistances = g_texInputCachedRayHitDistance.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-            float cachedRayHitDistance = dot(nWeights, vCachedRayHitDistances);
-            g_texOutputRayHitDistance[DTid] = cachedRayHitDistance;
-        }
     }
-    else
-    {
-        // No valid values can be retrieved from the cache.
-        frameAge = 0;
-    }
-
+    // ToDo If no valid samples found:
+    //  - use largest motion vector from 3x3
+    //  - try 3x3 area or 2x2 lower res?
+    //  - default to average?
+    g_texOutputTopLeftCacheFrameIndex[DTid] = topLeftCacheFrameIndex;
+    g_texOutputBilateralWeights[DTid] = nWeights;
     g_texOutputFrameAge[DTid] = frameAge;
 }

@@ -106,7 +106,8 @@ private:
     const UINT                          MaxGaussianSmoothingKernelInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for TAO 
 
 	// ToDo combine kernels to an array
-    GpuKernels::RTAO_TemporalCache_ReverseReproject m_temporalCacheReverseReprojectKernel;
+    GpuKernels::RTAO_TemporalSupersampling_ReverseReproject m_temporalCacheReverseReprojectKernel;
+    GpuKernels::RTAO_TemporalSupersampling_BlendWithCurrentFrame m_temporalCacheBlendWithCurrentFrameKernel;
     GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
 	GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
@@ -211,7 +212,7 @@ private:
     bool m_updateShadowMap = true;
 
     // ToDo dedupe resources. Does dpeth need to have 2 instances?   
-    RWGpuResource m_temporalCache[2][TemporalCache::Count]; // ~array[Read/Write ping pong resource][Resources].
+    RWGpuResource m_temporalCache[2][TemporalSupersampling::Count]; // ~array[Read/Write ping pong resource][Resources].
     
     // ToDo use a common ping-pong index? 
     // ToDo cleanup readId should be for input to TAO, confusing.
@@ -302,6 +303,8 @@ private:
     void RenderPass_BlurAmbientOcclusion();
 	void RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV);
     void RenderPass_TestEarlyExitOVerhead();
+    void RenderPass_TemporalSupersamplingReverseProjection();
+    void RenderPass_TemporalSupersamplingBlendWithCurrentFrame();
 
 	// ToDo cleanup
 	// Utility functions
@@ -325,7 +328,6 @@ private:
     void ApplyAtrousWaveletTransformFilter(bool isFirstPass);
     void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter();
-    void RenderPass_TemporalCacheReverseProjection();
     void DownsampleRaytracingOutput();
     void DownsampleGBuffer();
 

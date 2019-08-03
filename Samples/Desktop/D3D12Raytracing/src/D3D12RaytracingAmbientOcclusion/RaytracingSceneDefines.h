@@ -263,7 +263,7 @@ namespace AOVarianceResource {
     };
 }
 
-namespace TemporalCache {
+namespace TemporalSupersampling {
     enum Enum {
         FrameAge = 0,
         RayHitDistance,

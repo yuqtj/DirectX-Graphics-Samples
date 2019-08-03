@@ -559,6 +559,14 @@ float3 DecodeNormal(float2 f)
 }
 /***************************************************************/
 
+void LoadDecodedNormalAndDepth(Texture2D<float4> inEncodedNormalDepthTexture, in uint2 texIndex, out float3 normal, out float depth)
+{
+    float3 encodedNormalAndDepth = inEncodedNormalDepthTexture[texIndex].xyz;
+    normal = DecodeNormal(encodedNormalAndDepth.xy);
+    depth = encodedNormalAndDepth.z;
+}
+
+
 // ToDo consider MiNiEngine's packing to full 32 bit extent
 UINT NormalizedFloat3ToByte3(float3 v)
 {

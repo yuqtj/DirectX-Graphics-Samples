@@ -526,8 +526,69 @@ namespace GpuKernels
         UINT                                m_CBinstanceID = 0;
     };
 
-       
-    class RTAO_TemporalCache_ReverseReproject
+
+    
+    class RTAO_TemporalSupersampling_ReverseReproject
+    {
+    public:
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        // ToDo set default parameters
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList4* commandList,
+            UINT width,
+            UINT height,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameLinearDepthDerivativeResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputReprojectedNormalDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTextureSpaceMotionVectorResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedNormalDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedFrameAgeResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedSquaredMeanValue,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedRayHitDistanceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputCacheFrameAgeResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputCacheValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputCacheSquaredMeanValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputCacheRayHitDistanceResourceHandle,
+            float minSmoothingFactor,
+            const XMMATRIX& invView,
+            const XMMATRIX& invProj,
+            const XMMATRIX& invViewProjAndCameraTranslation,
+            const XMMATRIX& reverseProjectionTransform,
+            const XMMATRIX& prevInvViewProj,
+            float zNear,
+            float zFar,
+            float depthTolerance,
+            bool useDepthWeights,
+            bool useNormalWeights,
+            float floatEpsilonDepthTolerance,
+            float depthDistanceBasedDepthTolerance,
+            float depthSigma,
+            bool useWorldSpaceDistance,
+            bool usingBilateralDownsampledBuffers,
+            bool perspectiveCorrectDepthInterpolation,
+            TextureResourceFormatRGB::Type normalDepthResourceFormat,
+            RWGpuResource debugResources[2],
+            const XMVECTOR& currentFrameCameraPosition,
+            const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
+            const XMVECTOR& prevToCurrentFrameCameraTranslation,
+            const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
+        ConstantBuffer<RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
+    };
+
+
+    class RTAO_TemporalSupersampling_BlendWithCurrentFrame
     {
     public:
         void Release()
@@ -543,59 +604,29 @@ namespace GpuKernels
             UINT height,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameNormalDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameLocalMeanVarianceResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameLinearDepthDerivativeResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputCurrentFrameRayHitDistanceResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheNormalDepthResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheFrameAgeResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheCoefficientSquaredMeanResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTemporalCacheRayHitDistanceResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputTextureSpaceMotionVectorResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputReprojectedNormalDepthResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheFrameAgeResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputTemporalCacheCoefficientSquaredMeanResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputOutputValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputOutputFrameAgeResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputOutputSquaredMeanValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputOutputRayHitDistanceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputVarianceResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputRayHitDistanceResourceHandle,
             float minSmoothingFactor,
-            const XMMATRIX& invView,
-            const XMMATRIX& invProj,
-            const XMMATRIX& invViewProjAndCameraTranslation,
-            const XMMATRIX& reverseProjectionTransform,
-            const XMMATRIX& prevInvViewProj,
-            float zMin,
-            float zFar,
-            float depthTolerance,
-            bool useDepthWeights,
-            bool useNormalWeights,
             bool forceUseMinSmoothingFactor,
             bool clampCachedValues,
             float clampStdDevGamma,
             float clampMinStdDevTolerance,
-            float floatEpsilonDepthTolerance,
-            float depthDistanceBasedDepthTolerance,
-            float depthSigma,
-            bool useWorldSpaceDistance,
             UINT minFrameAgeToUseTemporalVariance,
-            bool usingBilateralDownsampledBuffers,
-            bool perspectiveCorrectDepthInterpolation,
             float clampDifferenceToFrameAgeScale,
-            TextureResourceFormatRGB::Type normalDepthResourceFormat,
-            RWGpuResource debugResources[2],
-            const XMVECTOR& currentFrameCameraPosition,
-            const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
-            const XMVECTOR& prevToCurrentFrameCameraTranslation,
-            const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin);
+            RWGpuResource debugResources[2]);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-        ConstantBuffer<RTAO_TemporalCache_ReverseReprojectConstantBuffer> m_CB;
+        ConstantBuffer<RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
     };
-
+       
     class GenerateGrassPatch
     {
     public:

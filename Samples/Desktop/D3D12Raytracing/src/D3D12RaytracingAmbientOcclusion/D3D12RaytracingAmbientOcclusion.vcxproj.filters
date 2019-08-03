@@ -428,7 +428,10 @@
     <FxCompile Include="util\UpsampleBilateralFilter2x2FloatCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="RTAO\Shaders\Temporal Supersampling\TemporalSupersampling_CalculateBilateralWeightsCS.hlsl">
+    <FxCompile Include="RTAO\Shaders\Temporal Supersampling\TemporalSupersampling_ReverseReprojectCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\Temporal Supersampling</Filter>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\Temporal Supersampling\TemporalSupersampling_BlendWithCurrentFrameCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Temporal Supersampling</Filter>
     </FxCompile>
   </ItemGroup>

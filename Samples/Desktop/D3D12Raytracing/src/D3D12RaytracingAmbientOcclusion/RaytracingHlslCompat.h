@@ -182,7 +182,7 @@
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
-#define LOAD_ONLY_ONE_PBRT_MESH 0  // for LOAD_PBRT_SCENE == 1 only
+#define LOAD_ONLY_ONE_PBRT_MESH 1  // for LOAD_PBRT_SCENE == 1 only
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
@@ -786,8 +786,12 @@ struct TextureDimConstantBuffer
     XMFLOAT2 invTextureDim;
 };
 
-struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
+struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer
 {
+    // ToDo pix missinterprets the format
+    XMUINT2 textureDim;
+    XMFLOAT2 invTextureDim; // ToDo test what impact passing inv tex dim makes
+
     // ToDo can we get by with one matrix?
     XMMATRIX invProj;
     XMMATRIX invView;
@@ -799,36 +803,41 @@ struct RTAO_TemporalCache_ReverseReprojectConstantBuffer
     XMVECTOR prevToCurrentFrameCameraTranslation;   // ToDo include this in one of the projection matrices?
     XMMATRIX prevProjectionToWorldWithCameraEyeAtOrigin;
 
-    BOOL  forceUseMinSmoothingFactor;  // ToDo remove?
-    float minSmoothingFactor;
     float zNear; // ToDo take these from transform matrix directly?
     float zFar;
+    float floatEpsilonDepthTolerance;
+    float depthDistanceBasedDepthTolerance;
 
+    // ToDo moving this 4Bs above XMFLOATs causes issues
+    BOOL useDepthWeights;
+    BOOL useNormalWeights;
+    float depthSigma;
+    float depthTolerance;
+
+    BOOL useWorldSpaceDistance;
+    UINT DepthNumMantissaBits;      // Number of Mantissa Bits in the floating format of the input depth resources format.
+    BOOL usingBilateralDownsampledBuffers;
+    BOOL perspectiveCorrectDepthInterpolation;
+};
+
+struct RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer
+{
     // ToDo pix missinterprets the format
     XMUINT2 textureDim;
     XMFLOAT2 invTextureDim; // ToDo test what impact passing inv tex dim makes
 
-    // ToDo moving this 4Bs above XMFLOATs causes issues
-    float depthTolerance;
-    BOOL useDepthWeights;
-    BOOL useNormalWeights;
+    BOOL  forceUseMinSmoothingFactor;  // ToDo remove?
     BOOL clampCachedValues;
-
+    float minSmoothingFactor;
     float stdDevGamma;
-    float floatEpsilonDepthTolerance;
-    float depthDistanceBasedDepthTolerance;
-    float depthSigma;
-
-    BOOL useWorldSpaceDistance;
-    float minStdDevTolerance;
-    float frameAgeAdjustmentDueClamping;
-    UINT DepthNumMantissaBits;      // Number of Mantissa Bits in the floating format of the input depth resources format.
 
     UINT minFrameAgeToUseTemporalVariance;
-    BOOL usingBilateralDownsampledBuffers;
-    BOOL perspectiveCorrectDepthInterpolation;
+    float minStdDevTolerance;
+    float frameAgeAdjustmentDueClamping;
     float clampDifferenceToFrameAgeScale;
 };
+
+
 
 struct CalculatePartialDerivativesConstantBuffer
 {
