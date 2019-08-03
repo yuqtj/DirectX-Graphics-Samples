@@ -23,6 +23,7 @@
 Texture2D<float> g_texInputCurrentFrameValue : register(t0);
 Texture2D<float2> g_texInputCurrentFrameLocalMeanVariance : register(t1);
 Texture2D<float> g_texInputCurrentFrameRayHitDistance : register(t2);
+Texture2D<float4> g_texInputReprojected_FrameAge_Value_SquaredMeanValue_RayHitDistance : register(t3);
 
 // ToDo combine some outputs?
 RWTexture2D<float> g_texInputOutputValue : register(u0);
@@ -30,7 +31,6 @@ RWTexture2D<uint>  g_texInputOutputFrameAge : register(u1);
 RWTexture2D<float> g_texInputOutputSquaredMeanValue : register(u2);
 RWTexture2D<float> g_texInputOutputRayHitDistance : register(u3);
 RWTexture2D<float> g_texOutputVariance : register(u4);
-Texture2D<float4> g_texInputReprojected_FrameAge_Value_SquaredMeanValue_RayHitDistance : register(t5);
 
 // ToDo remove
 RWTexture2D<float4> g_texOutputDebug1 : register(u10);
@@ -42,32 +42,28 @@ ConstantBuffer<RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer> c
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     float4 cachedValues = g_texInputReprojected_FrameAge_Value_SquaredMeanValue_RayHitDistance[DTid];
-
     uint frameAge = round(cachedValues.x);
 
     float value = g_texInputCurrentFrameValue[DTid];
     BOOL isValidValue = value != RTAO::InvalidAOValue;
 
-    if (isValidValue)
-    {
-        frameAge += 1;
-    }
     float valueSquaredMean = value * value;
-    float rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
-
-    float2 localMeanVariance = g_texInputCurrentFrameLocalMeanVariance[DTid];
-    float localMean = localMeanVariance.x;
-    float localVariance = localMeanVariance.y;
-    float variance = localVariance;
-
-    uint maxFrameAge = 1 / cb.minSmoothingFactor;
-    frameAge = isValidValue ? min(frameAge + 1, maxFrameAge) : frameAge;
+    float rayHitDistance;
+    float variance;
     
-    if (frameAge > 1)
-    {
+    if (isValidValue && frameAge > 0)
+    {     
+        uint maxFrameAge = 1 / cb.minSmoothingFactor;
+        frameAge = isValidValue ? min(frameAge + 1, maxFrameAge) : frameAge;
+
+        float cachedValue = cachedValues.y;
         // Clamp value to mean +/- std.dev of local neighborhood to surpress ghosting on value changing due to other occluder movements.
         // Ref: Salvi2016, Temporal Super-Sampling
-        float cachedValue = cachedValues.y;
+
+        float2 localMeanVariance = g_texInputCurrentFrameLocalMeanVariance[DTid];
+        float localMean = localMeanVariance.x;
+        float localVariance = localMeanVariance.y;
+        float variance = localVariance;
         if (cb.clampCachedValues)
         {
 
@@ -94,18 +90,26 @@ void main(uint2 DTid : SV_DispatchThreadID)
         value = isValidValue ? value : -value;
 
         // Value Squared Mean.
-        float cachedSquaredMeanValue = cachedValues.z;
+        float valueSquaredMean = value * value;
+        float cachedSquaredMeanValue = cachedValues.z; 
         valueSquaredMean = lerp(cachedSquaredMeanValue, valueSquaredMean, a);
-
-        // RayHitDistance.
-        float cachedRayHitDistance = cachedValues.w;
-        rayHitDistance = lerp(cachedRayHitDistance, rayHitDistance, a);
 
         // Variance.
         float temporalVariance = valueSquaredMean - value * value;
         temporalVariance = max(0, temporalVariance);    // Ensure variance doesn't go negative due to imprecision.
         variance = frameAge >= cb.minFrameAgeToUseTemporalVariance ? temporalVariance : localVariance;
-        
+
+        // RayHitDistance.
+        float rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
+        float cachedRayHitDistance = cachedValues.w;
+        rayHitDistance = lerp(cachedRayHitDistance, rayHitDistance, a);
+    }
+    else
+    {
+        frameAge = isValidValue ? 1 : 0;
+        rayHitDistance = isValidValue ? g_texInputCurrentFrameRayHitDistance[DTid] : 0;
+        float2 localMeanVariance = isValidValue ? g_texInputCurrentFrameLocalMeanVariance[DTid] : 0;
+        variance = localMeanVariance.y;
     }
 
     g_texInputOutputFrameAge[DTid] = frameAge;
