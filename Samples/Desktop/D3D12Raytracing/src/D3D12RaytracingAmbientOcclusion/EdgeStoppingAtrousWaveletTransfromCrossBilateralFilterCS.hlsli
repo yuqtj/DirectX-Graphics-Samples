@@ -225,7 +225,8 @@ void AddFilterContribution(
         float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
         //float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) / (depthTolerance + FLT_EPSILON) : 0;
         float w_d = depthSigma > 0.01f ? min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1) : 1;
-#else
+        w_d *= w_d >= g_CB.depthWeightCutoff;
+#else   
         float fMinEpsilon = 512 * FLT_EPSILON; // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations.
         float fMinDepthScaledEpsilon = 48 * 1e-6  * depth;  // Depth threshold to surpress differences that surface at larger depth from the camera.
         float fEpsilon = fMinEpsilon + fMinDepthScaledEpsilon;

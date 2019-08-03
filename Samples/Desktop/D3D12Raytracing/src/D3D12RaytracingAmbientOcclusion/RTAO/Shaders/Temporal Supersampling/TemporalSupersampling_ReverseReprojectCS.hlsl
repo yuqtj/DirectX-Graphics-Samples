@@ -149,7 +149,7 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         // ToDo Should there be a distance falloff with a cutoff below 1?
         // ToDo revise the coefficient
         depthMask = depthWeights >= 0.5 ? depthWeights : 0;   // ToDo revise - this is same as comparing to depth tolerance
-
+        
         // ToDo handle invalid distances, i.e disabled pixels?
         //weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
 

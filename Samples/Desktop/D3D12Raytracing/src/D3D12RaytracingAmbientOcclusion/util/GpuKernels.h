@@ -352,7 +352,7 @@ namespace GpuKernels
             DXGI_FORMAT format);
         void Execute(
             ID3D12GraphicsCommandList4* commandList,
-            ID3D12DescriptorHeap* descriptorHeap, 
+            ID3D12DescriptorHeap* descriptorHeap,
             FilterType type,
             // ToDo use helper structs to pass the data in
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle, // ToDo remove const?
@@ -386,7 +386,8 @@ namespace GpuKernels
             bool usingBilateralDownsampledBuffers = false,
             float minVarianceToDenoise = 0,
             float staleNeighborWeightScale = 1,
-            UINT maxFrameAgeToDenoise = 100);
+            UINT maxFrameAgeToDenoise = 100,
+            float depthWeightCutoff = 0.5f);
 
         RWGpuResource& VarianceOutputResource() { return m_intermediateVarianceOutputs[0]; }
 

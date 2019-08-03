@@ -1330,7 +1330,8 @@ namespace GpuKernels
         bool usingBilateralDownsampledBuffers,
         float minVarianceToDenoise,
         float staleNeighborWeightScale,
-        UINT maxFrameAgeToDenoise)
+        UINT maxFrameAgeToDenoise,
+        float depthWeightCutoff)
     {
 
         // ToDo: cleanup use of variance
@@ -1412,6 +1413,7 @@ namespace GpuKernels
             CB->minVarianceToDenoise = minVarianceToDenoise;
             CB->staleNeighborWeightScale = _i == 0 ? staleNeighborWeightScale : 1;  // ToDo revise
             CB->maxFrameAgeToDenoise = maxFrameAgeToDenoise;
+            CB->depthWeightCutoff = depthWeightCutoff;
 
             switch (normalDepthResourceFormat)
             {

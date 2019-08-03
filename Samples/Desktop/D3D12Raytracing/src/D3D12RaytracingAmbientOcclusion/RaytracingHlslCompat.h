@@ -470,6 +470,9 @@ struct AtrousWaveletTransformFilterConstantBuffer
     float weightScale;
     float staleNeighborWeightScale;
     UINT maxFrameAgeToDenoise;
+
+    float depthWeightCutoff;
+    float padding[3];
 };
 
 // ToDo remove obsolete params in cbs

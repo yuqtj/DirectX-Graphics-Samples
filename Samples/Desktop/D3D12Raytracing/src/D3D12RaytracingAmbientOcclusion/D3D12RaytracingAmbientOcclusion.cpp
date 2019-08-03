@@ -227,7 +227,7 @@ namespace SceneArgs
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_DepthSigma(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Depth sigma", 1.0f, 0.0f, 10.f, 0.01f);   
 
     const WCHAR* FloatingPointFormatsRGB[TextureResourceFormatRGB::Count] = { L"R32G32B32A32_FLOAT", L"R16G16B16A16_FLOAT", L"R11G11B10_FLOAT" };
-    EnumVar RTAO_TemporalSupersampling_NormalDepthResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Cache/Encoded Normal (RG) Depth (B) resource", TextureResourceFormatRGB::R11G11B10_FLOAT, TextureResourceFormatRGB::Count, FloatingPointFormatsRGB, OnRecreateRaytracingResources);
+    EnumVar RTAO_TemporalSupersampling_NormalDepthResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Cache/Encoded Normal (RG) Depth (B) resource", TextureResourceFormatRGB::R16G16B16A16_FLOAT, TextureResourceFormatRGB::Count, FloatingPointFormatsRGB, OnRecreateRaytracingResources);
 
     const WCHAR* FloatingPointFormatsRG[TextureResourceFormatRG::Count] = { L"R32G32_FLOAT", L"R16G16_FLOAT", L"R8G8_SNORM" };
     // ToDo  ddx needs to be in normalized to use UNORM.
@@ -279,6 +279,7 @@ namespace SceneArgs
     // ToDo why large depth sigma is needed?
     // ToDo the values don't scale to QuarterRes - see ImportaceMap viz
     NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1.0f, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
+    NumVar AODenoiseDepthWeightCutoff(L"Render/AO/RTAO/Denoising/Depth Weight Cutoff", 1.0f, 0.0f, 2.0f, 0.01f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
 
     NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising/Normal Sigma", 64, 0, 256, 4);   // ToDo rename sigma as sigma in depth/var means tolernace. here its an exponent.
     
@@ -2885,7 +2886,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
             SceneArgs::QuarterResAO,
             SceneArgs::RTAODenoisingMinVarianceToDenoise,
             staleNeighborWeightScale,
-            maxFrameAgeToDenoise);
+            maxFrameAgeToDenoise,
+            SceneArgs::AODenoiseDepthWeightCutoff);
     }
 
     // Transition the output resource to SRV.
