@@ -799,10 +799,6 @@ struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;
     XMMATRIX prevProjectionToWorldWithCameraEyeAtOrigin;
 
-    float floatEpsilonDepthTolerance;
-    float depthDistanceBasedDepthTolerance;
-    float padding[2];
-
     // ToDo moving this 4Bs above XMFLOATs causes issues
     BOOL useDepthWeights;
     BOOL useNormalWeights;
@@ -813,6 +809,10 @@ struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer
     UINT DepthNumMantissaBits;      // Number of Mantissa Bits in the floating format of the input depth resources format.
     BOOL usingBilateralDownsampledBuffers;
     BOOL perspectiveCorrectDepthInterpolation;
+
+    float floatEpsilonDepthTolerance;
+    float depthDistanceBasedDepthTolerance;
+    float padding[2];
 };
 
 struct RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer
