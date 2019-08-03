@@ -65,7 +65,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float localVariance = localMeanVariance.y;
         if (cb.clampCachedValues)
         {
-
             float localStdDev = max(cb.stdDevGamma * sqrt(localVariance), cb.minStdDevTolerance);
             float nonClampedCachedValue = cachedValue;
             cachedValue = clamp(cachedValue, localMean - localStdDev, localMean + localStdDev);
