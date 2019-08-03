@@ -51,7 +51,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float rayHitDistance;
     float variance;
     
-    if (isValidValue && frameAge > 0)
+    if (frameAge > 0)
     {     
         uint maxFrameAge = 1 / cb.minSmoothingFactor;
         frameAge = isValidValue ? min(frameAge + 1, maxFrameAge) : frameAge;
@@ -63,7 +63,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float2 localMeanVariance = g_texInputCurrentFrameLocalMeanVariance[DTid];
         float localMean = localMeanVariance.x;
         float localVariance = localMeanVariance.y;
-        float variance = localVariance;
         if (cb.clampCachedValues)
         {
 
@@ -90,7 +89,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
         value = isValidValue ? value : -value;
 
         // Value Squared Mean.
-        float valueSquaredMean = value * value;
         float cachedSquaredMeanValue = cachedValues.z; 
         valueSquaredMean = lerp(cachedSquaredMeanValue, valueSquaredMean, a);
 
@@ -100,11 +98,11 @@ void main(uint2 DTid : SV_DispatchThreadID)
         variance = frameAge >= cb.minFrameAgeToUseTemporalVariance ? temporalVariance : localVariance;
 
         // RayHitDistance.
-        float rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
+        rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
         float cachedRayHitDistance = cachedValues.w;
         rayHitDistance = lerp(cachedRayHitDistance, rayHitDistance, a);
     }
-    else
+    else if (isValidValue)
     {
         frameAge = isValidValue ? 1 : 0;
         rayHitDistance = isValidValue ? g_texInputCurrentFrameRayHitDistance[DTid] : 0;

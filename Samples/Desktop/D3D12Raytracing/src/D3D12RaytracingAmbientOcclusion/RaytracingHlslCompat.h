@@ -832,8 +832,6 @@ struct RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer
     float clampDifferenceToFrameAgeScale;
 };
 
-
-
 struct CalculatePartialDerivativesConstantBuffer
 {
     XMUINT2 textureDim;
