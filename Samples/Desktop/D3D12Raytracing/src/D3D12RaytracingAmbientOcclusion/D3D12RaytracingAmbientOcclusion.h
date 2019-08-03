@@ -206,6 +206,7 @@ private:
     RWGpuResource m_AOTSSCoefficient[2];    // ToDo why is this not part of m_temporalCache?
     RWGpuResource m_lowResAOTSSCoefficient[2];
 	RWGpuResource m_VisibilityResource;
+    RWGpuResource m_cachedFrameAgeValueSquaredValueRayHitDistance;
 
     XMUINT2 c_shadowMapDim = XMUINT2(1024, 1024);
     RWGpuResource m_ShadowMapResource;

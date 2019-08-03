@@ -1887,9 +1887,7 @@ namespace GpuKernels
             namespace Slot {
                 enum Enum {
                     OutputCacheFrameAge = 0,
-                    OutputCacheValue,
-                    OutputCacheSquaredMeanValue,
-                    OutputCacheRayHitDistance,
+                    OutputReprojectedCacheValues,
                     InputCurrentFrameNormalDepth,
                     InputCurrentFrameLinearDepthDerivative,
                     InputReprojectedNormalDepth,
@@ -1926,10 +1924,8 @@ namespace GpuKernels
             ranges[Slot::InputCachedRayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);
 
             ranges[Slot::OutputCacheFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
-            ranges[Slot::OutputCacheValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);
-            ranges[Slot::OutputCacheSquaredMeanValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);
-            ranges[Slot::OutputCacheRayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);
-
+            ranges[Slot::OutputReprojectedCacheValues].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);
+            
             ranges[Slot::OutputDebug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 10);
             ranges[Slot::OutputDebug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 11);
 
@@ -1944,9 +1940,7 @@ namespace GpuKernels
             rootParameters[Slot::InputCachedSquaredMeanValue].InitAsDescriptorTable(1, &ranges[Slot::InputCachedSquaredMeanValue]);
             rootParameters[Slot::InputCachedRayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::InputCachedRayHitDistance]);
             rootParameters[Slot::OutputCacheFrameAge].InitAsDescriptorTable(1, &ranges[Slot::OutputCacheFrameAge]);
-            rootParameters[Slot::OutputCacheValue].InitAsDescriptorTable(1, &ranges[Slot::OutputCacheValue]);
-            rootParameters[Slot::OutputCacheSquaredMeanValue].InitAsDescriptorTable(1, &ranges[Slot::OutputCacheSquaredMeanValue]);
-            rootParameters[Slot::OutputCacheRayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::OutputCacheRayHitDistance]);
+            rootParameters[Slot::OutputReprojectedCacheValues].InitAsDescriptorTable(1, &ranges[Slot::OutputReprojectedCacheValues]);
             rootParameters[Slot::OutputDebug1].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug1]);
             rootParameters[Slot::OutputDebug2].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug2]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
@@ -1990,10 +1984,8 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedFrameAgeResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedSquaredMeanValue,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputCachedRayHitDistanceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputCacheFrameAgeResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputCacheValueResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputCacheSquaredMeanValueResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputCacheRayHitDistanceResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputReprojectedCacheFrameAgeResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputReprojectedCacheValuesResourceHandle,
         float minSmoothingFactor,
         const XMMATRIX& invView,
         const XMMATRIX& invProj,
@@ -2070,10 +2062,8 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputCachedFrameAge, inputCachedFrameAgeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputCachedSquaredMeanValue, inputCachedSquaredMeanValue);
             commandList->SetComputeRootDescriptorTable(Slot::InputCachedRayHitDistance, inputCachedRayHitDistanceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::OutputCacheFrameAge, outputCacheFrameAgeResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::OutputCacheValue, outputCacheValueResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::OutputCacheSquaredMeanValue, outputCacheSquaredMeanValueResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::OutputCacheRayHitDistance, outputCacheRayHitDistanceResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputCacheFrameAge, outputReprojectedCacheFrameAgeResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputReprojectedCacheValues, outputReprojectedCacheValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug2, debugResources[1].gpuDescriptorWriteAccess);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
@@ -2100,6 +2090,7 @@ namespace GpuKernels
                     InputCurrentFrameValue,
                     InputCurrentFrameLocalMeanVariance,
                     InputCurrentFrameRayHitDistance,
+                    InputReprojectedCacheValues,
                     OutputDebug1,
                     OutputDebug2,
                     ConstantBuffer,
@@ -2125,6 +2116,7 @@ namespace GpuKernels
             ranges[Slot::InputOutputSquaredMeanValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);
             ranges[Slot::InputOutputRayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);
             ranges[Slot::OutputVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);
+            ranges[Slot::InputReprojectedCacheValues].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);
             ranges[Slot::OutputDebug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 10);
             ranges[Slot::OutputDebug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 11);
 
@@ -2132,6 +2124,7 @@ namespace GpuKernels
             rootParameters[Slot::InputCurrentFrameValue].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameValue]);
             rootParameters[Slot::InputCurrentFrameLocalMeanVariance].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameLocalMeanVariance]);
             rootParameters[Slot::InputCurrentFrameRayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::InputCurrentFrameRayHitDistance]);
+            rootParameters[Slot::InputReprojectedCacheValues].InitAsDescriptorTable(1, &ranges[Slot::InputReprojectedCacheValues]);
             rootParameters[Slot::InputOutputValue].InitAsDescriptorTable(1, &ranges[Slot::InputOutputValue]);
             rootParameters[Slot::InputOutputFrameAge].InitAsDescriptorTable(1, &ranges[Slot::InputOutputFrameAge]);
             rootParameters[Slot::InputOutputSquaredMeanValue].InitAsDescriptorTable(1, &ranges[Slot::InputOutputSquaredMeanValue]);
@@ -2175,6 +2168,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputOutputFrameAgeResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputOutputSquaredMeanValueResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputOutputRayHitDistanceResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputReprojectedCacheValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputVarianceResourceHandle,
         float minSmoothingFactor,
         bool forceUseMinSmoothingFactor,
@@ -2188,7 +2182,7 @@ namespace GpuKernels
         using namespace RootSignature::RTAO_TemporalSupersampling_BlendWithCurrentFrame;
         using namespace DefaultComputeShaderParams;
 
-        ScopedTimer _prof(L"RTAO_TemporalSupersampling_ReverseReproject", commandList);
+        ScopedTimer _prof(L"RTAO_TemporalSupersampling_BlendWithCurrentFrame", commandList);
 
         m_CB->minSmoothingFactor = minSmoothingFactor;
         m_CB->forceUseMinSmoothingFactor = forceUseMinSmoothingFactor;
@@ -2214,6 +2208,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputOutputFrameAge, inputOutputFrameAgeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputOutputSquaredMeanValue, inputOutputSquaredMeanValueResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputOutputRayHitDistance, inputOutputRayHitDistanceResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputReprojectedCacheValues, inputReprojectedCacheValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputVariance, outputVarianceResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug2, debugResources[1].gpuDescriptorWriteAccess);

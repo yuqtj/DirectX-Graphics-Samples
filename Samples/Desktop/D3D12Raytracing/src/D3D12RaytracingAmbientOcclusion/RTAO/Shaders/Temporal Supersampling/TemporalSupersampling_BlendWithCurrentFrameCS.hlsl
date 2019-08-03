@@ -30,6 +30,7 @@ RWTexture2D<uint>  g_texInputOutputFrameAge : register(u1);
 RWTexture2D<float> g_texInputOutputSquaredMeanValue : register(u2);
 RWTexture2D<float> g_texInputOutputRayHitDistance : register(u3);
 RWTexture2D<float> g_texOutputVariance : register(u4);
+Texture2D<float4> g_texInputReprojected_FrameAge_Value_SquaredMeanValue_RayHitDistance : register(t5);
 
 // ToDo remove
 RWTexture2D<float4> g_texOutputDebug1 : register(u10);
@@ -40,7 +41,9 @@ ConstantBuffer<RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer> c
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
-    uint frameAge = g_texInputOutputFrameAge[DTid];
+    float4 cachedValues = g_texInputReprojected_FrameAge_Value_SquaredMeanValue_RayHitDistance[DTid];
+
+    uint frameAge = round(cachedValues.x);
 
     float value = g_texInputCurrentFrameValue[DTid];
     BOOL isValidValue = value != RTAO::InvalidAOValue;
@@ -64,7 +67,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         // Clamp value to mean +/- std.dev of local neighborhood to surpress ghosting on value changing due to other occluder movements.
         // Ref: Salvi2016, Temporal Super-Sampling
-        float cachedValue = g_texInputOutputValue[DTid];
+        float cachedValue = cachedValues.y;
         if (cb.clampCachedValues)
         {
 
@@ -91,17 +94,18 @@ void main(uint2 DTid : SV_DispatchThreadID)
         value = isValidValue ? value : -value;
 
         // Value Squared Mean.
-        float cachedSquaredMeanValue = g_texInputOutputSquaredMeanValue[DTid];
+        float cachedSquaredMeanValue = cachedValues.z;
         valueSquaredMean = lerp(cachedSquaredMeanValue, valueSquaredMean, a);
+
+        // RayHitDistance.
+        float cachedRayHitDistance = cachedValues.w;
+        rayHitDistance = lerp(cachedRayHitDistance, rayHitDistance, a);
 
         // Variance.
         float temporalVariance = valueSquaredMean - value * value;
         temporalVariance = max(0, temporalVariance);    // Ensure variance doesn't go negative due to imprecision.
         variance = frameAge >= cb.minFrameAgeToUseTemporalVariance ? temporalVariance : localVariance;
         
-        // RayHitDistance.
-        float cachedRayHitDistance = g_texInputOutputRayHitDistance[DTid];
-        rayHitDistance = lerp(cachedRayHitDistance, rayHitDistance, a);
     }
 
     g_texInputOutputFrameAge[DTid] = frameAge;

@@ -182,7 +182,11 @@
 #define ONLY_SQUID_SCENE_BLAS 1
 #if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
+#ifdef _DEBUG
+#define LOAD_ONLY_ONE_PBRT_MESH 1  // for LOAD_PBRT_SCENE == 1 only
+#else
 #define LOAD_ONLY_ONE_PBRT_MESH 0  // for LOAD_PBRT_SCENE == 1 only
+#endif
 #define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
@@ -717,7 +721,7 @@ namespace TextureResourceFormatRG
     enum Type {
         R32G32_FLOAT = 0,
         R16G16_FLOAT,
-        R8G8_UNORM,
+        R8G8_SNORM,
         Count
     };
 #ifndef HLSL
@@ -727,7 +731,7 @@ namespace TextureResourceFormatRG
         {
         case R32G32_FLOAT: return DXGI_FORMAT_R32G32_FLOAT;
         case R16G16_FLOAT: return DXGI_FORMAT_R16G16_FLOAT;
-        case R8G8_UNORM: return DXGI_FORMAT_R8G8_UNORM;
+        case R8G8_SNORM: return DXGI_FORMAT_R8G8_SNORM;
         }
         return DXGI_FORMAT_UNKNOWN;
     }

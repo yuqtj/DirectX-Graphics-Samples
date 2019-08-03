@@ -227,9 +227,9 @@ namespace SceneArgs
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_DepthSigma(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Depth sigma", 1.0f, 0.0f, 10.f, 0.01f);   
 
     const WCHAR* FloatingPointFormatsRGB[TextureResourceFormatRGB::Count] = { L"R32G32B32A32_FLOAT", L"R16G16B16A16_FLOAT", L"R11G11B10_FLOAT" };
-    EnumVar RTAO_TemporalSupersampling_NormalDepthResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Cache/Encoded Normal (RG) Depth (B) resource", TextureResourceFormatRGB::R32G32B32A32_FLOAT, TextureResourceFormatRGB::Count, FloatingPointFormatsRGB, OnRecreateRaytracingResources);
+    EnumVar RTAO_TemporalSupersampling_NormalDepthResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Cache/Encoded Normal (RG) Depth (B) resource", TextureResourceFormatRGB::R11G11B10_FLOAT, TextureResourceFormatRGB::Count, FloatingPointFormatsRGB, OnRecreateRaytracingResources);
 
-    const WCHAR* FloatingPointFormatsRG[TextureResourceFormatRG::Count] = { L"R32G32_FLOAT", L"R16G16_FLOAT", L"R8G8_UNORM" };
+    const WCHAR* FloatingPointFormatsRG[TextureResourceFormatRG::Count] = { L"R32G32_FLOAT", L"R16G16_FLOAT", L"R8G8_SNORM" };
     // ToDo  ddx needs to be in normalized to use UNORM.
     EnumVar RTAO_PartialDepthDerivativesResourceFormat(L"Render/Texture Formats/PartialDepthDerivatives", TextureResourceFormatRG::R16G16_FLOAT, TextureResourceFormatRG::Count, FloatingPointFormatsRG, OnRecreateRaytracingResources);
     EnumVar RTAO_MotionVectorResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Supersampling/Motion Vector", TextureResourceFormatRG::R16G16_FLOAT, TextureResourceFormatRG::Count, FloatingPointFormatsRG, OnRecreateRaytracingResources);
@@ -1293,6 +1293,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     // ToDo move depth out of normal resource and switch normal to 16bit precision
     DXGI_FORMAT normalFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;       // ToDo rename to coefficient or avoid using same variable for different types.
     DXGI_FORMAT hitPositionFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;// DXGI_FORMAT_R16G16B16A16_FLOAT; // ToDo change to 16bit? or encode as 64bits
+
+    DXGI_FORMAT debugFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;// DXGI_FORMAT_R32G32B32A32_FLOAT;
 	// ToDo tune formats
     // ToDo change this to non-PS resouce since we use CS?
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
@@ -1332,8 +1334,8 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
         CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer AO Surface Albedo");
 
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug], initialResourceState, L"GBuffer Debug");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug2], initialResourceState, L"GBuffer Debug2");
+        CreateRenderTargetResource(device, debugFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug], initialResourceState, L"GBuffer Debug");
+        CreateRenderTargetResource(device, debugFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug2], initialResourceState, L"GBuffer Debug2");
 
     }
     
@@ -1413,7 +1415,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
         // ToDo use lower bit float?
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::FilterWeightSum], initialResourceState, L"Render/AO Filter Weight Sum");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
+        CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
     }
 
     // ToDo remove unnecessary copies for 2 resolutions. Only keep one where possible and recreate on change.
@@ -1436,7 +1438,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             // ToDo cleanup raytracing resolution - twice for coefficient.
             CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::FrameAge], initialResourceState, L"Temporal Cache: Frame Age");
             CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::CoefficientSquaredMean], initialResourceState, L"Temporal Cache: Coefficient Squared Mean");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::RayHitDistance], initialResourceState, L"Temporal Cache: Ray Hit Distance");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::RayHitDistance], initialResourceState, L"Temporal Cache: Ray Hit Distance");
 
 
             m_AOTSSCoefficient[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
@@ -1444,9 +1446,12 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             
                 
             m_lowResAOTSSCoefficient[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-            CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_lowResAOTSSCoefficient[i], initialResourceState, L"Render/AO LowRes Temporally Supersampled Coefficient");
+            CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_lowResAOTSSCoefficient[i], initialResourceState, L"Render/AO LowRes Temporally Supersampled Coefficient");        
         }
      }
+    m_cachedFrameAgeValueSquaredValueRayHitDistance.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_cachedFrameAgeValueSquaredValueRayHitDistance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Temporal Supersampling intermediate reprojected Frame Age, Value, Squared Mean Value, Ray Hit Distance");
+
 
     // ToDo remove
     // Debug resources
@@ -1459,7 +1464,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             m_debugOutput[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             m_debugOutput[i].uavDescriptorHeapIndex = m_debugOutput[0].uavDescriptorHeapIndex + i;
             m_debugOutput[i].srvDescriptorHeapIndex = m_debugOutput[0].srvDescriptorHeapIndex + i;
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_debugOutput[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Debug");
+            CreateRenderTargetResource(device, debugFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_debugOutput[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Debug");
         }
     }
 
@@ -1476,17 +1481,17 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
     // Variance resources
     {
+        DXGI_FORMAT varianceTexFormat = m_RTAO.GetAOCoefficientFormat();       // ToDo 8 bit suffers from loss of precision and clamps too much.
+        DXGI_FORMAT meanVarianceTexFormat = DXGI_FORMAT_R16G16_FLOAT;       // ToDo 8 bit suffers from loss of precision and clamps too much.
         // HiRes
         // ToDo specialize formats instead of using a common one?
         {
-            DXGI_FORMAT varianceTexFormat = m_RTAO.GetAOCoefficientFormat();       // ToDo 8 bit suffers from loss of precision and clamps too much.
             m_varianceResource[AOVarianceResource::Raw].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             CreateRenderTargetResource(device, varianceTexFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_varianceResource[AOVarianceResource::Raw], initialResourceState, L"Post Temporal Reprojection Variance");
 
             m_varianceResource[AOVarianceResource::Smoothed].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             CreateRenderTargetResource(device, varianceTexFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_varianceResource[AOVarianceResource::Smoothed], initialResourceState, L"Smoothed Post Temporal Reprojection Variance");
 
-            DXGI_FORMAT meanVarianceTexFormat = DXGI_FORMAT_R16G16_FLOAT;       // ToDo 8 bit suffers from loss of precision and clamps too much.
             m_localMeanVarianceResource[AOVarianceResource::Raw].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             CreateRenderTargetResource(device, meanVarianceTexFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_localMeanVarianceResource[AOVarianceResource::Raw], initialResourceState, L"Local Mean Variance");
 
@@ -1496,14 +1501,12 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
         // Low res
         {
-            DXGI_FORMAT varianceTexFormat = m_RTAO.GetAOCoefficientFormat();       // ToDo 8 bit suffers from loss of precision and clamps too much.
             m_lowResVarianceResource[AOVarianceResource::Raw].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             CreateRenderTargetResource(device, varianceTexFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_lowResVarianceResource[AOVarianceResource::Raw], initialResourceState, L"LowRes Post Temporal Reprojection Variance");
 
             m_lowResVarianceResource[AOVarianceResource::Smoothed].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             CreateRenderTargetResource(device, varianceTexFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_lowResVarianceResource[AOVarianceResource::Smoothed], initialResourceState, L"LowRes Smoothed Post Temporal Reprojection Variance");
 
-            DXGI_FORMAT meanVarianceTexFormat = DXGI_FORMAT_R16G16_FLOAT;       // ToDo 8 bit suffers from loss of precision and clamps too much.
             m_lowResLocalMeanVarianceResource[AOVarianceResource::Raw].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
             CreateRenderTargetResource(device, meanVarianceTexFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_lowResLocalMeanVarianceResource[AOVarianceResource::Raw], initialResourceState, L"LowRes Local Mean Variance");
 
@@ -2841,7 +2844,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
     }
     
     float staleNeighborWeightScale = m_RTAO.GetSpp();
-    UINT maxFrameAgeToDenoise = isFirstPass ? 32 : SceneArgs::RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass;  // ToDo use common variable for max frame age
+    UINT maxFrameAgeToDenoise = isFirstPass ? 33 : SceneArgs::RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass;  // ToDo use common variable for max frame age
     // A-trous edge-preserving wavelet tranform filter
     if (numFilterPasses > 0)
     {
@@ -4533,9 +4536,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance].resource.Get(), before, after)
+            CD3DX12_RESOURCE_BARRIER::Transition(m_cachedFrameAgeValueSquaredValueRayHitDistance.resource.Get(), before, after),
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -4556,9 +4557,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
         m_temporalCache[temporalCachePreviousFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].gpuDescriptorReadAccess,
         m_temporalCache[temporalCachePreviousFrameResourceIndex][TemporalSupersampling::RayHitDistance].gpuDescriptorReadAccess,
         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].gpuDescriptorWriteAccess,
-        AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].gpuDescriptorWriteAccess,
-        m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].gpuDescriptorWriteAccess,
-        m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance].gpuDescriptorWriteAccess,
+        m_cachedFrameAgeValueSquaredValueRayHitDistance.gpuDescriptorWriteAccess,
         SceneArgs::RTAO_TemporalSupersampling_MinSmoothingFactor,
         invView,
         invProj,
@@ -4592,6 +4591,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_BARRIER barriers[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_cachedFrameAgeValueSquaredValueRayHitDistance.resource.Get(), before, after),
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -4762,6 +4762,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].gpuDescriptorWriteAccess,
         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].gpuDescriptorWriteAccess,
         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance].gpuDescriptorWriteAccess,
+        m_cachedFrameAgeValueSquaredValueRayHitDistance.gpuDescriptorWriteAccess,
         VarianceResources[AOVarianceResource::Raw].gpuDescriptorWriteAccess,
         SceneArgs::RTAO_TemporalSupersampling_MinSmoothingFactor,
         SceneArgs::RTAO_TemporalSupersampling_ForceUseMinSmoothingFactor,

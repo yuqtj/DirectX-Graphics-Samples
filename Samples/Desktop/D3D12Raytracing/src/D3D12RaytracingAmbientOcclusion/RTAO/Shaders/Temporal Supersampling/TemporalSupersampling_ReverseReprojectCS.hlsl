@@ -36,10 +36,8 @@ Texture2D<float> g_texInputCachedValueSquaredMean : register(t7);
 Texture2D<float> g_texInputCachedRayHitDistance : register(t8);
 
 // ToDo combine some outputs?
-RWTexture2D<uint> g_texOutputFrameAge : register(u0);
-RWTexture2D<float> g_texOutputCachedValue : register(u1);
-RWTexture2D<float> g_texOutputCachedValueSquaredMean : register(u2);
-RWTexture2D<float> g_texOutputRayHitDistance : register(u3);
+RWTexture2D<uint> g_texOutputCachedFrameAge : register(u0);
+RWTexture2D<float4> g_texOutputReprojectedCachedValues : register(u1);
 
 
 // ToDo remove
@@ -196,9 +194,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float2 textureSpaceMotionVector = g_texInputTextureSpaceMotionVector[DTid];
 
     // ToDo compare against common predefined value
-    if (_depth == 0 || textureSpaceMotionVector.x == 1e3f)
+    if (_depth == 0 || textureSpaceMotionVector.x > 1e2f)
     {
-        g_texOutputFrameAge[DTid] = 0;
+        g_texOutputCachedFrameAge[DTid] = 0;
         return;
     }
 
@@ -226,13 +224,15 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float3 cacheNormals[4];
     float4 vCacheDepths;
     {
-        // ToDo use 3xgathers instead?
+        float4 encodedNormalX = g_texInputCachedNormalDepth.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+        float4 encodedNormalY = g_texInputCachedNormalDepth.GatherGreen(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         [unroll]
         for (int i = 0; i < 4; i++)
         {
-            float dummy;
-            LoadDecodedNormalAndDepth(g_texInputCachedNormalDepth, cacheIndices[i], cacheNormals[i], vCacheDepths[i]);
+            cacheNormals[i] = DecodeNormal(float2(encodedNormalX[i], encodedNormalY[i]));
         }
+
+        vCacheDepths = g_texInputCachedNormalDepth.GatherBlue(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
     }
 
     float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];
@@ -268,7 +268,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
     weights = vCacheValues != RTAO::InvalidAOValue ? weights : 0;
 
     float weightSum = dot(1, weights);
-
+    
+    float cachedValue = RTAO::InvalidAOValue;
+    float cachedValueSquaredMean = 0;
+    float cachedRayHitDistance = 0;
 
 #if 0
     // ToDo dedupe with GetClipSpacePosition()...
@@ -311,16 +314,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
         if (frameAge > 0)
         {
             float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-            float cachedValue = dot(nWeights, vCacheValues);
-            g_texOutputCachedValue[DTid] = cachedValue;
+            cachedValue = dot(nWeights, vCacheValues);
 
             float4 vCachedValueSquaredMean = g_texInputCachedValueSquaredMean.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-            float cachedValueSquaredMean = dot(nWeights, vCachedValueSquaredMean);
-            g_texOutputCachedValueSquaredMean[DTid] = cachedValueSquaredMean;
+            cachedValueSquaredMean = dot(nWeights, vCachedValueSquaredMean);
 
             float4 vCachedRayHitDistances = g_texInputCachedRayHitDistance.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-            float cachedRayHitDistance = dot(nWeights, vCachedRayHitDistances);
-            g_texOutputRayHitDistance[DTid] = cachedRayHitDistance;
+            cachedRayHitDistance = dot(nWeights, vCachedRayHitDistances);
         }
     }
     else
@@ -328,6 +328,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
         // No valid values can be retrieved from the cache.
         frameAge = 0;
     }
-
-    g_texOutputFrameAge[DTid] = frameAge;
+    g_texOutputCachedFrameAge[DTid] = frameAge;
+    g_texOutputReprojectedCachedValues[DTid] = float4(frameAge, cachedValue, cachedValueSquaredMean, cachedRayHitDistance);
 }
