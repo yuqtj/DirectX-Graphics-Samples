@@ -134,7 +134,7 @@ namespace GlobalRootSignature {
 #endif
             PrevFrameBottomLevelASIstanceTransforms,
             MotionVector,
-            ReprojectedHitPosition,
+            ReprojectedNormalDepth,
             Color,
             AOSurfaceAlbedo,
             ShadowMapUAV,   // ToDo Standardize nmaming
@@ -235,7 +235,7 @@ namespace GBufferResource {
         SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate remove Surface prefix
         PartialDepthDerivatives,
         MotionVector,
-        ReprojectedHitPosition,
+        ReprojectedNormalDepth,
         Color,
         AOSurfaceAlbedo, 
         Debug,

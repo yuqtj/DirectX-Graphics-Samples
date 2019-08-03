@@ -74,7 +74,7 @@ RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 #endif
 // ToDo pack motion vector, depth and normal into float4
 RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
-RWTexture2D<float4> g_rtReprojectedHitPosition : register(u18); // ToDo rename
+RWTexture2D<float4> g_rtReprojectedNormalDepth : register(u18); // ToDo rename
 RWTexture2D<float4> g_rtColor : register(u19);
 RWTexture2D<float4> g_rtAOSurfaceAlbedo : register(u20);
 RWTexture2D<float> g_rtShadowMap : register(u21);
@@ -870,7 +870,7 @@ void MyRayGenShader_GBuffer()
         //g_rtDebug2[DTid] = float4(rayPayload.AOGBuffer._virtualHitPosition, 0);
         float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth, DTid);
         g_rtTextureSpaceMotionVector[DTid] = motionVector;
-        g_rtReprojectedHitPosition[DTid] = float4(rayPayload.AOGBuffer._encodedNormal, _depth, 0);
+        g_rtReprojectedNormalDepth[DTid] = float4(rayPayload.AOGBuffer._encodedNormal, _depth, 0);
 
         // ToDo normalize depth to [0,1] as floating point has higher precision around 0.
         // ToDo need to normalize hit distance as well
@@ -927,7 +927,7 @@ void MyRayGenShader_GBuffer()
 
         // Invalidate the motion vector - set it to move well out of texture bounds.
         g_rtTextureSpaceMotionVector[DTid] = 1e3f;
-        g_rtReprojectedHitPosition[DTid] = FLT_MAX;   // ToDo can we skip this write
+        g_rtReprojectedNormalDepth[DTid] = FLT_MAX;   // ToDo can we skip this write
 
     }
 

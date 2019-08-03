@@ -9,10 +9,6 @@
 //
 //*********************************************************
 
-// ToDo Desc
-// Desc: Sample temporal cache via reverse reprojection.
-// If no valid values have been retrieved from the cache, the frameAge is set to 0.
-
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
@@ -28,25 +24,22 @@ Texture2D<float4> g_texInputCurrentFrameNormalDepth : register(t0);
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t1); // ToDo standardize naming across files
 Texture2D<float4> g_texInputReprojectedNormalDepth : register(t2);  // ToDo add encoded prefix
 Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t3);
-
-Texture2D<float4> g_texInputCachedNormalDepth : register(t4);
-Texture2D<float> g_texInputCachedValue : register(t5);  // ToDo store 1bit 0/1 in an auxilary reseource instead?
+Texture2D<float> g_texInputCachedValue : register(t4);  // ToDo store 1bit 0/1 in an auxilary reseource instead?
+Texture2D<float4> g_texInputCachedNormalDepth : register(t5);
 Texture2D<uint> g_texInputCachedFrameAge : register(t6);
-Texture2D<float> g_texInputCachedValueSquaredMean : register(t7);
-Texture2D<float> g_texInputCachedRayHitDistance : register(t8);
 
 // ToDo combine some outputs?
-RWTexture2D<int2> g_texOutputFrameAge : register(u0);
-RWTexture2D<int2> g_texOutputCachedValue : register(u1);
-RWTexture2D<float4> g_texOutputCachedValueSquaredMean : register(u2);
-RWTexture2D<float4> g_texOutputRayHitDistance : register(u3);
+// ToDo combine pixel index with weights? Store only first three weights and fourth is 1 - weightSum?
+RWTexture2D<int2> g_texOutputTopLeftCacheFrameIndex : register(u0); // Top left cache frame index of the 2x2 pixel quad to interpolate a reprojected value from.
+RWTexture2D<float4> g_texOutputBilateralWeights : register(u1);     // Normalized bilateral weights for valid cached data.  0 otherwise.
+RWTexture2D<uint> g_texOutputFrameAge : register(u2);
 
 
 // ToDo remove
-RWTexture2D<float4> g_texOutputDebug1 : register(u10);
-RWTexture2D<float4> g_texOutputDebug2 : register(u11);
+RWTexture2D<float4> g_texOutputDebug1 : register(u3);
+RWTexture2D<float4> g_texOutputDebug2 : register(u4);
 
-ConstantBuffer<RTAO_TemporalSupersampling_CalculateBilateralWeightsConstantBuffer> cb : register(b0);
+ConstantBuffer<RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer> cb : register(b0);
 
 SamplerState ClampSampler : register(s0);
 
@@ -69,9 +62,9 @@ float CalculateAdjustedDepthThreshold(
 {
     // ToDo add derivation comment
     return d1
-           * (sin(beta) / sin(alpha))
-           * (cos(rho + alpha) / cos(rho + beta));
-   
+        * (sin(beta) / sin(alpha))
+        * (cos(rho + alpha) / cos(rho + beta));
+
 }
 
 float CalculateAdjustedDepthThreshold(
@@ -145,7 +138,7 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
 // Using exact precision values fails the depth test on some views, particularly at smaller resolutions.
         // Scale the tolerance a bit.
         float depthFloatPrecision = FloatPrecision(ActualDistance, cb.DepthNumMantissaBits);
-       
+
         float depthTolerance = cb.depthSigma * depthThreshold + depthFloatPrecision;
         float4 depthWeights = min(depthTolerance / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
         // ToDo Should there be a distance falloff with a cutoff below 1?
@@ -156,7 +149,7 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         //weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
 
     }
-    
+
 
     float4 normalWeights = 1;
     if (cb.useNormalWeights)
@@ -164,18 +157,18 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         const uint normalExponent = 32;
         const float minNormalWeight = 1e-3f; // ToDo pass as parameter
         float normalSigma = 1.1;        // ToDo remove/finetune/document. There's some less than 1 weights even for same/very similar  normals (i.e. house wall tiles)(due to low bit format?)
-        
+
         float4 NdotSampleN = float4(
             dot(ActualNormal, SampleNormals[0]),
             dot(ActualNormal, SampleNormals[1]),
             dot(ActualNormal, SampleNormals[2]),
             dot(ActualNormal, SampleNormals[3]));
-        normalWeights = pow(saturate(normalSigma*NdotSampleN), normalExponent) >= minNormalWeight;
+        normalWeights = pow(saturate(normalSigma * NdotSampleN), normalExponent) >= minNormalWeight;
     }
 
-    float4 bilinearWeights = 
+    float4 bilinearWeights =
         float4(
-            (1 - offset.x) * (1 - offset.y),
+        (1 - offset.x) * (1 - offset.y),
             offset.x * (1 - offset.y),
             (1 - offset.x) * offset.y,
             offset.x * offset.y);
@@ -193,18 +186,20 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float3 _normal;
     float _depth;
     LoadDecodedNormalAndDepth(g_texInputReprojectedNormalDepth, DTid, _normal, _depth);
-    float2 textureSpaceMotionVector = g_texInputTextureSpaceMotionVector[DTid];
 
     // ToDo compare against common predefined value
-    if (_depth == 0 || textureSpaceMotionVector == 1e3)
+    if (_depth == 0)
     {
+        g_texOutputTopLeftCacheFrameIndex[DTid] = int2(-100, -100);
+        g_texOutputBilateralWeights[DTid] = 0;
         g_texOutputFrameAge[DTid] = 0;
         return;
     }
 
     float2 texturePos = (DTid.xy + 0.5f) * cb.invTextureDim;
+    float2 textureSpaceMotionVector = g_texInputTextureSpaceMotionVector[DTid];
     float2 cacheFrameTexturePos = texturePos - textureSpaceMotionVector;
-    
+
     // Find the nearest integer index smaller than the texture position.
     // The floor() ensures the that value sign is taken into consideration.
     int2 topLeftCacheFrameIndex = floor(cacheFrameTexturePos * cb.textureDim - 0.5);
@@ -223,7 +218,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         topLeftCacheFrameIndex + srcIndexOffsets[3] };
     // ToDo conditional loads if really needed?
     // ToDo use gather
-    float3 cacheNormals[4]; 
+    float3 cacheNormals[4];
     float4 vCacheDepths;
     {
         // ToDo use 3xgathers instead?
@@ -269,7 +264,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     float weightSum = dot(1, weights);
 
-    
+
 #if 0
     // ToDo dedupe with GetClipSpacePosition()...
     float2 xy = DTid + 0.5f;                            // Center in the middle of the pixel.
@@ -277,17 +272,20 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     float aspectRatio = cb.textureDim.x / cb.textureDim.y;
     float maxScreenSpaceReprojectionDistance = 0.01;// cb.minSmoothingFactor * 0.1f; // ToDo
-     ToDo scale this based on depth?
-    float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
-     //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
+    ToDo scale this based on depth ?
+        float screenSpaceReprojectionDistanceAsWidthPercentage = min(1, length((currentFrameTexturePos - cacheFrameTexturePos) * float2(1, aspectRatio)));
+    //&& screenSpaceReprojectionDistanceAsWidthPercentage <= maxScreenSpaceReprojectionDistance;
 
-    //frameAgeClamp = screenSpaceReprojectionDistanceAsWidthPercentage / maxScreenSpaceReprojectionDistance;
-    //uint maxFrame
-    //frameAge = lerp(frameAge, 0, frameAgeClamp);
+   //frameAgeClamp = screenSpaceReprojectionDistanceAsWidthPercentage / maxScreenSpaceReprojectionDistance;
+   //uint maxFrame
+   //frameAge = lerp(frameAge, 0, frameAgeClamp);
 #endif
-    uint frameAge;
-    bool areCacheValuesValid = weightSum > 1e-3f; // ToDo
-    if (areCacheValueValid)
+
+    uint frameAge = 0;
+
+    float4 nWeights = 0;
+    bool isCacheValueValid = weightSum > 1e-3f; // ToDo
+    if (isCacheValueValid)
     {
         uint4 vCachedFrameAge = g_texInputCachedFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         nWeights = weights / weightSum;   // Normalize the weights.
@@ -306,28 +304,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         float cachedFrameAge = frameAgeScale * dot(nWeights, vCachedFrameAge);
         frameAge = round(cachedFrameAge);
-
-        // ToDo move this to a separate pass?
-        if (frameAge > 0)
-        {
-            float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-            float cachedValue = dot(nWeights, vCacheValues);
-            g_texOutputCachedValue[DTid] = cachedValue;
-
-            float4 vCachedValueSquaredMean = g_texInputCachedValueSquaredMean.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-            float cachedValueSquaredMean = dot(nWeights, vCachedValueSquaredMean);
-            g_texOutputCachedValueSquaredMean[DTid] = cachedValueSquareMean;
-
-            float4 vCachedRayHitDistances = g_texInputCachedRayHitDistance.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-            float cachedRayHitDistance = dot(nWeights, vCachedRayHitDistances);
-            g_texOutputRayHitDistance[DTid] = cachedRayHitDistance;
-        }
     }
-    else
-    {
-        // No valid values can be retrieved from the cache.
-        frameAge = 0;
-    }
-
+    // ToDo If no valid samples found:
+    //  - use largest motion vector from 3x3
+    //  - try 3x3 area or 2x2 lower res?
+    //  - default to average?
+    g_texOutputTopLeftCacheFrameIndex[DTid] = topLeftCacheFrameIndex;
+    g_texOutputBilateralWeights[DTid] = nWeights;
     g_texOutputFrameAge[DTid] = frameAge;
 }

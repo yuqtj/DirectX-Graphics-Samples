@@ -22,7 +22,7 @@
 // ToDo standardize in vs input, out vs output
 Texture2D<float> g_texInputCurrentFrameValue : register(t0);
 Texture2D<float2> g_texInputCurrentFrameLocalMeanVariance : register(t1);
-Texture2D<float2> g_texInputCurrentFrameRayHitDistance : register(t2);
+Texture2D<float> g_texInputCurrentFrameRayHitDistance : register(t2);
 
 // ToDo combine some outputs?
 RWTexture2D<float> g_texInputOutputValue : register(u0);
@@ -42,15 +42,15 @@ void main(uint2 DTid : SV_DispatchThreadID)
 {
     uint frameAge = g_texInputOutputFrameAge[DTid];
 
-    uint value = g_texInputCurrentFrameValue[DTid];
-    uint isValidValue = value != RTAO::InvalidAOValue;
+    float value = g_texInputCurrentFrameValue[DTid];
+    BOOL isValidValue = value != RTAO::InvalidAOValue;
 
     if (isValidValue)
     {
         frameAge += 1;
     }
     float valueSquaredMean = value * value;
-    float rayHitDistance = g_texInputOutputRayHitDistance[DTid];
+    float rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
 
     float2 localMeanVariance = g_texInputCurrentFrameLocalMeanVariance[DTid];
     float localMean = localMeanVariance.x;
@@ -81,7 +81,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         // ToDo: use moving average (Koskela2019) for the first few samples 
         // to even out the weights for the noisy start instead of weighting first samples much more.
-        float invFrameAge = 1.f / (frameAge + 1.f);
+        float invFrameAge = 1.f / frameAge;
         float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
         a = isValidValue ? a : 0;
 
@@ -108,4 +108,5 @@ void main(uint2 DTid : SV_DispatchThreadID)
     g_texInputOutputValue[DTid] = value;
     g_texInputOutputSquaredMeanValue[DTid] = valueSquaredMean;
     g_texInputOutputRayHitDistance[DTid] = rayHitDistance;
+    g_texOutputVariance[DTid] = variance;
 }
