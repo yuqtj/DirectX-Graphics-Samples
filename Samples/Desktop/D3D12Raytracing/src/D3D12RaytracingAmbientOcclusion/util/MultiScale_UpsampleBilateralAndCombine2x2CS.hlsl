@@ -92,7 +92,7 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
 
 
 // ToDo double check coorrect threadgroups used across shaders
-[numthreads(MultiScale_UpsampleBilateralFilterAndCombine::ThreadGroup::Width, MultiScale_UpsampleBilateralFilterAndCombine::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     // ToDo comment

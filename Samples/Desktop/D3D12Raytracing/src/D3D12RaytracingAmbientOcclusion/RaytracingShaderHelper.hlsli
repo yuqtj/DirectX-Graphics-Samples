@@ -871,6 +871,28 @@ float max4(in float4 v)
     return max(max(v.x, v.y), max(v.z, v.w));
 }
 
+
+uint GetIndexOfValueClosestToTheReference(in float refValue, in float2 vValues)
+{
+    float2 delta = abs(refValue - vValues);
+
+    uint outIndex = delta[1] < delta[0] ? 1 : 0;
+
+    return outIndex;
+}
+
+uint GetIndexOfValueClosestToTheReference(in float refValue, in float4 vValues)
+{
+    float4 delta = abs(refValue - vValues);
+
+    uint outIndex = delta[1] < delta[0] ? 1 : 0;
+    outIndex = delta[2] < delta[outIndex] ? 2 : outIndex;
+    outIndex = delta[3] < delta[outIndex] ? 3 : outIndex;
+
+    return outIndex;
+}
+
+
 // ToDo replace local implementations with this
 // Remap partial depth derivatives at z0 from [1,1] pixel offset to a new pixel offset.
 float2 RemapPartialDepthDerivatives(in float z0, in float2 ddxy, in uint2 pixelOffset)

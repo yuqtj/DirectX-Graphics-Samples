@@ -36,7 +36,7 @@ void AddFilterContribution(inout float4 weightedValueSum, inout float weightSum,
     }
 }
 
-[numthreads(DownsampleGaussianFilter::ThreadGroup::Width, DownsampleGaussianFilter::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     int2 index = DTid * 2 + int2(1, 1);

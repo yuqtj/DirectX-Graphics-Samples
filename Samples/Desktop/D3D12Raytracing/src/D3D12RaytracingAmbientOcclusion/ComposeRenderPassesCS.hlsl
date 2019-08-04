@@ -43,7 +43,7 @@ float3 CalculatePhongLighting(in float3 normal, in float3 hitPosition, in float3
 
 
 // ToDo Cleanup SRGB here and elsewhere dfealing with in/out colors
-[numthreads(ComposeRenderPassesCS::ThreadGroup::Width, ComposeRenderPassesCS::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID )
 {
 	if (DTid.x >= g_CB.rtDimensions.x || DTid.y >= g_CB.rtDimensions.y)

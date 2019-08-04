@@ -57,17 +57,11 @@ uint GetIndexFromDepthAwareBilateralDownsample2x2(in float4 vDepths, in uint2 DT
     float lowResDepth = checkerboardTakeMin ? min4(vDepths) : max4(vDepths);
 
     // Find the corresponding sample index to the the selected sample depth.
-    float4 depthDelta = abs(lowResDepth - vDepths);
-
-    uint outDepthIndex = depthDelta[0] < depthDelta[1] ? 0 : 1;
-    outDepthIndex = depthDelta[2] < depthDelta[outDepthIndex] ? 2 : outDepthIndex;
-    outDepthIndex = depthDelta[3] < depthDelta[outDepthIndex] ? 3 : outDepthIndex;
-
-    return outDepthIndex;
+    return GetIndexOfValueClosestToTheReference(lowResDepth, vDepths);
 }
 
 // ToDo split into multiple per texture downsample (and use a mask input?)
-[numthreads(DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::ThreadGroup::Width, DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     uint2 topLeftSrcIndex = DTid << 1;

@@ -57,7 +57,7 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
 }
 
 // Calculates local per-pixel variance ~ Sum(X^2)/N - mean^2;
-[numthreads(CalculateVariance_Bilateral::ThreadGroup::Width, CalculateVariance_Bilateral::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     float3 normal;

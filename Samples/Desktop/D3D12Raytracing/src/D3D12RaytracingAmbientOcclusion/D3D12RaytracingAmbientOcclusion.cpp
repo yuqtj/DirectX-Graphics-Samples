@@ -3924,8 +3924,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
     commandList->SetComputeRootDescriptorTable(Slot::Distance, GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess);
 	commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csAoBlurCB.GpuVirtualAddress(frameIndex));
 	XMUINT2 groupCount;
-    groupCount.x = CeilDivide(m_raytracingWidth, AoBlurCS::ThreadGroup::Width);
-    groupCount.y = CeilDivide(m_raytracingHeight, AoBlurCS::ThreadGroup::Height);
+    groupCount.x = CeilDivide(m_raytracingWidth, DefaultComputeShaderParams::ThreadGroup::Width);
+    groupCount.y = CeilDivide(m_raytracingHeight, DefaultComputeShaderParams::ThreadGroup::Height);
 
     // Begin timing actual work
 
@@ -4046,7 +4046,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 	}
 
 	// Dispatch.
-	XMUINT2 groupSize(CeilDivide(m_GBufferWidth, ComposeRenderPassesCS::ThreadGroup::Width), CeilDivide(m_GBufferHeight, ComposeRenderPassesCS::ThreadGroup::Height));
+	XMUINT2 groupSize(CeilDivide(m_GBufferWidth, DefaultComputeShaderParams::ThreadGroup::Width), CeilDivide(m_GBufferHeight, DefaultComputeShaderParams::ThreadGroup::Height));
 
 	commandList->Dispatch(groupSize.x, groupSize.y, 1);
 }

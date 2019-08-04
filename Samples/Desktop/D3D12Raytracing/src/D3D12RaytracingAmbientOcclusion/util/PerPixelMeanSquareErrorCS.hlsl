@@ -8,7 +8,7 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-
+// ToDO
 #define HLSL
 #include "..\RaytracingHlslCompat.h"
 
@@ -16,11 +16,11 @@ Texture2D<float> g_texReference : register(t0);
 Texture2D<float> g_texValues : register(t1);
 RWTexture2D<float> g_texOutput : register(u0);
 
-groupshared uint gShared[PerPixelMeanSquareError::ThreadGroup::Size];
+groupshared uint gShared[DefaultComputeShaderParams::ThreadGroup::Size];
 
 // PerPixelMeanSquareError
 // - Calculates per pixel mean square error: (x - x_r)^2
-[numthreads(ReduceSumCS::ThreadGroup::Width, ReduceSumCS::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     float delta = g_texValues[DTid] - g_texReference[DTid];

@@ -33,7 +33,7 @@ static const float weights[3][3] =
 // Ref: Moller2018, Real-Time Rendering (Fourth Edition), p517
 // Performance improvement over 3x3 2D version (4K on 2080 Ti): 0.18ms -> 0.11ms
 // Todo Test against w separable version
-[numthreads(GaussianFilter::ThreadGroup::Width, GaussianFilter::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     // Set weights based on availability of neighbor samples.

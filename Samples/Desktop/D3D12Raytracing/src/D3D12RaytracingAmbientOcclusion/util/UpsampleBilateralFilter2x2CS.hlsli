@@ -87,7 +87,7 @@ float4 BilateralUpsampleWeights(in float ActualDistance, in float3 ActualNormal,
     return nWeights;
 }
 
-[numthreads(UpsampleBilateralFilter::ThreadGroup::Width, UpsampleBilateralFilter::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     // Process each 2x2 high res quad at a time, starting from [-1,-1] 

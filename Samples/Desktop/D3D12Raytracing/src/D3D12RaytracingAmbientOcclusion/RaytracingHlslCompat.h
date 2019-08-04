@@ -85,6 +85,8 @@
 #define USE_ENVIRONMENT_MAP 1
 #define DEBUG_AS 0
 
+#define SIGNED_DDXY 1
+
 #define MOVE_ONCE_ON_STRAFE 1
 #define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
 
@@ -251,51 +253,10 @@ namespace ReduceSumCS {
 	}
 }
 
+// ToDo perf vs 8x8?
 namespace AtrousWaveletTransformFilterCS {
     namespace ThreadGroup {
         enum Enum { Width = 16, Height = 16, Size = Width * Height };
-    }
-}
-
-namespace CalculateVariance_Bilateral {
-    namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8, Size = Width * Height };
-    }
-}
-
-namespace CalculateMeanVarianceFilter {
-    namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8, Size = Width * Height };
-    }
-}
-
-namespace PerPixelMeanSquareError {
-    namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8, Size = Width * Height};
-    }
-}
-
-namespace DownsampleBoxFilter2x2 {
-	namespace ThreadGroup {
-		enum Enum { Width = 8, Height = 8 };
-	}
-}
-// ToDo cleanup
-namespace DownsampleGaussianFilter {
-	namespace ThreadGroup {
-		enum Enum { Width = 8, Height = 8 };
-	}
-}
-
-namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter {
-    namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8 };
-    }
-}
-
-namespace DownsampleValueNormalDepthBilateralFilter {
-    namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8 };
     }
 }
 
@@ -306,41 +267,6 @@ namespace DefaultComputeShaderParams {
     }
 }
 
-namespace UpsampleBilateralFilter {
-    namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8 };
-    }
-}
-
-namespace MultiScale_UpsampleBilateralFilterAndCombine {
-    namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8 };
-    }
-}
-
-namespace GaussianFilter {
-    namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8 };
-    }
-}
-
-namespace RootMeanSquareError {
-    namespace ThreadGroup {
-        enum Enum { Width = 8, Height = 8 };
-    }
-}
-
-namespace ComposeRenderPassesCS {
-	namespace ThreadGroup {
-		enum Enum { Width = 8, Height = 8, Size = Width * Height };
-	}
-}
-
-namespace AoBlurCS {
-    namespace ThreadGroup {
-		enum Enum { Width = 8, Height = 8 };
-    }
-}
 
 #ifdef HLSL
 #include "util\HlslCompat.h"

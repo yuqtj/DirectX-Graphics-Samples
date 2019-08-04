@@ -310,7 +310,7 @@ namespace GpuKernels
 		const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
 	{
 		using namespace RootSignature::DownsampleBoxFilter2x2;
-		using namespace DownsampleBoxFilter2x2;
+		using namespace DefaultComputeShaderParams;
 
         ScopedTimer _prof(L"DownsampleBoxFilter2x2", commandList);
 
@@ -405,7 +405,7 @@ namespace GpuKernels
 		const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
 	{
 		using namespace RootSignature::DownsampleGaussianFilter;
-		using namespace DownsampleGaussianFilter;
+		using namespace DefaultComputeShaderParams;
 
         ScopedTimer _prof(L"DownsampleGaussianFilter", commandList);
 
@@ -557,7 +557,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputDepthResourceHandle)
     {
         using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
-        using namespace DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
+        using namespace DefaultComputeShaderParams;
 
         ScopedTimer _prof(L"DownsampleNormalDepthHitPositionGeometryHitBilateralFilter", commandList);
 
@@ -676,7 +676,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle)
     {
         using namespace RootSignature::DownsampleValueNormalDepthBilateralFilter;
-        using namespace DownsampleValueNormalDepthBilateralFilter;
+        using namespace DefaultComputeShaderParams;
 
         ScopedTimer _prof(L"DownsampleValueNormalDepthBilateralFilter", commandList);
 
@@ -793,7 +793,7 @@ namespace GpuKernels
         bool useDynamicDepthThreshold)
     {
         using namespace RootSignature::UpsampleBilateralFilter;
-        using namespace UpsampleBilateralFilter;
+        using namespace DefaultComputeShaderParams;
 
         ScopedTimer _prof(L"UpsampleBilateralFilter", commandList);
 
@@ -912,7 +912,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
     {
         using namespace RootSignature::MultiScale_UpsampleBilateralFilterAndCombine;
-        using namespace MultiScale_UpsampleBilateralFilterAndCombine;
+        using namespace DefaultComputeShaderParams;
 
         // Each shader execution processes 2x2 hiRes pixels
         width = CeilDivide(width, 2);
@@ -1019,7 +1019,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
     {
         using namespace RootSignature::GaussianFilter;
-        using namespace GaussianFilter;
+        using namespace DefaultComputeShaderParams;
 
         ScopedTimer _prof(L"GaussianFilter", commandList);
 
@@ -1121,7 +1121,7 @@ namespace GpuKernels
         float* rootMeanSquareError)
     {
         using namespace RootSignature::RootMeanSquareError;
-        using namespace RootMeanSquareError;
+        using namespace DefaultComputeShaderParams;
 
         ScopedTimer _prof(L"RootMeanSquareError", commandList);
 
@@ -1720,7 +1720,7 @@ namespace GpuKernels
         UINT kernelWidth)
     {
         using namespace RootSignature::CalculateVariance;
-        using namespace CalculateVariance_Bilateral;
+        using namespace DefaultComputeShaderParams;
 
         // ToDo replace asserts with runtime fails?
         assert((kernelWidth & 1) == 1 && L"KernelWidth must be an odd number so that width == radius + 1 + radius");
@@ -1854,7 +1854,7 @@ namespace GpuKernels
         UINT kernelWidth)
     {
         using namespace RootSignature::CalculateMeanVariance;
-        using namespace CalculateMeanVarianceFilter;
+        using namespace DefaultComputeShaderParams;
 
         // ToDo replace asserts with runtime fails?
         // ToDo pass kernel radius instead

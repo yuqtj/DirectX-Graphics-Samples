@@ -152,7 +152,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
 }
 
 
-[numthreads(CalculateMeanVarianceFilter::ThreadGroup::Width, CalculateMeanVarianceFilter::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex, uint2 DTid : SV_DispatchThreadID)
 {
     FilterHorizontally(Gid, GI);

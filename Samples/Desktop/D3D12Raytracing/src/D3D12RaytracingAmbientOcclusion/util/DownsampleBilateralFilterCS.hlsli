@@ -125,7 +125,7 @@ void LoadDepthAndNormal(in uint2 texIndex, out float4 encodedNormalAndDepth, out
 
 // ToDo remove _DepthAware from the name?
 
-[numthreads(DownsampleValueNormalDepthBilateralFilter::ThreadGroup::Width, DownsampleValueNormalDepthBilateralFilter::ThreadGroup::Height, 1)]
+[numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     uint2 topLeftSrcIndex = DTid << 1;
