@@ -23,16 +23,15 @@ Texture2D<uint> g_inGeometryHit : register(t3);
 Texture2D<float2> g_inPartialDistanceDerivatives : register(t4);  // update file name to include ddxy
 Texture2D<float> g_inDepth : register(t5);
 Texture2D<float2> g_inMotionVector : register(t6);
-Texture2D<float4> g_inReprojectedNormalDepth : register(t7);
+Texture2D<NormalDepthTexFormat> g_inReprojectedNormalDepth : register(t7);
 RWTexture2D<float> g_texOutput : register(u0);
 RWTexture2D<float4> g_outNormal : register(u1);
 RWTexture2D<float4> g_outHitPosition : register(u2);
 RWTexture2D<uint> g_outGeometryHit : register(u3);   // ToDo rename hits to Geometryits everywhere
 RWTexture2D<float2> g_outPartialDistanceDerivatives : register(u4);   // ToDo rename hits to Geometryits everywhere
-RWTexture2D<float> g_outDepth : register(u5);
+RWTexture2D<float> g_outDepth : register(u5);   // ToDo remove or we need hi bit depth?
 RWTexture2D<float2> g_outMotionVector : register(u6);
-RWTexture2D<float4> g_outReprojectedNormalDepth : register(u7);
-RWTexture2D<float4> g_outNormalLowPrecisionNormal : register(u8); // ToDo cleanup - pass two normal inputs instead?
+RWTexture2D<NormalDepthTexFormat> g_outReprojectedNormalDepth : register(u7);
 
 SamplerState ClampSampler : register(s0);
 
@@ -81,9 +80,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint2 selectedDTid = topLeftSrcIndex + srcIndexOffsets[selectedOffset];
 
     g_outDepth[DTid] = vDepths[selectedOffset];
-    float4 encodedNormalDepth = g_inNormal[selectedDTid];
-    g_outNormal[DTid] = encodedNormalDepth;
-    g_outNormalLowPrecisionNormal[DTid] = encodedNormalDepth;
+    g_outNormal[DTid] = g_inNormal[selectedDTid];
 
 
     // Since we're reducing the resolution by 2, multiple the partial derivatives by 2. Either that or the multiplier should be applied when calculating weights.

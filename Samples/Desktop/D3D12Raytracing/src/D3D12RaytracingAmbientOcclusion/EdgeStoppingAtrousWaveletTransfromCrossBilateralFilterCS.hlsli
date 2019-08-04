@@ -22,7 +22,7 @@
 
 Texture2D<float> g_inValues : register(t0); // ToDo input is 3841x2161 instead of 2160p..
 
-Texture2D<float4> g_inNormalDepth : register(t1);
+Texture2D<NormalDepthTexFormat> g_inNormalDepth : register(t1);
 Texture2D<float> g_inVariance : register(t4);   // ToDo remove
 Texture2D<float> g_inSmoothedVariance : register(t5); 
 Texture2D<float> g_inHitDistance : register(t6);   // ToDo remove?
@@ -93,13 +93,6 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset)
     }
 
     return depthThreshold;
-}
-
-void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texIndex, out float depth, out float3 normal)
-{
-    float3 encodedNormalAndDepth = inNormalDepthTexture[texIndex].xyz;
-    depth = encodedNormalAndDepth.z;
-    normal = DecodeNormal(encodedNormalAndDepth.xy);
 }
 
 void AddFilterContribution(
@@ -180,7 +173,7 @@ void AddFilterContribution(
     {
         float iDepth;
         float3 iNormal;
-        LoadDepthAndNormal(g_inNormalDepth, id, iDepth, iNormal);
+        DecodeNormalDepth(g_inNormalDepth[id], iNormal, iDepth);
         float iValue = g_inValues[id];
 
         if (iValue == RTAO::InvalidAOValue ||
@@ -211,8 +204,9 @@ void AddFilterContribution(
         //float minObliqueness = depthSigma;//  0.02; // Avoid weighting by depth at very sharp angles. Depend on weighting by normals.
         float2 pixelOffsetForDepth = pixelOffset;
         
-        // ToDo use actial pixel offsets from bilateral downsample?
+        // ToDo use actual pixel offsets from bilateral downsample?
         // Account for sample offset in bilateral downsampled partial depth derivative buffer.
+        // 
         if (g_CB.usingBilateralDownsampledBuffers)
         {
             pixelOffsetForDepth = abs(pixelOffset) + float2(0.5, 0.5);
@@ -275,7 +269,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 
     float depth;
     float3 normal;
-    LoadDepthAndNormal(g_inNormalDepth, DTid, depth, normal);
+    DecodeNormalDepth(g_inNormalDepth[DTid], normal, depth);
     uint frameAge = g_inFrameAge[DTid];
     float value = g_inValues[DTid];
     float filteredValue = value;
@@ -297,6 +291,25 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         }
 
         float2 ddxy = g_inPartialDistanceDerivatives[DTid];
+
+        float2 pixelOffsetForDepth = float2(0, 1);
+        if (g_CB.usingBilateralDownsampledBuffers)
+        {
+            pixelOffsetForDepth += float2(0.5, 0.5);
+        }
+#if 1
+        float depthThreshold = DepthThreshold(depth, ddxy, pixelOffsetForDepth);
+
+        float depthFloatPrecision = FloatPrecision(depth, g_CB.DepthNumMantissaBits);
+
+        float depthTolerance = depthThreshold + depthFloatPrecision;
+
+        g_outDebug1[DTid] = float4(
+            depthThreshold,
+            depthFloatPrecision,
+            depthTolerance,
+            0);
+#endif
 
         float weightSum = 0;
         float weightedValueSum = 0;

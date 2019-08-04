@@ -409,7 +409,7 @@ void CalculateRayDifferentials(out float2 ddx_uv, out float2 ddy_uv, in float2 u
 }
 
 // Forward declaration.
-float CheckersGridTextureBoxFilter(in float2 uv, in float2 dpdx, in float2 dpdy, in UINT ratio);
+float CheckersGridTextureBoxFilter(in float2 uv, in float2 dpdx, in float2 dpdy, in uint ratio);
 
 // Return analytically integrated checkerboard texture (box filter).
 float AnalyticalCheckersGridTexture(in float3 hitPosition, in float3 surfaceNormal, in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin )
@@ -559,24 +559,49 @@ float3 DecodeNormal(float2 f)
 }
 /***************************************************************/
 
-void LoadDecodedNormalAndDepth(Texture2D<float4> inEncodedNormalDepthTexture, in uint2 texIndex, out float3 normal, out float depth)
+
+
+// Pack [0.0, 1.0] float to 8 bit uint. 
+uint Pack_R8_FLOAT(float r)
 {
-    float3 encodedNormalAndDepth = inEncodedNormalDepthTexture[texIndex].xyz;
-    normal = DecodeNormal(encodedNormalAndDepth.xy);
-    depth = encodedNormalAndDepth.z;
+    return clamp(round(r * 255), 0, 255);
 }
 
+float Unpack_R8_FLOAT(uint r)
+{
+    return (r & 0xFF) / 255.0;
+}
 
+// Pack unsigned floating point, where 
+// - rgb.rg are in [0, 1] range stored as two 8 bit uints.
+// - rgb.b in [0, FLT_16_BIT_MAX] range stored as a 16bit float.
+uint Pack_R8G8B16_FLOAT(float3 rgb)
+{
+    uint r = Pack_R8_FLOAT(rgb.r);
+    uint g = Pack_R8_FLOAT(rgb.g) << 8;
+    uint b = f32tof16(rgb.b) << 16;
+    return r | g | b;
+}
+
+float3 Unpack_R8G8B16_FLOAT(uint rgb)
+{
+    float r = Unpack_R8_FLOAT(rgb);
+    float g = Unpack_R8_FLOAT(rgb >> 8);
+    float b = f16tof32(rgb >> 16);
+    return float3(r, g, b);
+}
+
+// ToDO rename to unit float
 // ToDo consider MiNiEngine's packing to full 32 bit extent
-UINT NormalizedFloat3ToByte3(float3 v)
+uint NormalizedFloat3ToByte3(float3 v)
 {
     return
-        (UINT(v.x * 255) << 16) +
-        (UINT(v.y * 255) << 8) +
-        UINT(v.z * 255);
+        (uint(v.x * 255) << 16) +
+        (uint(v.y * 255) << 8) +
+        uint(v.z * 255);
 }
 
-float3 Byte3ToNormalizedFloat3(UINT v)
+float3 Byte3ToNormalizedFloat3(uint v)
 {
     return float3(
         (v >> 16) & 0xff,
@@ -584,6 +609,47 @@ float3 Byte3ToNormalizedFloat3(UINT v)
         v & 0xff) / 255;
 }
 
+// Encode normal and depth with 16 bits allocated for each.
+uint EncodeNormalDepth_N16D16(in float3 normal, in float depth)
+{
+    float3 encodedNormalDepth = float3(EncodeNormal(normal), depth);
+    return Pack_R8G8B16_FLOAT(encodedNormalDepth);
+}
+
+
+// Decoded 16 bit normal and 16bit depth.
+void DecodeNormalDepth_N16D16(in uint packedEncodedNormalAndDepth, out float3 normal, out float depth)
+{
+    float3 encodedNormalDepth = Unpack_R8G8B16_FLOAT(packedEncodedNormalAndDepth);
+    normal = DecodeNormal(encodedNormalDepth.xy);
+    depth = encodedNormalDepth.z;
+}
+
+#if NORMAL_DEPTH_R8G8B16_ENCODING
+uint EncodeNormalDepth(in float3 normal, in float depth)
+{
+    return EncodeNormalDepth_N16D16(normal, depth);
+}
+
+void DecodeNormalDepth(in uint encodedNormalDepth, out float3 normal, out float depth)
+{
+    DecodeNormalDepth_N16D16(encodedNormalDepth, normal, depth);
+}
+
+void UnpackEncodedNormalDepth(in uint packedEncodedNormalDepth, out float2 encodedNormal, out float depth)
+{
+    float3 encodedNormalDepth = Unpack_R8G8B16_FLOAT(packedEncodedNormalDepth);
+    encodedNormal = encodedNormalDepth.xy;
+    depth = encodedNormalDepth.z;
+}
+
+#else
+void DecodeNormalDepth(in float4 encodedNormalDepth, out float3 normal, out float depth)
+{
+    normal = DecodeNormal(encodedNormalAndDepth.xy);
+    depth = encodedNormalAndDepth.z;
+}
+#endif
 
 /***************************************************************/
 // ToDo

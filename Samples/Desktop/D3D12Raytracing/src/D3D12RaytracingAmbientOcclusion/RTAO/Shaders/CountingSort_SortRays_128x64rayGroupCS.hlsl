@@ -9,6 +9,8 @@
 //
 //*********************************************************
 
+// ToDo test impact of input normal,depth and encode N24D8.
+
 // Desc: Counting Sort of rays based on their origin depth and direction.
 // Supports:
 // - Up to {8K rays per ray group + 12 bit hash key} | {4K rays per ray group + 13 bit hash key}
@@ -37,7 +39,7 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "Ray Sorting/RaySorting.hlsli"
 
-Texture2D<float4> g_inRayDirectionOriginDepth : register(t0);    // R11G11B10 texture. Note that this format doesn't store negative values.
+Texture2D<NormalDepthTexFormat> g_inRayDirectionOriginDepth : register(t0);    // R11G11B10 texture. Note that this format doesn't store negative values.
 
 // Source ray index offset for a given sorted ray index offset within a ray group.
 // This is essentially a sorted source ray index offsets buffer within a ray group.
@@ -55,6 +57,7 @@ RWTexture2D<float4> g_outDebug : register(u2);  // Thread group per-pixel index 
 
 ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
 
+// ToDo remove or replace defines
 namespace HashKey {
     enum { 
         RayDirectionKeyBits1D = 4, 
@@ -327,7 +330,7 @@ void InitializeSharedMemory(in uint GI)
 uint CreateRayDirectionHashKey(in float2 encodedRayDirection)
 {
     float2 rayDirectionKey;
-    if (CB.useOctahedralDirectionQuantization)
+    if (CB.useOctahedralRayDirectionQuantization)
     {
         rayDirectionKey = encodedRayDirection;
     }
@@ -348,7 +351,8 @@ uint CreateRayDirectionHashKey(in float2 encodedRayDirection)
 
     // Calculate hashes.
     const uint NormalHashKeyBins1D = 1 << RAY_DIRECTION_HASH_KEY_BITS_1D;
-    uint2 rayDirectionHashKey = min(NormalHashKeyBins1D * rayDirectionKey, NormalHashKeyBins1D - 1);
+    const uint MaxNormalHashKeyBinValue = NormalHashKeyBins1D - 1;
+    uint2 rayDirectionHashKey = min(rayDirectionKey * MaxNormalHashKeyBinValue, MaxNormalHashKeyBinValue);
 
     return   (rayDirectionHashKey.y << RAY_DIRECTION_HASH_KEY_BITS_1D)
             + rayDirectionHashKey.x;
@@ -361,8 +365,9 @@ uint CreateDepthHashKey(in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
     float relativeDepth = rayOriginDepth - rayGroupMinMaxDepth.x;
     float rayGroupDepthRange = rayGroupMinMaxDepth.y - rayGroupMinMaxDepth.x;
     const uint DepthHashKeyBins = 1 << DEPTH_HASH_KEY_BITS;
-    float binDepthSize = max(rayGroupDepthRange / DepthHashKeyBins, CB.binDepthSize);
-    uint depthHashKey = min(rayOriginDepth / binDepthSize, DepthHashKeyBins - 1);
+    const uint MaxDepthHashKeyBinValue = DepthHashKeyBins - 1;
+    float binDepthSize = max(rayGroupDepthRange / MaxDepthHashKeyBinValue, CB.binDepthSize);
+    uint depthHashKey = min(rayOriginDepth / binDepthSize, MaxDepthHashKeyBinValue);
 
     return depthHashKey;
 }
@@ -371,6 +376,7 @@ uint CreateDepthHashKey(in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
 uint CreateIndexHashKey(in uint2 rayIndex)
 {
     const uint IndexHashKeyBins = 1 << INDEX_HASH_KEY_BITS;
+    const uint MaxIndexHashKeyBinValue = IndexHashKeyBins - 1;
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
 #if INDEX_HASH_KEY_BITS == 12
     uint indexHashKey = ((rayIndex.y * RayGroupDim.x) + rayIndex.x) / 2;
@@ -379,7 +385,7 @@ uint CreateIndexHashKey(in uint2 rayIndex)
 #else
     uint indexHashKey = ((rayIndex.y >= RayGroupDim.y / 2) << 1) + (rayIndex.x >= RayGroupDim.x / 2);
 #endif
-    return ((indexHashKey >> (2 - INDEX_HASH_KEY_BITS)) & (IndexHashKeyBins - 1));
+    return ((indexHashKey >> (2 - INDEX_HASH_KEY_BITS)) & (MaxIndexHashKeyBinValue));
 }
 
 uint CreateRayHashKey(in uint2 rayIndex, in uint rayDirectionHashKey, in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
@@ -427,8 +433,9 @@ void CalculatePartialRayDirectionHashKeyAndCacheDepth(in uint2 Gid, in uint GI)
         uint2 pixel = GroupStart + uint2(ray % SortRays::RayGroup::Width, ray / SortRays::RayGroup::Width);
         if (IsWithinBounds(pixel, CB.dim))
         {
-            float3 rayDirectionOriginDepth = g_inRayDirectionOriginDepth[pixel].xyz;
-            float rayOriginDepth = rayDirectionOriginDepth.z;
+            float2 encodedRayDirection;
+            float rayOriginDepth;
+            UnpackEncodedNormalDepth(g_inRayDirectionOriginDepth[pixel], encodedRayDirection, rayOriginDepth);
             bool isRayValid = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH; 
 
             // The ray direction hash key doesn't need to store if the ray value is valid for now, 
@@ -441,7 +448,6 @@ void CalculatePartialRayDirectionHashKeyAndCacheDepth(in uint2 Gid, in uint GI)
             uint rayDirectionHashKey = 0;
             if (isRayValid)     // ToDo test remove perf
             {
-                float2 encodedRayDirection = rayDirectionOriginDepth.xy;
                 rayDirectionHashKey = CreateRayDirectionHashKey(encodedRayDirection);
             }
 
@@ -728,13 +734,13 @@ void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2
                 }
                 else  // The cached key has been already replaced with the ray's source index. Regenerate the key.
                 {
-                    float3 rayDirectionOriginDepth = g_inRayDirectionOriginDepth[pixel].xyz;
-                    float rayOriginDepth = rayDirectionOriginDepth.z;
+                    float2 encodedRayDirection;
+                    float rayOriginDepth;
+                    UnpackEncodedNormalDepth(g_inRayDirectionOriginDepth[pixel], encodedRayDirection, rayOriginDepth);
                     isRayValid = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH;
 
                     if (isRayValid)
                     {
-                        float2 encodedRayDirection = rayDirectionOriginDepth.xy;
                         key = CreateRayHashKey(rayIndex, encodedRayDirection, rayOriginDepth, rayGroupMinMaxDepth);
                     }
                     else

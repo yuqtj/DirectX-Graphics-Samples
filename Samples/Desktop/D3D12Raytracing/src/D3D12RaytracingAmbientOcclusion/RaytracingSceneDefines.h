@@ -122,7 +122,6 @@ namespace GlobalRootSignature {
             FilterWeightSum,
             GBufferDepth,   // ToDo move to the above slot for GBufferResources ?
             GbufferNormalRGB,
-            NormalDepthLowPrecision,
             AORayHitDistance,
             AOFrameAge,
             AORayDirectionOriginDepthHitSRV,
@@ -151,7 +150,7 @@ namespace RTAOGlobalRootSignature {
             AccelerationStructure = 0,
             RayOriginPosition,
             RayOriginSurfaceNormalDepth,
-            AOResourcesOut,	// ToDo cleanup, move to local root sigs 
+            AOResourcesOut,
             AORayHitDistance,
             AORayDirectionOriginDepthHitSRV,
             AORayDirectionOriginDepthHitUAV,
@@ -229,10 +228,9 @@ namespace GBufferResource {
 		Hit = 0,		// Geometry hit or not.
 		Material,		// Material of the object hit ~ {MaterialID, texCoord}.
 		HitPosition,	// 3D position of hit.
-		SurfaceNormal,	// 3D normal at a hit and dot(normal, rayDir) in W, ToDo rename to encoded or sth
+		SurfaceNormalDepth,	// Encoded normal.
         Distance,       // Length along ray of hit. // ToDo update (depth?)
         Depth,          // Non-linear depth of the hit. // ToDo remove
-        SurfaceNormalRGB, // 3D normal at a hit. // ToDo deduplicate remove Surface prefix
         PartialDepthDerivatives,
         MotionVector,
         ReprojectedNormalDepth,
@@ -247,8 +245,8 @@ namespace GBufferResource {
 namespace AOResource {
 	enum Enum {
 		Coefficient = 0,
-        Smoothed,
 		HitCount,
+        Smoothed,
         RayHitDistance,
         FilterWeightSum,
 		Count

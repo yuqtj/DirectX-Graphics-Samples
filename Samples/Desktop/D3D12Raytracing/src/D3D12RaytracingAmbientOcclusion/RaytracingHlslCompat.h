@@ -132,6 +132,22 @@
 
 #define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
 
+#define NORMAL_DEPTH_R8G8B16_ENCODING 1
+
+#ifdef HLSL
+#if NORMAL_DEPTH_R8G8B16_ENCODING 
+// ToDo append lowres
+typedef uint NormalDepthTexFormat;
+#else
+typedef float4 NormalDepthTexFormat;
+#endif
+#else
+#if NORMAL_DEPTH_R8G8B16_ENCODING 
+#define COMPACT_NORMAL_DEPTH_DXGI_FORMAT DXGI_FORMAT_R32_UINT
+#else
+#define COMPACT_NORMAL_DEPTH_DXGI_FORMAT TextureResourceFormatRGB::ToDXGIFormat(SceneArgs::RTAO_TemporalSupersampling_NormalDepthResourceFormat)
+#endif
+#endif
 // ToDo 16bit per component normals?
 #define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 0    // ToDo
 #define FLOAT_TEXTURE_AS_R16_FLOAT_2BYTE_FORMAT 1
@@ -384,7 +400,7 @@ struct AmbientOcclusionGBuffer
     float tHit;
     XMFLOAT3 hitPosition;           // Position of the hit for which to calculate Ambient coefficient.
     UINT diffuseByte3;              // Diffuse reflectivity of the hit surface.
-    XMFLOAT2 encodedNormal;         // Normal of the hit surface.
+    XMFLOAT2 encodedNormal;         // Normal of the hit surface. // ToDo encode as 16bit
 
     // Members for Motion Vector calculation.
     XMFLOAT3 _virtualHitPosition;   // virtual hitPosition in the previous frame.
@@ -523,7 +539,7 @@ struct SortRaysConstantBuffer
 {
     XMUINT2 dim;
 
-    BOOL useOctahedralDirectionQuantization;
+    BOOL useOctahedralRayDirectionQuantization;
 
     // Depth for a bin within which to sort further based on direction.
     float binDepthSize;

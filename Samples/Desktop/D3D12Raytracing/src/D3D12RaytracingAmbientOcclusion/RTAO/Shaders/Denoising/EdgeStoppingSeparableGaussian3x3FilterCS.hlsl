@@ -9,6 +9,8 @@
 //
 //*********************************************************
 
+ToDo update or remove
+
 // ToDo
 // Desc: Calculate Variance and Mean via a separable kernel.
 // Supports up to 9x9 kernels.
@@ -28,7 +30,7 @@
 
 Texture2D<float> g_inValues : register(t0); // ToDo input is 3841x2161 instead of 2160p..
 
-Texture2D<float4> g_inNormalDepth : register(t1);
+Texture2D<NormalDepthTexFormat> g_inNormalDepth : register(t1);
 Texture2D<float> g_inVariance : register(t4);   // ToDo remove
 Texture2D<float2> g_inSmoothedMeanVariance : register(t5);   // ToDo rename
 Texture2D<float> g_inHitDistance : register(t6);   // ToDo remove?
@@ -71,11 +73,6 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float dept
     return depthThreshold;
 }
 
-void UnpackNormalDepth(in float3 encodedNormalDepth, out float3 normal, out float depth)
-{
-    depth = encodedNormalDepth.z;
-    normal = DecodeNormal(encodedNormalDepth.xy);
-}
 
 void CalculateFilterWeight(
     in float value,
@@ -174,8 +171,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         if (GTid16x4.x < NumValuesToLoadPerRowOrColumn)
         {
             value = g_inValues[pixel];
-            float3 packedNormalDepth = g_inNormalDepth[pixel].xyz;
-            UnpackNormalDepth(packedNormalDepth, normal, depth);
+            DecodeNormalDepth(g_inNormalDepth[pixel], normal, depth);
             float smoothedVariance = g_inSmoothedMeanVariance[pixel].y;
             float variance = g_inVariance[pixel];
             stdDeviation = sqrt(smoothedVariance);

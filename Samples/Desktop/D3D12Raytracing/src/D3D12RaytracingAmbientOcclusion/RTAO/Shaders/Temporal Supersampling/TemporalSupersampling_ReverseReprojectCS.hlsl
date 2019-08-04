@@ -23,13 +23,14 @@
 
 // ToDO pack value and depth beforehand?
 // ToDo standardize in vs input, out vs output
-Texture2D<float4> g_texInputCurrentFrameNormalDepth : register(t0);
+Texture2D<NormalDepthTexFormat> g_texInputCurrentFrameNormalDepth : register(t0);
 // ToDo should ddxy be calculated from reprojectedNormalDepth?
 Texture2D<float2> g_texInputCurrentFrameLinearDepthDerivative : register(t1); // ToDo standardize naming across files
-Texture2D<float4> g_texInputReprojectedNormalDepth : register(t2);  // ToDo add encoded prefix
+
+Texture2D<NormalDepthTexFormat> g_texInputReprojectedNormalDepth : register(t2);  // ToDo add encoded prefix
 Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t3);
 
-Texture2D<float4> g_texInputCachedNormalDepth : register(t4);
+Texture2D<NormalDepthTexFormat> g_texInputCachedNormalDepth : register(t4);
 Texture2D<float> g_texInputCachedValue : register(t5);  // ToDo store 1bit 0/1 in an auxilary reseource instead?
 Texture2D<uint> g_texInputCachedFrameAge : register(t6);
 Texture2D<float> g_texInputCachedValueSquaredMean : register(t7);
@@ -190,9 +191,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
 {
     float3 _normal;
     float _depth;
-    LoadDecodedNormalAndDepth(g_texInputReprojectedNormalDepth, DTid, _normal, _depth);
+    DecodeNormalDepth(g_texInputReprojectedNormalDepth[DTid], _normal, _depth);
     float2 textureSpaceMotionVector = g_texInputTextureSpaceMotionVector[DTid];
 
+    g_texOutputDebug1[DTid] = float4(_normal, _depth);
     // ToDo compare against common predefined value
     if (_depth == 0 || textureSpaceMotionVector.x > 1e2f)
     {
@@ -220,9 +222,18 @@ void main(uint2 DTid : SV_DispatchThreadID)
         topLeftCacheFrameIndex + srcIndexOffsets[2],
         topLeftCacheFrameIndex + srcIndexOffsets[3] };
     // ToDo conditional loads if really needed?
-    // ToDo use gather
     float3 cacheNormals[4];
     float4 vCacheDepths;
+#if NORMAL_DEPTH_R8G8B16_ENCODING
+    {
+        uint4 packedEncodedNormalDepths = g_texInputCachedNormalDepth.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+        [unroll]
+        for (int i = 0; i < 4; i++)
+        {
+            DecodeNormalDepth(packedEncodedNormalDepths[i], cacheNormals[i], vCacheDepths[i]);
+        }
+    }
+#else
     {
         float4 encodedNormalX = g_texInputCachedNormalDepth.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         float4 encodedNormalY = g_texInputCachedNormalDepth.GatherGreen(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
@@ -234,6 +245,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         vCacheDepths = g_texInputCachedNormalDepth.GatherBlue(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
     }
+#endif
 
     float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];
     // ToDo should this be done separately for both X and Y dimensions?
@@ -256,8 +268,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         float3 normal;
         float depth;
-        LoadDecodedNormalAndDepth(g_texInputCurrentFrameNormalDepth, DTid, normal, depth);
-
+        DecodeNormalDepth(g_texInputCurrentFrameNormalDepth[DTid], normal, depth);
         cacheDdxy = CalculateAdjustedDepthThreshold(ddxy, depth, _depth, normal, _normal);
     }
 

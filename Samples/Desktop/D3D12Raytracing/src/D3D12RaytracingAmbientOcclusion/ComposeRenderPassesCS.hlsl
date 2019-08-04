@@ -23,7 +23,7 @@ ConstantBuffer<ComposeRenderPassesConstantBuffer> g_CB : register(b0);
 Texture2D<uint> g_texGBufferPositionHits : register(t0);
 Texture2D<uint2> g_texGBufferMaterial : register(t1);    // 16b {1x Material Id, 3x Diffuse.RGB}
 Texture2D<float4> g_texGBufferPositionRT : register(t2);
-Texture2D<float4> g_texGBufferNormal : register(t3);	// ToDo merge some GBuffers resources ?
+Texture2D<NormalDepthTexFormat> g_texGBufferNormalDepth : register(t3);	// ToDo merge some GBuffers resources ?
 Texture2D<float> g_texAO : register(t5);
 Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
@@ -64,11 +64,9 @@ void main(uint2 DTid : SV_DispatchThreadID )
     if (true)
 	{
 #endif
-#if COMPRES_NORMALS
-        float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[DTid].xy);
-#else
-        float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
-#endif
+        float depthDummy;
+        float3 surfaceNormal;
+        DecodeNormalDepth(g_texGBufferNormalDepth[DTid], surfaceNormal, depthDummy);
 		float visibilityCoefficient = g_texVisibility[DTid];
 
         // ToDo rename to enable dynamic AO?
@@ -92,7 +90,6 @@ void main(uint2 DTid : SV_DispatchThreadID )
             float3 toEyeRay = normalize(g_CB.cameraPosition.xyz - hitPosition);
             diffuse = diffuse; 
             float3 specular = RemoveSRGB(material.Ks);
-#if 1
             float3 phongColor = g_texColor[DTid].xyz;
          
             // Subtract the default ambient illuminatation that has already been added to the color in raytrace pass.
@@ -100,12 +97,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
 
             float3 ambientColor = ambientCoef * g_texAOSurfaceAlbedo[DTid].xyz;
             color = float4(phongColor + ambientColor, 1);
-#elif 0
-            float3 phongColor = CalculatePhongLighting(surfaceNormal, hitPosition, toEyeRay, visibilityCoefficient, ambientCoef, diffuse, specular, material.specularPower);
-#else
-            float3 toLightRay = normalize(g_CB.lightPosition - hitPosition);
-            float3 phongColor = Shade(material.type, diffuse, specular, g_CB.lightDiffuseColor.xyz, visibilityCoefficient, ambientCoef, material.roughness, surfaceNormal, toEyeRay, toLightRay);
-#endif
+
 
             // Apply visibility falloff.
             // ToDo incorrect when subtracting camera

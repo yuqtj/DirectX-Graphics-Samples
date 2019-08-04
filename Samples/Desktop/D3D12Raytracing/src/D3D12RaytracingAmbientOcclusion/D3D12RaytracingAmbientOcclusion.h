@@ -194,14 +194,12 @@ private:
 	// ToDo use the struct
 	RWGpuResource m_raytracingOutput;
     RWGpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
-    RWGpuResource m_normalDepthLowPrecision[2];
-    RWGpuResource m_normalDepthLowResLowPrecision[2];
 	RWGpuResource m_GBufferResources[GBufferResource::Count];
     RWGpuResource m_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
-    
+    RWGpuResource m_prevFrameGBufferNormalDepth;
+
 	RWGpuResource m_AOResources[AOResource::Count];
 
-    RWGpuResource m_AOSmoothedResource[2];
 
     RWGpuResource m_AOTSSCoefficient[2];    // ToDo why is this not part of m_temporalCache?
     RWGpuResource m_lowResAOTSSCoefficient[2];

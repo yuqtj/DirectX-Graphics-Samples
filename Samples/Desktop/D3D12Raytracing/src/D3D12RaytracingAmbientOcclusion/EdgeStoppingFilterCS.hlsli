@@ -9,6 +9,7 @@
 //
 //*********************************************************
 
+ToDo fix or remove
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
@@ -16,7 +17,7 @@
 
 Texture2D<float> g_inValues : register(t0); // ToDo input is 3841x2161 instead of 2160p..
 
-Texture2D<float4> g_inNormalDepth : register(t1);
+Texture2D<NormalDepthTexFormat> g_inNormalDepth : register(t1);
 Texture2D<float> g_inVariance : register(t4);   // ToDo remove
 Texture2D<float> g_inSmoothedVariance : register(t5);   // ToDo rename
 Texture2D<float> g_inHitDistance : register(t6);   // ToDo remove?
@@ -58,12 +59,6 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float dept
     return depthThreshold;
 }
 
-void UnpackNormalDepth(in float3 encodedNormalDepth, out float3 normal, out float depth)
-{
-    normal = DecodeNormal(encodedNormalDepth.xy);
-    depth = encodedNormalDepth.z;
-}
-
 void AddFilterContribution(
     inout float weightedValueSum,
     inout float weightedVarianceSum,
@@ -91,8 +86,7 @@ void AddFilterContribution(
         float iVariance = g_inVariance[id];
         float3 iNormal;
         float iDepth;
-        float3 packedNormalDepth = g_inNormalDepth[id].xyz;
-        UnpackNormalDepth(packedNormalDepth, iNormal, iDepth);
+        DecodeNormalDepth(g_inNormalDepth[id], iNormal, iDepth);
 
         // Calculate normal difference based weight.
         float w_n;

@@ -41,6 +41,7 @@ void main(uint3 Gid : SV_GroupID, uint GI : SV_GroupIndex, uint3 GTid : SV_Group
     g_CacheW[destIdx + 128] = Linearize(startST | uint2(0, 8));
     g_CacheW[destIdx + 136] = Linearize(startST | uint2(8, 8));
 
+    // ToDO
     g_CacheNormals[destIdx + 0] = DecodeNormal(GBuffer[uint3(startST | uint2(0, 0), 0)].xyz);
     g_CacheNormals[destIdx + 8] = DecodeNormal(GBuffer[uint3(startST | uint2(8, 0), 0)].xyz);
     g_CacheNormals[destIdx + 128] = DecodeNormal(GBuffer[uint3(startST | uint2(0, 8), 0)].xyz);

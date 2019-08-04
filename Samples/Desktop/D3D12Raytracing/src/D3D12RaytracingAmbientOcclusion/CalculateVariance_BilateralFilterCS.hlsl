@@ -22,20 +22,11 @@
 
 Texture2D<float> g_inValues : register(t0);
 Texture2D<float> g_inDepth : register(t1);  // ToDo use from normal tex directly
-Texture2D<float4> g_inNormalDepth : register(t2);
+Texture2D<NormalDepthTexFormat> g_inNormalDepth : register(t2);
 
 RWTexture2D<float> g_outVariance : register(u0);
 RWTexture2D<float> g_outMean : register(u1);
 ConstantBuffer<CalculateVariance_BilateralFilterConstantBuffer> cb: register(b0);
-
-// ToDo use common helper
-void LoadNormalAndDepth(Texture2D<float4> normalDepthTexture, in int2 texIndex, out float3 normal, out float depth, out float4 packedValue)
-{
-    packedValue = normalDepthTexture[texIndex];
-    depth = packedValue.z;
-    normal = DecodeNormal(packedValue.xy);
-}
-
 
 // ToDo add support for dxdy and perspective correct interpolation?
 void AddFilterContribution(inout float weightedValueSum, inout float weightedSquaredValueSum, inout float weightSum, inout UINT numWeights, in float value, in float depth, in float3 normal, float obliqueness, in uint kernelRadius, in uint row, in uint col, in uint2 DTid)
@@ -45,10 +36,9 @@ void AddFilterContribution(inout float weightedValueSum, inout float weightedSqu
     {
         float iValue = g_inValues[id];
 
-        float4 packedValue;
         float3 iNormal;
         float iDepth;
-        LoadNormalAndDepth(g_inNormalDepth, id, iNormal, iDepth, packedValue);
+        DecodeNormalDepth(g_inNormalDepth[id], iNormal, iDepth);
 
         float w_d = cb.useDepthWeights ? exp(-abs(depth - iDepth) * obliqueness / (cb.depthSigma)) : 1.f;
         float w_n = cb.useNormalWeights ? pow(max(0, dot(normal, iNormal)), cb.normalSigma) : 1.f;
@@ -72,10 +62,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
 {
     float3 normal;
     float depth;
-    float4 packedValue;
-    LoadNormalAndDepth(g_inNormalDepth, DTid, normal, depth, packedValue);
+    DecodeNormalDepth(g_inNormalDepth[DTid], normal, depth);
     // ToDo use ddxy
-    float obliqueness = max(0.0001f, pow(packedValue.w, 10));
+    float obliqueness = 1;// ToDo max(0.0001f, pow(packedValue.w, 10));
 
     float  value = g_inValues[DTid];
 

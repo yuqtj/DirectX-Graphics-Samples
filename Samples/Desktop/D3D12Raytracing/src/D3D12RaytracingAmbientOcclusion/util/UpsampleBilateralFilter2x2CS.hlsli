@@ -14,8 +14,8 @@
 #include "..\RaytracingShaderHelper.hlsli"
 
 Texture2D<ValueType> g_inValue : register(t0);
-Texture2D<float4> g_inLowResNormalDepth : register(t1);
-Texture2D<float4> g_inHiResNormalDepth : register(t2);
+Texture2D<NormalDepthTexFormat> g_inLowResNormalDepth : register(t1);
+Texture2D<NormalDepthTexFormat> g_inHiResNormalDepth : register(t2);
 Texture2D<float2> g_inHiResPartialDistanceDerivative : register(t3);
 RWTexture2D<ValueType> g_outValue : register(u0);
 
@@ -26,13 +26,6 @@ ConstantBuffer<DownAndUpsampleFilterConstantBuffer> g_CB : register(b0);
 
 // ToDo remove outNormal if not written to.
 //RWTexture2D<float4> g_texOutNormal : register(u1);
-
-void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texIndex, out float depth, out float3 normal)
-{
-    float4 encodedNormalAndDepth = inNormalDepthTexture[texIndex];
-    depth = encodedNormalAndDepth.z;
-    normal = DecodeNormal(encodedNormalAndDepth.xy);
-}
 
 // ToDo comment
 // ToDo reuse same in all resampling and atrous filter?
@@ -101,13 +94,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
     int2 topLeftLowResIndex = (topLeftHiResIndex + int2(-1, -1)) >> 1;
     const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
 
+    // ToDo use gather
     float  hiResDepths[4];
     float3 hiResNormals[4];
     {
         for (int i = 0; i < 4; i++)
         {
             if (g_CB.useDepthWeights || g_CB.useNormalWeights)
-                LoadDepthAndNormal(g_inHiResNormalDepth, topLeftHiResIndex + srcIndexOffsets[i], hiResDepths[i], hiResNormals[i]);
+                DecodeNormalDepth(g_inHiResNormalDepth[topLeftHiResIndex + srcIndexOffsets[i]], hiResNormals[i], hiResDepths[i]);
         }
     }
     float4 vHiResDepths = float4(hiResDepths[0], hiResDepths[1], hiResDepths[2], hiResDepths[3]);
@@ -118,7 +112,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         for (int i = 0; i < 4; i++)
         {
             if (g_CB.useDepthWeights || g_CB.useNormalWeights)
-                LoadDepthAndNormal(g_inLowResNormalDepth, topLeftLowResIndex + srcIndexOffsets[i], lowResDepths[i], lowResNormals[i]);
+                DecodeNormalDepth(g_inLowResNormalDepth[topLeftLowResIndex + srcIndexOffsets[i]], lowResNormals[i], lowResDepths[i]);
         }
     }
     float4 vLowResDepths = float4(lowResDepths[0], lowResDepths[1], lowResDepths[2], lowResDepths[3]);

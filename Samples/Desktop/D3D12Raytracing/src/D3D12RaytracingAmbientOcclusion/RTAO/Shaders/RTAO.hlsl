@@ -39,8 +39,8 @@ RaytracingAccelerationStructure g_scene : register(t0);
 // ToDo remove unneccessary, move ray computation to CS
 // ToDo switch to depth == 0 for hit/no hit?
 Texture2D<float4> g_texRayOriginPosition : register(t7);
-Texture2D<float4> g_texRayOriginSurfaceNormalDepth : register(t8);
-Texture2D<float4> g_texAORaysDirectionOriginDepthHit : register(t22);
+Texture2D<NormalDepthTexFormat> g_texRayOriginSurfaceNormalDepth : register(t8);
+Texture2D<NormalDepthTexFormat> g_texAORaysDirectionOriginDepthHit : register(t22);
 Texture2D<uint2> g_texAOSortedToSourceRayIndexOffset : register(t23);
 Texture2D<float4> g_texAOSurfaceAlbedo : register(t24);
 
@@ -54,7 +54,7 @@ Texture2D<uint> g_texInputAOFrameAge : register(t14);
 RWTexture2D<float> g_rtAOcoefficient : register(u10);
 RWTexture2D<uint> g_rtAORayHits : register(u11);
 RWTexture2D<float> g_rtAORayHitDistance : register(u15);
-RWTexture2D<float4> g_rtAORaysDirectionOriginDepth : register(u22);
+RWTexture2D<NormalDepthTexFormat> g_rtAORaysDirectionOriginDepth : register(u22);
 
 ConstantBuffer<RTAOConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
@@ -260,15 +260,15 @@ void RayGenShader()
     }
 #endif
     // ToDo
-    float3 encodedNormalDepth = g_texRayOriginSurfaceNormalDepth[srcRayIndex].xyz;
-    float depth = encodedNormalDepth.z;
-	bool hit = depth > 0;   // ToDo use a common func to determine
+    float3 surfaceNormal;
+    float depth;
+    // ToDO use full precision here?
+    DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[srcRayIndex], surfaceNormal, depth);
+	bool hit = depth != 0;   // ToDo use a common func to determine
 	if (hit)
 	{
 		float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;
-        float3 normalDepth = g_texRayOriginSurfaceNormalDepth[srcRayIndex].xyz;
-        float3 surfaceNormal = DecodeNormal(normalDepth.xy);
-        float depth = normalDepth.z;
+            
         
         //if (CB.RTAO_UseAdaptiveSampling)
         //{
@@ -403,13 +403,17 @@ void RayGenShader_sortedRays()
     float ambientCoef = RTAO::InvalidAOValue;
     if (isActiveRay)
     {
+        // ToDo use higher res normal, ray direction?
         // ToDo split raydirection and origin into two resources?
-        float2 encodedRayDirection = g_texAORaysDirectionOriginDepthHit[srcRayIndex].xy;
-        float3 rayDirection = DecodeNormal(encodedRayDirection.xy);
+        float dummy;
+        float3 rayDirection;
+        DecodeNormalDepth(g_texAORaysDirectionOriginDepthHit[srcRayIndex], rayDirection, dummy);
         float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;
 
         // ToDo test trading for using ray direction insteads
-        float3 surfaceNormal = DecodeNormal(g_texRayOriginSurfaceNormalDepth[srcRayIndex].xy);
+        float3 surfaceNormal;
+        float depth;
+        DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[srcRayIndex], surfaceNormal, depth);
 
         Ray AORay = { hitPosition, rayDirection };
         ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);

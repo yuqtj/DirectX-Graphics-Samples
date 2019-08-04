@@ -46,13 +46,13 @@ RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
 // {MaterialId, 16b 2D texCoords}
 RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}. // ToDo compact to 8b?
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
-RWTexture2D<float4> g_texGBufferNormalDepth : register(u8);
+RWTexture2D<NormalDepthTexFormat> g_rtGBufferNormalDepth : register(u8);
 RWTexture2D<float> g_rtGBufferDistance : register(u9);
 
 Texture2D<uint> g_texGBufferPositionHits : register(t5); 
 Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Material Id, 3x Diffuse.RGB}       // ToDo rename to material like in composerenderpasses
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
-Texture2D<float4> g_texGBufferNormal : register(t8);
+Texture2D<NormalDepthTexFormat> g_texGBufferNormalDepth : register(t8);
 Texture2D<float4> g_texGBufferDistance : register(t9);
 TextureCube<float4> g_texEnvironmentMap : register(t12);
 Texture2D<float> g_filterWeightSum : register(t13);
@@ -67,19 +67,17 @@ RWTexture2D<float> g_rtAOcoefficient : register(u10);
 RWTexture2D<uint> g_rtAORayHits : register(u11);
 RWTexture2D<float> g_rtVisibilityCoefficient : register(u12);
 RWTexture2D<float> g_rtGBufferDepth : register(u13);
-RWTexture2D<float4> g_rtGBufferNormalRGB : register(u14);   // for SSAO. ToDo cleanup
 RWTexture2D<float> g_rtAORayHitDistance : register(u15);
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
 RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 #endif
 // ToDo pack motion vector, depth and normal into float4
 RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
-RWTexture2D<float4> g_rtReprojectedNormalDepth : register(u18); // ToDo rename
+RWTexture2D<NormalDepthTexFormat> g_rtReprojectedNormalDepth : register(u18); // ToDo rename
 RWTexture2D<float4> g_rtColor : register(u19);
 RWTexture2D<float4> g_rtAOSurfaceAlbedo : register(u20);
 RWTexture2D<float> g_rtShadowMap : register(u21);
 RWTexture2D<float4> g_rtDebug : register(u22);
-RWTexture2D<float4> g_rtGBufferNormalDepthLowPrecision : register(u23);
 RWTexture2D<float4> g_rtDebug2 : register(u24);
 
 ConstantBuffer<SceneConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
@@ -752,11 +750,9 @@ void MyRayGenShader_Visibility()
 	if (hit)
 	{
 		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
-#if COMPRES_NORMALS
-        float3 surfaceNormal = DecodeNormal(g_texGBufferNormal[DTid].xy);
-#else
-		float3 surfaceNormal = g_texGBufferNormal[DTid].xyz;
-#endif
+        float3 surfaceNormal;
+        float dummyDepth;
+        DecodeNormalDepth(g_texGBufferNormalDepth[DTid], surfaceNormal, dummyDepth);
         Ray visibilityRay = { hitPosition + 0.001f * surfaceNormal, normalize(CB.lightPosition.xyz - hitPosition) };
 
         float tHit;
@@ -870,7 +866,8 @@ void MyRayGenShader_GBuffer()
         //g_rtDebug2[DTid] = float4(rayPayload.AOGBuffer._virtualHitPosition, 0);
         float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth, DTid);
         g_rtTextureSpaceMotionVector[DTid] = motionVector;
-        g_rtReprojectedNormalDepth[DTid] = float4(rayPayload.AOGBuffer._encodedNormal, _depth, 0);
+        // ToDo remove the decode step
+        g_rtReprojectedNormalDepth[DTid] = EncodeNormalDepth(DecodeNormal(rayPayload.AOGBuffer._encodedNormal), _depth);
 
         // ToDo normalize depth to [0,1] as floating point has higher precision around 0.
         // ToDo need to normalize hit distance as well
@@ -899,8 +896,8 @@ void MyRayGenShader_GBuffer()
 #endif
 
     // ToDo do we need both? Or just normal for high-fidelity one w/o depth?
-        g_texGBufferNormalDepth[DTid] = float4(rayPayload.AOGBuffer.encodedNormal, linearDepth, obliqueness);
-        g_rtGBufferNormalDepthLowPrecision[DTid] = float4(rayPayload.AOGBuffer.encodedNormal, linearDepth, 0);
+        // ToDo remove the decode step
+        g_rtGBufferNormalDepth[DTid] = EncodeNormalDepth(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), linearDepth);
 
         g_rtGBufferDistance[DTid] = linearDepth;
 
@@ -910,24 +907,21 @@ void MyRayGenShader_GBuffer()
 
             g_rtGBufferDepth[DTid] = linearDepth;// nonLinearDepth;
         }
-        // ToDo don't write on no hit?
-        g_rtGBufferNormalRGB[DTid] = float4(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), 0);
 
         g_rtAOSurfaceAlbedo[DTid] = float4(Byte3ToNormalizedFloat3(rayPayload.AOGBuffer.diffuseByte3), 0);
     }
     else // No geometry hit.
     {
+        // ToDo skip unnecessary writes
         // ToDo use commonly defined values
         // Depth of 0 demarks no hit
         // as low precision normal depth resource R11G11B10 
         // can store non-negative numbers only.
-        g_texGBufferNormalDepth[DTid] = 0;
-        g_rtGBufferNormalDepthLowPrecision[DTid] = 0;
-        g_rtGBufferNormalRGB[DTid] = 0 ;
+        g_rtGBufferNormalDepth[DTid] = 0;
 
         // Invalidate the motion vector - set it to move well out of texture bounds.
         g_rtTextureSpaceMotionVector[DTid] = 1e3f;
-        g_rtReprojectedNormalDepth[DTid] = FLT_MAX;   // ToDo can we skip this write
+        g_rtReprojectedNormalDepth[DTid] = 0;   // ToDo can we skip this write
 
     }
 

@@ -138,8 +138,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputMotionVectorResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPrevFrameHitPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalLowPrecisionResourceHandle,            
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,            
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle,
@@ -370,7 +369,9 @@ namespace GpuKernels
             float depthSigma,
             float normalSigma,
             float weightScale,
+#if !NORMAL_DEPTH_R8G8B16_ENCODING
             TextureResourceFormatRGB::Type normalDepthResourceFormat,
+#endif
             UINT kernelStepShifts[5],
             UINT passNumberToOutputToIntermediateResource = 1,
             UINT numFilterPasses = 5,
@@ -565,7 +566,9 @@ namespace GpuKernels
         bool useWorldSpaceDistance,
         bool usingBilateralDownsampledBuffers,
         bool perspectiveCorrectDepthInterpolation,
+#if !NORMAL_DEPTH_R8G8B16_ENCODING
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
+#endif
         RWGpuResource debugResources[2],
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin);
@@ -668,7 +671,7 @@ namespace GpuKernels
             UINT width,
             UINT height,
             FilterType type,
-            bool useOctahedralDirectionQuantization,
+            bool useOctahedralRayDirectionQuantization,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputSortedToSourceRayIndexOffsetResourceHandle,

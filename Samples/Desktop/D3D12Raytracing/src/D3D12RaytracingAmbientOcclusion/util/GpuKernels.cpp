@@ -440,7 +440,6 @@ namespace GpuKernels
                 enum Enum {
                     Output = 0,
                     OutputNormal,
-                    OutputLowPrecisionNormal,
                     OutputPosition,
                     OutputGeometryHit,
                     OutputPartialDistanceDerivative,
@@ -487,8 +486,7 @@ namespace GpuKernels
             ranges[13].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 6);  // 1 output motion vector
             ranges[14].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);  // 1 input previous frame hit position
             ranges[15].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 7);  // 1 output previous frame hit position
-            ranges[16].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 8);  // 1 output low precision normal
-            
+        
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
             rootParameters[Slot::InputNormal].InitAsDescriptorTable(1, &ranges[1]);
@@ -506,7 +504,6 @@ namespace GpuKernels
             rootParameters[Slot::OutputMotionVector].InitAsDescriptorTable(1, &ranges[13]);
             rootParameters[Slot::InputPrevFrameHitPosition].InitAsDescriptorTable(1, &ranges[14]);
             rootParameters[Slot::OutputPrevFrameHitPosition].InitAsDescriptorTable(1, &ranges[15]);
-            rootParameters[Slot::OutputLowPrecisionNormal].InitAsDescriptorTable(1, &ranges[16]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_STATIC_SAMPLER_DESC staticSamplers[] = {
@@ -552,7 +549,6 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPrevFrameHitPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalLowPrecisionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle,
@@ -582,7 +578,6 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputPrevFrameHitPosition, inputPrevFrameHitPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputDepth, inputDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputNormal, outputNormalResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::OutputLowPrecisionNormal, outputNormalLowPrecisionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPosition, outputPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputGeometryHit, outputGeometryHitResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPartialDistanceDerivative, outputPartialDistanceDerivativesResourceHandle);
@@ -1314,7 +1309,9 @@ namespace GpuKernels
         float depthSigma,
         float normalSigma,
         float weightScale,
+#if !NORMAL_DEPTH_R8G8B16_ENCODING
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
+#endif
         UINT kernelStepShifts[5],
         UINT passNumberToOutputToIntermediateResource,
         UINT numFilterPasses,
@@ -1415,6 +1412,10 @@ namespace GpuKernels
             CB->maxFrameAgeToDenoise = maxFrameAgeToDenoise;
             CB->depthWeightCutoff = depthWeightCutoff;
 
+
+#if NORMAL_DEPTH_R8G8B16_ENCODING
+            m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16);
+#else
             switch (normalDepthResourceFormat)
             {
             case TextureResourceFormatRGB::R32G32B32A32_FLOAT: CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(32); break;
@@ -1422,7 +1423,7 @@ namespace GpuKernels
             case TextureResourceFormatRGB::R11G11B10_FLOAT: CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(10); break;
             default: ThrowIfFalse(false, L"Invalid resource format specified.");
             }
-
+#endif
             
             CB.CopyStagingToGpu(m_CBinstanceID + i);
         }
@@ -1998,7 +1999,9 @@ namespace GpuKernels
         bool useWorldSpaceDistance,
         bool usingBilateralDownsampledBuffers,
         bool perspectiveCorrectDepthInterpolation,
+#if !NORMAL_DEPTH_R8G8B16_ENCODING
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
+#endif
         RWGpuResource debugResources[2],
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin)
@@ -2022,6 +2025,10 @@ namespace GpuKernels
         m_CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
         m_CB->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
 
+
+#if NORMAL_DEPTH_R8G8B16_ENCODING
+        m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16);
+#else
         switch (normalDepthResourceFormat)
         {
         case TextureResourceFormatRGB::R32G32B32A32_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(32); break;
@@ -2029,7 +2036,7 @@ namespace GpuKernels
         case TextureResourceFormatRGB::R11G11B10_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(10); break;
         default: ThrowIfFalse(false, L"Invalid resource format specified.");
         }
-
+#endif
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 
@@ -2467,7 +2474,7 @@ namespace GpuKernels
         UINT width,
         UINT height,
         FilterType type,
-        bool useOctahedralDirectionQuantization,
+        bool useOctahedralRayDirectionQuantization,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputSortedToSourceRayIndexOffsetResourceHandle,
@@ -2480,7 +2487,7 @@ namespace GpuKernels
         ScopedTimer _prof(L"Sort Rays", commandList);
 
         m_CB->dim = XMUINT2(width, height);
-        m_CB->useOctahedralDirectionQuantization = useOctahedralDirectionQuantization;
+        m_CB->useOctahedralRayDirectionQuantization = useOctahedralRayDirectionQuantization;
         m_CB->binDepthSize = binDepthSize;
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);

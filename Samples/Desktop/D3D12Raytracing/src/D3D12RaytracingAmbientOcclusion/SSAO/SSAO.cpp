@@ -1050,6 +1050,8 @@ void SSAO::DispatchBlurAndUpsample(
 void SSAO::Run(
     ComPtr<ID3D12Resource> pSceneConstantResource)
 {
+    ThrowIfFalse(0, L"Fix up normal binding and decoding");
+
     auto commandList = m_deviceResources->GetCommandList();
     auto renderTarget = m_deviceResources->GetRenderTarget();
 

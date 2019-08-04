@@ -9,6 +9,7 @@
 //
 //*********************************************************
 
+ToDo fix up or remove
 // ToDo add desc for each kernel
 // Desc: Calculate Variance via Separable Bilateral kernel.
 // Supports kernel radius of up to 4, i.e. kernel 9x9.
@@ -25,7 +26,7 @@
 
 Texture2D<float> g_inValues : register(t0);
 Texture2D<float> g_inDepth : register(t1);  // ToDo use from normal tex directly
-Texture2D<float4> g_inNormalDepthObliqueness : register(t2);
+Texture2D<NormalDepthTexFormat> g_inNormalDepth : register(t2);
 
 RWTexture2D<float> g_outVariance : register(u0);
 RWTexture2D<float> g_outMean : register(u1);

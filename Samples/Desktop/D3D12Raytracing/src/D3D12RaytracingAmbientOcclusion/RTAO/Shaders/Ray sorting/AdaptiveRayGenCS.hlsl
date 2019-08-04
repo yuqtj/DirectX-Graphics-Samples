@@ -20,11 +20,12 @@
 #include "RandomNumberGenerator.hlsli"
 #include "RaySorting.hlsli"
 
-Texture2D<float4> g_texRayOriginSurfaceNormalDepth : register(t0);
+Texture2D<NormalDepthTexFormat> g_texRayOriginSurfaceNormalDepth : register(t0);
 Texture2D<float4> g_texRayOriginPosition : register(t1);
 Texture2D<uint> g_texFrameAge : register(t2);
 
-RWTexture2D<float4> g_rtRaysDirectionOriginDepth : register(u0);   // R11G11B10 texture. Note that this format doesn't store negative values.
+// ToDo use higher bit format?
+RWTexture2D<NormalDepthTexFormat> g_rtRaysDirectionOriginDepth : register(u0);
 
 ConstantBuffer<AdaptiveRayGenConstantBuffer> CB: register(b0);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t3);
@@ -92,13 +93,6 @@ float3 GetRandomRayDirection(in uint2 srcRayIndex, in float3 surfaceNormal)
 }
 
 
-void LoadNormalAndDepth(Texture2D<float4> normalDepthTexture, in int2 texIndex, out float3 normal, out float depth)
-{
-    float3 packedNormalDepth = normalDepthTexture[texIndex].xyz;
-    normal = DecodeNormal(packedNormalDepth.xy);
-    depth = packedNormalDepth.z;
-}
-
 // ToDo
 // Limitations:
 // -    TextureDim and CsDim must be a multiple of QuadDim
@@ -112,7 +106,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
 {
     float3 surfaceNormal;
     float rayOriginDepth;
-    LoadNormalAndDepth(g_texRayOriginSurfaceNormalDepth, DTid, surfaceNormal, rayOriginDepth);
+    DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[DTid], surfaceNormal, rayOriginDepth);
 
     // Load the frame age for the whole quad into shared memory.
     FrameAgeCache[GTid.y][GTid.x] = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH ? g_texFrameAge[DTid] : CB.MaxFrameAge;
@@ -144,7 +138,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     uint StartID = (CB.FrameID * numRaysToGeneratePerQuad) % MaxNumRaysPerQuad;
 
     // Generate the rays.
-    float2 encodedRayDirection = 0;
+    float3 rayDirection = 0;
     if (rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH)
     {
         // Check whether this pixel is due to generate a ray.
@@ -156,8 +150,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
             // Check for when a valid quad thread index range wraps around.
             (StartID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && quadThreadIndex1D < ((StartID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad)))
         {
-            float3 rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
-            encodedRayDirection = EncodeNormal(rayDirection);
+            rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
         }
 #endif
         else
@@ -167,5 +160,5 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
         }
     }
 
-    g_rtRaysDirectionOriginDepth[DTid] = float4(encodedRayDirection, rayOriginDepth, 0);
+    g_rtRaysDirectionOriginDepth[DTid] = EncodeNormalDepth(rayDirection, rayOriginDepth);
 }

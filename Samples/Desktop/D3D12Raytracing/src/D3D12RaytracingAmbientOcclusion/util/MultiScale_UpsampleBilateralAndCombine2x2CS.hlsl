@@ -17,9 +17,9 @@
 
 Texture2D<float> g_inLowResValue1 : register(t0);
 Texture2D<float> g_inLowResValue2 : register(t1);
-Texture2D<float4> g_inLowResNormalDepth : register(t2);
+Texture2D<NormalDepthTexFormat> g_inLowResNormalDepth : register(t2);
 Texture2D<float> g_inHiResValue : register(t3);
-Texture2D<float4> g_inHiResNormalDepth : register(t4);
+Texture2D<NormalDepthTexFormat> g_inHiResNormalDepth : register(t4);
 Texture2D<float2> g_inHiResPartialDistanceDerivative : register(t5);
 RWTexture2D<float> g_outValue : register(u0);
 
@@ -90,17 +90,6 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
     return dot(weights, SampleValues) / dot(weights, 1);
 }
 
-void LoadDepthAndNormal(Texture2D<float4> inNormalDepthTexture, in uint2 texIndex, out float4 encodedNormalAndDepth, out float depth, out float3 normal)
-{
-    encodedNormalAndDepth = inNormalDepthTexture[texIndex];
-    depth = encodedNormalAndDepth.z;
-    normal = DecodeNormal(encodedNormalAndDepth.xy);
-
-    // ToDo remove
-#if !COMPRES_NORMALS || !PACK_NORMAL_AND_DEPTH
-    Not supported
-#endif
-}
 
 // ToDo double check coorrect threadgroups used across shaders
 [numthreads(MultiScale_UpsampleBilateralFilterAndCombine::ThreadGroup::Width, MultiScale_UpsampleBilateralFilterAndCombine::ThreadGroup::Height, 1)]
@@ -115,24 +104,22 @@ void main(uint2 DTid : SV_DispatchThreadID)
     const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
 
     // ToDo combine loads into single loop - perf?
-    float4 hiResEncodedNormalsAndDepths[4];
     float  hiResDepths[4];
     float3 hiResNormals[4];
     {
         for (int i = 0; i < 4; i++)
         {
-            LoadDepthAndNormal(g_inHiResNormalDepth, topLeftHiResIndex + srcIndexOffsets[i], hiResEncodedNormalsAndDepths[i], hiResDepths[i], hiResNormals[i]);
+            DecodeNormalDepth(g_inHiResNormalDepth[topLeftHiResIndex + srcIndexOffsets[i]], hiResNormals[i], hiResDepths[i]);
         }
     }
     float4 vHiResDepths = float4(hiResDepths[0], hiResDepths[1], hiResDepths[2], hiResDepths[3]);
 
-    float4 lowResEncodedNormalsAndDepths[4];
     float  lowResDepths[4];
     float3 lowResNormals[4];
     {
         for (int i = 0; i < 4; i++)
         {
-            LoadDepthAndNormal(g_inLowResNormalDepth, topLeftLowResIndex + srcIndexOffsets[i], lowResEncodedNormalsAndDepths[i], lowResDepths[i], lowResNormals[i]);
+            DecodeNormalDepth(g_inLowResNormalDepth[topLeftLowResIndex + srcIndexOffsets[i]], lowResNormals[i], lowResDepths[i]);
         }
     }
     float4 vLowResDepths = float4(lowResDepths[0], lowResDepths[1], lowResDepths[2], lowResDepths[3]);
