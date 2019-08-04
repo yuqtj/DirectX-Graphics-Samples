@@ -297,7 +297,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         {
             pixelOffsetForDepth += float2(0.5, 0.5);
         }
-#if 1
+#if 0
         float depthThreshold = DepthThreshold(depth, ddxy, pixelOffsetForDepth);
 
         float depthFloatPrecision = FloatPrecision(depth, g_CB.DepthNumMantissaBits);

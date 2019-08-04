@@ -343,7 +343,7 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
 
 #if SKIP_INVALID_RAYS
     uint rayGroupSize = rayGroupDim.y * rayGroupDim.x;
-    uint indexMultiplier = 16;
+    uint indexMultiplier = 4;
     uint _index1D = index1D * indexMultiplier;
 
     uint2 rayGroupIndex;

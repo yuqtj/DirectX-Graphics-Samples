@@ -738,7 +738,10 @@ namespace GpuKernels
             rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[4]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
-            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            CD3DX12_STATIC_SAMPLER_DESC staticSamplers[] = {
+                CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP) };
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, ARRAYSIZE(staticSamplers), staticSamplers);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: UpsampleBilateralFilter");
         }
 
@@ -794,17 +797,19 @@ namespace GpuKernels
 
         ScopedTimer _prof(L"UpsampleBilateralFilter", commandList);
 
+        // Each shader execution processes 2x2 hiRes pixels
+        XMUINT2 lowResDim = XMUINT2(CeilDivide(width, 2), CeilDivide(height, 2));
+
         m_CB->useBilinearWeights = useBilinearWeights;
         m_CB->useDepthWeights = useDepthWeights;
         m_CB->useNormalWeights = useNormalWeights;
         m_CB->useDynamicDepthThreshold = useDynamicDepthThreshold;
+        m_CB->invHiResTextureDim = XMFLOAT2(1.f / width, 1.f / height);
+        m_CB->invLowResTextureDim = XMFLOAT2(1.f / lowResDim.x, 1.f / lowResDim.y);
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 
 
-        // Each shader execution processes 2x2 hiRes pixels
-        width = CeilDivide(width, 2);
-        height = CeilDivide(height, 2);
 
         // Set pipeline state.
         {
@@ -821,7 +826,7 @@ namespace GpuKernels
 
         // ToDo handle misaligned input
         // Start from -1,-1 pixel to account for high-res pixel border around low-res pixel border.
-        XMUINT2 groupSize(CeilDivide(width + 1, ThreadGroup::Width), CeilDivide(height + 1, ThreadGroup::Height));
+        XMUINT2 groupSize(CeilDivide(lowResDim.x + 1, ThreadGroup::Width), CeilDivide(lowResDim.y + 1, ThreadGroup::Height));
 
         // Dispatch.
         commandList->Dispatch(groupSize.x, groupSize.y, 1);

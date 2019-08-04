@@ -74,23 +74,23 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 1 // 16b vs 32b precision test
+#if 0 // 16b vs 32b precision test
             camera.position.eye = { -43.6427f, 7.28604f, -2.2188f, 1 };
             camera.position.at = { -42.7813f, 7.02642f, -1.7815f, 1 };
             camera.position.up = { 0.324859f, 0.930551f, 0.168907f, 0 };
-#elif 1 // Depth precision test
+#elif 0 // Depth precision test
 
             camera.position.eye = { -36.0544f, 4.83189f, 2.97074f, 1 };
             camera.position.at = { -35.193f, 4.57227f, 3.40804f, 1 };
             camera.position.up = { 0.324859f, 0.930551f, 0.168907f, 0 };
-#elif 1   // test TSS split
+#elif 0   // test TSS split
             camera.position.eye = { -23.7877f, 7.73889f, -14.802f, 1 };
             camera.position.at = { -23.4918f, 7.24975f, -13.9812f, 1 };
             camera.position.up = { 0.194256f, 0.811976f, 0.550408f, 0 };
 #elif 1 
-            camera.position.eye = { -12.358f, 4.60442f, -19.4095f, 1 };
-            camera.position.at = { -12.1201f, 4.36224f, -18.4686f, 1 };
-            camera.position.up = { 0.0822575f, 0.936992f, 0.339515f, 0 };
+            camera.position.eye = { -43.7147f, 9.23402f, -23.2546f, 1 };
+            camera.position.at = { -42.9668f, 8.59951f, -23.0594f, 1 };
+            camera.position.up = { 0.692811f, 0.696956f, 0.185112f, 0 };
 #elif 0 // Denoiser blurs accross edge on garage door
             camera.position.eye = { -28.096f, 3.6525f, -2.19541f, 1 };
             camera.position.at = { -27.4426f, 3.21277f, -1.57872f, 1 };

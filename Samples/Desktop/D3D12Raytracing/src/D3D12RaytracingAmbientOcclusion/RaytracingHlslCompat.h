@@ -859,6 +859,9 @@ struct CalculatePartialDerivativesConstantBuffer
 
 struct DownAndUpsampleFilterConstantBuffer
 {
+    XMFLOAT2 invHiResTextureDim;
+    XMFLOAT2 invLowResTextureDim;
+
     BOOL useNormalWeights;
     BOOL useDepthWeights;
     BOOL useBilinearWeights;

@@ -281,7 +281,10 @@ namespace SceneArgs
     // ToDo why large depth sigma is needed?
     // ToDo the values don't scale to QuarterRes - see ImportaceMap viz
     NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1.0f, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
-    NumVar AODenoiseDepthWeightCutoff(L"Render/AO/RTAO/Denoising/Depth Weight Cutoff", 1.0f, 0.0f, 2.0f, 0.01f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
+
+     // ToDo Fine tune. 1 causes moire patterns at angle under the car
+    // aT LOW RES 1280X768. causes depth disc lines down to 0.8 cutoff at long ranges
+    NumVar AODenoiseDepthWeightCutoff(L"Render/AO/RTAO/Denoising/Depth Weight Cutoff", 1.0f, 0.0f, 2.0f, 0.01f);
 
     NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising/Normal Sigma", 64, 0, 256, 4);   // ToDo rename sigma as sigma in depth/var means tolernace. here its an exponent.
     
