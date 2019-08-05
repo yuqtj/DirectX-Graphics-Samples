@@ -150,7 +150,9 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
         // ToDo Should there be a distance falloff with a cutoff below 1?
         // ToDo revise the coefficient
         depthMask = depthWeights >= 0.5 ? depthWeights : 0;   // ToDo revise - this is same as comparing to depth tolerance
-        
+
+        //g_texOutputDebug1[actualIndex] = float4(depthTolerance, ActualDistance, SampleDistances.xy);
+        //g_texOutputDebug2[actualIndex] = depthWeights;
         // ToDo handle invalid distances, i.e disabled pixels?
         //weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0; // ToDo?
 
@@ -229,7 +231,7 @@ float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal
 
         float fEpsilon = 1e-6 * ActualDistance;
         depthWeights = min(vDepthTolerances / (abs(SampleDistances - vExpectedDepths) + fEpsilon), 1);
-        g_texOutputDebug1[actualIndex] = depthWeights;
+        g_texOutputDebug2[actualIndex] = depthWeights;
         // ToDo Should there be a distance falloff with a cutoff below 1?
         // ToDo revise the coefficient
         depthWeights *= depthWeights >= 0.5;   // ToDo revise - this is same as comparing to depth tolerance
@@ -275,7 +277,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     DecodeNormalDepth(g_texInputReprojectedNormalDepth[DTid], _normal, _depth);
     float2 textureSpaceMotionVector = g_texInputTextureSpaceMotionVector[DTid];
 
-    g_texOutputDebug1[DTid] = float4(_normal, _depth);
+    //g_texOutputDebug1[DTid] = float4(_normal, _depth);
     // ToDo compare against common predefined value
     if (_depth == 0 || textureSpaceMotionVector.x > 1e2f)
     {
@@ -353,8 +355,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
         cacheDdxy = CalculateAdjustedDepthThreshold(ddxy, depth, _depth, normal, _normal);
     }
 
-    float4 weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
-    //float4 weights = BilateralResampleWeights2(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, dxdy);
+   // float4 weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
+    float4 weights = BilateralResampleWeights2(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, dxdy);
 
     // Invalidate weights for invalid values in the cache.
     float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;

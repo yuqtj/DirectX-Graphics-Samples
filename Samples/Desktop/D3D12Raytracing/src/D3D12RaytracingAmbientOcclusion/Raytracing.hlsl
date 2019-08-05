@@ -866,15 +866,19 @@ void MyRayGenShader_GBuffer()
         //g_rtDebug2[DTid] = float4(rayPayload.AOGBuffer._virtualHitPosition, 0);
         float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth, DTid);
         g_rtTextureSpaceMotionVector[DTid] = motionVector;
+
+#if USE_NORMALIZED_Z
+        _depth = NormalizeToRange(_depth, CB.Znear, CB.Zfar);
+#endif
         // ToDo remove the decode step
         g_rtReprojectedNormalDepth[DTid] = EncodeNormalDepth(DecodeNormal(rayPayload.AOGBuffer._encodedNormal), _depth);
 
         // ToDo normalize depth to [0,1] as floating point has higher precision around 0.
         // ToDo need to normalize hit distance as well
 #if USE_NORMALIZED_Z
-        float linearDistance = NormalizeToRange(rayLength, CB.Zmin, CB.Zmax);
+        float linearDistance = NormalizeToRange(rayLength, CB.Znear, CB.Zfar);
 #else
-        float linearDistance = rayLength;// (rayLength - CB.Zmin) / (CB.Zmax - CB.Zmin);
+        float linearDistance = rayLength;
 #endif
     // Calculate z-depth
         float3 cameraDirection = GenerateForwardCameraRayDirection(CB.projectionToWorldWithCameraEyeAtOrigin);

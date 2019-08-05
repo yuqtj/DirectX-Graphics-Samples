@@ -540,9 +540,9 @@ struct SceneConstantBuffer
 
     float reflectance;
     float elapsedTime;                 // Elapsed application time.
-	float Zmin;     // ToDo rename to zNear
-	float Zmax;
-        
+	float Znear;     // ToDo rename to zNear
+	float Zfar;
+
     XMFLOAT2 cameraJitter;
     XMUINT2 raytracingDim;
 

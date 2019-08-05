@@ -178,6 +178,10 @@ namespace SceneArgs
     BoolVar DownAndUpsamplingUseNormalWeights(L"Render/AO/RTAO/Down/Upsampling/Normal weighted", true);
     BoolVar DownAndUpsamplingUseDynamicDepthThreshold(L"Render/AO/RTAO/Down/Upsampling/Dynamic depth threshold", true);        // ToDO rename to adaptive
 
+#if USE_NORMALIZED_Z
+    NumVar PathTracing_Znear(L"Render/PathTracing/Znear", 0.0f, 0, 1000.0f, 1.0f); 
+    NumVar PathTracing_Zfar(L"Render/PathTracing/Zfar", 100.0f, 0, 1000.0f, 1.0f); 
+#endif
 
     NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
     BoolVar AnimateGrass(L"Scene2/Animate grass", false);
@@ -282,7 +286,7 @@ namespace SceneArgs
 
     // ToDo why large depth sigma is needed?
     // ToDo the values don't scale to QuarterRes - see ImportaceMap viz
-    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 1.0f, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
+    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 0.4f, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
 
      // ToDo Fine tune. 1 causes moire patterns at angle under the car
     // aT LOW RES 1280X768. causes depth disc lines down to 0.8 cutoff at long ranges
@@ -594,8 +598,8 @@ void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
         m_sceneCB->projectionToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj);
         // ToDo switch to default column major in hlsl and do a transpose before passing matrices to HLSL.
         m_sceneCB->viewProjection = viewProj;
-        m_sceneCB->Zmin = m_camera.ZMin;
-        m_sceneCB->Zmax = m_camera.ZMax;
+        m_sceneCB->Znear = m_camera.ZMin;
+        m_sceneCB->Zfar = m_camera.ZMax;
 
         m_sceneCB->cameraAt = m_camera.At();
         m_sceneCB->cameraUp = m_camera.Up();
@@ -3351,7 +3355,10 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 
 
     m_normalDepthCurrentFrameResourceIndex = (m_normalDepthCurrentFrameResourceIndex + 1) % 2;
-
+#if USE_NORMALIZED_Z
+    m_sceneCB->Znear = SceneArgs::PathTracing_Znear;
+    m_sceneCB->Zfar = SceneArgs::PathTracing_Zfar;
+#endif
     m_sceneCB->useDiffuseFromMaterial = SceneArgs::CompositionMode == CompositionType::Diffuse;
     m_sceneCB->doShading = SceneArgs::CompositionMode == CompositionType::PhongLighting;
 #if CAMERA_JITTER

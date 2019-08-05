@@ -45,7 +45,6 @@ float4 BilateralUpsampleWeights(in float ActualDistance, in float3 ActualNormal,
 
         if (g_CB.useDynamicDepthThreshold)
         {
-            float2 ddxy = abs(g_inHiResPartialDistanceDerivative[hiResPixelIndex]);  // ToDo move to caller
             float maxPixelDistance = 3; // Scale to compensate for the fact that the downsampled depth value may come from up to 3 pixels away in the high-res texture scale.
 
             // ToDo consider ddxy per dimension or have a 1D max(Ddxy) resource?
