@@ -1417,7 +1417,7 @@ namespace GpuKernels
             CB->textureDim = resourceDim;
             CB->minVarianceToDenoise = minVarianceToDenoise;
             CB->staleNeighborWeightScale = _i == 0 ? staleNeighborWeightScale : 1;  // ToDo revise
-            CB->maxFrameAgeToDenoise = maxFrameAgeToDenoise;
+            CB->maxFrameAgeToDenoise = i == 0 ? maxFrameAgeToDenoise : 100;
             CB->depthWeightCutoff = depthWeightCutoff;
             CB->useProjectedDepthTest = useProjectedDepthTest;
 

@@ -84,8 +84,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         // Value.
         value = lerp(cachedValue, value, a);
-        // ToDo use an helper 0/1 resource instead ?
-        value = isValidValue ? value : -value;
 
         // Value Squared Mean.
         float cachedSquaredMeanValue = cachedValues.z; 
@@ -100,6 +98,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
         rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
         float cachedRayHitDistance = cachedValues.w;
         rayHitDistance = lerp(cachedRayHitDistance, rayHitDistance, a);
+
+
+        // ToDo use an helper 0/1 resource instead ?
+        value = isValidValue ? value : -value;
     }
     else if (isValidValue)
     {

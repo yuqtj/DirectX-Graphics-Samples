@@ -181,9 +181,17 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
             (1 - offset.x) * offset.y,
             offset.x * offset.y);
 
+    // Clamp to pixels on tiny offsets.
+    bilinearWeights *= bilinearWeights >= 1e-3f;
+
+
     // ToDo use depth weights instead of mask?
     // ToDo can we prevent diffusion across plane?
     float4 weights = isWithinBounds * bilinearWeights * depthMask * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
+
+    // Avoid imprecision issues.
+    weights = weights > 0.999 ? 1 : weights;
+    weights = weights < 0.001 ? 0 : weights;
 
     return weights;
 }
@@ -264,7 +272,6 @@ float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal
     // ToDo can we prevent diffusion across plane?
     float4 weights = isWithinBounds * isActive * bilinearWeights * depthWeights * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
 
-    g_texOutputDebug2[actualIndex] = weights;
     return weights;
 }
 
@@ -355,8 +362,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
         cacheDdxy = CalculateAdjustedDepthThreshold(ddxy, depth, _depth, normal, _normal);
     }
 
-   // float4 weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
-    float4 weights = BilateralResampleWeights2(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, dxdy);
+    float4 weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
+    //float4 weights = BilateralResampleWeights2(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, dxdy);
 
     // Invalidate weights for invalid values in the cache.
     float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
@@ -390,6 +397,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
         uint4 vCachedFrameAge = g_texInputCachedFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         float4 nWeights = weights / weightSum;   // Normalize the weights.
 
+        g_texOutputDebug1[DTid] = float4(weights.xyz, weightSum);
+        g_texOutputDebug2[DTid] = nWeights;
 
         // ToDo revisit this and potentially make it UI adjustable - weight ^ 2 ?,...
         // Scale the frame age by the total weight. This is to keep the frame age low for 
@@ -400,10 +409,16 @@ void main(uint2 DTid : SV_DispatchThreadID)
         // such as on disocclussions of surfaces on rotation, are kept around long enough to create 
         // visible streaks that fade away very slow.
         // Example: rotating camera around dragon's nose up close. 
-        float frameAgeScale = 1;// saturate(weightSum);
+        float frameAgeScale = saturate(weightSum);
 
         float cachedFrameAge = frameAgeScale * dot(nWeights, vCachedFrameAge);
         frameAge = round(cachedFrameAge);
+
+        // Nudge frame age down on non-zero reprojection so that new rays are shot and denoising kicks in.
+        if (frameAge == 33 && dot(1, textureSpaceMotionVector * cb.textureDim) > 0.001)
+        {
+            frameAge = 10;
+        }
 
         // ToDo move this to a separate pass?
         if (frameAge > 0)

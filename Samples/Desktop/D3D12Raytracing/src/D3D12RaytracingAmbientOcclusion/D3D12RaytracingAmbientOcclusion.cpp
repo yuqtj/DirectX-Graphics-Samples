@@ -186,7 +186,7 @@ namespace SceneArgs
     NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
     BoolVar AnimateGrass(L"Scene2/Animate grass", false);
 
-    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
+    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
 
     // Temporal Cache.
     // ToDo rename cache to accumulation/supersampling?
@@ -280,7 +280,7 @@ namespace SceneArgs
     NumVar RTAODenoising_2ndPass_NormalSigma(L"Render/AO/RTAO/Denoising/2nd+ pass/Normal Sigma", 2, 1, 256, 2);  
     NumVar RTAODenoising_2ndPass_DepthSigma(L"Render/AO/RTAO/Denoising/2nd+ pass/Depth Sigma", 1.0f, 0.0f, 10.0f, 0.02f); 
 #endif
-    IntVar RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass(L"Render/AO/RTAO/Denoising/Max Frame Age To Denoise 2nd+ pass", 16, 1, 32, 1);
+    IntVar RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass(L"Render/AO/RTAO/Denoising/Max Frame Age To Denoise 2nd+ pass", 33, 1, 34, 1);
     BoolVar ReverseFilterOrder(L"Render/AO/RTAO/Denoising/Reverse filter order", false);
     NumVar RTAODenoising_WeightScale(L"Render/AO/RTAO/Denoising/Weight Scale", 1, 0.0f, 5.0f, 0.01f);
 
@@ -2835,7 +2835,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
     }
     
     float staleNeighborWeightScale = m_RTAO.GetSpp();
-    UINT maxFrameAgeToDenoise = isFirstPass ? 33 : SceneArgs::RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass;  // ToDo use common variable for max frame age
+    UINT maxFrameAgeToDenoise = isFirstPass ? 32 : SceneArgs::RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass;  // ToDo use common variable for max frame age
     // A-trous edge-preserving wavelet tranform filter
     if (numFilterPasses > 0)
     {

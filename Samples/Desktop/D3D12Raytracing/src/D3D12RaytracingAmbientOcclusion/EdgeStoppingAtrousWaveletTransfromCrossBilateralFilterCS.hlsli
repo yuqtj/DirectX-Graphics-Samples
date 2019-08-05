@@ -293,7 +293,10 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
     DecodeNormalDepth(g_inNormalDepth[DTid], normal, depth);
     uint frameAge = g_inFrameAge[DTid];
     float value = g_inValues[DTid];
-    float filteredValue = value;
+    bool isValidValue = value != RTAO::InvalidAOValue;
+    float filteredValue = isValidValue && value < 0 ? -value : value;
+    float variance = g_inSmoothedVariance[DTid];
+    float filteredVariance = variance;
 
     if (depth != 0 &&
         frameAge <= g_CB.maxFrameAgeToDenoise)
@@ -302,7 +305,6 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         float t = (2 * max(frameAge, (g_CB.maxFrameAgeToDenoise + 1) / 2) - g_CB.maxFrameAgeToDenoise) / g_CB.maxFrameAgeToDenoise;
         float neighborWeightScale = g_CB.normalSigma < 64 ? g_CB.weightScale * lerp(1, 0, t) : 1;  // ToDo cleanup
 
-        bool isValidValue = value != RTAO::InvalidAOValue;
         float w_c = 1;
         if (value < 0)
         {
@@ -335,7 +337,6 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         float weightSum = 0;
         float weightedValueSum = 0;
         float weightedVarianceSum = 0;
-        float variance = 0;
         float stdDeviation = 1;
 
         if (isValidValue)
@@ -343,7 +344,6 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
             float pixelWeight = frameAge;
             weightSum = pixelWeight * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius];
             weightedValueSum = weightSum * value;
-            variance = g_inSmoothedVariance[DTid];
             weightedVarianceSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius]
                 * variance;
             stdDeviation = sqrt(variance);
@@ -372,17 +372,19 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         {
             //float filteredValue = weightSum > (FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] + 0.00001) ? weightedValueSum / weightSum : valueSum / numValues;
             filteredValue = weightedValueSum / weightSum;
+            filteredVariance = weightedVarianceSum / (weightSum * weightSum);
         }
         else
         {
             filteredValue = RTAO::InvalidAOValue;
+            filteredVariance = 0;
         }
     }
 
     g_outFilteredValues[DTid] = filteredValue;
     if (g_CB.outputFilteredVariance)
     {
-        g_outFilteredVariance[DTid] = filteredValue * filteredValue;// weightedVarianceSum / (weightSum * weightSum);
+        g_outFilteredVariance[DTid] = filteredVariance;
     }
 
 }
