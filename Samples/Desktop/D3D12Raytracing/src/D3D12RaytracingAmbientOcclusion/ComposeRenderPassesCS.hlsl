@@ -29,7 +29,7 @@ Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
 Texture2D<float> g_texFilterWeightSum : register(t8);
 Texture2D<float> g_texRayHitDistance : register(t9);
-Texture2D<uint> g_texTemporalSupersamplingDisocclusionMap : register(t10);
+Texture2D<uint> g_texTemporalSupersamplingDisocclusionMap : register(t10);  // ToDo is this frameAge? rename
 Texture2D<float4> g_texColor : register(t11);
 Texture2D<float4> g_texAOSurfaceAlbedo : register(t12);
 Texture2D<float4> g_texVariance : register(t13);

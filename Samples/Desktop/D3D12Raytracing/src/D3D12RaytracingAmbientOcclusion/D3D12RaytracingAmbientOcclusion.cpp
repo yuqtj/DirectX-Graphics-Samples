@@ -261,7 +261,8 @@ namespace SceneArgs
     NumVar RTAODenoisingFilterVarianceSigmaScaleOnSmallKernels(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Variance sigma scale on small kernels", 2.0f, 1.0f, 20.f, 0.5f); 
     NumVar RTAO_Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Hit distance scale factor", 1.0f, 0.1f, 10.f, 0.1f);
     BoolVar RTAODenoising_Variance_UseDepthWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true);
-    BoolVar RTAODenoising_Variance_UseNormalWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true); 
+    BoolVar RTAODenoising_Variance_UseNormalWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true);
+    BoolVar RTAODenoising_ForceDenoisePass(L"Render/AO/RTAO/Denoising/Force denoise pass", false);
     IntVar RTAODenoising_MinFrameAgeToUseTemporalVariance(L"Render/AO/RTAO/Denoising/Min Temporal Variance Frame Age", 4, 1, 40);
     NumVar RTAODenoisingMinVarianceToDenoise(L"Render/AO/RTAO/Denoising/Min Variance to denoise", 0.0f, 0.0f, 1.f, 0.01f);
     BoolVar RTAODenoisingUseSmoothedVariance(L"Render/AO/RTAO/Denoising/Use smoothed variance", false);
@@ -274,13 +275,19 @@ namespace SceneArgs
     IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 1, 1, 8, 1);
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.011f, 0.0f, 30.0f, 0.1f);
 #else
-    IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 3, 1, 8, 1);
+    IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising/Num passes", 2, 1, 8, 1);
     NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising/Value Sigma", 0.3f, 0.0f, 30.0f, 0.1f);
     BoolVar RTAODenoising_2ndPass_UseVariance(L"Render/AO/RTAO/Denoising/2nd+ pass/Use variance", false);
     NumVar RTAODenoising_2ndPass_NormalSigma(L"Render/AO/RTAO/Denoising/2nd+ pass/Normal Sigma", 2, 1, 256, 2);  
     NumVar RTAODenoising_2ndPass_DepthSigma(L"Render/AO/RTAO/Denoising/2nd+ pass/Depth Sigma", 1.0f, 0.0f, 10.0f, 0.02f); 
 #endif
     IntVar RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass(L"Render/AO/RTAO/Denoising/Max Frame Age To Denoise 2nd+ pass", 33, 1, 34, 1);
+    IntVar RTAODenoising_MaxFrameAgeToDenoiseOn1stPass(L"Render/AO/RTAO/Denoising/1st pass/Max Frame Age To Denoise", 16, 1, 64, 1);
+    IntVar RTAODenoisingExtraRaysToTraceSinceTSSMovement(L"Render/AO/RTAO/Denoising/Heuristics/Num rays to cast since TSS movement", 32, 0, 64);
+    IntVar RTAODenoisingnumFramesToDenoiseAfterLastTracedRay(L"Render/AO/RTAO/Denoising/Heuristics/Num frames to denoise after last traced ray", 32, 0, 64);
+
+    
+    
     BoolVar ReverseFilterOrder(L"Render/AO/RTAO/Denoising/Reverse filter order", false);
     NumVar RTAODenoising_WeightScale(L"Render/AO/RTAO/Denoising/Weight Scale", 1, 0.0f, 5.0f, 0.01f);
 
@@ -1430,7 +1437,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             }
 
             // ToDo cleanup raytracing resolution - twice for coefficient.
-            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::FrameAge], initialResourceState, L"Temporal Cache: Frame Age");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::FrameAge], initialResourceState, L"Temporal Cache: Frame Age");
             CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::CoefficientSquaredMean], initialResourceState, L"Temporal Cache: Coefficient Squared Mean");
             CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::RayHitDistance], initialResourceState, L"Temporal Cache: Ray Hit Distance");
 
@@ -1444,7 +1451,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         }
      }
     m_cachedFrameAgeValueSquaredValueRayHitDistance.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_cachedFrameAgeValueSquaredValueRayHitDistance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Temporal Supersampling intermediate reprojected Frame Age, Value, Squared Mean Value, Ray Hit Distance");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_cachedFrameAgeValueSquaredValueRayHitDistance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Temporal Supersampling intermediate reprojected Frame Age, Value, Squared Mean Value, Ray Hit Distance");
 
 
     // ToDo remove
@@ -2835,7 +2842,12 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
     }
     
     float staleNeighborWeightScale = m_RTAO.GetSpp();
-    UINT maxFrameAgeToDenoise = isFirstPass ? 32 : SceneArgs::RTAODenoising_MaxFrameAgeToDenoiseAfter1stPass;  // ToDo use common variable for max frame age
+    bool forceDenoisePass = SceneArgs::RTAODenoising_ForceDenoisePass;
+    
+    if (forceDenoisePass)
+    {
+        SceneArgs::RTAODenoising_ForceDenoisePass.Bang();
+    }
     // A-trous edge-preserving wavelet tranform filter
     if (numFilterPasses > 0)
     {
@@ -2878,9 +2890,9 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
             SceneArgs::QuarterResAO,
             SceneArgs::RTAODenoisingMinVarianceToDenoise,
             staleNeighborWeightScale,
-            maxFrameAgeToDenoise,
             SceneArgs::AODenoiseDepthWeightCutoff,
-            SceneArgs::RTAODenoisingUseProjectedDepthTest);
+            SceneArgs::RTAODenoisingUseProjectedDepthTest,
+            forceDenoisePass);
     }
 
     // Transition the output resource to SRV.
@@ -4481,8 +4493,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
-
-
+    
+    UINT maxFrameAge = static_cast<UINT>(1 / SceneArgs::RTAO_TemporalSupersampling_MinSmoothingFactor);
     m_temporalCacheReverseReprojectKernel.Execute(
         commandList,
         m_raytracingWidth,
@@ -4514,7 +4526,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
 #endif
         m_debugOutput,
         invViewProj,
-        prevInvViewProj);
+        prevInvViewProj,
+        maxFrameAge,
+        SceneArgs::RTAODenoisingExtraRaysToTraceSinceTSSMovement);
 
     // Transition output resources to SRV state.        
     // ToDo use it as UAV in RTAO?
@@ -4660,7 +4674,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         SceneArgs::RTAO_TemporalSupersampling_ClampCachedValues_MinStdDevTolerance,
         SceneArgs::RTAODenoising_MinFrameAgeToUseTemporalVariance,
         SceneArgs::RTAO_TemporalSupersampling_ClampDifferenceToFrameAgeScale,
-        m_debugOutput);
+        m_debugOutput,
+        SceneArgs::RTAODenoisingnumFramesToDenoiseAfterLastTracedRay);
 
     // Transition output resource to SRV state.        
     {

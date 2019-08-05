@@ -27,7 +27,7 @@ Texture2D<float> g_inVariance : register(t4);   // ToDo remove
 Texture2D<float> g_inSmoothedVariance : register(t5); 
 Texture2D<float> g_inHitDistance : register(t6);   // ToDo remove?
 Texture2D<float2> g_inPartialDistanceDerivatives : register(t7);   // ToDo remove?
-Texture2D<uint> g_inFrameAge : register(t8);
+Texture2D<uint2> g_inFrameAge : register(t8);
 
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
@@ -260,7 +260,8 @@ void AddFilterContribution(
         w *= w_c * weightScale;
 
 
-        float iPixelWeight = g_inFrameAge[id];
+        uint iFrameAge = g_inFrameAge[id].x;
+        float iPixelWeight = iFrameAge;
         w *= iPixelWeight;
         
         weightedValueSum += w * iValue;
@@ -291,19 +292,25 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
     float depth;
     float3 normal;
     DecodeNormalDepth(g_inNormalDepth[DTid], normal, depth);
-    uint frameAge = g_inFrameAge[DTid];
+    uint2 frameAgeRaysToGenerate = g_inFrameAge[DTid];
+    uint frameAge = frameAgeRaysToGenerate.x;
+    uint numRaysToGenerateOrDenoisePasses = frameAgeRaysToGenerate.y;
+
+    bool isRayCountValue = !(numRaysToGenerateOrDenoisePasses & 0x80);
+    bool doDenoisingPass = isRayCountValue ? true : 0x7F & numRaysToGenerateOrDenoisePasses;
+    
     float value = g_inValues[DTid];
     bool isValidValue = value != RTAO::InvalidAOValue;
     float filteredValue = isValidValue && value < 0 ? -value : value;
     float variance = g_inSmoothedVariance[DTid];
     float filteredVariance = variance;
 
-    if (depth != 0 &&
-        frameAge <= g_CB.maxFrameAgeToDenoise)
+    if (depth != 0 && (doDenoisingPass || g_CB.forceDenoisePass))
+//        frameAge <= g_CB.maxFrameAgeToDenoise)
     {
         // Slow start fading away denoising strenght half way through.
-        float t = (2 * max(frameAge, (g_CB.maxFrameAgeToDenoise + 1) / 2) - g_CB.maxFrameAgeToDenoise) / g_CB.maxFrameAgeToDenoise;
-        float neighborWeightScale = g_CB.normalSigma < 64 ? g_CB.weightScale * lerp(1, 0, t) : 1;  // ToDo cleanup
+        //float t = (2 * max(frameAge, (g_CB.maxFrameAgeToDenoise + 1) / 2) - g_CB.maxFrameAgeToDenoise) / g_CB.maxFrameAgeToDenoise;
+        float neighborWeightScale = g_CB.weightScale; // g_CB.normalSigma < 64 ? g_CB.weightScale * lerp(1, 0, t) : 1;  // ToDo cleanup
 
         float w_c = 1;
         if (value < 0)

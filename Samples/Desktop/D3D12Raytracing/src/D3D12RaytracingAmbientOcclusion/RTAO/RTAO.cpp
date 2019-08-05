@@ -67,6 +67,7 @@ namespace SceneArgs
     IntVar RTAORayGen_MaxFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max frame age", 32, 1, 32, 1); // ToDo link this to smoothing factor?
     IntVar RTAORayGen_MinAdaptiveFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Min frame age for adaptive sampling", 16, 1, 32, 1);
     IntVar RTAORayGen_MaxRaysPerQuad(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max rays per quad", 8, 1, 16, 1);
+    IntVar RTAORayGen_MaxFrameAgeToGenerateRaysFor(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max frame age to generate rays for", 32, 1, 64, 1);
 
     // RTAO
     // Adaptive Sampling.
@@ -847,6 +848,7 @@ void RTAO::OnRender(
             static_cast<GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType>(static_cast<UINT>(SceneArgs::RTAORayGenAdaptiveQuadSize)),
             SceneArgs::RTAORayGen_MaxFrameAge,
             SceneArgs::RTAORayGen_MinAdaptiveFrameAge,
+            SceneArgs::RTAORayGen_MaxFrameAgeToGenerateRaysFor,
             SceneArgs::RTAORayGen_MaxRaysPerQuad,
             m_CB->seed, // ToDo retrieve from a nonCB variable
             m_randomSampler.NumSamples(),

@@ -23,11 +23,11 @@
 Texture2D<float> g_texInputCurrentFrameValue : register(t0);
 Texture2D<float2> g_texInputCurrentFrameLocalMeanVariance : register(t1);
 Texture2D<float> g_texInputCurrentFrameRayHitDistance : register(t2);
-Texture2D<float4> g_texInputReprojected_FrameAge_Value_SquaredMeanValue_RayHitDistance : register(t3);
+Texture2D<uint4> g_texInputReprojected_FrameAge_Value_SquaredMeanValue_RayHitDistance : register(t3);
 
 // ToDo combine some outputs?
 RWTexture2D<float> g_texInputOutputValue : register(u0);
-RWTexture2D<uint>  g_texInputOutputFrameAge : register(u1);
+RWTexture2D<uint2> g_texInputOutputFrameAge : register(u1);
 RWTexture2D<float> g_texInputOutputSquaredMeanValue : register(u2);
 RWTexture2D<float> g_texInputOutputRayHitDistance : register(u3);
 RWTexture2D<float> g_texOutputVariance : register(u4);
@@ -41,8 +41,18 @@ ConstantBuffer<RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer> c
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
-    float4 cachedValues = g_texInputReprojected_FrameAge_Value_SquaredMeanValue_RayHitDistance[DTid];
-    uint frameAge = round(cachedValues.x);
+    uint4 encodedCachedValues = g_texInputReprojected_FrameAge_Value_SquaredMeanValue_RayHitDistance[DTid];
+    uint packedFrameAgeRaysToGenerate = encodedCachedValues.x;
+    uint frameAge;
+    uint numRaysToGenerateOrDenoisePasses;
+    Unpack_R16_to_R8G8_UINT(packedFrameAgeRaysToGenerate, frameAge, numRaysToGenerateOrDenoisePasses);
+
+
+    bool isRayCountValue = !(numRaysToGenerateOrDenoisePasses & 0x80);
+    uint numRaysToGenerate = isRayCountValue ? numRaysToGenerateOrDenoisePasses : 0;
+    uint numDenoisePasses = 0x7F & numRaysToGenerateOrDenoisePasses;
+
+    float4 cachedValues = float4(frameAge, f16tof32(encodedCachedValues.yzw));
 
     float value = g_texInputCurrentFrameValue[DTid];
     BOOL isValidValue = value != RTAO::InvalidAOValue;
@@ -111,7 +121,26 @@ void main(uint2 DTid : SV_DispatchThreadID)
         variance = localMeanVariance.y;
     }
 
-    g_texInputOutputFrameAge[DTid] = frameAge;
+    if (isValidValue)
+    {
+        if (numRaysToGenerate > 1)
+        {
+            numRaysToGenerateOrDenoisePasses = numRaysToGenerate - 1;
+        }
+        else // Switch to denoise count
+        {
+            // + 2 ==
+            //        + 1 since the subtraction happens before a denoise pass.
+            //        + 1 since the value is set in the pass when a ray was cast.
+            numRaysToGenerateOrDenoisePasses = (cb.numFramesToDenoiseAfterLastTracedRay + 2) | 0x80;
+        }
+    }
+    else if (!isRayCountValue)
+    {
+        numRaysToGenerateOrDenoisePasses = (max(numDenoisePasses, 1) - 1) | 0x80;
+    }
+
+    g_texInputOutputFrameAge[DTid] = uint2(frameAge, numRaysToGenerateOrDenoisePasses);
     g_texInputOutputValue[DTid] = value;
     g_texInputOutputSquaredMeanValue[DTid] = valueSquaredMean;
     g_texInputOutputRayHitDistance[DTid] = rayHitDistance;

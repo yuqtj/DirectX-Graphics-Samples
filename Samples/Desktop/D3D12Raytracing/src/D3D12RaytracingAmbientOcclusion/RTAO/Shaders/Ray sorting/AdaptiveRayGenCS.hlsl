@@ -22,7 +22,7 @@
 
 Texture2D<NormalDepthTexFormat> g_texRayOriginSurfaceNormalDepth : register(t0);
 Texture2D<float4> g_texRayOriginPosition : register(t1);
-Texture2D<uint> g_texFrameAge : register(t2);
+Texture2D<uint2> g_texFrameAge : register(t2);
 
 // ToDo use higher bit format?
 RWTexture2D<NormalDepthTexFormat> g_rtRaysDirectionOriginDepth : register(u0);
@@ -109,7 +109,13 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[DTid], surfaceNormal, rayOriginDepth);
 
     // Load the frame age for the whole quad into shared memory.
-    uint frameAge = g_texFrameAge[DTid];
+    uint2 frameAgeAndNumRaysToGenerate = g_texFrameAge[DTid];
+    uint frameAge = frameAgeAndNumRaysToGenerate.x;
+    uint numRaysToGenerateOrDenoisePasses = frameAgeAndNumRaysToGenerate.y;
+
+    bool isRayCountValue = !(numRaysToGenerateOrDenoisePasses & 0x80);
+    uint numRaysToGenerate = isRayCountValue ? numRaysToGenerateOrDenoisePasses : 0;
+
     FrameAgeCache[GTid.y][GTid.x] = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH ? frameAge : CB.MaxFrameAge;
     GroupMemoryBarrierWithGroupSync();
 
@@ -147,7 +153,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
         // ToDo make sure to generate no more than one ray per pixel.
 
 #else
-        if (frameAge == 33)
+        if (numRaysToGenerate == 0)
         {
 
             rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;

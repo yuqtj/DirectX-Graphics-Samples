@@ -387,9 +387,9 @@ namespace GpuKernels
             bool usingBilateralDownsampledBuffers = false,
             float minVarianceToDenoise = 0,
             float staleNeighborWeightScale = 1,
-            UINT maxFrameAgeToDenoise = 100,
             float depthWeightCutoff = 0.5f,
-            bool useProjectedDepthTest = false);
+            bool useProjectedDepthTest = false,
+            bool forceDenoisePass = false);
 
         RWGpuResource& VarianceOutputResource() { return m_intermediateVarianceOutputs[0]; }
 
@@ -572,7 +572,9 @@ namespace GpuKernels
 #endif
         RWGpuResource debugResources[2],
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
-        const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin);
+        const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin,
+        UINT maxFrameAge,
+        UINT numRaysToTraceSinceTSSMovement);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -613,7 +615,8 @@ namespace GpuKernels
             float clampMinStdDevTolerance,
             UINT minFrameAgeToUseTemporalVariance,
             float clampDifferenceToFrameAgeScale,
-            RWGpuResource debugResources[2]);
+            RWGpuResource debugResources[2],
+            UINT numFramesToDenoiseAfterLastTracedRay);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -713,6 +716,7 @@ namespace GpuKernels
             AdaptiveQuadSizeType adaptiveQuadSizetype,
             UINT maxFrameAge,
             UINT minFrameAgeForAdaptiveSampling,
+            UINT maxFrameAgeToGenerateRaysFor,
             UINT maxRaysPerQuad,
             UINT seed,
             UINT numSamplesPerSet,

@@ -412,10 +412,10 @@ struct AtrousWaveletTransformFilterConstantBuffer
     float minVarianceToDenoise;
     float weightScale;
     float staleNeighborWeightScale;
-    UINT maxFrameAgeToDenoise;
-
     float depthWeightCutoff;
+
     BOOL useProjectedDepthTest;
+    BOOL forceDenoisePass;
     float padding[2];
 };
 
@@ -461,6 +461,9 @@ struct AdaptiveRayGenConstantBuffer
     UINT numSamplesPerSet;
     UINT numSampleSets;
     UINT numPixelsPerDimPerSet;
+
+    UINT MaxFrameAgeToGenerateRaysFor;
+    float padding[3];
 };
 
 struct SortRaysConstantBuffer
@@ -759,7 +762,8 @@ struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer
 
     float floatEpsilonDepthTolerance;
     float depthDistanceBasedDepthTolerance;
-    float padding[2];
+    UINT numRaysToTraceAfterTSSAtMaxFrameAge;
+    UINT maxFrameAge;       // ToDo rename maxFrameAge to tspp
 };
 
 struct RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer
@@ -777,6 +781,9 @@ struct RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer
     float minStdDevTolerance;
     float frameAgeAdjustmentDueClamping;
     float clampDifferenceToFrameAgeScale;
+
+    UINT numFramesToDenoiseAfterLastTracedRay;
+    float padding[3];
 };
 
 struct CalculatePartialDerivativesConstantBuffer

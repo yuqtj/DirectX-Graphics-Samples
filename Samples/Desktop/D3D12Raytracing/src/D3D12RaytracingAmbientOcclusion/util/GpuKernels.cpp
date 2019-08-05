@@ -34,7 +34,7 @@
 #include "CompiledShaders\EdgeStoppingAtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_BilateralFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateVariance_SeparableFilterCS.hlsl.h"
-#include "CompiledShaders\CalculateVariance_SeparableBilateralFilterCS.hlsl.h"
+//#include "CompiledShaders\CalculateVariance_SeparableBilateralFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
@@ -1334,9 +1334,9 @@ namespace GpuKernels
         bool usingBilateralDownsampledBuffers,
         float minVarianceToDenoise,
         float staleNeighborWeightScale,
-        UINT maxFrameAgeToDenoise,
         float depthWeightCutoff,
-        bool useProjectedDepthTest)
+        bool useProjectedDepthTest,
+        bool forceDenoisePass)
     {
 
         // ToDo: cleanup use of variance
@@ -1417,9 +1417,9 @@ namespace GpuKernels
             CB->textureDim = resourceDim;
             CB->minVarianceToDenoise = minVarianceToDenoise;
             CB->staleNeighborWeightScale = _i == 0 ? staleNeighborWeightScale : 1;  // ToDo revise
-            CB->maxFrameAgeToDenoise = i == 0 ? maxFrameAgeToDenoise : 100;
             CB->depthWeightCutoff = depthWeightCutoff;
             CB->useProjectedDepthTest = useProjectedDepthTest;
+            CB->forceDenoisePass = forceDenoisePass;
 
 
 #if NORMAL_DEPTH_R8G8B16_ENCODING
@@ -1682,11 +1682,13 @@ namespace GpuKernels
                 switch (i)
                 {
                 case SquareBilateral:
+                case SeparableBilateral:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_BilateralFilterCS), ARRAYSIZE(g_pCalculateVariance_BilateralFilterCS));
                     break;
-                case SeparableBilateral:
-                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_SeparableBilateralFilterCS), ARRAYSIZE(g_pCalculateVariance_SeparableBilateralFilterCS));
-                    break;
+                    // ToDo
+                //case SeparableBilateral:
+                 //   descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_SeparableBilateralFilterCS), ARRAYSIZE(g_pCalculateVariance_SeparableBilateralFilterCS));
+                 //   break;
                 case Separable:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateVariance_SeparableFilterCS), ARRAYSIZE(g_pCalculateVariance_SeparableFilterCS));
                     break;
@@ -2013,7 +2015,9 @@ namespace GpuKernels
 #endif
         RWGpuResource debugResources[2],
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
-        const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin)
+        const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin,
+        UINT maxFrameAge,
+        UINT numRaysToTraceSinceTSSMovement)
     {
         using namespace RootSignature::RTAO_TemporalSupersampling_ReverseReproject;
         using namespace DefaultComputeShaderParams;
@@ -2033,7 +2037,8 @@ namespace GpuKernels
         m_CB->useWorldSpaceDistance = useWorldSpaceDistance;
         m_CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
         m_CB->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
-
+        m_CB->numRaysToTraceAfterTSSAtMaxFrameAge = numRaysToTraceSinceTSSMovement;
+        m_CB->maxFrameAge = maxFrameAge;
 
 #if NORMAL_DEPTH_R8G8B16_ENCODING
         m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16);
@@ -2177,7 +2182,8 @@ namespace GpuKernels
         float clampMinStdDevTolerance,
         UINT minFrameAgeToUseTemporalVariance,
         float clampDifferenceToFrameAgeScale,
-        RWGpuResource debugResources[2])
+        RWGpuResource debugResources[2],
+        UINT numFramesToDenoiseAfterLastTracedRay)
     {
         using namespace RootSignature::RTAO_TemporalSupersampling_BlendWithCurrentFrame;
         using namespace DefaultComputeShaderParams;
@@ -2193,6 +2199,7 @@ namespace GpuKernels
         m_CB->minStdDevTolerance = clampMinStdDevTolerance;
         m_CB->minFrameAgeToUseTemporalVariance = minFrameAgeToUseTemporalVariance;
         m_CB->clampDifferenceToFrameAgeScale = clampDifferenceToFrameAgeScale;
+        m_CB->numFramesToDenoiseAfterLastTracedRay = numFramesToDenoiseAfterLastTracedRay;
 
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
@@ -2583,6 +2590,7 @@ namespace GpuKernels
         AdaptiveQuadSizeType adaptiveQuadSizetype,
         UINT maxFrameAge,
         UINT minFrameAgeForAdaptiveSampling,
+        UINT maxFrameAgeToGenerateRaysFor,
         UINT maxRaysPerQuad,
         UINT seed,
         UINT numSamplesPerSet,
@@ -2614,6 +2622,7 @@ namespace GpuKernels
         m_CB->numSamplesPerSet = numSamplesPerSet;
         m_CB->numPixelsPerDimPerSet = numPixelsPerDimPerSet;
         m_CB->numSampleSets = numSampleSets;
+        m_CB->MaxFrameAgeToGenerateRaysFor = maxFrameAgeToGenerateRaysFor;
         static UINT frameID = 0;
         frameID = (frameID + 1) % (m_CB->QuadDim.x * m_CB->QuadDim.y);
         m_CB->FrameID = frameID;

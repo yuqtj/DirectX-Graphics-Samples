@@ -32,13 +32,13 @@ Texture2D<float2> g_texInputTextureSpaceMotionVector : register(t3);
 
 Texture2D<NormalDepthTexFormat> g_texInputCachedNormalDepth : register(t4);
 Texture2D<float> g_texInputCachedValue : register(t5);  // ToDo store 1bit 0/1 in an auxilary reseource instead?
-Texture2D<uint> g_texInputCachedFrameAge : register(t6);
+Texture2D<uint2> g_texInputCachedFrameAge : register(t6);
 Texture2D<float> g_texInputCachedValueSquaredMean : register(t7);
 Texture2D<float> g_texInputCachedRayHitDistance : register(t8);
 
 // ToDo combine some outputs?
-RWTexture2D<uint> g_texOutputCachedFrameAge : register(u0);
-RWTexture2D<float4> g_texOutputReprojectedCachedValues : register(u1);
+RWTexture2D<uint2> g_texOutputCachedFrameAge : register(u0);
+RWTexture2D<uint4> g_texOutputReprojectedCachedValues : register(u1);
 
 
 // ToDo remove
@@ -239,7 +239,7 @@ float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal
 
         float fEpsilon = 1e-6 * ActualDistance;
         depthWeights = min(vDepthTolerances / (abs(SampleDistances - vExpectedDepths) + fEpsilon), 1);
-        g_texOutputDebug2[actualIndex] = depthWeights;
+        //g_texOutputDebug2[actualIndex] = depthWeights;
         // ToDo Should there be a distance falloff with a cutoff below 1?
         // ToDo revise the coefficient
         depthWeights *= depthWeights >= 0.5;   // ToDo revise - this is same as comparing to depth tolerance
@@ -392,13 +392,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
 #endif
     uint frameAge;
     bool areCacheValuesValid = weightSum > 1e-3f; // ToDo
+    UINT numRaysToGenerate;
     if (areCacheValuesValid)
     {
         uint4 vCachedFrameAge = g_texInputCachedFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         float4 nWeights = weights / weightSum;   // Normalize the weights.
 
-        g_texOutputDebug1[DTid] = float4(weights.xyz, weightSum);
-        g_texOutputDebug2[DTid] = nWeights;
+       // g_texOutputDebug1[DTid] = float4(weights.xyz, weightSum);
+       // g_texOutputDebug2[DTid] = nWeights;
 
         // ToDo revisit this and potentially make it UI adjustable - weight ^ 2 ?,...
         // Scale the frame age by the total weight. This is to keep the frame age low for 
@@ -414,12 +415,16 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float cachedFrameAge = frameAgeScale * dot(nWeights, vCachedFrameAge);
         frameAge = round(cachedFrameAge);
 
-        // Nudge frame age down on non-zero reprojection so that new rays are shot and denoising kicks in.
-        if (frameAge == 33 && dot(1, textureSpaceMotionVector * cb.textureDim) > 0.001)
+        if (frameAge < cb.maxFrameAge || dot(1, textureSpaceMotionVector * cb.textureDim) > 0.001)
         {
-            frameAge = 10;
+            numRaysToGenerate = cb.numRaysToTraceAfterTSSAtMaxFrameAge;
         }
-
+        else // pass-through the value in the cache
+        {
+            uint2 pixelIndex = floor(texturePos * cb.textureDim - 0.5);
+            numRaysToGenerate = g_texInputCachedFrameAge[pixelIndex].y;
+        }
+        
         // ToDo move this to a separate pass?
         if (frameAge > 0)
         {
@@ -437,8 +442,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         // ToDo take an average? and set frameAge low?
         // No valid values can be retrieved from the cache.
+        numRaysToGenerate = cb.numRaysToTraceAfterTSSAtMaxFrameAge;
         frameAge = 0;
     }
-    g_texOutputCachedFrameAge[DTid] = frameAge;
-    g_texOutputReprojectedCachedValues[DTid] = float4(frameAge, cachedValue, cachedValueSquaredMean, cachedRayHitDistance);
+
+
+    uint packedFrameAgeRaysToGenerate = Pack_R8G8_to_R16_UINT(frameAge, numRaysToGenerate);
+
+    // ToDo use a helper
+    g_texOutputCachedFrameAge[DTid] = uint2(frameAge, numRaysToGenerate);
+    g_texOutputReprojectedCachedValues[DTid] = uint4(packedFrameAgeRaysToGenerate, f32tof16(float3(cachedValue, cachedValueSquaredMean, cachedRayHitDistance)));
 }

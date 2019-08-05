@@ -572,6 +572,19 @@ float Unpack_R8_FLOAT(uint r)
     return (r & 0xFF) / 255.0;
 }
 
+// pack two 8 bit uint2 into a 16 bit uint.
+uint Pack_R8G8_to_R16_UINT(in uint r, in uint g)
+{
+    return (r & 0xff) | ((g & 0xff) << 8);
+}
+
+void Unpack_R16_to_R8G8_UINT(in uint v, out uint r, out uint g)
+{
+    r = v & 0xFF;
+    g = (v >> 8) & 0xFF;
+}
+
+
 // Pack unsigned floating point, where 
 // - rgb.rg are in [0, 1] range stored as two 8 bit uints.
 // - rgb.b in [0, FLT_16_BIT_MAX] range stored as a 16bit float.
