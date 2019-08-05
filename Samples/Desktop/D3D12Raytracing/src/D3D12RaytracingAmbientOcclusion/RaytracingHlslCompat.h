@@ -24,6 +24,8 @@
 - weigh samples with higher tspp more when up/down sampling
 - test energy conservation on ~4/16 spp at tspp up to 32
 
+
+- set max bounce to 2/3 - support windows in reflections.
 - match denoised  AO at fidelity closer to that of temporal variance sharpness image
 - improve matching on TSS. Dragon surface hits lots of likely unnecessary disocclusions on camero movement/zoom.
 - fix the temporal variance shimmer on boundaries with skybox.
