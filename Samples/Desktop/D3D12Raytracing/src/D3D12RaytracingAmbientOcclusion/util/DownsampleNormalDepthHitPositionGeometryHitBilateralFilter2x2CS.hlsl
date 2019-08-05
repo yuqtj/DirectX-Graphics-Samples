@@ -33,11 +33,22 @@ RWTexture2D<float> g_outDepth : register(u5);   // ToDo remove or we need hi bit
 RWTexture2D<float2> g_outMotionVector : register(u6);
 RWTexture2D<NormalDepthTexFormat> g_outReprojectedNormalDepth : register(u7);
 
+#if EXACT_DDXY_ON_QUARTER_RES_USING_DOWNSAMPLED_PIXEL_OFFSETS
+// Stores a pixel offset of the selected hi-res pixel from the top-left corner.
+// Encodes low-res 2x2 quad into 8 bits.
+RWTexture2D<uint> g_outSourcePixelOffset : register(u9);    
+#endif
+
 SamplerState ClampSampler : register(s0);
 
 ConstantBuffer<TextureDimConstantBuffer> cb : register(b0);
 
-// ToDo remove duplicate downsampling with the other ValudeDepthNormal
+
+// ToDo use wave intrinsics instead to get
+groupshared uint Cache[DefaultComputeShaderParams::ThreadGroup::Height][DefaultComputeShaderParams::ThreadGroup::Width];
+
+
+    // ToDo remove duplicate downsampling with the other ValudeDepthNormal
 
 void LoadDepthAndEncodedNormal(in uint2 texIndex, out float4 encodedNormalDepth, out float depth)
 {
@@ -65,13 +76,12 @@ uint GetIndexFromDepthAwareBilateralDownsample2x2(in float4 vDepths, in uint2 DT
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     uint2 topLeftSrcIndex = DTid << 1;
-    const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
     
     float2 centerTexCoord = (topLeftSrcIndex + 0.5) * cb.invTextureDim;
     float4 vDepths = g_inDepth.Gather(ClampSampler, centerTexCoord).wzxy;
 
     uint selectedOffset = GetIndexFromDepthAwareBilateralDownsample2x2(vDepths, DTid);
-    uint2 selectedDTid = topLeftSrcIndex + srcIndexOffsets[selectedOffset];
+    uint2 selectedDTid = topLeftSrcIndex + Get2DQuadIndexOffset(selectedOffset);
 
     g_outDepth[DTid] = vDepths[selectedOffset];
     g_outNormal[DTid] = g_inNormal[selectedDTid];

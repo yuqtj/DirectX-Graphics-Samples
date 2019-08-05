@@ -85,7 +85,8 @@
 #define USE_ENVIRONMENT_MAP 1
 #define DEBUG_AS 0
 
-#define SIGNED_DDXY 1
+#define SIGNED_DDXY 1       // Preserve the sign of ddxy
+#define EXACT_DDXY_ON_QUARTER_RES_USING_DOWNSAMPLED_PIXEL_OFFSETS 0 
 
 #define MOVE_ONCE_ON_STRAFE 1
 #define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
@@ -414,7 +415,8 @@ struct AtrousWaveletTransformFilterConstantBuffer
     UINT maxFrameAgeToDenoise;
 
     float depthWeightCutoff;
-    float padding[3];
+    BOOL useProjectedDepthTest;
+    float padding[2];
 };
 
 // ToDo remove obsolete params in cbs

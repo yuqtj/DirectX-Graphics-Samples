@@ -74,7 +74,12 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 0 // 16b vs 32b precision test
+#if 1 // TSS DEPTH TEST
+            camera.position.eye = { -36.2138f, 5.92939f, -9.22302f, 1 };
+            camera.position.at = { -35.3667f, 5.80036f, -8.70685f, 1 };
+            camera.position.up = { 0.202548f, 0.970933f, 0.127482f, 0 };
+            
+#elif 1 // 16b vs 32b precision test
             camera.position.eye = { -43.6427f, 7.28604f, -2.2188f, 1 };
             camera.position.at = { -42.7813f, 7.02642f, -1.7815f, 1 };
             camera.position.up = { 0.324859f, 0.930551f, 0.168907f, 0 };

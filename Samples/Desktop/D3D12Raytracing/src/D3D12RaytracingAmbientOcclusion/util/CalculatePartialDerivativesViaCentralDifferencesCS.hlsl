@@ -50,7 +50,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         GetIndexOfValueClosestToTheReference(0, ddy)
     };
 
-    float2 ddxy = abs(float2(ddx[minIndex.x], ddy[minIndex.y]));
+    float2 ddxy = float2(ddx[minIndex.x], ddy[minIndex.y]);
 
 
 #if HACK_CLAMP_DDXY_TO_BE_SMALL

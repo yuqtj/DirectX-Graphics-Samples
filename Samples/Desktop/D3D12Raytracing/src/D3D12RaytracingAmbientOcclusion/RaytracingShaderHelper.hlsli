@@ -872,6 +872,39 @@ float max4(in float4 v)
 }
 
 
+uint Encode2bitTo8bit(in uint4 v)
+{
+    v &= 0x3;
+    uint x = v.x;
+    uint y = v.y << 2;
+    uint z = v.z << 4;
+    uint w = v.w << 6;
+
+    return x | y | z | w;
+}
+
+uint4 Decode8bitTo2bit(in uint v)
+{
+    uint x = v;
+    uint y = v >> 2;
+    uint z = v >> 4;
+    uint w = v >> 6;
+
+    return uint4(x, y, z, w) & 0x3;
+}
+
+uint2 Get2DQuadIndexOffset(in uint i)
+{
+    const uint2 indexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
+    return indexOffsets[i];
+}
+
+uint Get1DQuadIndex(in uint2 id)
+{
+    return id.x + id.y * 2;
+}
+
+
 uint GetIndexOfValueClosestToTheReference(in float refValue, in float2 vValues)
 {
     float2 delta = abs(refValue - vValues);
@@ -892,10 +925,13 @@ uint GetIndexOfValueClosestToTheReference(in float refValue, in float4 vValues)
     return outIndex;
 }
 
+// ToDo replace local implementations with this
+
+
 
 // ToDo replace local implementations with this
 // Remap partial depth derivatives at z0 from [1,1] pixel offset to a new pixel offset.
-float2 RemapPartialDepthDerivatives(in float z0, in float2 ddxy, in uint2 pixelOffset)
+float2 RemapPartialDepthDerivatives(in float z0, in float2 ddxy, in float2 pixelOffset)
 {
     // Perspective correction for non-linear depth interpolation.
     // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
@@ -910,5 +946,25 @@ float2 RemapPartialDepthDerivatives(in float z0, in float2 ddxy, in uint2 pixelO
     
     return z - z0;
 }
+
+// Remap partial depth derivatives at z0 from [1,1] pixel offset to a new pixel offset.
+float GetDepthAtPixelOffset(in float z0, in float2 ddxy, in float2 pixelOffset)
+{
+    // Perspective correction for non-linear depth interpolation.
+    // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
+    // Given a linear depth interpolation for finding z at offset q along z0 to z1
+    //      z =  1 / (1 / z0 * (1 - q) + 1 / z1 * q)
+    // and z1 = z0 + ddxy, where z1 is at a unit pixel offset [1, 1]
+    // z can be calculated via ddxy as
+    //
+    // ToDo ddxy vs dxdy
+    //      z = (z0 + ddxy) / (1 + (1-q) / z0 * ddxy) 
+    float2 z = (z0 + ddxy) / (1 + ((1 - pixelOffset) / z0) * ddxy);
+
+    return z0 + dot(1, z - z0);
+}
+
+
+// ToDo move relevant to RTAO denoising specific header
 
 #endif // RAYTRACINGSHADERHELPER_H

@@ -40,20 +40,24 @@ float4 BilateralUpsampleWeights(in float ActualDistance, in float3 ActualNormal,
 
     if (g_CB.useDepthWeights)
     {
-        float depthThreshold = 1.f;     // ToDo standardize depth vs distance
+        float depthThreshold = 1;     // ToDo standardize depth vs distance
         float fEpsilon = 1e-6 * ActualDistance;
 
         if (g_CB.useDynamicDepthThreshold)
         {
-            float maxPixelDistance = 2; // Scale to compensate for the fact that the downsampled depth value may come from up to two pixels away in the high-res texture scale.
+            float2 ddxy = abs(g_inHiResPartialDistanceDerivative[hiResPixelIndex]);  // ToDo move to caller
+            float maxPixelDistance = 3; // Scale to compensate for the fact that the downsampled depth value may come from up to 3 pixels away in the high-res texture scale.
 
             // ToDo consider ddxy per dimension or have a 1D max(Ddxy) resource?
             // ToDo perspective correction?
-            depthThreshold = maxPixelDistance * max(ddxy.x, ddxy.y);
+            depthThreshold = maxPixelDistance * dot(1, ddxy);
         }
         // ToDo correct weights to weights in the whole project same for treshold and weight
         float fScale = 1.f / depthThreshold;
         depthWeights = min(1.0 / (fScale * abs(SampleDistances - ActualDistance) + fEpsilon), 1);
+
+        depthWeights *= depthWeights >= 0.5;   // ToDo revise - this is same as comparing to depth tolerance
+
     }
 
     if (g_CB.useNormalWeights)
@@ -65,24 +69,20 @@ float4 BilateralUpsampleWeights(in float ActualDistance, in float3 ActualNormal,
                 pow(saturate(dot(ActualNormal, SampleNormals[1])), normalExponent),
                 pow(saturate(dot(ActualNormal, SampleNormals[2])), normalExponent),
                 pow(saturate(dot(ActualNormal, SampleNormals[3])), normalExponent));
+
+        // Ensure a non-zero weight in case none of the normals match.
+        normalWeights += 1e-3f;
     }
 
-       
-    // Ensure a non-zero weight in case none of the normals match.
-    normalWeights += 0.001f;
 
-    BilinearWeights = g_CB.useBilinearWeights ? BilinearWeights : 1;
 
-    float4 weights = normalWeights * depthWeights * BilinearWeights;
+    BilinearWeights = g_CB.useBilinearWeights ? BilinearWeights : 0.25;
+    bool4 isActive = SampleDistances != 0;
 
-    if (g_CB.useDynamicDepthThreshold)
-    {
-       // weights = lerp(normalWeights, depthWeights,)
-    }
+    float4 weights = isActive * normalWeights * depthWeights * BilinearWeights;
 
-    // ToDo revise
-    weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0;
-    float4 nWeights = weights / dot(weights, 1); // ToDO add epsilon? Default to average if weight is too small?
+    float weightSum = dot(weights, 1);
+    float4 nWeights = weightSum > 1e-5f ? weights / weightSum : BilinearWeights; // Default to bilinear weights if all weights are too small.
 
     return nWeights;
 }
@@ -133,11 +133,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     };
 #endif
 
+
     const float4 bilinearWeights[4] = {
-        float4(9, 3, 3, 1),
-        float4(3, 9, 1, 3),
-        float4(3, 1, 9, 3),
-        float4(1, 3, 3, 9)
+        float4(9, 3, 3, 1) / 16,
+        float4(3, 9, 1, 3) / 16,
+        float4(3, 1, 9, 3) / 16,
+        float4(1, 3, 3, 9) / 16
     };
     
     // ToDO standarddize ddxy vs dxdy

@@ -388,7 +388,8 @@ namespace GpuKernels
             float minVarianceToDenoise = 0,
             float staleNeighborWeightScale = 1,
             UINT maxFrameAgeToDenoise = 100,
-            float depthWeightCutoff = 0.5f);
+            float depthWeightCutoff = 0.5f,
+            bool useProjectedDepthTest = false);
 
         RWGpuResource& VarianceOutputResource() { return m_intermediateVarianceOutputs[0]; }
 

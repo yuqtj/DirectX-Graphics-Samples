@@ -186,6 +186,87 @@ float4 BilateralResampleWeights(in float ActualDistance, in float3 ActualNormal,
     return weights;
 }
 
+float4 BilateralResampleWeights2(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float2 pixelOffset, in uint2 actualIndex, in int2 sampleIndices[4], in float2 dxdy)
+{
+    bool4 isWithinBounds = bool4(
+        IsWithinBounds(sampleIndices[0], cb.textureDim),
+        IsWithinBounds(sampleIndices[1], cb.textureDim),
+        IsWithinBounds(sampleIndices[2], cb.textureDim),
+        IsWithinBounds(sampleIndices[3], cb.textureDim));
+
+    bool4 isActive = SampleDistances != 0;
+
+    float4 depthWeights = 1;
+    if (cb.useDepthWeights)
+    {        
+        // ToDo revise
+        // Account for the pixel offset due to dxdy being bilaterally downsampled.
+        // Since the source and target pixel could have been up to 1 pixel away in the higher resolution
+        // resource, it could be up to 1.5 pixel away in the lower/quarter resolution.
+        float pOffset = 0;
+        if (cb.usingBilateralDownsampledBuffers)
+        {
+            pOffset = 0.5;
+        }
+
+        // Get sample pixel offsets from the actualPixel given a pixelOffset from the top-left one.
+        float4x2 samplePixelOffsets = {
+            float2(-pOffset,-pOffset) - pixelOffset,
+            float2(1 + pOffset, -pOffset) - pixelOffset,
+            float2(-pOffset,1 + pOffset) - pixelOffset,
+            float2(1 + pOffset, 1 + pOffset) - pixelOffset,
+        };
+
+        // Calculate expected depths at sample pixels given current depth, dxdy and an offset to the sample pixels.
+        float4 vExpectedDepths;
+        [unroll]
+        for (uint i=0; i < 4; i++)
+            vExpectedDepths[i] = GetDepthAtPixelOffset(ActualDistance, dxdy, samplePixelOffsets[i]);
+       
+        float4 vDepthThresholds = abs(vExpectedDepths - ActualDistance);
+        float depthFloatPrecision = FloatPrecision(ActualDistance, cb.DepthNumMantissaBits);
+        float4 vDepthTolerances = cb.depthSigma * vDepthThresholds + depthFloatPrecision;
+
+        float fEpsilon = 1e-6 * ActualDistance;
+        depthWeights = min(vDepthTolerances / (abs(SampleDistances - vExpectedDepths) + fEpsilon), 1);
+        g_texOutputDebug1[actualIndex] = depthWeights;
+        // ToDo Should there be a distance falloff with a cutoff below 1?
+        // ToDo revise the coefficient
+        depthWeights *= depthWeights >= 0.5;   // ToDo revise - this is same as comparing to depth tolerance
+    }
+
+
+    float4 normalWeights = 1;
+    if (cb.useNormalWeights)
+    {
+        const uint normalExponent = 32;
+        const float minNormalWeight = 1e-3f; // ToDo pass as parameter
+        float normalSigma = 1.1;        // ToDo remove/finetune/document. There's some less than 1 weights even for same/very similar  normals (i.e. house wall tiles)(due to low bit format?)
+
+        float4 NdotSampleN = float4(
+            dot(ActualNormal, SampleNormals[0]),
+            dot(ActualNormal, SampleNormals[1]),
+            dot(ActualNormal, SampleNormals[2]),
+            dot(ActualNormal, SampleNormals[3]));
+        normalWeights = pow(saturate(normalSigma * NdotSampleN), normalExponent) >= minNormalWeight;
+    }
+
+    float4 bilinearWeights =
+        float4(
+        (1 - pixelOffset.x) * (1 - pixelOffset.y),
+            pixelOffset.x * (1 - pixelOffset.y),
+            (1 - pixelOffset.x) * pixelOffset.y,
+            pixelOffset.x * pixelOffset.y);
+
+    // ToDo use depth weights instead of mask?
+    // ToDo can we prevent diffusion across plane?
+    float4 weights = isWithinBounds * isActive * bilinearWeights * depthWeights * normalWeights;    // ToDo invalidate samples too pixel offcenter? <0.1
+
+    g_texOutputDebug2[actualIndex] = weights;
+    return weights;
+}
+
+
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
 {
@@ -212,7 +293,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // ToDo why this doesn't match cacheFrameTexturePos??
     float2 adjustedCacheFrameTexturePos = (topLeftCacheFrameIndex + 0.5) * cb.invTextureDim;
 
-    float2 cachePixelOffset = cacheFrameTexturePos * cb.textureDim - topLeftCacheFrameIndex - 0.5;
+    float2 cachePixelOffset = cacheFrameTexturePos * cb.textureDim - 0.5 - topLeftCacheFrameIndex;
 
     const int2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
 
@@ -247,7 +328,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
 #endif
 
-    float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];
+    float2 dxdy = abs(g_texInputCurrentFrameLinearDepthDerivative[DTid]);
     // ToDo should this be done separately for both X and Y dimensions?
     // ToDo adjust ddxy for each cache pixel using pixel offsets to that pixel index?
     float  ddxy = dot(1, dxdy);
@@ -273,6 +354,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
 
     float4 weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, cacheDdxy);
+    //float4 weights = BilateralResampleWeights2(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, dxdy);
 
     // Invalidate weights for invalid values in the cache.
     float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
@@ -336,6 +418,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
     else
     {
+        // ToDo take an average? and set frameAge low?
         // No valid values can be retrieved from the cache.
         frameAge = 0;
     }

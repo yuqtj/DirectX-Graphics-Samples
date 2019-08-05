@@ -81,7 +81,7 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset)
          
             float z0 = distance;
             float2 zxy = (z0 + ddxy) / (1 + ((1 - pixelOffset) / z0) * ddxy);
-            depthThreshold = dot(1, abs(zxy - z0)); // ToDo this should be sqrt(dot(zxy - z0, zxy - z0))
+            depthThreshold = dot(1, abs(zxy - z0));
         }
         else
         {
@@ -209,16 +209,37 @@ void AddFilterContribution(
         // 
         if (g_CB.usingBilateralDownsampledBuffers)
         {
-            pixelOffsetForDepth = abs(pixelOffset) + float2(0.5, 0.5);
+            float2 offsetSign = sign(pixelOffset);
+            pixelOffsetForDepth = pixelOffset + offsetSign * float2(0.5, 0.5);
         }
-        float depthThreshold = DepthThreshold(depth, ddxy, pixelOffsetForDepth);
+        float depthThreshold = DepthThreshold(depth, ddxy, abs(pixelOffsetForDepth));
 
 #if 1
         float depthFloatPrecision = FloatPrecision(max(depth, iDepth), g_CB.DepthNumMantissaBits);
 
         float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
+     
+        float w_d;
+        if (g_CB.useProjectedDepthTest)
+        {
+            float zC = GetDepthAtPixelOffset(depth, ddxy, pixelOffsetForDepth);
+            float depthThreshold = abs(zC - depth);
+            float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
+            w_d = depthSigma > 0.01f ? min( depthTolerance / (abs(zC - iDepth) + FLT_EPSILON), 1) : 1;
+
+            if (pixelOffset.x == 0 && pixelOffset.y -1)
+            {
+                g_outDebug1[DTid] = float4(zC, depthThreshold, depthTolerance, w_d);
+            }
+
+        }
+        else
+        {
+            float depthSigma = 1; // TODO remove
+            float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
+            w_d = depthSigma > 0.01f ? min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1) : 1;
+        }
         //float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) / (depthTolerance + FLT_EPSILON) : 0;
-        float w_d = depthSigma > 0.01f ? min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1) : 1;
         w_d *= w_d >= g_CB.depthWeightCutoff;
 #else   
         float fMinEpsilon = 512 * FLT_EPSILON; // Minimum depth threshold epsilon to avoid acne due to ray/triangle floating precision limitations.

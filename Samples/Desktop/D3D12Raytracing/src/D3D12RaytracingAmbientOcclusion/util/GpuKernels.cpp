@@ -446,6 +446,8 @@ namespace GpuKernels
                     OutputMotionVector,
                     OutputPrevFrameHitPosition,
                     OutputDepth,
+#if EXACT_DDXY_ON_QUARTER_RES_USING_DOWNSAMPLED_PIXEL_OFFSETS
+#endif
                     Input,
                     InputNormal,
                     InputPosition,
@@ -1333,7 +1335,8 @@ namespace GpuKernels
         float minVarianceToDenoise,
         float staleNeighborWeightScale,
         UINT maxFrameAgeToDenoise,
-        float depthWeightCutoff)
+        float depthWeightCutoff,
+        bool useProjectedDepthTest)
     {
 
         // ToDo: cleanup use of variance
@@ -1416,6 +1419,7 @@ namespace GpuKernels
             CB->staleNeighborWeightScale = _i == 0 ? staleNeighborWeightScale : 1;  // ToDo revise
             CB->maxFrameAgeToDenoise = maxFrameAgeToDenoise;
             CB->depthWeightCutoff = depthWeightCutoff;
+            CB->useProjectedDepthTest = useProjectedDepthTest;
 
 
 #if NORMAL_DEPTH_R8G8B16_ENCODING

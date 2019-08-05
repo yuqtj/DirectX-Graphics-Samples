@@ -198,7 +198,7 @@ namespace SceneArgs
 
     
     // ToDo remove
-    IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 1, 0, 10, 1);
+    IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 0, 0, 10, 1);
     IntVar RTAO_KernelStepShift1(L"Render/AO/RTAO/Kernel Step Shifts/1", 1, 0, 10, 1);
     IntVar RTAO_KernelStepShift2(L"Render/AO/RTAO/Kernel Step Shifts/2", 0, 0, 10, 1);
     IntVar RTAO_KernelStepShift3(L"Render/AO/RTAO/Kernel Step Shifts/3", 0, 0, 10, 1);
@@ -261,6 +261,8 @@ namespace SceneArgs
     IntVar RTAODenoising_MinFrameAgeToUseTemporalVariance(L"Render/AO/RTAO/Denoising/Min Temporal Variance Frame Age", 4, 1, 40);
     NumVar RTAODenoisingMinVarianceToDenoise(L"Render/AO/RTAO/Denoising/Min Variance to denoise", 0.0f, 0.0f, 1.f, 0.01f);
     BoolVar RTAODenoisingUseSmoothedVariance(L"Render/AO/RTAO/Denoising/Use smoothed variance", false);
+    BoolVar RTAODenoisingUseProjectedDepthTest(L"Render/AO/RTAO/Denoising/Use projected depth test", true);
+
     
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"Render/AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
@@ -2873,7 +2875,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
             SceneArgs::RTAODenoisingMinVarianceToDenoise,
             staleNeighborWeightScale,
             maxFrameAgeToDenoise,
-            SceneArgs::AODenoiseDepthWeightCutoff);
+            SceneArgs::AODenoiseDepthWeightCutoff,
+            SceneArgs::RTAODenoisingUseProjectedDepthTest);
     }
 
     // Transition the output resource to SRV.
@@ -4884,7 +4887,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
         return;
     }
 
-#if 0
+#if 1
     if (!(!(SceneArgs::TAO_LazyRender && m_cameraChangedIndex <= 0)))
     {
         return;
