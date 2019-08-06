@@ -368,7 +368,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // Invalidate weights for invalid values in the cache.
     float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
     weights = vCacheValues != RTAO::InvalidAOValue ? weights : 0;
-
+    g_texOutputDebug1[DTid] = weights;
     float weightSum = dot(1, weights);
     
     float cachedValue = RTAO::InvalidAOValue;
@@ -396,6 +396,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     if (areCacheValuesValid)
     {
         uint4 vCachedFrameAge = g_texInputCachedFrameAge.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
+        // Enforce frame age of at least 1 for reprojection for valid values.
+        // This is because the denoiser will fill in invalid values with filtered 
+        // ones if it can. But it doesn't increase frame age.
+        vCachedFrameAge = max(1, vCachedFrameAge);
+
+
         float4 nWeights = weights / weightSum;   // Normalize the weights.
 
        // g_texOutputDebug1[DTid] = float4(weights.xyz, weightSum);
@@ -415,7 +421,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float cachedFrameAge = frameAgeScale * dot(nWeights, vCachedFrameAge);
         frameAge = round(cachedFrameAge);
 
-        if (frameAge < cb.maxFrameAge || dot(1, textureSpaceMotionVector * cb.textureDim) > 0.001)
+        if (frameAge < cb.maxFrameAge || dot(1, abs(textureSpaceMotionVector * cb.textureDim)) > 0.001)
         {
             numRaysToGenerate = cb.numRaysToTraceAfterTSSAtMaxFrameAge;
         }

@@ -111,7 +111,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
 
         // ToDo use an helper 0/1 resource instead ?
+#if RTAO_MARK_CACHED_VALUES_NEGATIVE
         value = isValidValue ? value : -value;
+#endif
     }
     else if (isValidValue)
     {

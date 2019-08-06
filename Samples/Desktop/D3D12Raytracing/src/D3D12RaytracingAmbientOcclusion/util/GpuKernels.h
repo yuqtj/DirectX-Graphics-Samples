@@ -288,6 +288,40 @@ namespace GpuKernels
         UINT                                m_CBinstanceID = 0;
     };
 
+    class FillInMissingValuesFilter
+    {
+    public:
+        enum FilterType {
+            GaussianFilter7x7 = 0,
+            DepthAware_GaussianFilter7x7,
+            Count
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList4* commandList,
+            UINT width,
+            UINT height,
+            FilterType type,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
+
+        ConstantBuffer<TextureDimConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
+    };
+
+
 
     class RootMeanSquareError
     {

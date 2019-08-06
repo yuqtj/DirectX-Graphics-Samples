@@ -109,7 +109,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[DTid], surfaceNormal, rayOriginDepth);
 
     // Load the frame age for the whole quad into shared memory.
-    uint2 frameAgeAndNumRaysToGenerate = g_texFrameAge[DTid];
+    uint2 frameAgeAndNumRaysToGenerate = g_texFrameAge[DTid & 0xFFFE];
     uint frameAge = frameAgeAndNumRaysToGenerate.x;
     uint numRaysToGenerateOrDenoisePasses = frameAgeAndNumRaysToGenerate.y;
 
@@ -158,12 +158,19 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
 
             rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;
         }
+#if 1
+        else if (quadThreadIndex1D == CB.FrameID)
+        {
+            rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
+        }
+#else
         else if ((quadThreadIndex1D >= StartID && quadThreadIndex1D < StartID + numRaysToGeneratePerQuad) ||
             // Check for when a valid quad thread index range wraps around.
             (StartID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && quadThreadIndex1D < ((StartID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad)))
         {
             rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
         }
+#endif
 #endif
         else
         {

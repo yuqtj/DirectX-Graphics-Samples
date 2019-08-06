@@ -18,6 +18,7 @@ ConstantBuffer<TextureDimConstantBuffer> cb : register(b0);
 
 SamplerState MirroredLinearSampler : register(s0);
 
+// ToDo use common kernel
 static const float weights[3][3] =
 {
     { 0.077847, 0.123317, 0.077847 },

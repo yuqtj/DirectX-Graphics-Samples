@@ -103,7 +103,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             }
             
             // Combine the sub-results.
-            uint laneToReadFrom = min(WaveGetLaneCount() - 1, Row_BaseWaveLaneIndex + GTid16x4.x + 8);
+            uint laneToReadFrom = min(WaveGetLaneCount() - 1, Row_BaseWaveLaneIndex + GTid16x4.x + GroupDim.x);
             valueSum += WaveReadLaneAt(valueSum, laneToReadFrom);
             squaredValueSum += WaveReadLaneAt(squaredValueSum, laneToReadFrom);
             numValues += WaveReadLaneAt(numValues, laneToReadFrom);

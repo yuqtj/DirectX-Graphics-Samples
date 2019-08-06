@@ -18,14 +18,15 @@
 namespace FilterKernel
 {
 
+    // ToDo remove unused ones
 #if defined(BOX_KERNEL_3X3)
     static const unsigned int Radius = 1;
     static const unsigned int Width = 1 + 2 * Radius;
     static const float Kernel[Width][Width] =
     {
-        { 1.f / 9, 1.f / 9, 1.f / 9 },
-        { 1.f / 9, 1.f / 9, 1.f / 9 },
-        { 1.f / 9, 1.f / 9, 1.f / 9 },
+        { 1. / 9, 1. / 9, 1. / 9 },
+        { 1. / 9, 1. / 9, 1. / 9 },
+        { 1. / 9, 1. / 9, 1. / 9 },
     };
 
 #elif defined(BOX_KERNEL_5X5)
@@ -33,12 +34,16 @@ namespace FilterKernel
     static const unsigned int Width = 1 + 2 * Radius;
     static const float Kernel[Width][Width] =
     {
-        { 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25  },
-        { 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25  },
-        { 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25  },
-        { 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25  },
-        { 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25, 1.f / 25  },
+        { 1. / 25, 1. / 25, 1. / 25, 1. / 25, 1. / 25  },
+        { 1. / 25, 1. / 25, 1. / 25, 1. / 25, 1. / 25  },
+        { 1. / 25, 1. / 25, 1. / 25, 1. / 25, 1. / 25  },
+        { 1. / 25, 1. / 25, 1. / 25, 1. / 25, 1. / 25  },
+        { 1. / 25, 1. / 25, 1. / 25, 1. / 25, 1. / 25  },
     };
+
+#elif defined(BOX_KERNEL_7X7)
+    static const unsigned int Radius = 3;
+    static const unsigned int Width = 1 + 2 * Radius;
 
 #elif defined(GAUSSIAN_KERNEL_3X3)
     static const unsigned int Radius = 1;
@@ -54,7 +59,7 @@ namespace FilterKernel
 #elif defined(GAUSSIAN_KERNEL_5X5)
     static const unsigned int Radius = 2;
     static const unsigned int Width = 1 + 2 * Radius;
-    static const float Kernel1D[Width] = { 1.f / 16, 1.f / 4, 3.f / 8, 1.f / 4, 1.f / 16 };
+    static const float Kernel1D[Width] = { 1. / 16, 1. / 4, 3. / 8, 1. / 4, 1. / 16 };
     static const float Kernel[Width][Width] =
     {
         { Kernel1D[0] * Kernel1D[0], Kernel1D[0] * Kernel1D[1], Kernel1D[0] * Kernel1D[2], Kernel1D[0] * Kernel1D[3], Kernel1D[0] * Kernel1D[4] },
@@ -63,8 +68,15 @@ namespace FilterKernel
         { Kernel1D[3] * Kernel1D[0], Kernel1D[3] * Kernel1D[1], Kernel1D[3] * Kernel1D[2], Kernel1D[3] * Kernel1D[3], Kernel1D[3] * Kernel1D[4] },
         { Kernel1D[4] * Kernel1D[0], Kernel1D[4] * Kernel1D[1], Kernel1D[4] * Kernel1D[2], Kernel1D[4] * Kernel1D[3], Kernel1D[4] * Kernel1D[4] },
     };
-#elif defined(BOX_KERNEL_7X7)
+
+#elif defined(GAUSSIAN_KERNEL_7X7)
     static const unsigned int Radius = 3;
     static const unsigned int Width = 1 + 2 * Radius;
+    static const float Kernel1D[Width] = { 0.00598, 0.060626, 0.241843, 0.383103, 0.241843, 0.060626, 0.00598 };
+
+#elif defined(GAUSSIAN_KERNEL_9X9)
+    static const unsigned int Radius = 4;
+    static const unsigned int Width = 1 + 2 * Radius;
+    static const float Kernel1D[Width] = { 0.000229, 0.005977, 0.060598, 0.241732, 0.382928, 0.241732, 0.060598, 0.005977, 0.000229 };
 #endif
 }

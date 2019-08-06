@@ -92,6 +92,12 @@ void swap(inout float a, inout float b)
     b = temp;
 }
 
+bool IsInRange(in uint val, in uint min, in float max)
+{
+    return (val >= min && val <= max);
+}
+
+
 bool IsInRange(in float val, in float min, in float max)
 {
     return (val >= min && val <= max);

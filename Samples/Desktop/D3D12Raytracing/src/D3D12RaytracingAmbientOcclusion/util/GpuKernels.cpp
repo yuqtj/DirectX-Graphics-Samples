@@ -44,6 +44,8 @@
 #include "CompiledShaders\GenerateGrassStrawsCS.hlsl.h"
 #include "CompiledShaders\CountingSort_SortRays_128x64rayGroupCS.hlsl.h"
 #include "CompiledShaders\AdaptiveRayGenCS.hlsl.h"
+#include "CompiledShaders\FillInMissingValuesFilter_SeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
+#include "CompiledShaders\FillInMissingValuesFilter_DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 
 using namespace std;
 
@@ -1024,6 +1026,110 @@ namespace GpuKernels
         using namespace DefaultComputeShaderParams;
 
         ScopedTimer _prof(L"GaussianFilter", commandList);
+
+        m_CB->textureDim = XMUINT2(width, height);
+        m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
+
+        // Set pipeline state.
+        {
+            commandList->SetDescriptorHeaps(1, &descriptorHeap);
+            commandList->SetComputeRootSignature(m_rootSignature.Get());
+            commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
+            commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
+            commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
+        }
+
+        // Dispatch.
+        XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
+        commandList->Dispatch(groupSize.x, groupSize.y, 1);
+    }
+
+
+
+    namespace RootSignature {
+        namespace FillInMissingValuesFilter {
+            namespace Slot {
+                enum Enum {
+                    Output = 0,
+                    Input,
+                    Depth,
+                    ConstantBuffer,
+                    Count
+                };
+            }
+        }
+    }
+
+    void FillInMissingValuesFilter::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::FillInMissingValuesFilter;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
+            ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+            ranges[Slot::Depth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+            ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
+            rootParameters[Slot::Depth].InitAsDescriptorTable(1, &ranges[Slot::Depth]);
+            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
+            rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: FillInMissingValuesFilter");
+        }
+
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+
+            for (UINT i = 0; i < FilterType::Count; i++)
+            {
+                switch (i)
+                {
+                case GaussianFilter7x7:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pFillInMissingValuesFilter_SeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt), ARRAYSIZE(g_pFillInMissingValuesFilter_SeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt));
+                    break;
+
+                case DepthAware_GaussianFilter7x7:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pFillInMissingValuesFilter_DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt), ARRAYSIZE(g_pFillInMissingValuesFilter_DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt));
+                    break;
+                }
+                ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
+                m_pipelineStateObjects[i]->SetName(L"Pipeline state object: FillInMissingValuesFilter");
+            }
+        }
+
+        // Create shader resources
+        {
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: FillInMissingValuesFilter");
+        }
+    }
+
+    // ToDo fix up input order to be same among kernels
+
+    // Blurs input resource with a Gaussian filter.
+    // width, height - dimensions of the input resource.
+    void FillInMissingValuesFilter::Execute(
+        ID3D12GraphicsCommandList4* commandList,
+        UINT width,
+        UINT height,
+        FilterType type,
+        ID3D12DescriptorHeap* descriptorHeap,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
+    {
+        using namespace RootSignature::FillInMissingValuesFilter;
+        using namespace DefaultComputeShaderParams;
+
+        ScopedTimer _prof(L"FillInMissingValuesFilter", commandList);
 
         m_CB->textureDim = XMUINT2(width, height);
         m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);

@@ -115,7 +115,10 @@ private:
     GpuKernels::DownsampleValueNormalDepthBilateralFilter m_downsampleValueNormalDepthBilateralFilterKernel;
     GpuKernels::UpsampleBilateralFilter	    m_upsampleBilateralFilterKernel;
     GpuKernels::MultiScale_UpsampleBilateralFilterAndCombine	    m_multiScale_upsampleBilateralFilterAndCombineKernel;
-	const UINT c_SupersamplingScale = 2;    // ToDo UI parameter
+    GpuKernels::FillInMissingValuesFilter m_fillInMissingValuesFilterKernel;
+
+    
+    const UINT c_SupersamplingScale = 2;    // ToDo UI parameter
 	UINT								m_numCameraRayGeometryHits;
 
     GpuKernels::WriteValueToTexture     m_writeValueToTexture;
@@ -203,6 +206,7 @@ private:
 
     RWGpuResource m_AOTSSCoefficient[2];    // ToDo why is this not part of m_temporalCache?
     RWGpuResource m_lowResAOTSSCoefficient[2];
+    RWGpuResource m_temporalSupersampling_blendedAOCoefficient;
 	RWGpuResource m_VisibilityResource;
     RWGpuResource m_cachedFrameAgeValueSquaredValueRayHitDistance;
 

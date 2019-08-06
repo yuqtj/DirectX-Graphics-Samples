@@ -434,6 +434,12 @@
     <FxCompile Include="RTAO\Shaders\Temporal Supersampling\TemporalSupersampling_BlendWithCurrentFrameCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Temporal Supersampling</Filter>
     </FxCompile>
+    <FxCompile Include="RTAO\Shaders\Denoising\FillInMissingValuesFilter_SeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl">
+      <Filter>Assets\Shaders\RTAO\Denoising</Filter>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\Denoising\FillInMissingValuesFilter_DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl">
+      <Filter>Assets\Shaders\RTAO\Denoising</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">

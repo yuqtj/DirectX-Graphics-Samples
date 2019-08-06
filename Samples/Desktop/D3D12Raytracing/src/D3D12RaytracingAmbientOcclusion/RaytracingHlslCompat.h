@@ -97,6 +97,11 @@
 
 #define TEST_EARLY_EXIT 0
 
+#define RTAO_MARK_CACHED_VALUES_NEGATIVE 1
+#if !RTAO_MARK_CACHED_VALUES_NEGATIVE
+ToDo / remove the hack / cleam up/document
+#endif
+
 // ToDo set max recursion
 // Give opacity to mirrors and shade. Some mirrors are tesselated in the kitchen and its not clear from pure reflections.
 // ToDo TAO is swimming in reflections

@@ -183,11 +183,14 @@ void AddFilterContribution(
         }
 
         float w_c = 1;
+
+#if RTAO_MARK_CACHED_VALUES_NEGATIVE
         if (iValue < 0)
         {
             w_c = g_CB.staleNeighborWeightScale;// 0.065;
             iValue = -iValue;
         }
+#endif
         const float errorOffset = 0.005f;
         float e_x = valueSigma  > 0.001f ? -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset) : 0;
  
@@ -261,6 +264,11 @@ void AddFilterContribution(
 
 
         uint iFrameAge = g_inFrameAge[id].x;
+        // Enforce frame age of at least 1 for reprojection for valid values.
+        // This is because the denoiser will fill in invalid values with filtered 
+        // ones if it can. But it doesn't increase frame age.
+        iFrameAge = max(iFrameAge, 1);
+
         float iPixelWeight = iFrameAge;
         w *= iPixelWeight;
         
@@ -313,12 +321,14 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         float neighborWeightScale = g_CB.weightScale; // g_CB.normalSigma < 64 ? g_CB.weightScale * lerp(1, 0, t) : 1;  // ToDo cleanup
 
         float w_c = 1;
+#if RTAO_MARK_CACHED_VALUES_NEGATIVE
         if (value < 0)
         {
             // ToDo
             //w_c = g_CB.staleNeighborWeightScale;
             value = -value;
         }
+#endif
 
         float2 ddxy = g_inPartialDistanceDerivatives[DTid];
 
