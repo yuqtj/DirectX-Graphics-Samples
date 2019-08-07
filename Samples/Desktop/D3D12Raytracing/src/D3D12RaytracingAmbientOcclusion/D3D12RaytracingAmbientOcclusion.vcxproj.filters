@@ -282,9 +282,11 @@
     <None Include="RTAO\Shaders\Ray sorting\RaySorting.hlsli">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </None>
-    <None Include="util\DownsampleBilateralFilterCS.hlsli" />
     <None Include="util\DownsampleDepthAwareBilateralFilter2x2CS.hlsli" />
     <None Include="util\UpsampleBilateralFilter2x2CS.hlsli">
+      <Filter>Assets\Shaders\Util</Filter>
+    </None>
+    <None Include="util\DownsampleBilateralFilterCS.hlsli">
       <Filter>Assets\Shaders\Util</Filter>
     </None>
   </ItemGroup>
@@ -438,6 +440,9 @@
       <Filter>Assets\Shaders\RTAO\Denoising</Filter>
     </FxCompile>
     <FxCompile Include="RTAO\Shaders\Denoising\FillInMissingValuesFilter_DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl">
+      <Filter>Assets\Shaders\RTAO\Denoising</Filter>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\Denoising\DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl">
       <Filter>Assets\Shaders\RTAO\Denoising</Filter>
     </FxCompile>
   </ItemGroup>

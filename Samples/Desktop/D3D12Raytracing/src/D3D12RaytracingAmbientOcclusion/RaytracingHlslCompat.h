@@ -23,6 +23,7 @@
 - mirror weights
 - weigh samples with higher tspp more when up/down sampling
 - test energy conservation on ~4/16 spp at tspp up to 32
+- use split barriers vs UAV if there's a work in between? vs UAV barrier right before the read?
 
 
 - set max bounce to 2/3 - support windows in reflections.

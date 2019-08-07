@@ -324,7 +324,36 @@ namespace GpuKernels
         UINT                                m_CBinstanceID = 0;
     };
 
+    class BilateralFilter
+    {
+    public:
+        enum FilterType {
+            DepthAware_GaussianFilter5x5 = 0,
+            Count
+        };
 
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList4* commandList,
+            FilterType type,
+            UINT filterStep,
+            ID3D12DescriptorHeap* descriptorHeap,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
+            RWGpuResource* outputResource);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
+
+        ConstantBuffer<FilterConstantBuffer> m_CB;
+        UINT                                m_CBinstanceID = 0;
+    };
 
     class RootMeanSquareError
     {
@@ -393,7 +422,6 @@ namespace GpuKernels
             // ToDo use helper structs to pass the data in
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle, // ToDo remove const?
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputNormalsResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthsResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputVarianceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,   // ToDo standardize depth vs distance

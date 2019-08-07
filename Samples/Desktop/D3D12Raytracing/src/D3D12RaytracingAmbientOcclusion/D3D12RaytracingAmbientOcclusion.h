@@ -116,7 +116,7 @@ private:
     GpuKernels::UpsampleBilateralFilter	    m_upsampleBilateralFilterKernel;
     GpuKernels::MultiScale_UpsampleBilateralFilterAndCombine	    m_multiScale_upsampleBilateralFilterAndCombineKernel;
     GpuKernels::FillInMissingValuesFilter m_fillInMissingValuesFilterKernel;
-
+    GpuKernels::BilateralFilter m_bilateralFilterKernel;
     
     const UINT c_SupersamplingScale = 2;    // ToDo UI parameter
 	UINT								m_numCameraRayGeometryHits;
@@ -330,7 +330,7 @@ private:
 	void CalculateCameraRayHitCount();
     void ApplyAtrousWaveletTransformFilter(bool isFirstPass);
     void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
-    void ApplyMultiScaleAtrousWaveletTransformFilter();
+    void ApplyMultiScaleAtrousWaveletTransformFilter(bool filterFirstLevel);
     void DownsampleRaytracingOutput();
     void DownsampleGBuffer();
 

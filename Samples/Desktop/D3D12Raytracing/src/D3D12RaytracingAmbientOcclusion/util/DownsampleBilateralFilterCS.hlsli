@@ -17,10 +17,10 @@
 
 // ToDo fix black jaggies on the bottom row in downsampled normal 
 Texture2D<float> g_inValue : register(t0);
-Texture2D<float4> g_inNormalAndDepth : register(t1);
+Texture2D<NormalDepthTexFormat> g_inNormalAndDepth : register(t1);
 Texture2D<float2> g_inPartialDistanceDerivatives : register(t2);  // update file name to include ddxy
 RWTexture2D<float> g_outValue : register(u0);
-RWTexture2D<float4> g_outNormalAndDepth : register(u1);
+RWTexture2D<NormalDepthTexFormat> g_outNormalAndDepth : register(u1);
 RWTexture2D<float2> g_outPartialDistanceDerivatives : register(u2);   // ToDo rename hits to Geometryits everywhere
 
 // Ref: https://developer.amd.com/wordpress/media/2012/10/ShopfMixedResolutionRendering.pdf
@@ -131,12 +131,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint2 topLeftSrcIndex = DTid << 1;
     const uint2 srcIndexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
 
-    float4 encodedNormalsAndDepths[4];
+    NormalDepthTexFormat encodedNormalsAndDepths[4];
     float  depths[4];
     float3 normals[4];
     for (int i = 0; i < 4; i++)
     {
-        LoadDepthAndNormal(topLeftSrcIndex + srcIndexOffsets[i], encodedNormalsAndDepths[i], depths[i], normals[i]);
+        encodedNormalsAndDepths[i] = g_inNormalAndDepth[topLeftSrcIndex + srcIndexOffsets[i]];
+        DecodeNormalDepth(encodedNormalsAndDepths[i], normals[i], depths[i]);
     }
 
     // ToDo rename depth to distance?

@@ -392,9 +392,9 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
             kernelStep = max(1, round(k * avgRayHitDistance / projectedSurfaceDim));
 
 
+            g_outDebug1[DTid] = float4(projectedSurfaceDim, kernelStep);
             uint2 targetKernelStep = clamp(kernelStep, g_CB.minKernelWidth / 2, g_CB.maxKernelWidth / 2);
             kernelStep = lerp(1, targetKernelStep, g_CB.kernelStepShift / 10.0);
-            g_outDebug1[DTid] = float4(projectedSurfaceDim, kernelStep);
             g_outDebug2[DTid] = float4(projectedSurfaceDim, kernelStep);
 
             varianceSigmaScale = log2(kernelStep);
