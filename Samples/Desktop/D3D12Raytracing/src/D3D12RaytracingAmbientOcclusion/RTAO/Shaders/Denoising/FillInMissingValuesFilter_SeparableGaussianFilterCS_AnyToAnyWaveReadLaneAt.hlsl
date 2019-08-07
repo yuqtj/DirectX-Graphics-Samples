@@ -21,7 +21,7 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RTAO/Shaders/RTAO.hlsli"
 
-#define GAUSSIAN_KERNEL_7X7
+#define GAUSSIAN_KERNEL_9X9
 #include "Kernels.hlsli"
 
 Texture2D<float> g_inValues : register(t0);

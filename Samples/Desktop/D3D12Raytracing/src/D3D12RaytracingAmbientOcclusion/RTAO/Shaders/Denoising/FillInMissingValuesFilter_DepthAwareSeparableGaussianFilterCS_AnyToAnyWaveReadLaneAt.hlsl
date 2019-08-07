@@ -21,18 +21,29 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RTAO/Shaders/RTAO.hlsli"
 
-#define GAUSSIAN_KERNEL_7X7
+#define GAUSSIAN_KERNEL_9X9
 #include "Kernels.hlsli"
 
 Texture2D<float> g_inValues : register(t0);
 Texture2D<float> g_inDepths : register(t1);
 RWTexture2D<float> g_outValues : register(u0);
 
-ConstantBuffer<TextureDimConstantBuffer> cb: register(b0);
+ConstantBuffer<FilterConstantBuffer> cb: register(b0);
 
 // Group shared memory cache for the row aggregated results.
 groupshared uint PackedValuesDepthsCache[16][8];        
 groupshared uint PackedRowResultCache[16][8];            // 16bit float weightedValueSum, weightSum.
+
+uint2 GetPixelIndex(in uint2 Gid, in uint2 GTid)
+{
+    // Find a DTID with steps in between the group threads and groups interleaved to cover all pixels.
+    uint2 GroupDim = uint2(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height);
+    uint2 groupBase = (Gid / cb.step) * cb.step * GroupDim + Gid % cb.step;
+    uint2 groupThreadOffset = GTid * cb.step;
+    uint2 sDTid = groupBase + groupThreadOffset;
+
+    return sDTid;
+}
 
 // Load up to 16x16 pixels and filter them horizontally.
 // The output is cached in Shared Memory and contains NumRows x 8 results.
@@ -45,7 +56,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     // Each thread loads up to 4 values, with the sub groups loading rows interleaved.
     // Loads up to 16x4x4 == 256 input values.
     uint2 GTid16x4_row0 = uint2(GI % 16, GI / 16);
-    int2 KernelBasePixel = Gid * GroupDim - int2(FilterKernel::Radius, FilterKernel::Radius);
+    int2 KernelBasePixel = GetPixelIndex(Gid, 0) - int2(FilterKernel::Radius, FilterKernel::Radius) * cb.step;
     const uint NumRowsToLoadPerThread = 4;
     const uint Row_BaseWaveLaneIndex = (WaveGetLaneIndex() / 16) * 16;
 
@@ -62,7 +73,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         }
 
         // Load all the contributing columns for each row.
-        int2 pixel = KernelBasePixel + GTid16x4;
+        int2 pixel = KernelBasePixel + GTid16x4 * cb.step;
         float value = RTAO::InvalidAOValue;
         float depth = 0;
 
@@ -84,11 +95,11 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             }
 
             depth = g_inDepths[pixel];
+        }
 
-            if (IsInRange(GTid16x4.x, FilterKernel::Radius, FilterKernel::Radius + GroupDim.x - 1))
-            {
-                PackedValuesDepthsCache[GTid16x4.y][GTid16x4.x - FilterKernel::Radius] = Float2ToHalf(float2(value, depth));
-            }
+        if (IsInRange(GTid16x4.x, FilterKernel::Radius, FilterKernel::Radius + GroupDim.x - 1))
+        {
+            PackedValuesDepthsCache[GTid16x4.y][GTid16x4.x - FilterKernel::Radius] = Float2ToHalf(float2(value, depth));
         }
 
         // Filter the values for the first GroupDim columns.
@@ -105,7 +116,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             if (GTid16x4.x < GroupDim.x && value != RTAO::InvalidAOValue && depth != 0)
             {
                 float w = FilterKernel::Kernel1D[FilterKernel::Radius];
-                weightedValueSum = w * value;
+                weightedValueSum = w * abs(value);
                 weightSum = w;
             }
 
@@ -131,6 +142,8 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
                 if (cValue != RTAO::InvalidAOValue && depth != 0 && cDepth != 0)
                 {
 #if RTAO_MARK_CACHED_VALUES_NEGATIVE
+                    cValue = abs(cValue);
+#else
                     cValue = abs(cValue);
 #endif
                     float w = FilterKernel::Kernel1D[KernelCellIndexStart + c];
@@ -167,7 +180,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
     
     float filteredValue = inValue;
 
-    if (inValue == RTAO::InvalidAOValue && depth != 0)
+    if ((inValue == RTAO::InvalidAOValue || inValue < 0 ) && depth != 0)
     {
         float weightedValueSum = 0;
         float weightSum = 0;
@@ -197,10 +210,15 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
                 weightSum += w * rWeightSum;
             }
         }
-
-#if RTAO_MARK_CACHED_VALUES_NEGATIVE
-        filteredValue = weightSum > 1e-9 ? - weightedValueSum / weightSum : RTAO::InvalidAOValue;
-#endif
+        // Negate updated values from first to so that the second pass knows these values are to be updated again.
+        if (cb.step == 1)
+        {
+            filteredValue = weightSum > 1e-9 ? -weightedValueSum / weightSum : RTAO::InvalidAOValue;
+        }
+        else
+        {
+            filteredValue = weightSum > 1e-9 ? weightedValueSum / weightSum : RTAO::InvalidAOValue;
+        }
     }
 
     g_outValues[DTid] = filteredValue;
@@ -208,17 +226,19 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
 
 
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
-void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex, uint2 DTid : SV_DispatchThreadID)
+void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
 {
+    uint2 sDTid = GetPixelIndex(Gid, GTid);
+
     // Pass through if there are no missing values in this group thread block.
     {
         if (GI == 0) 
             PackedRowResultCache[0][0] = 0;
         GroupMemoryBarrierWithGroupSync();
 
-        float value = g_inValues[DTid];
-        bool isInvalidValue = value == RTAO::InvalidAOValue;
-        if (isInvalidValue)
+        float value = IsWithinBounds(sDTid, cb.textureDim) ? g_inValues[sDTid] : RTAO::InvalidAOValue;
+        bool valueNeedsFiltering = value == RTAO::InvalidAOValue || value < 0;
+        if (valueNeedsFiltering)
             PackedRowResultCache[0][0] = 1;
 
         PackedValuesDepthsCache[GTid.y + FilterKernel::Radius][GTid.x] = Float2ToHalf(float2(value, 0));
@@ -226,12 +246,12 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
 
         if (PackedRowResultCache[0][0] == 0)
         {
-            g_outValues[DTid] = value;
+            g_outValues[sDTid] = value;
             return;
         }
     }
     FilterHorizontally(Gid, GI);
     GroupMemoryBarrierWithGroupSync();
 
-    FilterVertically(DTid, GTid);
+    FilterVertically(sDTid, GTid);
 }

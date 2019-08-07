@@ -1121,6 +1121,7 @@ namespace GpuKernels
         UINT width,
         UINT height,
         FilterType type,
+        UINT filterStep,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
@@ -1132,7 +1133,7 @@ namespace GpuKernels
         ScopedTimer _prof(L"FillInMissingValuesFilter", commandList);
 
         m_CB->textureDim = XMUINT2(width, height);
-        m_CB->invTextureDim = XMFLOAT2(1.f / width, 1.f / height);
+        m_CB->step = filterStep;
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 
@@ -1141,6 +1142,7 @@ namespace GpuKernels
             commandList->SetDescriptorHeaps(1, &descriptorHeap);
             commandList->SetComputeRootSignature(m_rootSignature.Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Depth, inputDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
             commandList->SetPipelineState(m_pipelineStateObjects[type].Get());

@@ -53,14 +53,16 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint numDenoisePasses = 0x7F & numRaysToGenerateOrDenoisePasses;
 
     float4 cachedValues = float4(frameAge, f16tof32(encodedCachedValues.yzw));
+    //g_texOutputDebug1[DTid] = cachedValues;
 
     float value = g_texInputCurrentFrameValue[DTid];
-    BOOL isValidValue = value != RTAO::InvalidAOValue;
+    bool isValidValue = value != RTAO::InvalidAOValue;
 
     float valueSquaredMean = value * value;
     float rayHitDistance;
     float variance;
     
+    // ToDo can this ever fail? reproject sets frameage to 1 at minimum.
     if (frameAge > 0)
     {     
         uint maxFrameAge = 1 / cb.minSmoothingFactor;
@@ -90,6 +92,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
         // to even out the weights for the noisy start instead of weighting first samples much more.
         float invFrameAge = 1.f / frameAge;
         float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
+        float MaxSmoothingFactor = 1;// 0.2;
+        a = min(a, MaxSmoothingFactor);
         a = isValidValue ? a : 0;
 
         // Value.
@@ -118,9 +122,12 @@ void main(uint2 DTid : SV_DispatchThreadID)
     else if (isValidValue)
     {
         frameAge = isValidValue ? 1 : 0;
-        rayHitDistance = isValidValue ? g_texInputCurrentFrameRayHitDistance[DTid] : 0;
-        float2 localMeanVariance = isValidValue ? g_texInputCurrentFrameLocalMeanVariance[DTid] : 0;
-        variance = localMeanVariance.y;
+#if RTAO_GAUSSIAN_BLUR_AFTER_TSS
+        value = isValidValue ? value : -value;
+#endif
+        rayHitDistance = isValidValue ? g_texInputCurrentFrameRayHitDistance[DTid] : 22;
+        variance = isValidValue ? g_texInputCurrentFrameLocalMeanVariance[DTid].y : 1;
+        valueSquaredMean = isValidValue ? valueSquaredMean : RTAO::InvalidAOValue;
     }
 
     if (isValidValue)
@@ -141,6 +148,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         numRaysToGenerateOrDenoisePasses = (max(numDenoisePasses, 1) - 1) | 0x80;
     }
+
 
     g_texInputOutputFrameAge[DTid] = uint2(frameAge, numRaysToGenerateOrDenoisePasses);
     g_texInputOutputValue[DTid] = value;

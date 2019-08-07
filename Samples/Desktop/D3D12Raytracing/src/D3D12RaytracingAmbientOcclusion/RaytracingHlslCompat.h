@@ -60,6 +60,7 @@
 
 - Glitches
     - RayHitDistance is wrong behind tires.
+    - clean up PIX /GPU validation warnings on Debug
 - Cleanup:
     - ToDo remove .f specifier from floating numbers in hlsl
 */
@@ -98,8 +99,9 @@
 #define TEST_EARLY_EXIT 0
 
 #define RTAO_MARK_CACHED_VALUES_NEGATIVE 1
-#if !RTAO_MARK_CACHED_VALUES_NEGATIVE
-ToDo / remove the hack / cleam up/document
+#define RTAO_GAUSSIAN_BLUR_AFTER_TSS 0
+#if RTAO_GAUSSIAN_BLUR_AFTER_TSS && RTAO_MARK_CACHED_VALUES_NEGATIVE
+Incompatible macros
 #endif
 
 // ToDo set max recursion
@@ -745,6 +747,15 @@ struct TextureDimConstantBuffer
 {
     XMUINT2 textureDim;
     XMFLOAT2 invTextureDim;
+};
+
+
+// ToDo capitalize CB members?
+struct FilterConstantBuffer
+{
+    XMUINT2 textureDim;
+    UINT step;
+    float padding;
 };
 
 struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer

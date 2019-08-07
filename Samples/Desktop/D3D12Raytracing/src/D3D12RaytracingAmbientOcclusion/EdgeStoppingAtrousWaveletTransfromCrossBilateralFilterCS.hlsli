@@ -106,10 +106,11 @@ void AddFilterContribution(
     in float2 ddxy,
     in uint row, 
     in uint col,
-    in float minHitDistance,
+    in uint2 kernelStep,
     in uint2 DTid,
     in uint kernelStepShift,
-    in float weightScale)
+    in float weightScale,
+    in float2 varianceSigmaScale)
 {
 
     const float valueSigma = g_CB.valueSigma;
@@ -162,11 +163,14 @@ void AddFilterContribution(
         pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) * curPixelOffsetDelta;
     }
     else
-#endif
     {
         pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) << kernelStepShift;
     }
+#endif
+    pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius) * kernelStep;
 
+    //varianceScale = lerp(1, 0.1, dot(1, abs(pixelOffset))/33);
+    //varianceScale = 1.0 / (1 + dot(abs(pixelOffset), varianceSigmaScale));
     int2 id = int2(DTid) + pixelOffset;
 
     if (IsWithinBounds(id, g_CB.textureDim))
@@ -192,7 +196,7 @@ void AddFilterContribution(
         }
 #endif
         const float errorOffset = 0.005f;
-        float e_x = valueSigma  > 0.001f ? -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset) : 0;
+        float e_x = valueSigma  > 0.001f ? -abs(value - iValue) / (varianceScale * valueSigma * stdDeviation + errorOffset) : 0;
  
         // ToDo loosen up weights for low frameAge? and/or 2nd+ pass
         // ToDo standardize index vs id
@@ -222,25 +226,28 @@ void AddFilterContribution(
 
         float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
      
-        float w_d;
-        if (g_CB.useProjectedDepthTest)
+        float w_d = 1;
+        if (depthSigma > 0.01f)
         {
-            float zC = GetDepthAtPixelOffset(depth, ddxy, pixelOffsetForDepth);
-            float depthThreshold = abs(zC - depth);
-            float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
-            w_d = depthSigma > 0.01f ? min( depthTolerance / (abs(zC - iDepth) + FLT_EPSILON), 1) : 1;
-
-            if (pixelOffset.x == 0 && pixelOffset.y -1)
+            if (g_CB.useProjectedDepthTest)
             {
-                g_outDebug1[DTid] = float4(zC, depthThreshold, depthTolerance, w_d);
-            }
+                float zC = GetDepthAtPixelOffset(depth, ddxy, pixelOffsetForDepth);
+                float depthThreshold = abs(zC - depth);
+                float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
+                w_d = min(depthTolerance / (abs(zC - iDepth) + FLT_EPSILON), 1);
 
-        }
-        else
-        {
-            float depthSigma = 1; // TODO remove
-            float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
-            w_d = depthSigma > 0.01f ? min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1) : 1;
+                if (pixelOffset.x == 0 && pixelOffset.y - 1)
+                {
+                    //g_outDebug1[DTid] = float4(zC, depthThreshold, depthTolerance, w_d);
+                }
+
+            }
+            else
+            {
+                float depthSigma = 1; // TODO remove
+                float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
+                w_d = min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1);
+            }
         }
         //float e_d = depthSigma > 0.01f ? -abs(depth - iDepth) / (depthTolerance + FLT_EPSILON) : 0;
         w_d *= w_d >= g_CB.depthWeightCutoff;
@@ -260,10 +267,10 @@ void AddFilterContribution(
         float w_xd = w_x * w_d;
 
         float w = w_h * w_n *w_xd;
-        w *= w_c * weightScale;
+        w *= w_c;// *weightScale;
 
 
-        uint iFrameAge = g_inFrameAge[id].x;
+        uint iFrameAge = 1;// g_inFrameAge[id].x;
         // Enforce frame age of at least 1 for reprojection for valid values.
         // This is because the denoiser will fill in invalid values with filtered 
         // ones if it can. But it doesn't increase frame age.
@@ -318,7 +325,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
     {
         // Slow start fading away denoising strenght half way through.
         //float t = (2 * max(frameAge, (g_CB.maxFrameAgeToDenoise + 1) / 2) - g_CB.maxFrameAgeToDenoise) / g_CB.maxFrameAgeToDenoise;
-        float neighborWeightScale = g_CB.weightScale; // g_CB.normalSigma < 64 ? g_CB.weightScale * lerp(1, 0, t) : 1;  // ToDo cleanup
+        float neighborWeightScale = 1;// g_CB.weightScale; // g_CB.normalSigma < 64 ? g_CB.weightScale * lerp(1, 0, t) : 1;  // ToDo cleanup
 
         float w_c = 1;
 #if RTAO_MARK_CACHED_VALUES_NEGATIVE
@@ -358,7 +365,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 
         if (isValidValue)
         {
-            float pixelWeight = frameAge;
+            float pixelWeight = 1;// frameAge;
             weightSum = pixelWeight * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius];
             weightedValueSum = weightSum * value;
             weightedVarianceSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius]
@@ -366,13 +373,35 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
             stdDeviation = sqrt(variance);
         }
 
+        // Calculate a kernel step given a ray hit distance.
+        uint2 kernelStep = 1 << g_CB.kernelStepShift;
+            // Blur more aggressively on smaller kernels.
+            // ToDo remove?
+
+        float2 varianceSigmaScale = 1; 
+        if (frameAge > 16 && g_CB.useAdaptiveKernelSize)
+        {
+            float avgRayHitDistance = g_inHitDistance[DTid];
+
+            float perPixelViewAngle = (FOVY / g_CB.textureDim.y) * PI / 180; 
+            float tan_a = tan(perPixelViewAngle);
+            float2 projectedSurfaceDim = GetProjectedSurfaceDimensionsPerPixel(depth, ddxy, tan_a);
+
+            // Calculate kernel width as a ratio of hitDistance / projected surface dim per pixel
+            float k = 0.5 * g_CB.minHitDistanceToKernelWidthScale;
+            kernelStep = max(1, round(k * avgRayHitDistance / projectedSurfaceDim));
+
+
+            uint2 targetKernelStep = clamp(kernelStep, g_CB.minKernelWidth / 2, g_CB.maxKernelWidth / 2);
+            kernelStep = lerp(1, targetKernelStep, g_CB.kernelStepShift / 10.0);
+            g_outDebug1[DTid] = float4(projectedSurfaceDim, kernelStep);
+            g_outDebug2[DTid] = float4(projectedSurfaceDim, kernelStep);
+
+            varianceSigmaScale = log2(kernelStep);
+        }
+
         uint kernelStepShift = g_CB.kernelStepShift;// frameAge >= 8 ? g_CB.kernelStepShift : (frameAge + 2) % 3;
 
-        float minHitDistance;
-        if (g_CB.useAdaptiveKernelSize)
-        {
-            minHitDistance = g_inHitDistance[DTid];
-        }
         if (variance >= g_CB.minVarianceToDenoise)
         {
             // Add contributions from the neighborhood.
@@ -381,7 +410,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
                 [unroll]
             for (UINT c = 0; c < FilterKernel::Width; c++)
                 if (r != FilterKernel::Radius || c != FilterKernel::Radius)
-                    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, ddxy, r, c, minHitDistance, DTid, kernelStepShift, neighborWeightScale);
+                    AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, ddxy, r, c, kernelStep, DTid, kernelStepShift, neighborWeightScale, varianceSigmaScale);
         }
 
         float smallValue = 1e-6f;

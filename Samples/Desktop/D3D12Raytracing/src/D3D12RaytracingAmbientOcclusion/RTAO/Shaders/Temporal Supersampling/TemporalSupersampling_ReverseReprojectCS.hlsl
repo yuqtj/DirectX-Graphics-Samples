@@ -368,7 +368,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // Invalidate weights for invalid values in the cache.
     float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
     weights = vCacheValues != RTAO::InvalidAOValue ? weights : 0;
-    g_texOutputDebug1[DTid] = weights;
+    //g_texOutputDebug1[DTid] = weights;
     float weightSum = dot(1, weights);
     
     float cachedValue = RTAO::InvalidAOValue;
@@ -416,19 +416,26 @@ void main(uint2 DTid : SV_DispatchThreadID)
         // such as on disocclussions of surfaces on rotation, are kept around long enough to create 
         // visible streaks that fade away very slow.
         // Example: rotating camera around dragon's nose up close. 
-        float frameAgeScale = saturate(weightSum);
+        float frameAgeScale = 1;// saturate(weightSum);
 
         float cachedFrameAge = frameAgeScale * dot(nWeights, vCachedFrameAge);
         frameAge = round(cachedFrameAge);
 
-        if (frameAge < cb.maxFrameAge || dot(1, abs(textureSpaceMotionVector * cb.textureDim)) > 0.001)
+        if (frameAge >= cb.maxFrameAge)
         {
-            numRaysToGenerate = cb.numRaysToTraceAfterTSSAtMaxFrameAge;
+            if (dot(1, abs(textureSpaceMotionVector * cb.textureDim)) > 0.001)
+            {
+                numRaysToGenerate = cb.numRaysToTraceAfterTSSAtMaxFrameAge;
+            }
+            else // pass-through the value in the cache
+            {
+                uint2 pixelIndex = floor(texturePos * cb.textureDim - 0.5);
+                numRaysToGenerate = g_texInputCachedFrameAge[pixelIndex].y;
+            }
         }
-        else // pass-through the value in the cache
+        else
         {
-            uint2 pixelIndex = floor(texturePos * cb.textureDim - 0.5);
-            numRaysToGenerate = g_texInputCachedFrameAge[pixelIndex].y;
+            numRaysToGenerate = cb.maxFrameAge - frameAge;
         }
         
         // ToDo move this to a separate pass?
@@ -448,7 +455,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         // ToDo take an average? and set frameAge low?
         // No valid values can be retrieved from the cache.
-        numRaysToGenerate = cb.numRaysToTraceAfterTSSAtMaxFrameAge;
+        numRaysToGenerate = cb.maxFrameAge;
         frameAge = 0;
     }
 

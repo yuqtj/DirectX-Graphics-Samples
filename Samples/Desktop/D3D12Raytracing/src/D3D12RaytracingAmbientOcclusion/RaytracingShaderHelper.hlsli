@@ -983,6 +983,22 @@ float GetDepthAtPixelOffset(in float z0, in float2 ddxy, in float2 pixelOffset)
     return z0 + dot(1, z - z0);
 }
 
+// Returns an approximate surface dimnesions covered in a pixel. 
+// This is a simplified model assuming pixel to pixel view angles are the same.
+// z - linear depth of the surface at the pixel
+// ddxy - partial depth derivatives
+// tan_a - tangent of a per pixel view angle 
+float2 GetProjectedSurfaceDimensionsPerPixel(in float z, in float2 ddxy, in float tan_a)
+{
+    // Orthogonal surface dimensions.
+    float2 dx = tan_a * z;
+    
+    // Using Pythagorean theorem we can calculate the surface dimensions given the ddxy.
+    // ToDo this is not quite correct as ddxy is not orthogonal to the view plane at dx.
+    float2 w = sqrt(dx * dx + ddxy * ddxy);
+
+    return w;
+}
 
 // ToDo move relevant to RTAO denoising specific header
 

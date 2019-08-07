@@ -13,6 +13,8 @@
 // Helpers for doing CPU & GPU performance timing and statitics
 //
 
+// ToDo retrieve debug resource handles via Sampel singleton instead of passing them?
+
 #pragma once
 
 namespace GpuKernels
@@ -308,6 +310,7 @@ namespace GpuKernels
             UINT width,
             UINT height,
             FilterType type,
+            UINT filterStep,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
@@ -317,7 +320,7 @@ namespace GpuKernels
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
 
-        ConstantBuffer<TextureDimConstantBuffer> m_CB;
+        ConstantBuffer<FilterConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
     };
 
