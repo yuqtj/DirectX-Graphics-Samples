@@ -1164,6 +1164,7 @@ namespace GpuKernels
                     Output = 0,
                     Input,
                     Depth,
+                    BlurStrength,
                     Debug1,
                     Debug2,
                     ConstantBuffer,
@@ -1182,6 +1183,7 @@ namespace GpuKernels
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
             ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
             ranges[Slot::Depth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+            ranges[Slot::BlurStrength].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
             ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
             ranges[Slot::Debug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);
             ranges[Slot::Debug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);
@@ -1189,6 +1191,7 @@ namespace GpuKernels
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
             rootParameters[Slot::Depth].InitAsDescriptorTable(1, &ranges[Slot::Depth]);
+            rootParameters[Slot::BlurStrength].InitAsDescriptorTable(1, &ranges[Slot::BlurStrength]);
             rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
             rootParameters[Slot::Debug1].InitAsDescriptorTable(1, &ranges[Slot::Debug1]);
@@ -1233,6 +1236,7 @@ namespace GpuKernels
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputBlurStrengthResourceHandle,
         RWGpuResource* outputResource)
     {
         using namespace RootSignature::BilateralFilter;
@@ -1254,6 +1258,7 @@ namespace GpuKernels
             commandList->SetComputeRootSignature(m_rootSignature.Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Depth, inputDepthResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::BlurStrength, inputBlurStrengthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResource->gpuDescriptorWriteAccess);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
 
@@ -2310,6 +2315,7 @@ namespace GpuKernels
                     InputOutputSquaredMeanValue,
                     InputOutputRayHitDistance,
                     OutputVariance,
+                    OutputBlurStrength,
                     InputCurrentFrameValue,
                     InputCurrentFrameLocalMeanVariance,
                     InputCurrentFrameRayHitDistance,
@@ -2340,6 +2346,7 @@ namespace GpuKernels
             ranges[Slot::InputOutputSquaredMeanValue].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);
             ranges[Slot::InputOutputRayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);
             ranges[Slot::OutputVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);
+            ranges[Slot::OutputBlurStrength].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 5);
             ranges[Slot::OutputDebug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 10);
             ranges[Slot::OutputDebug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 11);
 
@@ -2353,6 +2360,7 @@ namespace GpuKernels
             rootParameters[Slot::InputOutputSquaredMeanValue].InitAsDescriptorTable(1, &ranges[Slot::InputOutputSquaredMeanValue]);
             rootParameters[Slot::InputOutputRayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::InputOutputRayHitDistance]);
             rootParameters[Slot::OutputVariance].InitAsDescriptorTable(1, &ranges[Slot::OutputVariance]);
+            rootParameters[Slot::OutputBlurStrength].InitAsDescriptorTable(1, &ranges[Slot::OutputBlurStrength]);
             rootParameters[Slot::OutputDebug1].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug1]);
             rootParameters[Slot::OutputDebug2].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug2]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
@@ -2393,6 +2401,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputOutputRayHitDistanceResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputReprojectedCacheValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputVarianceResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputBlurStrengthResourceHandle,
         float minSmoothingFactor,
         bool forceUseMinSmoothingFactor,
         bool clampCachedValues,
@@ -2401,7 +2410,9 @@ namespace GpuKernels
         UINT minFrameAgeToUseTemporalVariance,
         float clampDifferenceToFrameAgeScale,
         RWGpuResource debugResources[2],
-        UINT numFramesToDenoiseAfterLastTracedRay)
+        UINT numFramesToDenoiseAfterLastTracedRay,
+        UINT lowTsppBlurStrengthMaxFrameAge,
+        float lowTsppBlurStrengthDecayConstant)
     {
         using namespace RootSignature::RTAO_TemporalSupersampling_BlendWithCurrentFrame;
         using namespace DefaultComputeShaderParams;
@@ -2418,7 +2429,8 @@ namespace GpuKernels
         m_CB->minFrameAgeToUseTemporalVariance = minFrameAgeToUseTemporalVariance;
         m_CB->clampDifferenceToFrameAgeScale = clampDifferenceToFrameAgeScale;
         m_CB->numFramesToDenoiseAfterLastTracedRay = numFramesToDenoiseAfterLastTracedRay;
-
+        m_CB->blurStrength_MaxFrameAge = lowTsppBlurStrengthMaxFrameAge;
+        m_CB->blurDecayStrength = lowTsppBlurStrengthDecayConstant;
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 
@@ -2435,6 +2447,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputOutputRayHitDistance, inputOutputRayHitDistanceResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputReprojectedCacheValues, inputReprojectedCacheValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputVariance, outputVarianceResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputBlurStrength, outputBlurStrengthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug2, debugResources[1].gpuDescriptorWriteAccess);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));

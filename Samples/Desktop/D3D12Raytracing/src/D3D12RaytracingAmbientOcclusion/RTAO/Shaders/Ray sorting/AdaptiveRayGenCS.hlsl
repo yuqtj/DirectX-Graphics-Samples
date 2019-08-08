@@ -158,7 +158,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
 
             rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;
         }
-#if 1
+#if 0
         else if (quadThreadIndex1D == CB.FrameID)
         {
             rayDirection = GetRandomRayDirection(DTid, surfaceNormal);

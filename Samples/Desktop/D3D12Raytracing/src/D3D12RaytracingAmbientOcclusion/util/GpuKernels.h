@@ -345,6 +345,7 @@ namespace GpuKernels
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputBlurStrengthResourceHandle,
             RWGpuResource* outputResource);
 
     private:
@@ -673,6 +674,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputOutputRayHitDistanceResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputReprojectedCacheValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputVarianceResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputBlurStrengthResourceHandle,
             float minSmoothingFactor,
             bool forceUseMinSmoothingFactor,
             bool clampCachedValues,
@@ -681,7 +683,9 @@ namespace GpuKernels
             UINT minFrameAgeToUseTemporalVariance,
             float clampDifferenceToFrameAgeScale,
             RWGpuResource debugResources[2],
-            UINT numFramesToDenoiseAfterLastTracedRay);
+            UINT numFramesToDenoiseAfterLastTracedRay,
+            UINT lowTsppBlurStrengthMaxFrameAge, 
+            float lowTsppBlurStrengthDecayConstant);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;

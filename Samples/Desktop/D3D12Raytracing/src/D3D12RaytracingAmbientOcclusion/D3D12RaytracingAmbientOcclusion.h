@@ -203,12 +203,14 @@ private:
     RWGpuResource m_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
     RWGpuResource m_prevFrameGBufferNormalDepth;
 
+    RWGpuResource m_multiPassDenoisingBlurStrength;
+
 	RWGpuResource m_AOResources[AOResource::Count];
 
 
     RWGpuResource m_AOTSSCoefficient[2];    // ToDo why is this not part of m_temporalCache?
     RWGpuResource m_lowResAOTSSCoefficient[2];
-    RWGpuResource m_temporalSupersampling_blendedAOCoefficient;
+    RWGpuResource m_temporalSupersampling_blendedAOCoefficient[2];
 	RWGpuResource m_VisibilityResource;
     RWGpuResource m_cachedFrameAgeValueSquaredValueRayHitDistance;
 
@@ -376,5 +378,6 @@ private:
     void BuildShaderTables();
     void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
     void CalculateFrameStats();
+    void MultiPassBlur();
 	//float NumCameraRaysPerSecondNumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimeManager.GetAverageMS(GpuTimers::Raytracing_GBuffer), m_raytracingWidth, m_raytracingHeight); }
 };

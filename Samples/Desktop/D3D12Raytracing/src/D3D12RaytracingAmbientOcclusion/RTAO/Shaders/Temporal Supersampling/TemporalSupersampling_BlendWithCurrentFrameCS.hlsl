@@ -31,6 +31,7 @@ RWTexture2D<uint2> g_texInputOutputFrameAge : register(u1);
 RWTexture2D<float> g_texInputOutputSquaredMeanValue : register(u2);
 RWTexture2D<float> g_texInputOutputRayHitDistance : register(u3);
 RWTexture2D<float> g_texOutputVariance : register(u4);
+RWTexture2D<float> g_texOutputBlurStrength: register(u5);
 
 // ToDo remove
 RWTexture2D<float4> g_texOutputDebug1 : register(u10);
@@ -129,7 +130,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         variance = isValidValue ? g_texInputCurrentFrameLocalMeanVariance[DTid].y : 1;
         valueSquaredMean = isValidValue ? valueSquaredMean : RTAO::InvalidAOValue;
     }
-
+#if STOP_TRACING_AND_DENOISING_AFTER_FEW_FRAMES
     if (isValidValue)
     {
         if (numRaysToGenerate > 1)
@@ -148,11 +149,17 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         numRaysToGenerateOrDenoisePasses = (max(numDenoisePasses, 1) - 1) | 0x80;
     }
+#else
+    numRaysToGenerateOrDenoisePasses = 33;
+#endif
 
+    float frameAgeRatio = min(frameAge, cb.blurStrength_MaxFrameAge) / float(cb.blurStrength_MaxFrameAge);
+    float blurStrength = pow(1 - frameAgeRatio, cb.blurDecayStrength);
 
     g_texInputOutputFrameAge[DTid] = uint2(frameAge, numRaysToGenerateOrDenoisePasses);
     g_texInputOutputValue[DTid] = value;
     g_texInputOutputSquaredMeanValue[DTid] = valueSquaredMean;
     g_texInputOutputRayHitDistance[DTid] = rayHitDistance;
-    g_texOutputVariance[DTid] = variance;
+    g_texOutputVariance[DTid] = variance; 
+    g_texOutputBlurStrength[DTid] = blurStrength;
 }

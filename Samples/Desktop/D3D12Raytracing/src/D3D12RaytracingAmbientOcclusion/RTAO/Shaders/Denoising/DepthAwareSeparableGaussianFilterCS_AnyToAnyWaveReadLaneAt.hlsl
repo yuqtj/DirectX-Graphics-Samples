@@ -22,11 +22,12 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RTAO/Shaders/RTAO.hlsli"
 
-#define GAUSSIAN_KERNEL_5X5
+#define GAUSSIAN_KERNEL_3X3
 #include "Kernels.hlsli"
 
 Texture2D<float> g_inValues : register(t0);
 Texture2D<NormalDepthTexFormat> g_inNormalDepth : register(t1);
+Texture2D<float> g_inBlurStrength: register(t2);
 RWTexture2D<float> g_outValues : register(u0);
 
 RWTexture2D<float4> g_outDebug1 : register(u3);
@@ -44,7 +45,7 @@ uint2 GetPixelIndex(in uint2 Gid, in uint2 GTid)
 {
     // Find a DTID with steps in between the group threads and groups interleaved to cover all pixels.
     uint2 GroupDim = uint2(8, 8);
-    uint2 groupBase = (Gid / cb.step) * cb.step * GroupDim + Gid % cb.step;
+    uint2 groupBase = (Gid / cb.step) * GroupDim * cb.step + Gid % cb.step;
     uint2 groupThreadOffset = GTid * cb.step;
     uint2 sDTid = groupBase + groupThreadOffset;
 
@@ -63,7 +64,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     // Loads up to 16x4x4 == 256 input values.
     // ToDo rename to 4x16
     uint2 GTid16x4_row0 = uint2(GI % 16, GI / 16);
-    int2 KernelBasePixel = GetPixelIndex(Gid, 0) - int(FilterKernel::Radius * cb.step);
+    int2 GroupKernelBasePixel = GetPixelIndex(Gid, 0) - int(FilterKernel::Radius * cb.step);
     const uint NumRowsToLoadPerThread = 4;
     const uint Row_BaseWaveLaneIndex = (WaveGetLaneIndex() / 16) * 16;
 
@@ -80,7 +81,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         }
 
         // Load all the contributing columns for each row.
-        int2 pixel = KernelBasePixel + GTid16x4 * cb.step;
+        int2 pixel = GroupKernelBasePixel + GTid16x4 * cb.step;
         float value = RTAO::InvalidAOValue;
         float depth = 0;
 
@@ -91,7 +92,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         if (GTid16x4.x < NumValuesToLoadPerRowOrColumn && IsWithinBounds(pixel, cb.textureDim))
         {
             value = g_inValues[pixel];
-            
+
             // ToDo remove normal if not needed.
             float3 dummyNormal;
             DecodeNormalDepth(g_inNormalDepth[pixel], dummyNormal, depth);
@@ -135,10 +136,11 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             }
 
             // Second 8 lanes start just past the kernel center.
-            uint KernelCellIndexOffset =       
+            uint KernelCellIndexOffset =
                 GTid16x4.x < GroupDim.x
-                    ? 0
-                    : (FilterKernel::Radius + 1); // Skip over the already accumulated center cell of the kernel.
+                ? 0
+                : (FilterKernel::Radius + 1); // Skip over the already accumulated center cell of the kernel.
+
 
             // For all columns in the kernel.
             for (uint c = 0; c < FilterKernel::Radius; c++)
@@ -153,7 +155,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
                 {
                     float w = FilterKernel::Kernel1D[kernelCellIndex];
 
-                    float depthThreshold = 0.1;
+                    float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - c);
                     float w_d = abs(kcDepth - cDepth) <= depthThreshold * kcDepth;
                     w *= w_d;
 
@@ -177,14 +179,34 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     }
 }
 
-void FilterVertically(uint2 DTid, in uint2 GTid)
+float BilateralWeight_DepthNormalKernelAware(
+    in float ActualDistance,
+    float3 ActualNormal,
+    float4 SampleDistances,
+    float3 SampleNormals[4],
+    float4 BilinearWeights,
+    float4 SampleValues)
+{
+    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
+    float4 normalWeights = float4(
+        pow(dot(ActualNormal, SampleNormals[0]), 32),
+        pow(dot(ActualNormal, SampleNormals[1]), 32),
+        pow(dot(ActualNormal, SampleNormals[2]), 32),
+        pow(dot(ActualNormal, SampleNormals[3]), 32)
+        );
+    float4 weights = normalWeights * depthWeights * BilinearWeights;
+
+    return InterpolateValidValues(weights, SampleValues);
+}
+
+void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
 {
     float2 kcValueDepth = HalfToFloat2(PackedValuesDepthsCache[GTid.y + FilterKernel::Radius][GTid.x]);
     float kcValue = kcValueDepth.x;
     float kcDepth = kcValueDepth.y;
-     
-    float filteredValue = kcValue;
 
+    float filteredValue = kcValue;
+    g_outDebug1[DTid] = float4(kcValue, kcDepth, 0, 0);
     if (kcDepth != 0)
     {
         float weightedValueSum = 0;
@@ -193,6 +215,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
         // For all rows in the kernel.
         // ToDo Unroll
         for (uint r = 0; r < FilterKernel::Width; r++)
+            // ToDo test with skipping center value
         {
             uint rowID = GTid.y + r;
 
@@ -206,7 +229,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
                 float rWeightSum = rUnpackedRowResult.y;
 
                 float w = FilterKernel::Kernel1D[r];
-                float depthThreshold = 0.1;
+                float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - r);
                 float w_d = abs(kcDepth - rDepth) <= depthThreshold * kcDepth;
                 w *= w_d;
 
@@ -214,11 +237,11 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
                 weightSum += w * rWeightSum;
             }
         }
-        // Negate updated values from first to so that the second pass knows these values are to be updated again.
+
         filteredValue = weightSum > 1e-9 ? weightedValueSum / weightSum : RTAO::InvalidAOValue;
     }
 
-    g_outValues[DTid] = filteredValue;
+    g_outValues[DTid] = filteredValue != RTAO::InvalidAOValue ? lerp(kcValue, filteredValue, blurStrength) : RTAO::InvalidAOValue;
 }
 
 
@@ -227,8 +250,33 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
 {
     uint2 sDTid = GetPixelIndex(Gid, GTid);
 
+    // Pass through if all pixels have 0 blur strength set.
+    float blurStrength;
+    {
+        if (GI == 0)
+            PackedRowResultCache[0][0] = 0;
+        GroupMemoryBarrierWithGroupSync();
+
+        blurStrength = g_inBlurStrength[sDTid];
+
+        float MinBlurStrength = 0.01;
+        bool valueNeedsFiltering = blurStrength >= MinBlurStrength;
+        if (valueNeedsFiltering)
+            PackedRowResultCache[0][0] = 1;
+
+        GroupMemoryBarrierWithGroupSync();
+
+        if (PackedRowResultCache[0][0] == 0)
+        {
+            g_outValues[sDTid] = g_inValues[sDTid];
+            g_outDebug1[sDTid] = -1;
+            return;
+        }
+    }
+
+
     FilterHorizontally(Gid, GI);
     GroupMemoryBarrierWithGroupSync();
 
-    FilterVertically(sDTid, GTid);
+    FilterVertically(sDTid, GTid, blurStrength);
 }

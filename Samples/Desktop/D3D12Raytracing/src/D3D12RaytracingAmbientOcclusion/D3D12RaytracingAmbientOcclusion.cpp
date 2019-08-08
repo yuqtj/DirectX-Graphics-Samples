@@ -250,7 +250,7 @@ namespace SceneArgs
     IntVar RTAOVarianceFilterKernelWidth(L"Render/AO/RTAO/Denoising/Variance filter/Kernel width", 7, 3, 11, 2);    // ToDo find lowest good enough width
     BoolVar UseSpatialVariance(L"Render/AO/RTAO/Denoising/Use spatial variance", true);
     //BoolVar ApproximateSpatialVariance(L"Render/AO/RTAO/Denoising/Approximate spatial variance", false);
-    BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale/Enabled", true);
+    BoolVar RTAODenoisingUseMultiscale(L"Render/AO/RTAO/Denoising/Multi-scale/Enabled", false);
     IntVar RTAODenoisingMultiscaleLevels(L"Render/AO/RTAO/Denoising/Multi-scale/Levels", 3, 1, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
     BoolVar RTAODenoisingMultiscaleDenoisedAsInput(L"Render/AO/RTAO/Denoising/Multi-scale/Denoised as input", true);
     
@@ -268,7 +268,13 @@ namespace SceneArgs
     BoolVar RTAODenoisingUseSmoothedVariance(L"Render/AO/RTAO/Denoising/Use smoothed variance", false);
     BoolVar RTAODenoisingUseProjectedDepthTest(L"Render/AO/RTAO/Denoising/Use projected depth test", true);
 
-    
+#define MAX_NUM_PASSES_LOW_TSPP 6
+    BoolVar RTAODenoisingLowTspp(L"Render/AO/RTAO/Denoising/Low tspp filter/enabled", true);
+    IntVar RTAODenoisingLowTsppMaxFrameAge(L"Render/AO/RTAO/Denoising/Low tspp filter/Max frame age", 8, 0, 33);
+    IntVar RTAODenoisingLowTspBlurPasses(L"Render/AO/RTAO/Denoising/Low tspp filter/Num blur passes", 4, 0, MAX_NUM_PASSES_LOW_TSPP);
+    NumVar RTAODenoisingLowTsppDecayConstant(L"Render/AO/RTAO/Denoising/Low tspp filter/Decay constant", 1.0f, 1.0f, 32.f, 0.1f);
+    BoolVar RTAODenoisingLowTsppFillMissingValues(L"Render/AO/RTAO/Denoising/Low tspp filter/Post-TSS fill in missing values", true);
+
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"Render/AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
 #if    DISABLE_DENOISING
@@ -1383,7 +1389,10 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 
     m_prevFrameGBufferNormalDepth.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
     CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_prevFrameGBufferNormalDepth, initialResourceState, L"Previous Frame GBuffer Normal Depth");
-
+    m_multiPassDenoisingBlurStrength.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+    CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_multiPassDenoisingBlurStrength, initialResourceState, L"Multi Pass Denoising Blur Strength");
+    
+    
 
     // ToDo
     m_SSAO.BindGBufferResources(m_GBufferResources[GBufferResource::SurfaceNormalDepth].resource.Get(), m_GBufferResources[GBufferResource::Depth].resource.Get());
@@ -1451,9 +1460,11 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         }
      }
 
-    m_temporalSupersampling_blendedAOCoefficient.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
-    CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalSupersampling_blendedAOCoefficient, initialResourceState, L"Temporal Supersampling: AO coefficient current frame blended with the cache.");
-
+    for (UINT i = 0; i < 2; i++)
+    {
+        m_temporalSupersampling_blendedAOCoefficient[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+        CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_temporalSupersampling_blendedAOCoefficient[i], initialResourceState, L"Temporal Supersampling: AO coefficient current frame blended with the cache.");
+    }
     m_cachedFrameAgeValueSquaredValueRayHitDistance.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
     CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_cachedFrameAgeValueSquaredValueRayHitDistance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Temporal Supersampling intermediate reprojected Frame Age, Value, Squared Mean Value, Ray Hit Distance");
 
@@ -1594,7 +1605,7 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
     m_temporalCacheBlendWithCurrentFrameKernel.Initialize(device, FrameCount); 
     m_writeValueToTexture.Initialize(device, m_cbvSrvUavHeap.get());
     m_fillInMissingValuesFilterKernel.Initialize(device, FrameCount, 2);
-    m_bilateralFilterKernel.Initialize(device, FrameCount, D3D12RaytracingAmbientOcclusion::c_MaxDenoisingScaleLevels);
+    m_bilateralFilterKernel.Initialize(device, FrameCount, MAX_NUM_PASSES_LOW_TSPP);
     m_grassGeometryGenerator.Initialize(device, L"Assets\\wind\\wind2.jpg", m_cbvSrvUavHeap.get(), &resourceUpload, FrameCount, UIParameters::NumGrassGeometryLODs);
 
     // Upload the resources to the GPU.
@@ -3054,6 +3065,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                     m_cbvSrvUavHeap->GetHeap(),
                     valueResource->gpuDescriptorReadAccess,
                     msResource.m_normalDepth.gpuDescriptorReadAccess,
+                    m_multiPassDenoisingBlurStrength.gpuDescriptorReadAccess,
                     &msResource.m_smoothedValue);
 #else
                 ApplyAtrousWaveletTransformFilter(
@@ -4653,7 +4665,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
     RWGpuResource* AOResources = m_RTAO.AOResources();
     
     RWGpuResource* AOTSSCoefficient = SceneArgs::QuarterResAO ? m_lowResAOTSSCoefficient : m_AOTSSCoefficient;
-
+    
     RWGpuResource* VarianceResources = SceneArgs::QuarterResAO ? m_lowResVarianceResource : m_varianceResource;
     RWGpuResource* LocalMeanVarianceResources = SceneArgs::QuarterResAO ? m_lowResLocalMeanVarianceResource : m_localMeanVarianceResource;
 
@@ -4744,11 +4756,13 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(VarianceResources[AOVarianceResource::Raw].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_multiPassDenoisingBlurStrength.resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::UAV(m_cachedFrameAgeValueSquaredValueRayHitDistance.resource.Get()),
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
+    RWGpuResource* TSSOutCoefficient = SceneArgs::RTAODenoisingLowTsppFillMissingValues ? &m_temporalSupersampling_blendedAOCoefficient[0] : &AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex];
 
     m_temporalCacheBlendWithCurrentFrameKernel.Execute(
         commandList,
@@ -4762,12 +4776,13 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         m_smoothedLocalMeanVarianceResource.gpuDescriptorReadAccess,
 #endif
         AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess,
-        AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].gpuDescriptorWriteAccess,
+        TSSOutCoefficient->gpuDescriptorWriteAccess,
         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].gpuDescriptorWriteAccess,
         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].gpuDescriptorWriteAccess,
         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance].gpuDescriptorWriteAccess,
         m_cachedFrameAgeValueSquaredValueRayHitDistance.gpuDescriptorReadAccess,
         VarianceResources[AOVarianceResource::Raw].gpuDescriptorWriteAccess,
+        m_multiPassDenoisingBlurStrength.gpuDescriptorWriteAccess,
         SceneArgs::RTAO_TemporalSupersampling_MinSmoothingFactor,
         SceneArgs::RTAO_TemporalSupersampling_ForceUseMinSmoothingFactor,
         SceneArgs::RTAO_TemporalSupersampling_ClampCachedValues_UseClamping,
@@ -4776,7 +4791,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         SceneArgs::RTAODenoising_MinFrameAgeToUseTemporalVariance,
         SceneArgs::RTAO_TemporalSupersampling_ClampDifferenceToFrameAgeScale,
         m_debugOutput,
-        SceneArgs::RTAODenoisingnumFramesToDenoiseAfterLastTracedRay);
+        SceneArgs::RTAODenoisingnumFramesToDenoiseAfterLastTracedRay,
+        SceneArgs::RTAODenoisingLowTsppMaxFrameAge,
+        SceneArgs::RTAODenoisingLowTsppDecayConstant);
 
     // Transition output resource to SRV state.        
     {
@@ -4787,7 +4804,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].resource.Get(), before, after),
             CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(VarianceResources[AOVarianceResource::Raw].resource.Get(), before, after)
+            CD3DX12_RESOURCE_BARRIER::Transition(VarianceResources[AOVarianceResource::Raw].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_multiPassDenoisingBlurStrength.resource.Get(), before, after),
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -4828,38 +4846,18 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
-#if RTAO_GAUSSIAN_BLUR_AFTER_TSS
-    // Fill in missing/disoccluded values.
+    if (SceneArgs::RTAODenoisingLowTsppFillMissingValues)
     {
-        const UINT numPasses = 2;
-        UINT filterSteps[numPasses] = {1, 4};
-
-        RWGpuResource* inputValues[numPasses] = {
-            &AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex],
-            &m_temporalSupersampling_blendedAOCoefficient,
-        };
-
-        RWGpuResource* outputValues[numPasses] = {
-            &m_temporalSupersampling_blendedAOCoefficient,
-            &AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex],
-        };
-
-        wstring passNames[numPasses] = {
-            L"Depth Aware Gaussian Blur with a pixel step 1",
-            L"Depth Aware Gaussian Blur with a pixel step 9",
-        };
-
-        for (UINT i = 0; i < numPasses; i++)
+        // Fill in missing/disoccluded values.
         {
-
-            ScopedTimer _prof(passNames[i].c_str(), commandList);
+            ScopedTimer _prof(L"Fill in missing values filter", commandList);
             {
                 D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
                 D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
                 D3D12_RESOURCE_BARRIER barriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::UAV(inputValues[i]->resource.Get()),
-                    CD3DX12_RESOURCE_BARRIER::Transition(outputValues[i]->resource.Get(), before, after),
+                    CD3DX12_RESOURCE_BARRIER::UAV(TSSOutCoefficient->resource.Get()),
+                    CD3DX12_RESOURCE_BARRIER::Transition(AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].resource.Get(), before, after),
                 };
                 commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
             }
@@ -4869,23 +4867,84 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
                 m_raytracingWidth,
                 m_raytracingHeight,
                 GpuKernels::FillInMissingValuesFilter::DepthAware_GaussianFilter7x7,
-                filterSteps[i],
+                1,
                 m_cbvSrvUavHeap->GetHeap(),
-                inputValues[i]->gpuDescriptorReadAccess,
+                TSSOutCoefficient->gpuDescriptorReadAccess,
                 GBufferResources[GBufferResource::Depth].gpuDescriptorReadAccess,
-                outputValues[i]->gpuDescriptorWriteAccess);
+                AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].gpuDescriptorWriteAccess);
 
             {
                 D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
                 D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
                 D3D12_RESOURCE_BARRIER barriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::Transition(outputValues[i]->resource.Get(), before, after),
+                    CD3DX12_RESOURCE_BARRIER::Transition(AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].resource.Get(), before, after),
                 };
                 commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
             }
         }
     }
-#endif
+}
+
+void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
+{
+    auto commandList = m_deviceResources->GetCommandList();
+
+    ScopedTimer _prof(L"Low-Tspp Multi-pass blur", commandList);
+
+    UINT numPasses = static_cast<UINT>(SceneArgs::RTAODenoisingLowTspBlurPasses);
+
+    RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;  
+    RWGpuResource* AOResources = m_RTAO.AOResources();
+
+    RWGpuResource* resources[2] = {
+        &m_temporalSupersampling_blendedAOCoefficient[0],
+        &m_temporalSupersampling_blendedAOCoefficient[1],
+    };
+
+
+    UINT filterStep = 1;
+    
+    for (UINT i = 0; i < numPasses; i++)
+    {
+        wstring passName = L"Depth Aware Gaussian Blur with a pixel step " + to_wstring(filterStep);
+            
+        RWGpuResource* inResource = i > 0 ? resources[i % 2] : &AOResources[AOResource::Smoothed];
+        RWGpuResource* outResource = i < numPasses - 1 ? resources[(i+1) % 2] : &AOResources[AOResource::Smoothed];
+
+
+        ScopedTimer _prof(passName.c_str(), commandList);
+        {
+            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+            D3D12_RESOURCE_BARRIER barriers[] = {
+                CD3DX12_RESOURCE_BARRIER::UAV(inResource->resource.Get()),
+                CD3DX12_RESOURCE_BARRIER::Transition(outResource->resource.Get(), before, after),
+            };
+            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        }
+
+        m_bilateralFilterKernel.Execute(
+            commandList,
+            GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5,
+            filterStep,
+            m_cbvSrvUavHeap->GetHeap(),
+            inResource->gpuDescriptorReadAccess,
+            GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
+            m_multiPassDenoisingBlurStrength.gpuDescriptorReadAccess,
+            outResource);
+
+        {
+            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            D3D12_RESOURCE_BARRIER barriers[] = {
+                CD3DX12_RESOURCE_BARRIER::Transition(outResource->resource.Get(), before, after),
+            };
+            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        }
+
+        filterStep *= 2;
+    }
 }
 
 void GetGrassParameters(GenerateGrassStrawsConstantBuffer_AppParams* params, UINT LOD, float totalTime)
@@ -5127,14 +5186,18 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
 #if BLUR_AO
 #if ATROUS_DENOISER
+                    ApplyAtrousWaveletTransformFilter(true);
+
+                    if (SceneArgs::RTAODenoisingLowTspp)
+                    {
+                        MultiPassBlur();
+                    }
                     if (SceneArgs::RTAODenoisingUseMultiscale)
                     {
-                        ApplyAtrousWaveletTransformFilter(true);
                         ApplyMultiScaleAtrousWaveletTransformFilter(false);
                     }
                     else
                     {
-                        ApplyAtrousWaveletTransformFilter(true);
 
 #if 0
                         if (SceneArgs::RTAO_TemporalSupersampling_CacheDenoisedOutput)

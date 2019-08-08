@@ -99,11 +99,12 @@
 
 #define TEST_EARLY_EXIT 0
 
-#define RTAO_MARK_CACHED_VALUES_NEGATIVE 1
+#define RTAO_MARK_CACHED_VALUES_NEGATIVE 0
 #define RTAO_GAUSSIAN_BLUR_AFTER_TSS 0
 #if RTAO_GAUSSIAN_BLUR_AFTER_TSS && RTAO_MARK_CACHED_VALUES_NEGATIVE
 Incompatible macros
 #endif
+#define STOP_TRACING_AND_DENOISING_AFTER_FEW_FRAMES 0
 
 // ToDo set max recursion
 // Give opacity to mirrors and shade. Some mirrors are tesselated in the kitchen and its not clear from pure reflections.
@@ -222,7 +223,7 @@ typedef float4 NormalDepthTexFormat;
 #define DISTANCE_FALLOFF 0.000000005
 #define AO_RAY_T_MAX 22
 #define SCENE_SCALE 300     
-#define GENERATE_GRASS 1
+#define GENERATE_GRASS 0
 #else
 #define GENERATE_GRASS 0
 #define DISTANCE_FALLOFF 0
@@ -802,7 +803,9 @@ struct RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer
     float clampDifferenceToFrameAgeScale;
 
     UINT numFramesToDenoiseAfterLastTracedRay;
-    float padding[3];
+    UINT blurStrength_MaxFrameAge;
+    float blurDecayStrength;
+    float padding;
 };
 
 struct CalculatePartialDerivativesConstantBuffer
