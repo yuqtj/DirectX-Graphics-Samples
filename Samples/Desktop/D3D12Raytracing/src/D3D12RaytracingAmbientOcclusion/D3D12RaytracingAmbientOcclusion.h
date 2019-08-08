@@ -54,6 +54,8 @@ public:
 	void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
 	void RequestSceneInitialization() { m_isSceneInitializationRequested = true; }
 	void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
+    RWGpuResource* GetDebugResources() { return m_debugOutput; }
+
 
     static const UINT NumGrassPatchesX = 30;
     static const UINT NumGrassPatchesZ = 30;

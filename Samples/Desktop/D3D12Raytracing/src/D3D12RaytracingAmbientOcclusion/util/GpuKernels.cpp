@@ -14,6 +14,8 @@
 #include "../stdafx.h"
 #include "EngineProfiling.h"
 #include "GpuKernels.h"
+#include "DirectXRaytracingHelper.h"
+#include "D3D12RaytracingAmbientOcclusion.h"
 #include "CompiledShaders\ReduceSumUintCS.hlsl.h"
 #include "CompiledShaders\ReduceSumFloatCS.hlsl.h"
 #include "CompiledShaders\DownsampleBoxFilter2x2CS.hlsl.h"
@@ -624,7 +626,7 @@ namespace GpuKernels
         {
             using namespace RootSignature::DownsampleValueNormalDepthBilateralFilter;
 
-            CD3DX12_DESCRIPTOR_RANGE ranges[6]; 
+            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input value texture
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input normal and depth texture
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 input partial distance derivative texture
@@ -695,6 +697,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::OutputValue, outputValueResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputNormalDepth, outputNormalDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPartialDistanceDerivative, outputPartialDistanceDerivativesResourceHandle);
+            
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
 
@@ -1161,6 +1164,8 @@ namespace GpuKernels
                     Output = 0,
                     Input,
                     Depth,
+                    Debug1,
+                    Debug2,
                     ConstantBuffer,
                     Count
                 };
@@ -1178,12 +1183,16 @@ namespace GpuKernels
             ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
             ranges[Slot::Depth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
             ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+            ranges[Slot::Debug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);
+            ranges[Slot::Debug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
             rootParameters[Slot::Depth].InitAsDescriptorTable(1, &ranges[Slot::Depth]);
             rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+            rootParameters[Slot::Debug1].InitAsDescriptorTable(1, &ranges[Slot::Debug1]);
+            rootParameters[Slot::Debug2].InitAsDescriptorTable(1, &ranges[Slot::Debug2]);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: BilateralFilter");
@@ -1247,6 +1256,11 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Depth, inputDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResource->gpuDescriptorWriteAccess);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
+
+            RWGpuResource* debugResources = global_pSample->GetDebugResources();
+            commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
+            commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
+
             commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
         }
 

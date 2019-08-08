@@ -52,7 +52,7 @@ float BilateralInterpolation_DepthNormalAware(
     float3 SampleNormals[4],
     float4 SampleValues)
 {
-    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
+    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + FLT_EPSILON);
     float4 normalWeights = float4(
         pow(saturate(dot(ActualNormal, SampleNormals[0])), 32),
         pow(saturate(dot(ActualNormal, SampleNormals[1])), 32),
@@ -71,7 +71,7 @@ float BilateralInterpolation_DepthBilinearAware(
     float4 BilinearWeights,
     float4 SampleValues)
 {
-    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
+    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + FLT_EPSILON);
     float4 weights = depthWeights * BilinearWeights;
 
     return dot(weights, SampleValues) / dot(weights, 1);
@@ -84,7 +84,7 @@ float BilateralInterpolation_DepthAware(
     float4 SampleValues)
 {
     // ToDo use depth weights from atrous filter?
-    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
+    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + FLT_EPSILON);
     float4 weights = depthWeights;
 
     return dot(weights, SampleValues) / dot(weights, 1);
@@ -101,7 +101,7 @@ void GetDepthIndexFromDownsampleDepthBilateral2x2(out UINT outDepthIndex, in flo
     // Invalidate out-of-bounds 0 depths when taking the min depth.
     float4 vDepths = float4(depths[0], depths[1], depths[2], depths[3]);
     vDepths = checkerboardTakeMin
-        ? vDepths > 0.001f ? vDepths : DISTANCE_ON_MISS
+        ? vDepths == 0 ? vDepths : FLT_MAX
         : vDepths;
 
     float lowResDepth = checkerboardTakeMin
@@ -114,13 +114,6 @@ void GetDepthIndexFromDownsampleDepthBilateral2x2(out UINT outDepthIndex, in flo
     outDepthIndex = depthDelta[0] < depthDelta[1] ? 0 : 1;
     outDepthIndex = depthDelta[2] < depthDelta[outDepthIndex] ? 2 : outDepthIndex;
     outDepthIndex = depthDelta[3] < depthDelta[outDepthIndex] ? 3 : outDepthIndex;
-}
-
-void LoadDepthAndNormal(in uint2 texIndex, out float4 encodedNormalAndDepth, out float depth, out float3 normal)
-{
-    encodedNormalAndDepth = g_inNormalAndDepth[texIndex];
-    depth = encodedNormalAndDepth.z;
-    normal = DecodeNormal(encodedNormalAndDepth.xy);
 }
 
 // ToDo remove _DepthAware from the name?
@@ -136,11 +129,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float3 normals[4];
     for (int i = 0; i < 4; i++)
     {
+        // ToDo use gather
         encodedNormalsAndDepths[i] = g_inNormalAndDepth[topLeftSrcIndex + srcIndexOffsets[i]];
         DecodeNormalDepth(encodedNormalsAndDepths[i], normals[i], depths[i]);
     }
 
     // ToDo rename depth to distance?
+    // ToDo use gather
     float4 vDepths = float4(depths[0], depths[1], depths[2], depths[3]);
     float4 values = float4(
         g_inValue[topLeftSrcIndex],
