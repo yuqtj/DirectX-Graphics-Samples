@@ -268,10 +268,12 @@ namespace SceneArgs
     BoolVar RTAODenoisingUseSmoothedVariance(L"Render/AO/RTAO/Denoising/Use smoothed variance", false);
     BoolVar RTAODenoisingUseProjectedDepthTest(L"Render/AO/RTAO/Denoising/Use projected depth test", true);
 
+#define MIN_NUM_PASSES_LOW_TSPP 2 // THe blur writes to the initial input resource and thus must numPasses must be 2+.
 #define MAX_NUM_PASSES_LOW_TSPP 6
     BoolVar RTAODenoisingLowTspp(L"Render/AO/RTAO/Denoising/Low tspp filter/enabled", true);
     IntVar RTAODenoisingLowTsppMaxFrameAge(L"Render/AO/RTAO/Denoising/Low tspp filter/Max frame age", 8, 0, 33);
-    IntVar RTAODenoisingLowTspBlurPasses(L"Render/AO/RTAO/Denoising/Low tspp filter/Num blur passes", 4, 0, MAX_NUM_PASSES_LOW_TSPP);
+    IntVar RTAODenoisingLowTspBlurPasses(L"Render/AO/RTAO/Denoising/Low tspp filter/Num blur passes", 4, 2, MAX_NUM_PASSES_LOW_TSPP);
+    BoolVar RTAODenoisingLowTsppUseUAVReadWrite(L"Render/AO/RTAO/Denoising/Low tspp filter/Use single UAV resource Read+Write", true);
     NumVar RTAODenoisingLowTsppDecayConstant(L"Render/AO/RTAO/Denoising/Low tspp filter/Decay constant", 1.0f, 1.0f, 32.f, 0.1f);
     BoolVar RTAODenoisingLowTsppFillMissingValues(L"Render/AO/RTAO/Denoising/Low tspp filter/Post-TSS fill in missing values", true);
 
@@ -4904,47 +4906,98 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
 
     UINT filterStep = 1;
     
+    bool readWriteUAV_and_skipPassthrough = false;// (numPasses % 2) == 1;
+
+    if (SceneArgs::RTAODenoisingLowTsppUseUAVReadWrite)
+    {
+        readWriteUAV_and_skipPassthrough = true;
+
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), before, after),
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+    }
+
     for (UINT i = 0; i < numPasses; i++)
     {
         wstring passName = L"Depth Aware Gaussian Blur with a pixel step " + to_wstring(filterStep);
             
-        RWGpuResource* inResource = i > 0 ? resources[i % 2] : &AOResources[AOResource::Smoothed];
-        RWGpuResource* outResource = i < numPasses - 1 ? resources[(i+1) % 2] : &AOResources[AOResource::Smoothed];
 
-
-        ScopedTimer _prof(passName.c_str(), commandList);
+        if (SceneArgs::RTAODenoisingLowTsppUseUAVReadWrite)
         {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-
             D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::UAV(inResource->resource.Get()),
-                CD3DX12_RESOURCE_BARRIER::Transition(outResource->resource.Get(), before, after),
+                CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Smoothed].resource.Get()),
             };
             commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+
+            m_bilateralFilterKernel.Execute(
+                commandList,
+                GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5,
+                filterStep,
+                m_cbvSrvUavHeap->GetHeap(),
+                m_temporalSupersampling_blendedAOCoefficient[0].gpuDescriptorReadAccess,
+                GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
+                m_multiPassDenoisingBlurStrength.gpuDescriptorReadAccess,
+                &AOResources[AOResource::Smoothed],
+                readWriteUAV_and_skipPassthrough);
         }
-
-        m_bilateralFilterKernel.Execute(
-            commandList,
-            GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5,
-            filterStep,
-            m_cbvSrvUavHeap->GetHeap(),
-            inResource->gpuDescriptorReadAccess,
-            GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
-            m_multiPassDenoisingBlurStrength.gpuDescriptorReadAccess,
-            outResource);
-
+        else
         {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(outResource->resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::UAV(outResource->resource.Get()),
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+
+            RWGpuResource* inResource = i > 0 ? resources[i % 2] : &AOResources[AOResource::Smoothed];
+            RWGpuResource* outResource = i < numPasses - 1 ? resources[(i + 1) % 2] : &AOResources[AOResource::Smoothed];
+
+
+            ScopedTimer _prof(passName.c_str(), commandList);
+            {
+                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+                D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+                D3D12_RESOURCE_BARRIER barriers[] = {
+                    CD3DX12_RESOURCE_BARRIER::UAV(inResource->resource.Get()),
+                    CD3DX12_RESOURCE_BARRIER::Transition(outResource->resource.Get(), before, after),
+                };
+                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+            }
+
+            m_bilateralFilterKernel.Execute(
+                commandList,
+                GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5,
+                filterStep,
+                m_cbvSrvUavHeap->GetHeap(),
+                inResource->gpuDescriptorReadAccess,
+                GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
+                m_multiPassDenoisingBlurStrength.gpuDescriptorReadAccess,
+                outResource,
+                readWriteUAV_and_skipPassthrough);
+
+            {
+                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+                D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+                D3D12_RESOURCE_BARRIER barriers[] = {
+                    CD3DX12_RESOURCE_BARRIER::Transition(outResource->resource.Get(), before, after),
+                    CD3DX12_RESOURCE_BARRIER::UAV(outResource->resource.Get()),
+                };
+                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+            }
         }
 
         filterStep *= 2;
+    }
+
+
+    if (SceneArgs::RTAODenoisingLowTsppUseUAVReadWrite)
+    {
+        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Smoothed].resource.Get()),
+        };
+        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 }
 

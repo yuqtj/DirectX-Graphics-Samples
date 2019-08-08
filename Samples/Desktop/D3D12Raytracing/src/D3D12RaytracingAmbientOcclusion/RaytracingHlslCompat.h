@@ -62,6 +62,8 @@
 - Glitches
     - RayHitDistance is wrong behind tires.
     - clean up PIX /GPU validation warnings on Debug
+    - Debug break on FS on 1080 display resolution.
+    - Tearing with VSync on at 4K full res.
 - Cleanup:
     - ToDo remove .f specifier from floating numbers in hlsl
 */
@@ -223,7 +225,7 @@ typedef float4 NormalDepthTexFormat;
 #define DISTANCE_FALLOFF 0.000000005
 #define AO_RAY_T_MAX 22
 #define SCENE_SCALE 300     
-#define GENERATE_GRASS 0
+#define GENERATE_GRASS 1
 #else
 #define GENERATE_GRASS 0
 #define DISTANCE_FALLOFF 0
@@ -758,6 +760,15 @@ struct FilterConstantBuffer
     XMUINT2 textureDim;
     UINT step;
     float padding;
+};
+
+
+// ToDo rename be more specific
+struct BilateralFilterConstantBuffer
+{
+    XMUINT2 textureDim;
+    UINT step;
+    BOOL readWriteUAV_and_skipPassthrough;
 };
 
 struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer

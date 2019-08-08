@@ -346,13 +346,14 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputBlurStrengthResourceHandle,
-            RWGpuResource* outputResource);
+            RWGpuResource* outputResource,
+            bool writeOutOnPassthrough = true);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
 
-        ConstantBuffer<FilterConstantBuffer> m_CB;
+        ConstantBuffer<BilateralFilterConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
     };
 

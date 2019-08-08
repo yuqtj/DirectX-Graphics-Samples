@@ -22,7 +22,7 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RTAO/Shaders/RTAO.hlsli"
 
-#define GAUSSIAN_KERNEL_3X3
+#define GAUSSIAN_KERNEL_5X5
 #include "Kernels.hlsli"
 
 Texture2D<float> g_inValues : register(t0);
@@ -34,7 +34,7 @@ RWTexture2D<float4> g_outDebug1 : register(u3);
 RWTexture2D<float4> g_outDebug2 : register(u4);
 
 
-ConstantBuffer<FilterConstantBuffer> cb: register(b0);
+ConstantBuffer<BilateralFilterConstantBuffer> cb: register(b0);
 
 // Group shared memory cache for the row aggregated results.
 // ToDo parameterize SMEM based on kernel dims.
@@ -50,6 +50,18 @@ uint2 GetPixelIndex(in uint2 Gid, in uint2 GTid)
     uint2 sDTid = groupBase + groupThreadOffset;
 
     return sDTid;
+}
+
+float ReadValue(in uint2 pixel)
+{
+    if (cb.readWriteUAV_and_skipPassthrough)
+    {
+        return g_outValues[pixel];
+    }
+    else
+    {
+        return g_inValues[pixel];
+    }
 }
 
 // Load up to 16x16 pixels and filter them horizontally.
@@ -91,7 +103,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         // However, we need to keep it as an active lane for a below split sum.
         if (GTid16x4.x < NumValuesToLoadPerRowOrColumn && IsWithinBounds(pixel, cb.textureDim))
         {
-            value = g_inValues[pixel];
+            value = ReadValue(pixel);
 
             // ToDo remove normal if not needed.
             float3 dummyNormal;
@@ -228,7 +240,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
                 float rWeightSum = rUnpackedRowResult.y;
 
                 float w = FilterKernel::Kernel1D[r];
-                float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - r);
+                float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - int(r));
                 float w_d = abs(kcDepth - rDepth) <= depthThreshold * kcDepth;
                 w *= w_d;
 
@@ -236,8 +248,8 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
                 weightSum += w * rWeightSum;
             }
         }
-
         filteredValue = weightSum > 1e-9 ? weightedValueSum / weightSum : RTAO::InvalidAOValue;
+        g_outDebug1[DTid] = float4(kcDepth, kcValue, weightedValueSum, weightSum);
     }
 
     g_outValues[DTid] = filteredValue != RTAO::InvalidAOValue ? lerp(kcValue, filteredValue, blurStrength) : RTAO::InvalidAOValue;
@@ -266,8 +278,10 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
 
         if (PackedRowResultCache[0][0] == 0)
         {
-            g_outValues[sDTid] = g_inValues[sDTid];
-            g_outDebug1[sDTid] = -1;
+            if (!cb.readWriteUAV_and_skipPassthrough)
+            {
+                g_outValues[sDTid] = g_inValues[sDTid];
+            }
             return;
         }
     }

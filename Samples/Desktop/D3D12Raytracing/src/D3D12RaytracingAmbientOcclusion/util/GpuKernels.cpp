@@ -1237,7 +1237,8 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputBlurStrengthResourceHandle,
-        RWGpuResource* outputResource)
+        RWGpuResource* outputResource,
+        bool readWriteUAV_and_skipPassthrough)
     {
         using namespace RootSignature::BilateralFilter;
         using namespace DefaultComputeShaderParams;
@@ -1249,6 +1250,7 @@ namespace GpuKernels
 
         m_CB->textureDim = resourceDim;
         m_CB->step = filterStep;
+        m_CB->readWriteUAV_and_skipPassthrough = readWriteUAV_and_skipPassthrough;
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 
