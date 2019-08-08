@@ -14,6 +14,7 @@
 #define HLSL
 #include "..\RaytracingHlslCompat.h"
 #include "..\RaytracingShaderHelper.hlsli"
+#include "RTAO/Shaders/RTAO.hlsli"
 
 // ToDo fix black jaggies on the bottom row in downsampled normal 
 Texture2D<float> g_inValue : register(t0);
@@ -42,7 +43,7 @@ float BilateralInterpolation_DepthNormalBilinearAware(
         );
     float4 weights = normalWeights * depthWeights * BilinearWeights;
 
-    return dot(weights, SampleValues) / dot(weights, 1);
+    return InterpolateValidValues(weights, SampleValues);
 }
 
 float BilateralInterpolation_DepthNormalAware(
@@ -61,7 +62,7 @@ float BilateralInterpolation_DepthNormalAware(
         );
     float4 weights = normalWeights * depthWeights;
 
-    return dot(weights, SampleValues) / dot(weights, 1);
+    return InterpolateValidValues(weights, SampleValues);
 }
 
 // ToDo remove - not applicable for 2x2 downsample
@@ -74,7 +75,7 @@ float BilateralInterpolation_DepthBilinearAware(
     float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + FLT_EPSILON);
     float4 weights = depthWeights * BilinearWeights;
 
-    return dot(weights, SampleValues) / dot(weights, 1);
+    return InterpolateValidValues(weights, SampleValues);
 }
 
 
@@ -87,7 +88,7 @@ float BilateralInterpolation_DepthAware(
     float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + FLT_EPSILON);
     float4 weights = depthWeights;
 
-    return dot(weights, SampleValues) / dot(weights, 1);
+    return InterpolateValidValues(weights, SampleValues);
 }
 
 // ToDo strip Bilateral from the name?

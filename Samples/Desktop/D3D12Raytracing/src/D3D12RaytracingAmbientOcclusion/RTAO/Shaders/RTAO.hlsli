@@ -8,7 +8,8 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-
+#ifndef RTAO_HLSLI
+#define RTAO_HLSLI
 // ToDo use defines or namespace?
 namespace RTAO {
     static const float RayHitDistanceOnMiss = -1;// ToDo unify with DISTANCE_ON_MISS - should be 0 as we're using non-negative low precision formats
@@ -18,3 +19,5 @@ namespace RTAO {
         return tHit != RayHitDistanceOnMiss;
     }
 }
+
+#endif // RTAO_HLSLI

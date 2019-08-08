@@ -13,6 +13,7 @@
 #define RAYTRACINGSHADERHELPER_H
 
 #include "RayTracingHlslCompat.h"
+#include "RTAO/Shaders/RTAO.hlsli"
 
 #define INFINITY (1.0/0.0)
 
@@ -999,6 +1000,33 @@ float2 GetProjectedSurfaceDimensionsPerPixel(in float z, in float2 ddxy, in floa
 
     return w;
 }
+
+
+// Ensure only valid samples are interpolated. Default to an invalid value if none are valid.
+float InterpolateValidValues(
+    float4 weights,
+    float4 SampleValues)
+{
+    float4 validSamples = SampleValues != RTAO::InvalidAOValue;
+    weights *= validSamples;
+    float weightSum = dot(weights, 1);
+    float smallValue = 1e-6;  // ToDo standardize?
+    if (weightSum < smallValue)
+    {
+        float numValidSamples = dot(validSamples, 1);
+        if (numValidSamples > smallValue)
+        {
+            return dot(validSamples, SampleValues) / numValidSamples;
+        }
+        else
+        {
+            return RTAO::InvalidAOValue;;
+        }
+    }
+
+    return dot(weights, SampleValues) / dot(weights, 1);
+}
+
 
 // ToDo move relevant to RTAO denoising specific header
 

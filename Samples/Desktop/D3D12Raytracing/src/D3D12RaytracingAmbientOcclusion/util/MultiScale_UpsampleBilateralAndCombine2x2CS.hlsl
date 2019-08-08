@@ -67,8 +67,7 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
     // Use ddxy as depth threshold.
     float2 ddxy = abs(g_inHiResPartialDistanceDerivative[hiResPixelIndex]);  // ToDo move to caller
     float depthThreshold = DepthThreshold(ActualDistance, ddxy);
-    float fEpsilon = 1e-6 * ActualDistance;
-    float4 depthWeights = min(depthThreshold / (abs(SampleDistances - ActualDistance) + fEpsilon), 1);
+    float4 depthWeights = min(depthThreshold / (abs(SampleDistances - ActualDistance) + FLT_EPSILON), 1);
 
     // Normal weights.
     const uint normalExponent = 32;
@@ -87,7 +86,7 @@ float BilateralUpsample(in float ActualDistance, in float3 ActualNormal, in floa
     float totalWeight = dot(weights, 1);
     weights = SampleDistances < DISTANCE_ON_MISS ? weights : 0;
 
-    return dot(weights, SampleValues) / dot(weights, 1);
+    return InterpolateValidValues(weights, SampleValues);
 }
 
 
@@ -150,7 +149,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
             hiResValues[i] = g_inHiResValue[topLeftHiResIndex + srcIndexOffsets[i]];
         }
     }
-#define WORKAROUND_FOR_VALUES_OVERFLOW_ON_MULTISCALE_COMBINE 0  // ToDo remove
+#define WORKAROUND_FOR_VALUES_OVERFLOW_ON_MULTISCALE_COMBINE 1  // ToDo remove
     float lowResValues[4];
     {
         for (int i = 0; i < 4; i++)
@@ -180,7 +179,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
         // ToDo this should follow the Delbracio2012, but it computes incorrect values, i.e. 1 where it should be less. Upsampling issue?
 #if WORKAROUND_FOR_VALUES_OVERFLOW_ON_MULTISCALE_COMBINE
-        float outValue = 0.5f * (hiResValues[i] + BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues, ));
+        float outValue = BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues, hiResPixelIndex);
 #else
         float outValue = hiResValues[i] + BilateralUpsample(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], vLowResValues, hiResPixelIndex);
 #endif
