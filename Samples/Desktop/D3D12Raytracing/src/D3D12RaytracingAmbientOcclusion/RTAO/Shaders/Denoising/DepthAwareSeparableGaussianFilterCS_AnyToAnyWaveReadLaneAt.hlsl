@@ -206,7 +206,6 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
     float kcDepth = kcValueDepth.y;
 
     float filteredValue = kcValue;
-    g_outDebug1[DTid] = float4(kcValue, kcDepth, 0, 0);
     if (kcDepth != 0)
     {
         float weightedValueSum = 0;
@@ -249,7 +248,6 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
 void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
 {
     uint2 sDTid = GetPixelIndex(Gid, GTid);
-
     // Pass through if all pixels have 0 blur strength set.
     float blurStrength;
     {

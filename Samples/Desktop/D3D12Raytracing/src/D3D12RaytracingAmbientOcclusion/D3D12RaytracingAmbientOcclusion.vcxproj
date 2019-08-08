@@ -633,6 +633,8 @@
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DisableOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </DisableOptimizations>
     </FxCompile>
     <FxCompile Include="RTAO\Shaders\Denoising\FillInMissingValuesFilter_SeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>

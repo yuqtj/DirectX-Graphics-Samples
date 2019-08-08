@@ -1269,8 +1269,12 @@ namespace GpuKernels
             commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
         }
 
+        // Account for interleaved Group execution
+        UINT widthCS = filterStep * ThreadGroup::Width * CeilDivide(resourceDim.x, filterStep * ThreadGroup::Width);
+        UINT heightCS = filterStep * ThreadGroup::Height * CeilDivide(resourceDim.y, filterStep * ThreadGroup::Height);
+
         // Dispatch.
-        XMUINT2 groupSize(CeilDivide(resourceDim.x, ThreadGroup::Width), CeilDivide(resourceDim.y, ThreadGroup::Height));
+        XMUINT2 groupSize(CeilDivide(widthCS, ThreadGroup::Width), CeilDivide(heightCS, ThreadGroup::Height));
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
     }
 

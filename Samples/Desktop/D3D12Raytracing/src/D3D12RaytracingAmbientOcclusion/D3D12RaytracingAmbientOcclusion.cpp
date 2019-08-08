@@ -186,7 +186,7 @@ namespace SceneArgs
     NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
     BoolVar AnimateGrass(L"Scene2/Animate grass", false);
 
-    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
+    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
 
     // Temporal Cache.
     // ToDo rename cache to accumulation/supersampling?
@@ -4939,6 +4939,7 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
             D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
             D3D12_RESOURCE_BARRIER barriers[] = {
                 CD3DX12_RESOURCE_BARRIER::Transition(outResource->resource.Get(), before, after),
+                CD3DX12_RESOURCE_BARRIER::UAV(outResource->resource.Get()),
             };
             commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
         }
