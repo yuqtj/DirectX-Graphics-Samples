@@ -26,7 +26,7 @@
 #include "Kernels.hlsli"
 
 Texture2D<float> g_inValues : register(t0);
-Texture2D<NormalDepthTexFormat> g_inNormalDepth : register(t1);
+Texture2D<float> g_inDepth : register(t1);
 Texture2D<float> g_inBlurStrength: register(t2);
 RWTexture2D<float> g_outValues : register(u0);
 
@@ -38,8 +38,11 @@ ConstantBuffer<BilateralFilterConstantBuffer> cb: register(b0);
 
 // Group shared memory cache for the row aggregated results.
 // ToDo parameterize SMEM based on kernel dims.
-groupshared uint PackedValueDepthCache[16][8];         // 16bit float value, depth.
-groupshared uint PackedRowResultCache[16][8];            // 16bit float weightedValueSum, weightSum.
+static const uint NumValuesToLoadPerRowOrColumn = 
+    DefaultComputeShaderParams::ThreadGroup::Width
+    + (FilterKernel::Width - 1);
+groupshared uint PackedValueDepthCache[NumValuesToLoadPerRowOrColumn][8];         // 16bit float value, depth.
+groupshared uint PackedRowResultCache[NumValuesToLoadPerRowOrColumn][8];          // 16bit float weightedValueSum, weightSum.
 
 uint2 GetPixelIndex(in uint2 Gid, in uint2 GTid)
 {
@@ -69,7 +72,6 @@ float ReadValue(in uint2 pixel)
 void FilterHorizontally(in uint2 Gid, in uint GI)
 {
     const uint2 GroupDim = uint2(8, 8);
-    const uint NumValuesToLoadPerRowOrColumn = GroupDim.x + (FilterKernel::Width - 1);
 
     // Process the thread group as row-major 16x4, where each sub group of 16 threads processes one row.
     // Each thread loads up to 4 values, with the sub groups loading rows interleaved.
@@ -104,10 +106,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         if (GTid16x4.x < NumValuesToLoadPerRowOrColumn && IsWithinBounds(pixel, cb.textureDim))
         {
             value = ReadValue(pixel);
-
-            // ToDo remove normal if not needed.
-            float3 dummyNormal;
-            DecodeNormalDepth(g_inNormalDepth[pixel], dummyNormal, depth);
+            depth = g_inDepth[pixel];
         }
 
         // Cache the kernel center values.
@@ -191,26 +190,6 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     }
 }
 
-float BilateralWeight_DepthNormalKernelAware(
-    in float ActualDistance,
-    float3 ActualNormal,
-    float4 SampleDistances,
-    float3 SampleNormals[4],
-    float4 BilinearWeights,
-    float4 SampleValues)
-{
-    float4 depthWeights = 1.0 / (abs(SampleDistances - ActualDistance) + 1e-6 * ActualDistance);
-    float4 normalWeights = float4(
-        pow(dot(ActualNormal, SampleNormals[0]), 32),
-        pow(dot(ActualNormal, SampleNormals[1]), 32),
-        pow(dot(ActualNormal, SampleNormals[2]), 32),
-        pow(dot(ActualNormal, SampleNormals[3]), 32)
-        );
-    float4 weights = normalWeights * depthWeights * BilinearWeights;
-
-    return InterpolateValidValues(weights, SampleValues);
-}
-
 void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
 {
     float2 kcValueDepth = HalfToFloat2(PackedValueDepthCache[GTid.y + FilterKernel::Radius][GTid.x]);
@@ -218,13 +197,13 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
     float kcDepth = kcValueDepth.y;
 
     float filteredValue = kcValue;
-    if (kcDepth != 0)
+    if (blurStrength >= 0.01 && kcDepth != 0)
     {
         float weightedValueSum = 0;
         float weightSum = 0;
 
         // For all rows in the kernel.
-        // ToDo Unroll
+        [unroll]
         for (uint r = 0; r < FilterKernel::Width; r++)
             // ToDo test with skipping center value
         {
@@ -249,9 +228,9 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
             }
         }
         filteredValue = weightSum > 1e-9 ? weightedValueSum / weightSum : RTAO::InvalidAOValue;
+        filteredValue = filteredValue != RTAO::InvalidAOValue ? lerp(kcValue, filteredValue, blurStrength) : RTAO::InvalidAOValue;
     }
-
-    g_outValues[DTid] = filteredValue != RTAO::InvalidAOValue ? lerp(kcValue, filteredValue, blurStrength) : RTAO::InvalidAOValue;
+    g_outValues[DTid] = filteredValue;
 }
 
 

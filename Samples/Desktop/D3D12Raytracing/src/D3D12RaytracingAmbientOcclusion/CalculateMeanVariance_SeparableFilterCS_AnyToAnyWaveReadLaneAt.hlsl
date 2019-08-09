@@ -64,7 +64,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         // The lane is out of bounds of the GroupDim + kernel, 
         // but could be within bounds of the input texture,
         // so don't read it from the texture.
-        // but need to keep it as an active lane for a below split sum.
+        // However, we need to keep it as an active lane for a below split sum.
         if (GTid16x4.x < NumValuesToLoadPerRowOrColumn && IsWithinBounds(pixel, cb.textureDim))
         {
             value = g_inValues[pixel];
@@ -89,13 +89,23 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
                 numValues++;
             }
 
+            // Get the lane index that has the first value for a kernel in this lane.
+            uint Row_KernelStartLaneIndex =
+                Row_BaseWaveLaneIndex
+                + (cb.kernelRadius + 1)     // Skip over the already accumulated center cell of the kernel.
+                - (GTid16x4.x < GroupDim.x
+                    ? GTid16x4.x
+                    : (GTid16x4.x - GroupDim.x));
+
             for (uint c = 0; c < cb.kernelRadius; c++)
             {
-                uint laneToReadFrom = Row_BaseWaveLaneIndex + 1 + c +
-                                     (GTid16x4.x < GroupDim.x ? GTid16x4.x : (GTid16x4.x - GroupDim.x) + cb.kernelRadius);
+                uint laneToReadFrom = Row_KernelStartLaneIndex + c;
                 float cValue = WaveReadLaneAt(value, laneToReadFrom);
                 if (cValue != RTAO::InvalidAOValue)
                 {
+#if RTAO_MARK_CACHED_VALUES_NEGATIVE
+                    cValue = abs(cValue);
+#endif
                     valueSum += cValue;
                     squaredValueSum += cValue * cValue;
                     numValues++;
@@ -141,7 +151,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
     float invN = 1.f / max(numValues, 1);
     float mean = invN * valueSum;
 
-    // Apply Bessel's correction to the estimated variance, divide by N-1, 
+    // Apply Bessel's correction to the estimated variance, multiply by N/N-1, 
     // since the true population mean is not known. It is only estimated as the sample mean.
     float besselCorrection = numValues / float(max(numValues, 2) - 1);
     float variance = besselCorrection * (invN * squaredValueSum - mean * mean);

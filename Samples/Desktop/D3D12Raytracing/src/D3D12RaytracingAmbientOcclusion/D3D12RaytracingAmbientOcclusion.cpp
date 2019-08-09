@@ -211,7 +211,7 @@ namespace SceneArgs
     const WCHAR* VarianceBilateralFilters[GpuKernels::CalculateVariance::FilterType::Count] = { L"Square Bilateral", L"Separable Bilateral", L"Separable" };
     EnumVar VarianceBilateralFilter(L"Render/GpuKernels/CalculateVariance/Filter", GpuKernels::CalculateVariance::Separable, GpuKernels::CalculateVariance::Count, VarianceBilateralFilters);
 
-    IntVar VarianceBilateralFilterKernelWidth(L"Render/GpuKernels/CalculateVariance/Kernel width", 7, 3, 11, 2);    // ToDo find lowest good enough width
+    IntVar VarianceBilateralFilterKernelWidth(L"Render/GpuKernels/CalculateVariance/Kernel width", 9, 3, 11, 2);    // ToDo find lowest good enough width
 
 
     // ToDo rename to temporal supersampling
@@ -259,7 +259,7 @@ namespace SceneArgs
     IntVar RTAODenoisingFilterMinKernelWidth(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Min kernel width", 3, 3, 101);
     NumVar RTAODenoisingFilterMaxKernelWidthPercentage(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Max kernel width [%% of screen width]", 1.0f, 0, 100, 0.1f);
     NumVar RTAODenoisingFilterVarianceSigmaScaleOnSmallKernels(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Variance sigma scale on small kernels", 2.0f, 1.0f, 20.f, 0.5f); 
-    NumVar RTAO_Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Hit distance scale factor", 0.02f, 0.001f, 10.f, 0.005f);
+    NumVar RTAO_Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Hit distance scale factor", 0.08f, 0.001f, 10.f, 0.005f);
     BoolVar RTAODenoising_Variance_UseDepthWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true);
     BoolVar RTAODenoising_Variance_UseNormalWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true);
     BoolVar RTAODenoising_ForceDenoisePass(L"Render/AO/RTAO/Denoising/Force denoise pass", false);
@@ -310,7 +310,7 @@ namespace SceneArgs
 
     // ToDo why large depth sigma is needed?
     // ToDo the values don't scale to QuarterRes - see ImportaceMap viz
-    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 0.4f, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
+    NumVar AODenoiseDepthSigma(L"Render/AO/RTAO/Denoising/Depth Sigma", 0.5f, 0.0f, 10.0f, 0.02f); // ToDo Fine tune. 1 causes moire patterns at angle under the car
 
      // ToDo Fine tune. 1 causes moire patterns at angle under the car
     // aT LOW RES 1280X768. causes depth disc lines down to 0.8 cutoff at long ranges
@@ -331,6 +331,15 @@ namespace SceneArgs
     //**********************************************************************************************************************************
 
 };
+
+/*
+RTAO - Titan XP 1440p Quarter Res
+- Min kernel width 20
+- Depth Sigma 0.5, Cutoff 0.9
+- Low tspp 8 frames, decay 0.6, 4 blurs
+- 1/2 spp
+
+*/
 
 
 void D3D12RaytracingAmbientOcclusion::CreateIndexAndVertexBuffers(
@@ -4778,7 +4787,11 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
-    RWGpuResource* TSSOutCoefficient = SceneArgs::RTAODenoisingLowTsppFillMissingValues ? &m_temporalSupersampling_blendedAOCoefficient[0] : &AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex];
+    bool fillInMissingValues =
+        SceneArgs::RTAODenoisingLowTsppFillMissingValues
+        && m_RTAO.GetSpp() < 1;
+
+    RWGpuResource* TSSOutCoefficient = fillInMissingValues ? &m_temporalSupersampling_blendedAOCoefficient[0] : &AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex];
 
     m_temporalCacheBlendWithCurrentFrameKernel.Execute(
         commandList,
@@ -4862,7 +4875,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
-    if (SceneArgs::RTAODenoisingLowTsppFillMissingValues)
+    if (fillInMissingValues)
     {
         // Fill in missing/disoccluded values.
         {
@@ -4917,9 +4930,10 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
         &m_temporalSupersampling_blendedAOCoefficient[1],
     };
 
+    RWGpuResource* AOTSSCoefficient = SceneArgs::QuarterResAO ? m_lowResAOTSSCoefficient : m_AOTSSCoefficient;
+    RWGpuResource* OutResource = &AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex];
+    //RWGpuResource* OutResource = &AOResources[AOResource::Smoothed];
 
-    UINT filterStep = 1;
-    
     bool readWriteUAV_and_skipPassthrough = false;// (numPasses % 2) == 1;
 
     if (SceneArgs::RTAODenoisingLowTsppUseUAVReadWrite)
@@ -4930,18 +4944,30 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::Transition(OutResource->resource.Get(), before, after),
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
     GpuKernels::BilateralFilter::FilterType filter =
         SceneArgs::RTAODenoisingLowTsppUseNormalWeights
-            ? GpuKernels::BilateralFilter::NormalDepthAware_GaussianFilter5x5
-            : GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5;
+        ? GpuKernels::BilateralFilter::NormalDepthAware_GaussianFilter5x5
+        : GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5;
+
+    RWGpuResource* depthResource =
+        SceneArgs::RTAODenoisingLowTsppUseNormalWeights
+        ? &GBufferResources[GBufferResource::SurfaceNormalDepth]
+        : &GBufferResources[GBufferResource::Depth];
+
+    UINT FilterSteps[4] = {
+        1, 4, 8, 16
+    };
+
+    UINT filterStep = 1;
 
     for (UINT i = 0; i < numPasses; i++)
     {
+       // filterStep = FilterSteps[i];
         wstring passName = L"Depth Aware Gaussian Blur with a pixel step " + to_wstring(filterStep);
         ScopedTimer _prof(passName.c_str(), commandList);
             
@@ -4949,7 +4975,7 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
         if (SceneArgs::RTAODenoisingLowTsppUseUAVReadWrite)
         {
             D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Smoothed].resource.Get()),
+                CD3DX12_RESOURCE_BARRIER::UAV(OutResource->resource.Get()),
             };
             commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
 
@@ -4961,16 +4987,16 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
                 SceneArgs::RTAODenoisingLowTsppMinNormalWeight,
                 m_cbvSrvUavHeap->GetHeap(),
                 m_temporalSupersampling_blendedAOCoefficient[0].gpuDescriptorReadAccess,
-                GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
+                depthResource->gpuDescriptorReadAccess,
                 m_multiPassDenoisingBlurStrength.gpuDescriptorReadAccess,
-                &AOResources[AOResource::Smoothed],
+                OutResource,
                 readWriteUAV_and_skipPassthrough);
         }
         else
         {
 
-            RWGpuResource* inResource = i > 0 ? resources[i % 2] : &AOResources[AOResource::Smoothed];
-            RWGpuResource* outResource = i < numPasses - 1 ? resources[(i + 1) % 2] : &AOResources[AOResource::Smoothed];
+            RWGpuResource* inResource = i > 0 ? resources[i % 2] : OutResource;
+            RWGpuResource* outResource = i < numPasses - 1 ? resources[(i + 1) % 2] : OutResource;
 
 
             {

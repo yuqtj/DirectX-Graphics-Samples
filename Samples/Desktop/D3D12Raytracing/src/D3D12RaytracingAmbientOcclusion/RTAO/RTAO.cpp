@@ -57,7 +57,7 @@ namespace SceneArgs
     IntVar AOTileX(L"Render/AO/Tile X", 1, 1, 128, 1);
     IntVar AOTileY(L"Render/AO/Tile Y", 1, 1, 128, 1);
 
-    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", false);
+    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", true);
     NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 0.1f, 0.01f, 10.f, 0.01f);
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
@@ -66,7 +66,7 @@ namespace SceneArgs
     EnumVar RTAORayGenAdaptiveQuadSize(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Ray Count Pixel Window", GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Quad2x2, GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Count, RayGenAdaptiveQuadSizeTypes);
     IntVar RTAORayGen_MaxFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max frame age", 32, 1, 32, 1); // ToDo link this to smoothing factor?
     IntVar RTAORayGen_MinAdaptiveFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Min frame age for adaptive sampling", 16, 1, 32, 1);
-    IntVar RTAORayGen_MaxRaysPerQuad(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max rays per quad", 1, 1, 16, 1);
+    IntVar RTAORayGen_MaxRaysPerQuad(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max rays per quad", 2, 1, 16, 1);
     IntVar RTAORayGen_MaxFrameAgeToGenerateRaysFor(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max frame age to generate rays for", 32, 1, 64, 1);
 
     // RTAO
@@ -605,10 +605,14 @@ float RTAO::GetMaxRayHitTime()
 
 float RTAO::GetSpp()
 {
-    switch (SceneArgs::RTAORayGenAdaptiveQuadSize)
+    if (SceneArgs::RTAOUseRaySorting)
     {
-    case GpuKernels::AdaptiveRayGenerator::Quad2x2: return 1.f / 4;
-    case GpuKernels::AdaptiveRayGenerator::Quad4x4: return 1.f / 16;
+        int MaxRaysPerQuad = SceneArgs::RTAORayGen_MaxRaysPerQuad;
+        switch (SceneArgs::RTAORayGenAdaptiveQuadSize)
+        {
+        case GpuKernels::AdaptiveRayGenerator::Quad2x2: return min(MaxRaysPerQuad, 4) / 4.0f;
+        case GpuKernels::AdaptiveRayGenerator::Quad4x4: return min(MaxRaysPerQuad, 16) / 16.0f;
+        }
     }
     return 1;
 }
