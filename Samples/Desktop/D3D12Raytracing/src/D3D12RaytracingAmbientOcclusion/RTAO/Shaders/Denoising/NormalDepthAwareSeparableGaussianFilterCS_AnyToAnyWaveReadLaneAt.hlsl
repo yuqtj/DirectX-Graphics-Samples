@@ -40,6 +40,7 @@ ConstantBuffer<BilateralFilterConstantBuffer> cb: register(b0);
 // ToDo parameterize SMEM based on kernel dims.
 groupshared uint PackedValueDepthCache[16][8];         // 16bit float value, depth.
 groupshared uint PackedRowResultCache[16][8];            // 16bit float weightedValueSum, weightSum.
+groupshared uint PackedEncodedNormalCache[16][8];        // 16bit float encodedNormal X and Y.
 
 uint2 GetPixelIndex(in uint2 Gid, in uint2 GTid)
 {
@@ -96,6 +97,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         int2 pixel = GroupKernelBasePixel + GTid16x4 * cb.step;
         float value = RTAO::InvalidAOValue;
         float depth = 0;
+        float3 normal = 0;
 
         // The lane is out of bounds of the GroupDim + kernel, 
         // but could be within bounds of the input texture,
@@ -105,9 +107,11 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         {
             value = ReadValue(pixel);
 
-            // ToDo remove normal if not needed.
-            float3 dummyNormal;
-            DecodeNormalDepth(g_inNormalDepth[pixel], dummyNormal, depth);
+            float2 encodedNormal;
+            UnpackEncodedNormalDepth(g_inNormalDepth[pixel], encodedNormal, depth);
+            
+            normal = DecodeNormal(encodedNormal);
+            PackedEncodedNormalCache[GTid16x4.y][GTid16x4.x - FilterKernel::Radius] = Float2ToHalf(encodedNormal);
         }
 
         // Cache the kernel center values.
@@ -137,6 +141,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             uint kcLaneIndex = Row_KernelStartLaneIndex + FilterKernel::Radius;
             float kcValue = WaveReadLaneAt(value, kcLaneIndex);
             float kcDepth = WaveReadLaneAt(depth, kcLaneIndex);
+            float3 kcNormal = WaveReadLaneAt(normal, kcLaneIndex);
 
             // Initialize the first 8 lanes to the center cell contribution of the kernel. 
             // This covers the remainder of 1 in FilterKernel::Width / 2 used in the loop below. 
@@ -162,6 +167,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
                 uint laneToReadFrom = Row_KernelStartLaneIndex + kernelCellIndex;
                 float cValue = WaveReadLaneAt(value, laneToReadFrom);
                 float cDepth = WaveReadLaneAt(depth, laneToReadFrom);
+                float3 cNormal = WaveReadLaneAt(normal, laneToReadFrom);
 
                 if (cValue != RTAO::InvalidAOValue && kcDepth != 0 && cDepth != 0)
                 {
@@ -169,7 +175,10 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
 
                     float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - c);
                     float w_d = abs(kcDepth - cDepth) <= depthThreshold * kcDepth;
-                    w *= w_d;
+
+                    float w_n = max(pow(dot(kcNormal, cNormal), cb.normalWeightExponent), cb.minNormalWeightStrength);
+
+                    w *= w_d * w_n;
 
                     weightedValueSum += w * cValue;
                     weightSum += w;
@@ -217,6 +226,9 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
     float kcValue = kcValueDepth.x;
     float kcDepth = kcValueDepth.y;
 
+    float2 kcEncodedNormal = HalfToFloat2(PackedEncodedNormalCache[GTid.y + FilterKernel::Radius][GTid.x]);
+    float3 kcNormal = DecodeNormal(kcEncodedNormal);
+
     float filteredValue = kcValue;
     if (kcDepth != 0)
     {
@@ -233,6 +245,9 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
             float2 rUnpackedValueDepth = HalfToFloat2(PackedValueDepthCache[rowID][GTid.x]);
             float rDepth = rUnpackedValueDepth.y;
 
+            float2 rEncodedNormal = HalfToFloat2(PackedEncodedNormalCache[rowID][GTid.x]);
+            float3 rNormal = DecodeNormal(rEncodedNormal);
+
             if (rDepth != 0)
             {
                 float2 rUnpackedRowResult = HalfToFloat2(PackedRowResultCache[rowID][GTid.x]);
@@ -242,7 +257,10 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
                 float w = FilterKernel::Kernel1D[r];
                 float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - int(r));
                 float w_d = abs(kcDepth - rDepth) <= depthThreshold * kcDepth;
-                w *= w_d;
+
+                float w_n = max(pow(dot(kcNormal, rNormal), cb.normalWeightExponent), cb.minNormalWeightStrength);
+
+                w *= w_d * w_n;
 
                 weightedValueSum += w * rWeightedValueSum;
                 weightSum += w * rWeightSum;

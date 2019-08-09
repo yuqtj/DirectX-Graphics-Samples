@@ -766,6 +766,10 @@ struct BilateralFilterConstantBuffer
     XMUINT2 textureDim;
     UINT step;
     BOOL readWriteUAV_and_skipPassthrough;
+
+    float normalWeightExponent;
+    float minNormalWeightStrength;
+    float padding[2];
 };
 
 struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer

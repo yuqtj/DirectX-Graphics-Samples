@@ -49,6 +49,7 @@
 #include "CompiledShaders\FillInMissingValuesFilter_SeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\FillInMissingValuesFilter_DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
+#include "CompiledShaders\NormalDepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 
 using namespace std;
 
@@ -1217,6 +1218,9 @@ namespace GpuKernels
                 case DepthAware_GaussianFilter5x5:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pDepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt), ARRAYSIZE(g_pDepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt));
                     break;
+                case NormalDepthAware_GaussianFilter5x5:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pNormalDepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt), ARRAYSIZE(g_pNormalDepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt));
+                    break;
                 }
                 ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
                 m_pipelineStateObjects[i]->SetName(L"Pipeline state object: BilateralFilter");
@@ -1237,6 +1241,8 @@ namespace GpuKernels
         ID3D12GraphicsCommandList4* commandList,
         FilterType type,
         UINT filterStep,
+        float normalWeightExponent,
+        float minNormalWeightStrength,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
@@ -1255,6 +1261,8 @@ namespace GpuKernels
         m_CB->textureDim = resourceDim;
         m_CB->step = filterStep;
         m_CB->readWriteUAV_and_skipPassthrough = readWriteUAV_and_skipPassthrough;
+        m_CB->normalWeightExponent = normalWeightExponent;
+        m_CB->minNormalWeightStrength = minNormalWeightStrength;
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 

@@ -329,6 +329,7 @@ namespace GpuKernels
     public:
         enum FilterType {
             DepthAware_GaussianFilter5x5 = 0,
+            NormalDepthAware_GaussianFilter5x5,
             Count
         };
 
@@ -342,6 +343,8 @@ namespace GpuKernels
             ID3D12GraphicsCommandList4* commandList,
             FilterType type,
             UINT filterStep,
+            float normalWeightExponent,
+            float minNormalWeightStrength,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,

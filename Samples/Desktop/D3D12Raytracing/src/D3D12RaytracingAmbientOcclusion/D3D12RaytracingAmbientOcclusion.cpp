@@ -282,6 +282,9 @@ namespace SceneArgs
     BoolVar RTAODenoisingLowTsppUseUAVReadWrite(L"Render/AO/RTAO/Denoising/Low tspp filter/Use single UAV resource Read+Write", true);
     NumVar RTAODenoisingLowTsppDecayConstant(L"Render/AO/RTAO/Denoising/Low tspp filter/Decay constant", 1.0f, 0.1f, 32.f, 0.1f);
     BoolVar RTAODenoisingLowTsppFillMissingValues(L"Render/AO/RTAO/Denoising/Low tspp filter/Post-TSS fill in missing values", true);
+    BoolVar RTAODenoisingLowTsppUseNormalWeights(L"Render/AO/RTAO/Denoising/Low tspp filter/Normal Weights/Enabled", false);
+    NumVar RTAODenoisingLowTsppMinNormalWeight(L"Render/AO/RTAO/Denoising/Low tspp filter/Normal Weights/Min weight", 0.25f, 0.0f, 1.f, 0.05f);
+    NumVar RTAODenoisingLowTsppNormalExponent(L"Render/AO/RTAO/Denoising/Low tspp filter/Normal Weights/Exponent", 4.0f, 1.0f, 32.f, 1.0f);
 
     const WCHAR* DenoisingModes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
     EnumVar DenoisingMode(L"Render/AO/RTAO/Denoising/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, DenoisingModes);
@@ -3064,6 +3067,9 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                 valueResource = &msResource.m_value;
             }
 
+#if 1
+            ThrowIfFalse(false, L"ToDo");
+#else
             if (i > 0 || filterFirstLevel)
             {
 #if 1
@@ -3135,6 +3141,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                 forceDenoisePass);
 #endif
             }
+#endif
 
             // Downsample the denoised value.
             {
@@ -4928,6 +4935,11 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
+    GpuKernels::BilateralFilter::FilterType filter =
+        SceneArgs::RTAODenoisingLowTsppUseNormalWeights
+            ? GpuKernels::BilateralFilter::NormalDepthAware_GaussianFilter5x5
+            : GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5;
+
     for (UINT i = 0; i < numPasses; i++)
     {
         wstring passName = L"Depth Aware Gaussian Blur with a pixel step " + to_wstring(filterStep);
@@ -4943,8 +4955,10 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
 
             m_bilateralFilterKernel.Execute(
                 commandList,
-                GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5,
+                filter,
                 filterStep,
+                SceneArgs::RTAODenoisingLowTsppNormalExponent,
+                SceneArgs::RTAODenoisingLowTsppMinNormalWeight,
                 m_cbvSrvUavHeap->GetHeap(),
                 m_temporalSupersampling_blendedAOCoefficient[0].gpuDescriptorReadAccess,
                 GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
@@ -4972,8 +4986,10 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
 
             m_bilateralFilterKernel.Execute(
                 commandList,
-                GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5,
+                filter,
                 filterStep,
+                SceneArgs::RTAODenoisingLowTsppNormalExponent,
+                SceneArgs::RTAODenoisingLowTsppMinNormalWeight,
                 m_cbvSrvUavHeap->GetHeap(),
                 inResource->gpuDescriptorReadAccess,
                 GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,

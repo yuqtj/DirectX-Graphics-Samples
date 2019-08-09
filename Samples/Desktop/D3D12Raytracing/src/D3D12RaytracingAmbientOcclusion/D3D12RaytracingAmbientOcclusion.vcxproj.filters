@@ -445,6 +445,9 @@
     <FxCompile Include="RTAO\Shaders\Denoising\DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl">
       <Filter>Assets\Shaders\RTAO\Denoising</Filter>
     </FxCompile>
+    <FxCompile Include="RTAO\Shaders\Denoising\NormalDepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl">
+      <Filter>Assets\Shaders\RTAO\Denoising</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">
