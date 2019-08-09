@@ -456,7 +456,8 @@ namespace GpuKernels
             float staleNeighborWeightScale = 1,
             float depthWeightCutoff = 0.5f,
             bool useProjectedDepthTest = false,
-            bool forceDenoisePass = false);
+            bool forceDenoisePass = false,
+            bool weightByFrameAge = false);
 
         RWGpuResource& VarianceOutputResource() { return m_intermediateVarianceOutputs[0]; }
 

@@ -74,7 +74,11 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 1 // TSS DEPTH TEST
+#if 1// Isometric view of all objects and grass around
+            camera.position.at = { -47.2277f, 27.3063f, -30.9273f, 1 };
+            camera.position.up = { 0.483884f, 0.740712f, 0.466033f, 0 };
+            camera.position.eye = { -47.8157f, 27.891f, -31.4868f, 1 };
+#elif 1 // TSS DEPTH TEST
             camera.position.eye = { -36.2138f, 5.92939f, -9.22302f, 1 };
             camera.position.at = { -35.3667f, 5.80036f, -8.70685f, 1 };
             camera.position.up = { 0.202548f, 0.970933f, 0.127482f, 0 };

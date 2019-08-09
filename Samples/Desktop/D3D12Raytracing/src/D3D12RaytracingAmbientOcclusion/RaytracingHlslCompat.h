@@ -101,7 +101,7 @@
 
 #define TEST_EARLY_EXIT 0
 
-#define RTAO_MARK_CACHED_VALUES_NEGATIVE 0
+#define RTAO_MARK_CACHED_VALUES_NEGATIVE 1
 #define RTAO_GAUSSIAN_BLUR_AFTER_TSS 0
 #if RTAO_GAUSSIAN_BLUR_AFTER_TSS && RTAO_MARK_CACHED_VALUES_NEGATIVE
 Incompatible macros
@@ -429,11 +429,11 @@ struct AtrousWaveletTransformFilterConstantBuffer
 
     BOOL useProjectedDepthTest;
     BOOL forceDenoisePass;
-    float padding[2];
+    float kernelStepScale;
+    float weightByFrameAge;
 };
 
 // ToDo remove obsolete params in cbs
-
 struct CalculateVariance_BilateralFilterConstantBuffer
 {
     XMUINT2 textureDim;
@@ -449,15 +449,12 @@ struct CalculateVariance_BilateralFilterConstantBuffer
     float padding[3];
 };
 
-
 struct CalculateMeanVarianceConstantBuffer
 {
     XMUINT2 textureDim;
     UINT kernelWidth;
     UINT kernelRadius;
 };
-
-
 
 // ToDo standardzie capitalization
 struct AdaptiveRayGenConstantBuffer

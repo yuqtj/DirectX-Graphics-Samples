@@ -1151,8 +1151,12 @@ namespace GpuKernels
             commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
         }
 
+        // Account for interleaved Group execution
+        UINT widthCS = filterStep * ThreadGroup::Width * CeilDivide(width, filterStep * ThreadGroup::Width);
+        UINT heightCS = filterStep * ThreadGroup::Height * CeilDivide(height, filterStep * ThreadGroup::Height);
+
         // Dispatch.
-        XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
+        XMUINT2 groupSize(CeilDivide(widthCS, ThreadGroup::Width), CeilDivide(heightCS, ThreadGroup::Height));
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
     }
 
@@ -1566,7 +1570,8 @@ namespace GpuKernels
         float staleNeighborWeightScale,
         float depthWeightCutoff,
         bool useProjectedDepthTest,
-        bool forceDenoisePass)
+        bool forceDenoisePass,
+        bool weightByFrameAge)
     {
 
         // ToDo: cleanup use of variance

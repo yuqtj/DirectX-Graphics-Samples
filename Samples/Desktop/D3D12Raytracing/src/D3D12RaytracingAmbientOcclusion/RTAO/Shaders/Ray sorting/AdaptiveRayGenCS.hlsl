@@ -135,13 +135,14 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     // Calculate number of rays to generate per quad.
     uint MaxNumRaysPerQuad = CB.QuadDim.x * CB.QuadDim.y;
     uint numRaysToGeneratePerQuad = min(MaxNumRaysPerQuad, CB.MaxRaysPerQuad);
+#if 0
     if (minQuadFrameAge >= CB.MinFrameAgeForAdaptiveSampling)
     {
         float t = (minQuadFrameAge - CB.MinFrameAgeForAdaptiveSampling) / float(CB.MaxFrameAge - CB.MinFrameAgeForAdaptiveSampling);
         numRaysToGeneratePerQuad = lerp(MaxNumRaysPerQuad, 1, t);
     }
     numRaysToGeneratePerQuad = min(numRaysToGeneratePerQuad, CB.MaxRaysPerQuad);
-
+#endif
     uint StartID = (CB.FrameID * numRaysToGeneratePerQuad) % MaxNumRaysPerQuad;
 
     // Generate the rays.

@@ -22,7 +22,7 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RTAO/Shaders/RTAO.hlsli"
 
-#define GAUSSIAN_KERNEL_5X5
+#define GAUSSIAN_KERNEL_3X3
 #include "Kernels.hlsli"
 
 Texture2D<float> g_inValues : register(t0);
@@ -249,7 +249,6 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
             }
         }
         filteredValue = weightSum > 1e-9 ? weightedValueSum / weightSum : RTAO::InvalidAOValue;
-        g_outDebug1[DTid] = float4(kcDepth, kcValue, weightedValueSum, weightSum);
     }
 
     g_outValues[DTid] = filteredValue != RTAO::InvalidAOValue ? lerp(kcValue, filteredValue, blurStrength) : RTAO::InvalidAOValue;

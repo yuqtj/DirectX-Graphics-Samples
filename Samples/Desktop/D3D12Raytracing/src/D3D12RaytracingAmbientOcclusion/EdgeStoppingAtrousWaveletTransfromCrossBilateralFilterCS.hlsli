@@ -180,8 +180,8 @@ void AddFilterContribution(
         DecodeNormalDepth(g_inNormalDepth[id], iNormal, iDepth);
         float iValue = g_inValues[id];
 
-        if (iValue == RTAO::InvalidAOValue ||
-            iDepth == 0)
+        bool iIsValidValue = iValue != RTAO::InvalidAOValue;
+        if (!iIsValidValue || iDepth == 0)
         {
             return;
         }
@@ -270,13 +270,13 @@ void AddFilterContribution(
         w *= w_c;// *weightScale;
 
 
-        uint iFrameAge = 1;// g_inFrameAge[id].x;
+        uint iFrameAge = g_inFrameAge[id].x;
         // Enforce frame age of at least 1 for reprojection for valid values.
         // This is because the denoiser will fill in invalid values with filtered 
         // ones if it can. But it doesn't increase frame age.
         iFrameAge = max(iFrameAge, 1);
 
-        float iPixelWeight = iFrameAge;
+        float iPixelWeight = g_CB.weightByFrameAge ? iFrameAge : 1;
         w *= iPixelWeight;
         
         weightedValueSum += w * iValue;
@@ -329,10 +329,10 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 
         float w_c = 1;
 #if RTAO_MARK_CACHED_VALUES_NEGATIVE
-        if (value < 0)
+        if (isValidValue && value < 0)
         {
             // ToDo
-            //w_c = g_CB.staleNeighborWeightScale;
+            w_c = g_CB.staleNeighborWeightScale;
             value = -value;
         }
 #endif
@@ -365,7 +365,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 
         if (isValidValue)
         {
-            float pixelWeight = 1;// frameAge;
+            float pixelWeight = g_CB.weightByFrameAge ? frameAge : 1;
             weightSum = pixelWeight * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius];
             weightedValueSum = weightSum * value;
             weightedVarianceSum = FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] * FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius]
@@ -379,7 +379,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
             // ToDo remove?
 
         float2 varianceSigmaScale = 1; 
-        if (frameAge > 16 && g_CB.useAdaptiveKernelSize)
+        if ( g_CB.useAdaptiveKernelSize)
         {
             float avgRayHitDistance = g_inHitDistance[DTid];
 
@@ -392,8 +392,11 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
             kernelStep = max(1, round(k * avgRayHitDistance / projectedSurfaceDim));
 
 
-            uint2 targetKernelStep = clamp(kernelStep, g_CB.minKernelWidth / 2, g_CB.maxKernelWidth / 2);
-            kernelStep = lerp(1, targetKernelStep, g_CB.kernelStepShift / 10.0);
+            uint2 targetKernelStep = clamp(kernelStep, (g_CB.minKernelWidth - 1) / 2, (g_CB.maxKernelWidth - 1) / 2);
+            uint2 adjustedKernelStep = g_CB.kernelStepShift > 0 ? lerp(1, targetKernelStep, g_CB.kernelStepShift / 10.0) : targetKernelStep;
+            g_outDebug1[DTid] = float4(projectedSurfaceDim, avgRayHitDistance, 0);
+            g_outDebug2[DTid] = float4(kernelStep, adjustedKernelStep);
+            kernelStep = adjustedKernelStep;
 
             varianceSigmaScale = log2(kernelStep);
         }

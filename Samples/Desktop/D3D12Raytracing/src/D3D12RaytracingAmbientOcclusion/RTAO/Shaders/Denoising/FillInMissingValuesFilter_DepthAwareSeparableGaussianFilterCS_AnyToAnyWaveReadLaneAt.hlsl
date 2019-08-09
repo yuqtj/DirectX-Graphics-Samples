@@ -106,6 +106,13 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             PackedValuesDepthsCache[GTid16x4.y][GTid16x4.x - FilterKernel::Radius] = Float2ToHalf(float2(value, depth));
         }
 
+#if RTAO_MARK_CACHED_VALUES_NEGATIVE
+        if (value != RTAO::InvalidAOValue)
+        {
+            value = abs(value);
+        }
+#endif
+
         // Filter the values for the first GroupDim columns.
         {
             // Accumulate for the whole kernel width.
@@ -155,12 +162,9 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
 
                 if (cValue != RTAO::InvalidAOValue && kcDepth != 0 && cDepth != 0)
                 {
-#if RTAO_MARK_CACHED_VALUES_NEGATIVE
-                    cValue = abs(cValue);
-#endif
                     float w = FilterKernel::Kernel1D[kernelCellIndex];
 
-                    float depthThreshold = 0.1;
+                    float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - c);
                     float w_d = abs(kcDepth - cDepth) <= depthThreshold * kcDepth;
                     w *= w_d;
 
@@ -213,7 +217,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
                 float rWeightSum = rUnpackedRowResult.y;
 
                 float w = FilterKernel::Kernel1D[r];
-                float depthThreshold = 0.1;
+                float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - int(r));
                 float w_d = abs(kcDepth - rDepth) <= depthThreshold * kcDepth;
                 w *= w_d;
 
@@ -224,7 +228,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
 
         filteredValue = weightSum > 1e-9 ? weightedValueSum / weightSum : RTAO::InvalidAOValue;
 #if RTAO_MARK_CACHED_VALUES_NEGATIVE
-        filteredValue = filteredValue != RTAO::InvalidAOValue ? -filteredValue : filteredValue;
+        filteredValue = filteredValue != RTAO::InvalidAOValue && kcValue < 0 ? -filteredValue : filteredValue;
 #endif
     }
 

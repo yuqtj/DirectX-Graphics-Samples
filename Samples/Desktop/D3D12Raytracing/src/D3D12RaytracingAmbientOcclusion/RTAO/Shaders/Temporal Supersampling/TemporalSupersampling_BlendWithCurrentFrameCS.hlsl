@@ -108,6 +108,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float temporalVariance = valueSquaredMean - value * value;
         temporalVariance = max(0, temporalVariance);    // Ensure variance doesn't go negative due to imprecision.
         variance = frameAge >= cb.minFrameAgeToUseTemporalVariance ? temporalVariance : localVariance;
+        variance = max(0.1, variance);
 
         // RayHitDistance.
         rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
