@@ -10,7 +10,7 @@
 //*********************************************************
 
 #define RAY_DIRECTION_HASH_KEY_BITS_1D 4   // Max 4 bits
-#define DEPTH_HASH_KEY_BITS 0  // ToDo test using 2 bits for RayGroupQuadrant
+#define DEPTH_HASH_KEY_BITS 2  // ToDo test using 2 bits for RayGroupQuadrant
 #define INDEX_HASH_KEY_BITS 0 // (4 - DEPTH_HASH_KEY_BITS)   // ToDo test using 2 bits for RayGroupQuadrant
 #define NUM_RAYS SortRays::RayGroup::Size
 #define NUM_THREADS SortRays::ThreadGroup::Size
@@ -25,6 +25,7 @@
 // ToDo move this to a const?
 // ToDo enumerate all reserved bits in one place
 // INACTIVE_RAY_KEY must be greater than the max valid hash key but fit within 16bits and valid NUM_KEYS.
+// ToDo should this be NUM_KEYS then?
 // It must be exclusive to INACTIVE_RAY_INDEX_BIT. - todo cleanup/combine them?
 #define INACTIVE_RAY_KEY (NUM_KEYS - 1)     // Hash key for an invalid/disabled ray. These rays will get sorted to the end and are not to be raytraced.
 

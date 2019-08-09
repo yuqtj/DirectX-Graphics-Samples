@@ -393,7 +393,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 
 
             uint2 targetKernelStep = clamp(kernelStep, (g_CB.minKernelWidth - 1) / 2, (g_CB.maxKernelWidth - 1) / 2);
-            uint2 adjustedKernelStep = g_CB.kernelStepShift > 0 ? lerp(1, targetKernelStep, g_CB.kernelStepShift / 10.0) : targetKernelStep;
+            uint2 adjustedKernelStep = g_CB.kernelStepShift > 0 ? lerp(1, targetKernelStep, (g_CB.kernelStepShift-1) / 5.0) : targetKernelStep;
            //g_outDebug1[DTid] = float4(projectedSurfaceDim, avgRayHitDistance, 0);
            // g_outDebug2[DTid] = float4(kernelStep, adjustedKernelStep);
             kernelStep = adjustedKernelStep;

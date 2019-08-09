@@ -38,11 +38,11 @@ ConstantBuffer<BilateralFilterConstantBuffer> cb: register(b0);
 
 // Group shared memory cache for the row aggregated results.
 // ToDo parameterize SMEM based on kernel dims.
-static const uint NumValuesToLoadPerRowOrColumn = 
-    DefaultComputeShaderParams::ThreadGroup::Width
-    + (FilterKernel::Width - 1);
+static const uint NumValuesToLoadPerRowOrColumn =
+DefaultComputeShaderParams::ThreadGroup::Width
++ (FilterKernel::Width - 1);
 groupshared uint PackedValueDepthCache[NumValuesToLoadPerRowOrColumn][8];         // 16bit float value, depth.
-groupshared uint PackedRowResultCache[NumValuesToLoadPerRowOrColumn][8];          // 16bit float weightedValueSum, weightSum.
+groupshared float FilteredResultCache[NumValuesToLoadPerRowOrColumn][8];     // 32 bit float filteredValue.
 
 uint2 GetPixelIndex(in uint2 Gid, in uint2 GTid)
 {
@@ -120,6 +120,8 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             // Accumulate for the whole kernel width.
             float weightedValueSum = 0;
             float weightSum = 0;
+            float gaussianWeightedValueSum = 0;
+            float gaussianWeightedSum = 0;
 
             // Since a row uses 16 lanes, but we only need to calculate the aggregate for the first half (8) lanes,
             // split the kernel wide aggregation among the first 8 and the second 8 lanes, and then combine them.
@@ -141,9 +143,11 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             // This covers the remainder of 1 in FilterKernel::Width / 2 used in the loop below. 
             if (GTid16x4.x < GroupDim.x && kcValue != RTAO::InvalidAOValue && kcDepth != 0)
             {
-                float w = FilterKernel::Kernel1D[FilterKernel::Radius];
-                weightedValueSum = w * kcValue;
-                weightSum = w;
+                float w_h = FilterKernel::Kernel1D[FilterKernel::Radius];
+                gaussianWeightedValueSum = w_h * kcValue;
+                gaussianWeightedSum = w_h;
+                weightedValueSum = gaussianWeightedValueSum;
+                weightSum = w_h;
             }
 
             // Second 8 lanes start just past the kernel center.
@@ -164,14 +168,16 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
 
                 if (cValue != RTAO::InvalidAOValue && kcDepth != 0 && cDepth != 0)
                 {
-                    float w = FilterKernel::Kernel1D[kernelCellIndex];
+                    float w_h = FilterKernel::Kernel1D[kernelCellIndex];
 
-                    float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - c);
+                    float depthThreshold = 0.05 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - c);
                     float w_d = abs(kcDepth - cDepth) <= depthThreshold * kcDepth;
-                    w *= w_d;
+                    float w = w_h * w_d;
 
                     weightedValueSum += w * cValue;
                     weightSum += w;
+                    gaussianWeightedValueSum += w_h * cValue;
+                    gaussianWeightedSum += w_h;
                 }
             }
 
@@ -179,12 +185,16 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             uint laneToReadFrom = min(WaveGetLaneCount() - 1, Row_BaseWaveLaneIndex + GTid16x4.x + GroupDim.x);
             weightedValueSum += WaveReadLaneAt(weightedValueSum, laneToReadFrom);
             weightSum += WaveReadLaneAt(weightSum, laneToReadFrom);
+            gaussianWeightedValueSum += WaveReadLaneAt(gaussianWeightedValueSum, laneToReadFrom);
+            gaussianWeightedSum += WaveReadLaneAt(gaussianWeightedSum, laneToReadFrom);
 
             // Store only the valid results, i.e. first GroupDim columns.
             if (GTid16x4.x < GroupDim.x)
             {
-                // ToDo offset row start by rowIndex to avoid bank conflicts on read
-                PackedRowResultCache[GTid16x4.y][GTid16x4.x] = Float2ToHalf(float2(weightedValueSum, weightSum));
+                float gaussianFilteredValue = gaussianWeightedSum > 1e-6 ? gaussianWeightedValueSum / gaussianWeightedSum : RTAO::InvalidAOValue;
+                float filteredValue = weightSum > 1e-6 ? weightedValueSum / weightSum : gaussianFilteredValue;
+
+                FilteredResultCache[GTid16x4.y][GTid16x4.x] = filteredValue;
             }
         }
     }
@@ -201,6 +211,8 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
     {
         float weightedValueSum = 0;
         float weightSum = 0;
+        float gaussianWeightedValueSum = 0;
+        float gaussianWeightSum = 0;
 
         // For all rows in the kernel.
         [unroll]
@@ -211,24 +223,24 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
 
             float2 rUnpackedValueDepth = HalfToFloat2(PackedValueDepthCache[rowID][GTid.x]);
             float rDepth = rUnpackedValueDepth.y;
+            float rFilteredValue = FilteredResultCache[rowID][GTid.x];
 
-            if (rDepth != 0)
+            if (rDepth != 0 && rFilteredValue != RTAO::InvalidAOValue)
             {
-                float2 rUnpackedRowResult = HalfToFloat2(PackedRowResultCache[rowID][GTid.x]);
-                float rWeightedValueSum = rUnpackedRowResult.x;
-                float rWeightSum = rUnpackedRowResult.y;
-
-                float w = FilterKernel::Kernel1D[r];
-                float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - int(r));
+                float w_h = FilterKernel::Kernel1D[r];
+                float depthThreshold = 0.05 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - int(r));
                 float w_d = abs(kcDepth - rDepth) <= depthThreshold * kcDepth;
-                w *= w_d;
+                float w = w_h * w_d;
 
-                weightedValueSum += w * rWeightedValueSum;
-                weightSum += w * rWeightSum;
+                weightedValueSum += w * rFilteredValue;
+                weightSum += w;
+                gaussianWeightedValueSum += w_h * rFilteredValue;
+                gaussianWeightSum += w_h;
             }
         }
-        filteredValue = weightSum > 1e-9 ? weightedValueSum / weightSum : RTAO::InvalidAOValue;
-        filteredValue = filteredValue != RTAO::InvalidAOValue ? lerp(kcValue, filteredValue, blurStrength) : RTAO::InvalidAOValue;
+        float gaussianFilteredValue = gaussianWeightSum > 1e-6 ? gaussianWeightedValueSum / gaussianWeightSum : RTAO::InvalidAOValue;
+        filteredValue = weightSum > 1e-6 ? weightedValueSum / weightSum : gaussianFilteredValue;
+        filteredValue = filteredValue != RTAO::InvalidAOValue ? lerp(kcValue, filteredValue, blurStrength) : filteredValue;
     }
     g_outValues[DTid] = filteredValue;
 }
@@ -242,7 +254,7 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
     float blurStrength;
     {
         if (GI == 0)
-            PackedRowResultCache[0][0] = 0;
+            FilteredResultCache[0][0] = 0;
         GroupMemoryBarrierWithGroupSync();
 
         blurStrength = g_inBlurStrength[sDTid];
@@ -250,11 +262,11 @@ void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_Gr
         float MinBlurStrength = 0.01;
         bool valueNeedsFiltering = blurStrength >= MinBlurStrength;
         if (valueNeedsFiltering)
-            PackedRowResultCache[0][0] = 1;
+            FilteredResultCache[0][0] = 1;
 
         GroupMemoryBarrierWithGroupSync();
 
-        if (PackedRowResultCache[0][0] == 0)
+        if (FilteredResultCache[0][0] == 0)
         {
             if (!cb.readWriteUAV_and_skipPassthrough)
             {

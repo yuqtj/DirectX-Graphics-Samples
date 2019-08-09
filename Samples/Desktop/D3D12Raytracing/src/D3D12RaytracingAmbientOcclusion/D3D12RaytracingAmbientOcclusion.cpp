@@ -133,7 +133,7 @@ namespace SceneArgs
         L"Depth Buffer", 
         L"Diffuse",
         L"Disocclusion Map" };
-    EnumVar CompositionMode(L"Render/Render composition/Mode", CompositionType::AmbientOcclusionOnly_Denoised, CompositionType::Count, CompositionModes);
+    EnumVar CompositionMode(L"Render/Render composition/Mode", CompositionType::AmbientOcclusionOnly_TemporallySupersampled, CompositionType::Count, CompositionModes);
     BoolVar Compose_VarianceVisualizeStdDeviation(L"Render/Render composition/Variance/Visualize std deviation", true);       
     NumVar Compose_VarianceScale(L"Render/Render composition/Variance/Variance scale", 1.0f, 0, 10, 0.1f);
 
@@ -186,7 +186,7 @@ namespace SceneArgs
     NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
     BoolVar AnimateGrass(L"Scene2/Animate grass", false);
 
-    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", false, OnRecreateRaytracingResources, nullptr);
+    BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
 
     // Temporal Cache.
     // ToDo rename cache to accumulation/supersampling?
@@ -202,6 +202,7 @@ namespace SceneArgs
 
     
     // ToDo remove
+    BoolVar RTAO_KernelStepRotateShift0(L"Render/AO/RTAO/Kernel Step Shifts/Rotate 0:", true );
     IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 2, 0, 10, 1);
     IntVar RTAO_KernelStepShift1(L"Render/AO/RTAO/Kernel Step Shifts/1", 1, 0, 10, 1);
     IntVar RTAO_KernelStepShift2(L"Render/AO/RTAO/Kernel Step Shifts/2", 0, 0, 10, 1);
@@ -257,9 +258,9 @@ namespace SceneArgs
     BoolVar RTAODenoisingPerspectiveCorrectDepthInterpolation(L"Render/AO/RTAO/Denoising/Pespective Correct Depth Interpolation", true); // ToDo test perf impact / visual quality gain at the end. Document.
     BoolVar RTAODenoisingUseAdaptiveKernelSize(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Enabled", true);
     IntVar RTAODenoisingFilterMinKernelWidth(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Min kernel width", 3, 3, 101);
-    NumVar RTAODenoisingFilterMaxKernelWidthPercentage(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Max kernel width [%% of screen width]", 1.0f, 0, 100, 0.1f);
+    NumVar RTAODenoisingFilterMaxKernelWidthPercentage(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Max kernel width [%% of screen width]", 1.5f, 0, 100, 0.1f);
     NumVar RTAODenoisingFilterVarianceSigmaScaleOnSmallKernels(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Variance sigma scale on small kernels", 2.0f, 1.0f, 20.f, 0.5f); 
-    NumVar RTAO_Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Hit distance scale factor", 0.08f, 0.001f, 10.f, 0.005f);
+    NumVar RTAO_Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Hit distance scale factor", 0.04f, 0.001f, 10.f, 0.005f);
     BoolVar RTAODenoising_Variance_UseDepthWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true);
     BoolVar RTAODenoising_Variance_UseNormalWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true);
     BoolVar RTAODenoising_ForceDenoisePass(L"Render/AO/RTAO/Denoising/Force denoise pass", false);
@@ -278,7 +279,7 @@ namespace SceneArgs
 #define MAX_NUM_PASSES_LOW_TSPP 6
     BoolVar RTAODenoisingLowTspp(L"Render/AO/RTAO/Denoising/Low tspp filter/enabled", true);
     IntVar RTAODenoisingLowTsppMaxFrameAge(L"Render/AO/RTAO/Denoising/Low tspp filter/Max frame age", 8, 0, 33);
-    IntVar RTAODenoisingLowTspBlurPasses(L"Render/AO/RTAO/Denoising/Low tspp filter/Num blur passes", 4, 2, MAX_NUM_PASSES_LOW_TSPP);
+    IntVar RTAODenoisingLowTspBlurPasses(L"Render/AO/RTAO/Denoising/Low tspp filter/Num blur passes", 3, 2, MAX_NUM_PASSES_LOW_TSPP);
     BoolVar RTAODenoisingLowTsppUseUAVReadWrite(L"Render/AO/RTAO/Denoising/Low tspp filter/Use single UAV resource Read+Write", true);
     NumVar RTAODenoisingLowTsppDecayConstant(L"Render/AO/RTAO/Denoising/Low tspp filter/Decay constant", 1.0f, 0.1f, 32.f, 0.1f);
     BoolVar RTAODenoisingLowTsppFillMissingValues(L"Render/AO/RTAO/Denoising/Low tspp filter/Post-TSS fill in missing values", true);
@@ -314,7 +315,7 @@ namespace SceneArgs
 
      // ToDo Fine tune. 1 causes moire patterns at angle under the car
     // aT LOW RES 1280X768. causes depth disc lines down to 0.8 cutoff at long ranges
-    NumVar AODenoiseDepthWeightCutoff(L"Render/AO/RTAO/Denoising/Depth Weight Cutoff", 0.9f, 0.0f, 2.0f, 0.01f);
+    NumVar AODenoiseDepthWeightCutoff(L"Render/AO/RTAO/Denoising/Depth Weight Cutoff", 0.2f, 0.0f, 2.0f, 0.01f);
 
     NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising/Normal Sigma", 64, 0, 256, 4);   // ToDo rename sigma as sigma in depth/var means tolernace. here its an exponent.
     
@@ -2826,7 +2827,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
 
     if (isFirstPass)
     {
-        offsets[0] = offsets[0];// frameID++ % (offsets[0] + 1);
+        offsets[0] = SceneArgs::RTAO_KernelStepRotateShift0 ? 1 + (frameID++ % (offsets[0] + 1)) : offsets[0];
     }
     else
     {
@@ -4168,7 +4169,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 
 
         RWGpuResource* VarianceResource = SceneArgs::RTAODenoisingUseSmoothedVariance ? &m_varianceResource[AOVarianceResource::Smoothed] : &m_varianceResource[AOVarianceResource::Raw];
-        RWGpuResource* LocalMeanVarianceResource = SceneArgs::RTAODenoisingUseSmoothedVariance ? &m_localMeanVarianceResource[AOVarianceResource::Smoothed] : &m_localMeanVarianceResource[AOVarianceResource::Raw];
+        RWGpuResource* LocalMeanVarianceResource = &m_localMeanVarianceResource[AOVarianceResource::Raw];
         RWGpuResource* RayHitDistance = SceneArgs::QuarterResAO ? &m_AOResources[AOResource::RayHitDistance] : &m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance];
 
 
@@ -4710,7 +4711,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
             CD3DX12_RESOURCE_BARRIER::Transition(LocalMeanVarianceResources[AOVarianceResource::Raw].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(LocalMeanVarianceResources[AOVarianceResource::Smoothed].resource.Get(), before, after),
                 CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Coefficient].resource.Get())
 
         };
@@ -4741,8 +4741,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
-
-#if 1 // !VARIABLE_RATE_RAYTRACING
+#if 0 // !VARIABLE_RATE_RAYTRACING
     // ToDo - the filter needs to check for invalid values...
     // ToDo should we be smoothing before temporal?
     // Smoothen the local variance which is prone to error due to undersampled input.
@@ -4764,7 +4763,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
     D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     D3D12_RESOURCE_BARRIER barriers[] = {
-        CD3DX12_RESOURCE_BARRIER::Transition(LocalMeanVarianceResources[AOVarianceResource::Smoothed].resource.Get(), before, after),
         CD3DX12_RESOURCE_BARRIER::UAV(LocalMeanVarianceResources[AOVarianceResource::Smoothed].resource.Get())  // ToDo
     };
     commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);

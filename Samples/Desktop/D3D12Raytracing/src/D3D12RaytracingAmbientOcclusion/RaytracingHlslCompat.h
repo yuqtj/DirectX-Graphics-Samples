@@ -186,7 +186,7 @@ typedef float4 NormalDepthTexFormat;
 
 #define AO_TEST_TILE_COHERENCY 0
 
-#define ENABLE_VSYNC 0
+#define ENABLE_VSYNC 1
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 1  
 #endif
