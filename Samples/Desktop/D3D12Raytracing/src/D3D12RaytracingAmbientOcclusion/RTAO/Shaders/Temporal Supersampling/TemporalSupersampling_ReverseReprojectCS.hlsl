@@ -113,6 +113,8 @@ float4 BilateralResampleWeights(in float TargetDepth, in float3 TargetNormal, in
     params.Normal.SigmaExponent = 32; // ToDo pass from cb
 
     float4 bilinearDepthNormalWeights;
+
+    // ToDo test perf impact and move to downsampling pass?
     if (cb.usingBilateralDownsampledBuffers)
     {
         // Account for 0.5 sample offset in bilateral downsampled partial depth derivative buffer.
@@ -210,19 +212,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
 #endif
 
-    float2 dxdy = abs(g_texInputCurrentFrameLinearDepthDerivative[DTid]);
-    // ToDo should this be done separately for both X and Y dimensions?
-    // ToDo adjust ddxy for each cache pixel using pixel offsets to that pixel index?
-    float  ddxy = dot(1, dxdy);
-
-
-
+    float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];
 
     // ToDo retest/finetune depth testing. Moving car back and forth fails. Needs world space Depth & depth sigma of 2+.
     /*
     ToDo
     if (cb.useWorldSpaceDepth)
     {
+    float  ddxy = dot(1, dxdy);
         float3 normal;
         float depth;
         DecodeNormalDepth(g_texInputCurrentFrameNormalDepth[DTid], normal, depth);

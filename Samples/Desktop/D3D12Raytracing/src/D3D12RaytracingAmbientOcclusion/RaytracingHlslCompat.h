@@ -833,6 +833,7 @@ struct DownAndUpsampleFilterConstantBuffer
     XMFLOAT2 invHiResTextureDim;
     XMFLOAT2 invLowResTextureDim;
 
+    // ToDo remove
     BOOL useNormalWeights;
     BOOL useDepthWeights;
     BOOL useBilinearWeights;

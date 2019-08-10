@@ -12,11 +12,12 @@
 #define HLSL
 #include "..\RaytracingHlslCompat.h"
 #include "..\RaytracingShaderHelper.hlsli"
+#include "util\CrossBilateralWeights.hlsli"
 
 Texture2D<ValueType> g_inValue : register(t0);
 Texture2D<NormalDepthTexFormat> g_inLowResNormalDepth : register(t1);
 Texture2D<NormalDepthTexFormat> g_inHiResNormalDepth : register(t2);
-Texture2D<float2> g_inHiResPartialDistanceDerivative : register(t3);
+Texture2D<float2> g_inHiResPartialDepthDerivative : register(t3);
 RWTexture2D<ValueType> g_outValue : register(u0);
 
 // ToDo standardize cb vs g_CB
@@ -33,55 +34,49 @@ SamplerState ClampSampler : register(s0);
 // ToDo comment
 // ToDo reuse same in all resampling and atrous filter?
 // Returns normalized weights for Bilateral Upsample.
-float4 BilateralUpsampleWeights(in float ActualDistance, in float3 ActualNormal, in float4 SampleDistances, in float3 SampleNormals[4], in float4 BilinearWeights, in float2 ddxy)
+float4 BilateralUpsampleWeights(
+    in float TargetDepth, 
+    in float3 TargetNormal, 
+    in float2 TargetOffset,
+    in float2 Ddxy,
+    in float4 SampleDepths, 
+    in float3 SampleNormals[4])
 {
     float4 depthWeights = 1;
     float4 normalWeights = 1;
 
-    if (g_CB.useDepthWeights)
-    {
-        float depthThreshold = 1;     // ToDo standardize depth vs distance
-        float fEpsilon = 1e-6 * ActualDistance;
 
-        if (g_CB.useDynamicDepthThreshold)
-        {
-            float maxPixelDistance = 3; // Scale to compensate for the fact that the downsampled depth value may come from up to 3 pixels away in the high-res texture scale.
+    CrossBilateral::BilinearDepthNormal::Parameters params;
+    params.Depth.Sigma = 1;
+    params.Depth.WeightCutoff = 0.5;// ToDo pass from cb cb.DepthWeightCutoff;
+    params.Depth.NumMantissaBits = 10;
+    params.Normal.Sigma = 1.1;      // Bump the sigma a bit to add tolerance for slight geometry misalignments and/or format precision limitations.
+    params.Normal.SigmaExponent = 32; // ToDo pass from cb
 
-            // ToDo consider ddxy per dimension or have a 1D max(Ddxy) resource?
-            // ToDo perspective correction?
-            depthThreshold = maxPixelDistance * dot(1, ddxy);
-        }
-        // ToDo correct weights to weights in the whole project same for treshold and weight
-        float fScale = 1.f / depthThreshold;
-        depthWeights = min(1.0 / (fScale * abs(SampleDistances - ActualDistance) + fEpsilon), 1);
+    float4 bilinearDepthNormalWeights;
 
-        depthWeights *= depthWeights >= 0.5;   // ToDo revise - this is same as comparing to depth tolerance
+    // Account for the fact that the high-res sample corresponding to a low-res sample 
+    // may be up to 2 pixels away in the high-res grid from the target.
 
-    }
+    float2 samplesOffset = 2;
 
-    if (g_CB.useNormalWeights)
-    {
-        const uint normalExponent = 32;
-        normalWeights =  
-            float4(
-                pow(saturate(dot(ActualNormal, SampleNormals[0])), normalExponent),
-                pow(saturate(dot(ActualNormal, SampleNormals[1])), normalExponent),
-                pow(saturate(dot(ActualNormal, SampleNormals[2])), normalExponent),
-                pow(saturate(dot(ActualNormal, SampleNormals[3])), normalExponent));
+    bilinearDepthNormalWeights = CrossBilateral::BilinearDepthNormal::GetWeights(
+        TargetDepth,
+        TargetNormal,
+        TargetOffset,
+        Ddxy,
+        SampleDepths,
+        SampleNormals,
+        samplesOffset,
+        params);
 
-        // Ensure a non-zero weight in case none of the normals match.
-        normalWeights += 1e-3f;
-    }
+    bool4 isActive = SampleDepths != 0;
 
-
-
-    BilinearWeights = g_CB.useBilinearWeights ? BilinearWeights : 0.25;
-    bool4 isActive = SampleDistances != 0;
-
-    float4 weights = isActive * normalWeights * depthWeights * BilinearWeights;
-
+    float4 weights = isActive * bilinearDepthNormalWeights;
     float weightSum = dot(weights, 1);
-    float4 nWeights = weightSum > 1e-5f ? weights / weightSum : BilinearWeights; // Default to bilinear weights if all weights are too small.
+
+    // Default to an average if all weights are too small.
+    float4 nWeights = weightSum > 1e-6f ? weights / weightSum : isActive / (dot(1, isActive) + FLT_EPSILON); 
 
     return nWeights;
 }
@@ -104,8 +99,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         [unroll]
         for (int i = 0; i < 4; i++)
         {
-            if (g_CB.useDepthWeights || g_CB.useNormalWeights)
-                DecodeNormalDepth(packedEncodedNormalDepths[i], hiResNormals[i], vHiResDepths[i]);
+            DecodeNormalDepth(packedEncodedNormalDepths[i], hiResNormals[i], vHiResDepths[i]);
         }
     }
 
@@ -117,8 +111,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         [unroll]
         for (int i = 0; i < 4; i++)
         {
-            if (g_CB.useDepthWeights || g_CB.useNormalWeights)
-                DecodeNormalDepth(packedEncodedNormalDepths[i], lowResNormals[i], vLowResDepths[i]);
+            DecodeNormalDepth(packedEncodedNormalDepths[i], lowResNormals[i], vLowResDepths[i]);
         }
     }
 
@@ -132,20 +125,20 @@ void main(uint2 DTid : SV_DispatchThreadID)
     };
 #endif
 
-
-    const float4 bilinearWeights[4] = {
-        float4(9, 3, 3, 1) / 16,
-        float4(3, 9, 1, 3) / 16,
-        float4(3, 1, 9, 3) / 16,
-        float4(1, 3, 3, 9) / 16
+    float offset = 0.25;
+    float2 targetOffsets[4] = {
+        float2(offset, offset),
+        float2(1 - offset, offset),
+        float2(offset, 1 - offset),
+        float2(1 - offset, 1 - offset)
     };
     
     // ToDO standarddize ddxy vs dxdy
     float2x4 ddxy2x4 = 0;
     if (g_CB.useDepthWeights && g_CB.useDynamicDepthThreshold)
     {
-        ddxy2x4[0] = g_inHiResPartialDistanceDerivative.GatherRed(ClampSampler, hiResTexturePos).wzxy;
-        ddxy2x4[1] = g_inHiResPartialDistanceDerivative.GatherGreen(ClampSampler, hiResTexturePos).wzxy;
+        ddxy2x4[0] = g_inHiResPartialDepthDerivative.GatherRed(ClampSampler, hiResTexturePos).wzxy;
+        ddxy2x4[1] = g_inHiResPartialDepthDerivative.GatherGreen(ClampSampler, hiResTexturePos).wzxy;
     }
 
     float4x2 ddxy = {
@@ -159,18 +152,18 @@ void main(uint2 DTid : SV_DispatchThreadID)
         [unroll]
         for (int i = 0; i < 4; i++)
         {
-            float actualDistance = vHiResDepths[i];
-            float3 actualNormal = hiResNormals[i];
+            float targetDepth = vHiResDepths[i];
+            float3 targetNormal = hiResNormals[i];
 
-            float4 nWeights = BilateralUpsampleWeights(actualDistance, actualNormal, vLowResDepths, lowResNormals, bilinearWeights[i], ddxy[i]);
+            float4 nWeights = BilateralUpsampleWeights(targetDepth, targetNormal, targetOffsets[i], ddxy[i], vLowResDepths, lowResNormals);
 
             // ToDo revise - take an average if none match?
 #if VALUE_NUM_COMPONENTS == 1
             float outValue = dot(nWeights, vLowResValues);
-            g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = actualDistance < DISTANCE_ON_MISS ? outValue : vLowResValues[i];
+            g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = targetDepth < DISTANCE_ON_MISS ? outValue : vLowResValues[i];
 #elif VALUE_NUM_COMPONENTS == 2
             float2 outValue = float2(dot(nWeights, vLowResValues[0]), dot(nWeights, vLowResValues[1]));
-            g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = actualDistance < DISTANCE_ON_MISS ? outValue : vLowResValues._11_21;
+            g_outValue[topLeftHiResIndex + srcIndexOffsets[i]] = targetDepth < DISTANCE_ON_MISS ? outValue : vLowResValues._11_21;
 #endif
         }
     }

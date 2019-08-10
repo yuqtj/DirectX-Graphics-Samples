@@ -160,6 +160,9 @@ namespace CrossBilateral
             Parameters Params)
         {
             float4 bilinearWeights = Bilinear::GetWeights(TargetOffset);
+
+            //ToDo add/subtract the targetOffset from each samplesoffset
+
             float4 depthWeights = Depth::GetWeights(TargetDepth, Ddxy, SampleDepths, SamplesOffset, Params.Depth);
             float4 normalWeights = Normal::GetWeights(TargetNormal, SampleNormals, Params.Normal);
 

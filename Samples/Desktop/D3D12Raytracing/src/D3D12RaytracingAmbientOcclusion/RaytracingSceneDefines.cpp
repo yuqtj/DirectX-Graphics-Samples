@@ -74,7 +74,13 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 1// Isometric view of all objects and grass around
+#if 1 // Test upsampling jaggies
+
+            camera.position.eye = { -24.1798f, 9.34552f, -13.6086f, 1 };
+            camera.position.at = { -23.4934f, 9.10166f, -12.923f, 1 };
+            camera.position.up = { 0.245942f, 0.93636f, 0.25046f, 0 };
+            
+#elif 1// Isometric view of all objects and grass around
             camera.position.at = { -47.2277f, 27.3063f, -30.9273f, 1 };
             camera.position.up = { 0.483884f, 0.740712f, 0.466033f, 0 };
             camera.position.eye = { -47.8157f, 27.891f, -31.4868f, 1 };

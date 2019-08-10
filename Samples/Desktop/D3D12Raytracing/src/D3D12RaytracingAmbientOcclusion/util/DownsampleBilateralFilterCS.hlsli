@@ -151,7 +151,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // ToDo comment on not interpolating actualNormal
     g_outNormalAndDepth[DTid] = encodedNormalsAndDepths[outDepthIndex];
 
-    // ToDo
+    // ToDo revise
     // Since we're reducing the resolution by 2, recalculate the partial derivatives at the new offset of 2 pixels.
     // ToDo it would be cleaner to apply that multiplier at weights calculation. Or recompute the partial derivatives on downsample?
     float2 ddxy = g_inPartialDistanceDerivatives[topLeftSrcIndex + srcIndexOffsets[outDepthIndex]];
