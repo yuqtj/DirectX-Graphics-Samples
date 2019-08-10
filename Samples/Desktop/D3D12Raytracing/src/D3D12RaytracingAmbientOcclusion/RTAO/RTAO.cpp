@@ -57,7 +57,7 @@ namespace SceneArgs
     IntVar AOTileX(L"Render/AO/Tile X", 1, 1, 128, 1);
     IntVar AOTileY(L"Render/AO/Tile Y", 1, 1, 128, 1);
 
-    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", false);
+    BoolVar RTAOUseRaySorting(L"Render/AO/RTAO/Ray Sorting/Enabled", true);
     NumVar RTAORayBinDepthSizeMultiplier(L"Render/AO/RTAO/Ray Sorting/Ray bin depth size (multiplier of MaxRayHitTime)", 0.1f, 0.01f, 10.f, 0.01f);
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
@@ -617,6 +617,12 @@ float RTAO::GetSpp()
     return 1;
 }
 
+void RTAO::GetRayGenParameters(bool* isCheckerboardSamplingEnabled, bool* checkerboardLoadEvenPixels)
+{
+    *isCheckerboardSamplingEnabled = GetSpp() != 1;
+    *checkerboardLoadEvenPixels = m_checkerboardGenerateRaysForEvenPixels;
+}
+
 void RTAO::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT height)
 {
     auto commandList = m_deviceResources->GetCommandList();
@@ -844,7 +850,9 @@ void RTAO::OnRender(
 
     if (SceneArgs::RTAOUseRaySorting)
     {
-   
+        bool doCheckerboardRayGeneration = GetSpp() != 1;
+        m_checkerboardGenerateRaysForEvenPixels = !m_checkerboardGenerateRaysForEvenPixels;
+
         m_rayGen.Execute(
             commandList,
             m_raytracingWidth,
@@ -858,6 +866,8 @@ void RTAO::OnRender(
             m_randomSampler.NumSamples(),
             m_randomSampler.NumSampleSets(),
             SceneArgs::AOSampleSetDistributedAcrossPixels,
+            doCheckerboardRayGeneration,
+            m_checkerboardGenerateRaysForEvenPixels,
             m_cbvSrvUavHeap->GetHeap(),
             rayOriginSurfaceNormalDepthResource,
             rayOriginSurfaceHitPositionResource,

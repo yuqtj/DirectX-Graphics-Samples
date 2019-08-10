@@ -514,7 +514,7 @@ namespace GpuKernels
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
             UINT height,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
 
     private:
@@ -565,6 +565,38 @@ namespace GpuKernels
         UINT                                m_CBinstanceID = 0;
     };
 
+    class FillInCheckerboard
+    {
+    public:
+        // ToDo enclose these enums in namespace?
+        enum FilterType {
+            CrossBox4TapFilter = 0,
+            Count
+        };
+
+        void Release()
+        {
+            assert(0 && L"ToDo");
+        }
+
+        void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
+        void Execute(
+            ID3D12GraphicsCommandList4* commandList,
+            ID3D12DescriptorHeap* descriptorHeap,
+            UINT width,
+            UINT height,
+            FilterType filterType,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+            bool fillEvenPixels = false);
+
+    private:
+        ComPtr<ID3D12RootSignature>         m_rootSignature;
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
+        ConstantBuffer<CalculateMeanVarianceConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
+        UINT                                m_CBinstanceID = 0;
+    };
+
     // ToDo rename to VarianceMean to match the result layout
     class CalculateMeanVariance
     {
@@ -573,6 +605,7 @@ namespace GpuKernels
             // ToDo is this supported on all HW?
             Separable_AnyToAnyWaveReadLaneAt = 0,
             Separable,
+            Separable_CheckerboardSampling_AnyToAnyWaveReadLaneAt,
             Count
         };
 
@@ -591,7 +624,9 @@ namespace GpuKernels
             FilterType filterType,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputMeanVarianceResourceHandle,
-            UINT kernelWidth);
+            UINT kernelWidth,
+            bool doCheckerboardSampling = false,
+            bool checkerboardLoadEvenPixels = false);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -797,6 +832,8 @@ namespace GpuKernels
             UINT numSamplesPerSet,
             UINT numSampleSets,
             UINT numPixelsPerDimPerSet,
+            bool doCheckerboardRayGeneration,
+            bool checkerboardGenerateRaysForEvenPixels,
             ID3D12DescriptorHeap* descriptorHeap,
             // ToDo remove const&?
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginSurfaceNormalDepthResourceHandle,

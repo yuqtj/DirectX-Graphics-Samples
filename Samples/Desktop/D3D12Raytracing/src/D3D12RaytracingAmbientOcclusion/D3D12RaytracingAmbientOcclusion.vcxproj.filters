@@ -451,6 +451,12 @@
     <FxCompile Include="RTAO\Shaders\Denoising\NormalDepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl">
       <Filter>Assets\Shaders\RTAO\Denoising</Filter>
     </FxCompile>
+    <FxCompile Include="CalculateMeanVariance_SeparableFilterCS_CheckerboardSampling_AnyToAnyWaveReadLaneAt.hlsl">
+      <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
+    </FxCompile>
+    <FxCompile Include="FillInCheckerboard_CrossBox4TapFilterCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="util\SquidRoom.bin">

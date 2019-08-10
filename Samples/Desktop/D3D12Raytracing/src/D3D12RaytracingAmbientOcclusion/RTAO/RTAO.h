@@ -48,7 +48,7 @@ public:
     DXGI_FORMAT GetAOCoefficientFormat();
     float GetMaxRayHitTime();
     float GetSpp();
-
+    void GetRayGenParameters(bool *isCheckerboardSamplingEnabled, bool *checkerboardLoadEvenPixels);
     // ToDo return only a subset
     RWGpuResource (&AOResources())[AOResource::Count]{ return m_AOResources; }
     RWGpuResource* GetAOResources(){ return m_AOResources; }
@@ -100,7 +100,7 @@ private:
     StructuredBuffer<AlignedHemisphereSample3D> m_hemisphereSamplesGPUBuffer;
 
     UINT		    m_numAORayGeometryHits;
-
+    bool            m_checkerboardGenerateRaysForEvenPixels = false;
 
 #if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
     DX::GPUTimer dispatchRayTime;

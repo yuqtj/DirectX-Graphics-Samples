@@ -25,14 +25,6 @@ ConstantBuffer<DownAndUpsampleFilterConstantBuffer> g_CB : register(b0);
 
 SamplerState ClampSampler : register(s0);
 
-// ToDo consider 3x3 tap upsample instead 2x2
-
-// ToDo remove outNormal if not written to.
-//RWTexture2D<float4> g_texOutNormal : register(u1);
-
-// ToDo use common bilateral sample fnc across all shaders
-// ToDo comment
-// ToDo reuse same in all resampling and atrous filter?
 // Returns normalized weights for Bilateral Upsample.
 float4 BilateralUpsampleWeights(
     in float TargetDepth, 
@@ -42,9 +34,9 @@ float4 BilateralUpsampleWeights(
     in float4 SampleDepths, 
     in float3 SampleNormals[4])
 {
-    float4 depthWeights = 1;
-    float4 normalWeights = 1;
-
+    // Account for the fact that the high-res sample corresponding to a low-res sample 
+    // may be up to 2 pixels away in the high-res grid from the target.
+    float2 samplesOffset = 2;
 
     CrossBilateral::BilinearDepthNormal::Parameters params;
     params.Depth.Sigma = 1;
@@ -53,14 +45,7 @@ float4 BilateralUpsampleWeights(
     params.Normal.Sigma = 1.1;      // Bump the sigma a bit to add tolerance for slight geometry misalignments and/or format precision limitations.
     params.Normal.SigmaExponent = 32; // ToDo pass from cb
 
-    float4 bilinearDepthNormalWeights;
-
-    // Account for the fact that the high-res sample corresponding to a low-res sample 
-    // may be up to 2 pixels away in the high-res grid from the target.
-
-    float2 samplesOffset = 2;
-
-    bilinearDepthNormalWeights = CrossBilateral::BilinearDepthNormal::GetWeights(
+    float4 bilinearDepthNormalWeights = CrossBilateral::BilinearDepthNormal::GetWeights(
         TargetDepth,
         TargetNormal,
         TargetOffset,
@@ -71,7 +56,6 @@ float4 BilateralUpsampleWeights(
         params);
 
     bool4 isActive = SampleDepths != 0;
-
     float4 weights = isActive * bilinearDepthNormalWeights;
     float weightSum = dot(weights, 1);
 
@@ -150,7 +134,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     {
         [unroll]
-        for (int i = 0; i < 4; i++)
+        for (uint i = 0; i < 4; i++)
         {
             float targetDepth = vHiResDepths[i];
             float3 targetNormal = hiResNormals[i];

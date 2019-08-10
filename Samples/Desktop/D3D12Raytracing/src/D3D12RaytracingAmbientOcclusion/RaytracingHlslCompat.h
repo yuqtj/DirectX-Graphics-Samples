@@ -16,6 +16,11 @@
 
 /*
 //ToDo
+- fix variance for <1spp AO
+--- cast 2 rays in cross order
+
+
+
 - Multi-scale denoiser
 - consider alternating min/max pattern on downsampling
 - 3x3 vs 5x5 blur at lower resolutions
@@ -454,6 +459,11 @@ struct CalculateMeanVarianceConstantBuffer
     XMUINT2 textureDim;
     UINT kernelWidth;
     UINT kernelRadius;
+
+    BOOL doCheckerboardSampling;
+    BOOL evenPixelsAreActive;
+    UINT pixelStepY;
+    float padding;
 };
 
 // ToDo standardzie capitalization
@@ -473,7 +483,9 @@ struct AdaptiveRayGenConstantBuffer
     UINT numPixelsPerDimPerSet;
 
     UINT MaxFrameAgeToGenerateRaysFor;
-    float padding[3];
+    BOOL doCheckerboardRayGeneration;
+    BOOL checkerboardGenerateRaysForEvenPixels;
+    float padding;
 };
 
 struct SortRaysConstantBuffer

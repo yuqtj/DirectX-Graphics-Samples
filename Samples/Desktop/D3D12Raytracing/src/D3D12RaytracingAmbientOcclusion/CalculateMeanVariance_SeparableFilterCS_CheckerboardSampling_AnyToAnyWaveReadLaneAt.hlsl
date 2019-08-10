@@ -9,12 +9,15 @@
 //
 //*********************************************************
 
-// Desc: Calculate Variance and Mean via a separable kernel.
+// Desc: Calculate Variance and Mean via a separable kernel and accounts for checkerboard distribution of the input.
+// Active pixel is a pixel on the checkerboard pattern and has a value generated for it.
+// The kernel is stretched in y direction to sample only from active pixels. 
+// The variance is calculated for all pixels, regardless if theyre input is active or not.
 // Supports up to 9x9 kernels.
 // Requirements:
 // - wave lane size 16 or higher.
 // Performance: 
-// ToDo: 0.235ms for 7x7 kernel at 4K on 2080Ti.
+// ToDo: 
 
 // ToDo handle inactive pixels
 // ToDo check WaveLaneCountMin cap to be 16 or higher and fail or disable using this shader.
@@ -27,12 +30,26 @@
 Texture2D<float> g_inValues : register(t0);
 RWTexture2D<float2> g_outMeanVariance : register(u0);
 
+RWTexture2D<float4> g_outDebug1 : register(u3);
+RWTexture2D<float4> g_outDebug2 : register(u4);
+
 ConstantBuffer<CalculateMeanVarianceConstantBuffer> cb: register(b0);
 
 // Group shared memory cache for the row aggregated results.
 groupshared uint PackedRowResultCache[16][8];            // 16bit float valueSum, squaredValueSum.
 groupshared uint NumValuesCache[16][8]; 
 
+
+// Adjust an index to a pixel that had a valid value generated for it.
+// Inactive pixel indices get increased by 1 in the y direction.
+int2 GetActivePixelIndex(int2 pixel)
+{
+    bool isEvenPixel = ((pixel.x + pixel.y) & 1) == 0;
+    return
+        cb.doCheckerboardSampling && cb.evenPixelsAreActive != isEvenPixel
+        ? pixel + int2(0, 1)
+        : pixel;
+}
 // Load up to 16x16 pixels and filter them horizontally.
 // The output is cached in Shared Memory and contains NumRows x 8 results.
 void FilterHorizontally(in uint2 Gid, in uint GI)
@@ -44,7 +61,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     // Each thread loads up to 4 values, with the sub groups loading rows interleaved.
     // Loads up to 16x4x4 == 256 input values.
     uint2 GTid16x4_row0 = uint2(GI % 16, GI / 16);
-    int2 KernelBasePixel = Gid * GroupDim - int2(cb.kernelRadius, cb.kernelRadius);
+    const int2 KernelBasePixel = (Gid * GroupDim - int(cb.kernelRadius)) * int2(1, cb.pixelStepY);
     const uint NumRowsToLoadPerThread = 4;
     const uint Row_BaseWaveLaneIndex = (WaveGetLaneIndex() / 16) * 16;
 
@@ -54,11 +71,15 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
         uint2 GTid16x4 = GTid16x4_row0 + uint2(0, i * 4);
         if (GTid16x4.y >= NumValuesToLoadPerRowOrColumn)
         {
+            if (GTid16x4.x < GroupDim.x)
+            {
+                NumValuesCache[GTid16x4.y][GTid16x4.x] = 0;
+            }
             break;
         }
 
         // Load all the contributing columns for each row.
-        int2 pixel = KernelBasePixel + GTid16x4;
+        int2 pixel = GetActivePixelIndex(KernelBasePixel + GTid16x4 * int2(1, cb.pixelStepY));
         float value = RTAO::InvalidAOValue;
 
         // The lane is out of bounds of the GroupDim + kernel, 
@@ -135,18 +156,43 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
     float squaredValueSum = 0;
     uint numValues = 0;
 
+    uint2 pixel = GetActivePixelIndex(int2(DTid.x, DTid.y * cb.pixelStepY));
+
+    float4 val1, val2;
     // Accumulate for the whole kernel.
-    for (uint c = 0; c < cb.kernelWidth; c++)
+    // ToDo comapre perf to unroll here with a known loop count
+    for (uint r = 0; r < cb.kernelWidth; r++)
     {
-        uint rowID = GTid.y + c;
-        float2 unpackedRowSum = HalfToFloat2(PackedRowResultCache[rowID][GTid.x]);
+        uint rowID = GTid.y + r;
+        uint rNumValues = NumValuesCache[rowID][GTid.x];
 
-        valueSum += unpackedRowSum.x;
-        squaredValueSum += unpackedRowSum.y;
+        if (IsInRange(r, 0, 3))
+        {
+            val1[r] = rNumValues;
+        }
+        else if (r < 8)
+        {
+            val2[r-4] = rNumValues;
+        }
+        else
+        {
+            val2[0] += rNumValues;
+        }
 
-        numValues += NumValuesCache[rowID][GTid.x];
+        if (rNumValues > 0)
+        {
+            float2 unpackedRowSum = HalfToFloat2(PackedRowResultCache[rowID][GTid.x]);
+            float rValueSum = unpackedRowSum.x;
+            float rSquaredValueSum = unpackedRowSum.y;
+
+            valueSum += rValueSum;
+            squaredValueSum += rSquaredValueSum;
+            numValues += rNumValues;
+        }
     }
-       
+    g_outDebug1[DTid] = val1;
+    g_outDebug2[DTid] = val2;
+
     // Calculate mean and variance.
     float invN = 1.f / max(numValues, 1);
     float mean = invN * valueSum;
@@ -158,7 +204,8 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
 
     variance = max(0, variance);    // Ensure variance doesn't go negative due to imprecision.
     
-    g_outMeanVariance[DTid] = numValues > 0 ? float2(mean, variance) : RTAO::InvalidAOValue;
+
+    g_outMeanVariance[pixel] = numValues > 0 ? float2(mean, variance) : RTAO::InvalidAOValue;
 }
 
 

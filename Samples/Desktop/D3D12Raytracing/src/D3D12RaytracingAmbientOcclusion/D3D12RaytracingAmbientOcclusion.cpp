@@ -280,7 +280,7 @@ namespace SceneArgs
 #define MIN_NUM_PASSES_LOW_TSPP 2 // THe blur writes to the initial input resource and thus must numPasses must be 2+.
 #define MAX_NUM_PASSES_LOW_TSPP 6
     BoolVar RTAODenoisingLowTspp(L"Render/AO/RTAO/Denoising/Low tspp filter/enabled", true);
-    IntVar RTAODenoisingLowTsppMaxFrameAge(L"Render/AO/RTAO/Denoising/Low tspp filter/Max frame age", 8, 0, 33);
+    IntVar RTAODenoisingLowTsppMaxFrameAge(L"Render/AO/RTAO/Denoising/Low tspp filter/Max frame age", 12, 0, 33);
     IntVar RTAODenoisingLowTspBlurPasses(L"Render/AO/RTAO/Denoising/Low tspp filter/Num blur passes", 3, 2, MAX_NUM_PASSES_LOW_TSPP);
     BoolVar RTAODenoisingLowTsppUseUAVReadWrite(L"Render/AO/RTAO/Denoising/Low tspp filter/Use single UAV resource Read+Write", true);
     NumVar RTAODenoisingLowTsppDecayConstant(L"Render/AO/RTAO/Denoising/Low tspp filter/Decay constant", 1.0f, 0.1f, 32.f, 0.1f);
@@ -1614,7 +1614,8 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 	m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
     m_atrousWaveletTransformFilter.Initialize(device, ATROUS_DENOISER_MAX_PASSES, FrameCount, MaxAtrousWaveletTransformFilterInvocationsPerFrame);
     m_calculateVarianceKernel.Initialize(device, FrameCount, MaxCalculateVarianceKernelInvocationsPerFrame); 
-    m_calculateMeanVarianceKernel.Initialize(device, FrameCount, 5*MaxCalculateVarianceKernelInvocationsPerFrame);
+    m_calculateMeanVarianceKernel.Initialize(device, FrameCount, 5*MaxCalculateVarianceKernelInvocationsPerFrame); // ToDo revise the ount
+    m_fillInCheckerboardKernel.Initialize(device, FrameCount);
     m_calculatePartialDerivativesKernel.Initialize(device, FrameCount);
     m_gaussianSmoothingKernel.Initialize(device, FrameCount, MaxGaussianSmoothingKernelInvocationsPerFrame);
 	m_downsampleBoxFilter2x2Kernel.Initialize(device, FrameCount);
@@ -4724,17 +4725,42 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
     // have anycontribution with bilateral - their variance will be zero. Or set a variance to non-zero in that case?
     // Calculate local mean and variance.
     {
+
+        bool isCheckerboardSamplingEnabled;
+        bool checkerboardLoadEvenPixels;
+        m_RTAO.GetRayGenParameters(&isCheckerboardSamplingEnabled, &checkerboardLoadEvenPixels);
+
         // ToDo add Separable Bilateral and Square bilateral support how it affects image quality.
+        // ToDo checkerboard is same perf ?
         ScopedTimer _prof(L"Calculate Mean and Variance", commandList);
         m_calculateMeanVarianceKernel.Execute(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
             m_raytracingWidth,
             m_raytracingHeight,
-            GpuKernels::CalculateMeanVariance::FilterType::Separable_AnyToAnyWaveReadLaneAt,
+            //GpuKernels::CalculateMeanVariance::FilterType::Separable_AnyToAnyWaveReadLaneAt,
+            GpuKernels::CalculateMeanVariance::FilterType::Separable_CheckerboardSampling_AnyToAnyWaveReadLaneAt,
             AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
             LocalMeanVarianceResources[AOVarianceResource::Raw].gpuDescriptorWriteAccess,
-            SceneArgs::VarianceBilateralFilterKernelWidth);
+            SceneArgs::VarianceBilateralFilterKernelWidth,
+            isCheckerboardSamplingEnabled,
+            checkerboardLoadEvenPixels);
+
+        // Interpolate the variance for the inactive cells from the valid checherkboard cells.
+        if (isCheckerboardSamplingEnabled)
+        {
+            bool fillEvenPixels = !checkerboardLoadEvenPixels;
+            m_fillInCheckerboardKernel.Execute(
+                commandList,
+                m_cbvSrvUavHeap->GetHeap(),
+                m_raytracingWidth,
+                m_raytracingHeight,
+                GpuKernels::FillInCheckerboard::FilterType::CrossBox4TapFilter,
+                LocalMeanVarianceResources[AOVarianceResource::Smoothed].gpuDescriptorReadAccess,
+                LocalMeanVarianceResources[AOVarianceResource::Raw].gpuDescriptorWriteAccess,
+                fillEvenPixels);
+        }
+
 
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
@@ -5044,8 +5070,8 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Smoothed].resource.Get()),
+            CD3DX12_RESOURCE_BARRIER::Transition(OutResource->resource.Get(), before, after),
+            CD3DX12_RESOURCE_BARRIER::UAV(OutResource->resource.Get()),
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }

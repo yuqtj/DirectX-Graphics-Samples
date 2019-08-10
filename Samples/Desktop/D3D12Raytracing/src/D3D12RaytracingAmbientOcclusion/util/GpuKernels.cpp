@@ -39,6 +39,7 @@
 //#include "CompiledShaders\CalculateVariance_SeparableBilateralFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS.hlsl.h"
 #include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
+#include "CompiledShaders\CalculateMeanVariance_SeparableFilterCS_CheckerboardSampling_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
 #include "CompiledShaders\TemporalSupersampling_BlendWithCurrentFrameCS.hlsl.h"
 #include "CompiledShaders\TemporalSupersampling_ReverseReprojectCS.hlsl.h"
@@ -50,6 +51,7 @@
 #include "CompiledShaders\FillInMissingValuesFilter_DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\NormalDepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
+#include "CompiledShaders\FillInCheckerboard_CrossBox4TapFilterCS.hlsl.h"
 
 using namespace std;
 
@@ -2020,6 +2022,8 @@ namespace GpuKernels
                 enum Enum {
                     OutputMeanVariance = 0,
                     Input,
+                    Debug1,
+                    Debug2,
                     ConstantBuffer,
                     Count
                 };
@@ -2035,33 +2039,21 @@ namespace GpuKernels
             using namespace RootSignature::CalculateMeanVariance;
 
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
-            ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // input values
-            ranges[Slot::OutputMeanVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output mean and variance 
+            ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); 
+            ranges[Slot::OutputMeanVariance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0); 
+            ranges[Slot::Debug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3); 
+            ranges[Slot::Debug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4); 
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
             rootParameters[Slot::OutputMeanVariance].InitAsDescriptorTable(1, &ranges[Slot::OutputMeanVariance]);
+            rootParameters[Slot::Debug1].InitAsDescriptorTable(1, &ranges[Slot::Debug1]);
+            rootParameters[Slot::Debug2].InitAsDescriptorTable(1, &ranges[Slot::Debug2]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: CalculateMeanVariance");
         }
-        {
-            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
-            descComputePSO.pRootSignature = m_rootSignature.Get();
-
-
-        }
-#if 0
-        // Create compute pipeline state.
-        {
-            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {}; 
-            descComputePSO.pRootSignature = m_rootSignature.Get(); 
-            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateMeanVariance_SeparableFilterCS), ARRAYSIZE(g_pCalculateMeanVariance_SeparableFilterCS));
-            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-            m_pipelineStateObject->SetName(L"Pipeline state object: CalculateMeanVariance");
-        }
-#else
         // Create compute pipeline state.
         {
             D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
@@ -2076,13 +2068,16 @@ namespace GpuKernels
                 case Separable:
                     descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateMeanVariance_SeparableFilterCS), ARRAYSIZE(g_pCalculateMeanVariance_SeparableFilterCS));
                     break;
+                case Separable_CheckerboardSampling_AnyToAnyWaveReadLaneAt:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCalculateMeanVariance_SeparableFilterCS_CheckerboardSampling_AnyToAnyWaveReadLaneAt), ARRAYSIZE(g_pCalculateMeanVariance_SeparableFilterCS_CheckerboardSampling_AnyToAnyWaveReadLaneAt));
+                    break;
                 }
 
                 ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
                 m_pipelineStateObjects[i]->SetName(L"Pipeline state object: CalculateMeanVariance");
             }
         }
-#endif
+
         // Create shader resources.
         {
             m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: CalculateMeanVariance");
@@ -2099,7 +2094,9 @@ namespace GpuKernels
         FilterType filterType,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputValuesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputMeanVarianceResourceHandle,
-        UINT kernelWidth)
+        UINT kernelWidth,
+        bool doCheckerboardSampling,
+        bool checkerboardLoadEvenPixels)
     {
         using namespace RootSignature::CalculateMeanVariance;
         using namespace DefaultComputeShaderParams;
@@ -2119,12 +2116,20 @@ namespace GpuKernels
             commandList->SetPipelineState(m_pipelineStateObjects[filterType].Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputMeanVariance, outputMeanVarianceResourceHandle);
+
+            RWGpuResource* debugResources = global_pSample->GetDebugResources();
+            commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
+            commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
         }
 
         // Update the Constant Buffer.
         m_CB->textureDim = XMUINT2(width, height);
         m_CB->kernelWidth = kernelWidth;
         m_CB->kernelRadius = kernelWidth >> 1;
+        m_CB->doCheckerboardSampling = doCheckerboardSampling;
+        m_CB->pixelStepY = doCheckerboardSampling ? 2 : 1;
+        m_CB->evenPixelsAreActive = checkerboardLoadEvenPixels;
+        //ToDo move instance id tracking to the CB class.
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
         commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
@@ -2132,10 +2137,122 @@ namespace GpuKernels
 
         // Dispatch.
         {
-            XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
+            XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height * m_CB->pixelStepY));
             commandList->Dispatch(groupSize.x, groupSize.y, 1);
         }
     }
+
+
+    namespace RootSignature {
+        namespace FillInCheckerboard {
+            namespace Slot {
+                enum Enum {
+                    Output = 0,
+                    Input,
+                    Debug1,
+                    Debug2,
+                    ConstantBuffer,
+                    Count
+                };
+            }
+        }
+    }
+
+    // ToDo move type to execute
+    void FillInCheckerboard::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
+    {
+        // Create root signature.
+        {
+            using namespace RootSignature::FillInCheckerboard;
+
+            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
+            ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+            ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+            ranges[Slot::Debug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);
+            ranges[Slot::Debug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);
+
+            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
+            rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
+            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
+            rootParameters[Slot::Debug1].InitAsDescriptorTable(1, &ranges[Slot::Debug1]);
+            rootParameters[Slot::Debug2].InitAsDescriptorTable(1, &ranges[Slot::Debug2]);
+            rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
+
+            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: FillInCheckerboard");
+        }
+        // Create compute pipeline state.
+        {
+            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
+            descComputePSO.pRootSignature = m_rootSignature.Get();
+            for (UINT i = 0; i < FilterType::Count; i++)
+            {
+                switch (i)
+                {
+                case CrossBox4TapFilter:
+                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pFillInCheckerboard_CrossBox4TapFilterCS), ARRAYSIZE(g_pFillInCheckerboard_CrossBox4TapFilterCS));
+                    break;
+                }
+
+                ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
+                m_pipelineStateObjects[i]->SetName(L"Pipeline state object: FillInCheckerboard");
+            }
+        }
+        // Create shader resources.
+        {
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: FillInCheckerboard");
+        }
+    }
+
+    // ToDo add option to allow input, output being the same
+    // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
+    void FillInCheckerboard::Execute(
+        ID3D12GraphicsCommandList4* commandList,
+        ID3D12DescriptorHeap* descriptorHeap,
+        UINT width,
+        UINT height,
+        FilterType filterType,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle,
+        bool fillEvenPixels)
+    {
+        using namespace RootSignature::FillInCheckerboard;
+        using namespace DefaultComputeShaderParams;
+
+        // ToDo move out or rename
+        // ToDo add spaces to names?
+        ScopedTimer _prof(L"FillInCheckerboard", commandList); // ToDo update name
+
+        // Set pipeline state.
+        {
+            commandList->SetDescriptorHeaps(1, &descriptorHeap);
+            commandList->SetComputeRootSignature(m_rootSignature.Get());
+            commandList->SetPipelineState(m_pipelineStateObjects[filterType].Get());
+            commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
+
+            RWGpuResource* debugResources = global_pSample->GetDebugResources();
+            commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
+            commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
+        }
+
+        // Update the Constant Buffer.
+        m_CB->textureDim = XMUINT2(width, height);
+        // ToDo use custom CB
+        m_CB->evenPixelsAreActive = !fillEvenPixels;
+        //ToDo move instance id tracking to the CB class.
+        m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
+        m_CB.CopyStagingToGpu(m_CBinstanceID);
+        commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
+
+
+        // Dispatch.
+        {
+            XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height * 2));
+            commandList->Dispatch(groupSize.x, groupSize.y, 1);
+        }
+    }
+
 
 
     namespace RootSignature {
@@ -2847,6 +2964,8 @@ namespace GpuKernels
         UINT numSamplesPerSet,
         UINT numSampleSets,
         UINT numPixelsPerDimPerSet,
+        bool doCheckerboardRayGeneration,
+        bool checkerboardGenerateRaysForEvenPixels,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginSurfaceNormalDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginPositionResourceHandle,
@@ -2874,9 +2993,8 @@ namespace GpuKernels
         m_CB->numPixelsPerDimPerSet = numPixelsPerDimPerSet;
         m_CB->numSampleSets = numSampleSets;
         m_CB->MaxFrameAgeToGenerateRaysFor = maxFrameAgeToGenerateRaysFor;
-        static UINT frameID = 0;
-        frameID = (frameID + 1) % (m_CB->QuadDim.x * m_CB->QuadDim.y);
-        m_CB->FrameID = frameID;
+        m_CB->doCheckerboardRayGeneration = doCheckerboardRayGeneration;
+        m_CB->checkerboardGenerateRaysForEvenPixels = checkerboardGenerateRaysForEvenPixels;
 
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);

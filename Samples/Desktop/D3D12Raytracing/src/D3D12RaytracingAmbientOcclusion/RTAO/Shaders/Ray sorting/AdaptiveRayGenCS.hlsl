@@ -108,6 +108,31 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     float rayOriginDepth;
     DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[DTid], surfaceNormal, rayOriginDepth);
 
+#if 1
+    float3 rayDirection = 0;
+    if (rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH)
+    {
+        // Generate rays for two pixels in a checkerboard pattern.
+        if (CB.doCheckerboardRayGeneration)
+        {
+            bool isEvenPixel = ((DTid.x + DTid.y) & 1) == 0;
+            if (isEvenPixel == CB.checkerboardGenerateRaysForEvenPixels)
+            {
+                rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
+            }
+            else
+            {
+                // Invalidate this ray entry.
+                rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;
+            }
+        }
+        else // CB.MaxRaysPerQuad == 4
+        {
+            rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
+        }
+    }
+
+#else
     // Load the frame age for the whole quad into shared memory.
     uint2 frameAgeAndNumRaysToGenerate = g_texFrameAge[DTid & 0xFFFE];
     uint frameAge = frameAgeAndNumRaysToGenerate.x;
@@ -179,6 +204,6 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
             rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;
         }
     }
-
+#endif
     g_rtRaysDirectionOriginDepth[DTid] = EncodeNormalDepth(rayDirection, rayOriginDepth);
 }

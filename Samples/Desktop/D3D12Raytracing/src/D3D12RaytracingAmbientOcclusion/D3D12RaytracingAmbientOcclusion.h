@@ -104,6 +104,7 @@ private:
                                             MaxAtrousWaveletTransformFilterInvocationsPerFrame 
                                             + 1; // Temporal Super-Sampling.
 
+    GpuKernels::FillInCheckerboard      m_fillInCheckerboardKernel;
     GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
     const UINT                          MaxGaussianSmoothingKernelInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for TAO 
 

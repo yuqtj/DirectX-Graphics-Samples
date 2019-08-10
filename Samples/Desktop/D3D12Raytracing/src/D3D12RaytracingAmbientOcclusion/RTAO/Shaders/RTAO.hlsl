@@ -265,6 +265,8 @@ void RayGenShader()
     // ToDO use full precision here?
     DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[srcRayIndex], surfaceNormal, depth);
 	bool hit = depth != 0;   // ToDo use a common func to determine
+    float tHit = RTAO::RayHitDistanceOnMiss;
+    float ambientCoef = RTAO::InvalidAOValue;
 	if (hit)
 	{
 		float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;
@@ -290,41 +292,21 @@ void RayGenShader()
         //    }
         //}
         
-        float tHit;
 #if 1
         Ray AORay = GenerateRandomAORay(srcRayIndex, hitPosition, surfaceNormal);
 #else
         Ray AORay = { hitPosition, normalize(float3(0.2, 0.4, 0.2)) };
 #endif
-        float ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
-
-        if (CB.RTAO_UseSortedRays)
-        {
-            //g_rtAORaysDirectionOriginDepth[srcRayIndex] = float4(EncodeNormal(AORay.direction), depth, 0);
-        }
-        else
-        {
-            g_rtAOcoefficient[srcRayIndex] = ambientCoef;
-            g_rtAORayHitDistance[srcRayIndex] = RTAO::HasAORayHitAnyGeometry(tHit) ? tHit : CB.RTAO_maxTheoreticalShadowRayHitTime;
-        }
-
-#if GBUFFER_AO_COUNT_AO_HITS
-        // ToDo test perf impact of writing this
-        g_rtAORayHits[srcRayIndex] = RTAO::HasAORayHitAnyGeometry(tHit);
-#endif
-	}
-    else
-    {
-        if (CB.RTAO_UseSortedRays)
-        {
-            g_rtAORaysDirectionOriginDepth[srcRayIndex] = 0;
-        }
-
-#if GBUFFER_AO_COUNT_AO_HITS
-        // ToDo test perf impact of writing this
-        g_rtAORayHits[srcRayIndex] = 0;
-#endif
+        ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
     }
+#endif
+
+    g_rtAOcoefficient[srcRayIndex] = ambientCoef;
+    g_rtAORayHitDistance[srcRayIndex] = RTAO::HasAORayHitAnyGeometry(tHit) ? tHit : CB.RTAO_maxTheoreticalShadowRayHitTime;
+ 
+#if GBUFFER_AO_COUNT_AO_HITS
+    // ToDo test perf impact of writing this
+    g_rtAORayHits[srcRayIndex] = RTAO::HasAORayHitAnyGeometry(tHit);
 #endif
 }
 
