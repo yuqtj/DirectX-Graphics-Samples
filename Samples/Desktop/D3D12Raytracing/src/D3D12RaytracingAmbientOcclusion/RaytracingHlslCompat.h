@@ -796,6 +796,8 @@ struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer
     float depthDistanceBasedDepthTolerance;
     UINT numRaysToTraceAfterTSSAtMaxFrameAge;
     UINT maxFrameAge;       // ToDo rename maxFrameAge to tspp
+
+    BOOL testFlag;
 };
 
 struct RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer

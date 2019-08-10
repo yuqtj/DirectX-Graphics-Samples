@@ -935,6 +935,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">
       </ExcludedFromBuild>
     </FxCompile>
+    <None Include="util\CrossBilateralWeights.hlsli" />
     <None Include="util\DownsampleBilateralFilterCS.hlsli">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </ExcludedFromBuild>

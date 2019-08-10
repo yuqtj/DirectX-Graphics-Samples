@@ -470,6 +470,7 @@ uint SmallestPowerOf2GreaterThan(in uint x)
 }
 
 // Returns float precision for a given float value.
+// Values within (value -precision, value + precision) map to the same value. 
 // Precision = exponentRange/MaxMantissaValue = (2^e+1 - 2^e) / (2^NumMantissaBits)
 // Ref: https://blog.demofox.org/2017/11/21/floating-point-precision/
 float FloatPrecision(in float x, in uint NumMantissaBits)
@@ -1002,30 +1003,33 @@ float2 GetProjectedSurfaceDimensionsPerPixel(in float z, in float2 ddxy, in floa
 }
 
 
-// Ensure only valid samples are interpolated. Default to an invalid value if none are valid.
+// Ensure only valid samples are interpolated. 
+// Defaults to an average or an invalid value if none are valid.
 float InterpolateValidValues(
-    float4 weights,
-    float4 SampleValues)
+    in float4 weights,
+    in float4 SampleValues,
+    in float minWeight = 1e-6)
 {
     float4 validSamples = SampleValues != RTAO::InvalidAOValue;
     weights *= validSamples;
     float weightSum = dot(weights, 1);
-    float smallValue = 1e-6;  // ToDo standardize?
-    if (weightSum < smallValue)
+    if (weightSum < minWeight)
     {
         float numValidSamples = dot(validSamples, 1);
-        if (numValidSamples > smallValue)
+        if (numValidSamples > 1e-6)
         {
             return dot(validSamples, SampleValues) / numValidSamples;
         }
         else
         {
-            return RTAO::InvalidAOValue;;
+            return RTAO::InvalidAOValue;
         }
     }
 
     return dot(weights, SampleValues) / dot(weights, 1);
 }
+
+
 
 
 // ToDo move relevant to RTAO denoising specific header

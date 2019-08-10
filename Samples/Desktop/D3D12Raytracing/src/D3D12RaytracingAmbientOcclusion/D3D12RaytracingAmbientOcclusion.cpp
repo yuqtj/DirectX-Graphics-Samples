@@ -226,6 +226,7 @@ namespace SceneArgs
     NumVar RTAO_TemporalSupersampling_ClampDifferenceToFrameAgeScale(L"Render/AO/RTAO/Temporal Cache/Clamping/Frame Age scale", 1.00f, 0, 10.f, 0.05f);
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_AbsoluteDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Absolute depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_DepthBasedDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Depth based depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
+    BoolVar RTAO_TemporalSupersampling_TestFlag(L"Render/AO/RTAO/Temporal Cache/Test flag", false);
 
     // Todo revise comment
     // Setting it lower than 0.9 makes cache values to swim...
@@ -272,7 +273,8 @@ namespace SceneArgs
     BoolVar RTAODenoising_LowerWeightForStaleSamples(L"Render/AO/RTAO/Denoising/Scale down stale samples weight", false);
     
 
-    BoolVar RTAODenoisingFilterWeightByFrameAge(L"Render/AO/RTAO/Denoising/Filter weight by frame age", true);
+    // TODo This probalby should be false, otherwise the newly disoccluded samples get too biased?
+    BoolVar RTAODenoisingFilterWeightByFrameAge(L"Render/AO/RTAO/Denoising/Filter weight by frame age", false);
     
 
 #define MIN_NUM_PASSES_LOW_TSPP 2 // THe blur writes to the initial input resource and thus must numPasses must be 2+.
@@ -4663,7 +4665,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
         invViewProj,
         prevInvViewProj,
         maxFrameAge,
-        SceneArgs::RTAODenoisingExtraRaysToTraceSinceTSSMovement);
+        SceneArgs::RTAODenoisingExtraRaysToTraceSinceTSSMovement,
+        SceneArgs::RTAO_TemporalSupersampling_TestFlag);
 
     // Transition output resources to SRV state.        
     // ToDo use it as UAV in RTAO?

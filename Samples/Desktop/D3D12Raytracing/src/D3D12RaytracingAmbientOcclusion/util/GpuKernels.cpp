@@ -2259,7 +2259,8 @@ namespace GpuKernels
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin,
         UINT maxFrameAge,
-        UINT numRaysToTraceSinceTSSMovement)
+        UINT numRaysToTraceSinceTSSMovement,
+        bool testFlag)
     {
         using namespace RootSignature::RTAO_TemporalSupersampling_ReverseReproject;
         using namespace DefaultComputeShaderParams;
@@ -2281,7 +2282,7 @@ namespace GpuKernels
         m_CB->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
         m_CB->numRaysToTraceAfterTSSAtMaxFrameAge = numRaysToTraceSinceTSSMovement;
         m_CB->maxFrameAge = maxFrameAge;
-
+        m_CB->testFlag = testFlag;
 #if NORMAL_DEPTH_R8G8B16_ENCODING
         m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16);
 #else
