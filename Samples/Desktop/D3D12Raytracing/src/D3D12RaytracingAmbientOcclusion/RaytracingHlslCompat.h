@@ -16,8 +16,8 @@
 
 /*
 //ToDo
-- fix variance for <1spp AO
---- cast 2 rays in cross order
+- fix adaptive kernel size
+- lower temporal blur on motion
 
 
 
