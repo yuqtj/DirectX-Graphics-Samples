@@ -16,9 +16,19 @@
 
 /*
 //ToDo
+- depth aware variance calculation
 - fix adaptive kernel size
 - lower temporal blur on motion
+- add mirrors and and moving cars
+- improve the multi-blur - skip higher iter blur on higher frame age.
+- progressive samplin
+Optimization
+- Combine ray gen and sort?
+- Get RTAO perf close to 50% at 50% sampling.
+- combine resources, lower bit format (ray hit distance)
 
+- demo video
+--- increase bounce
 
 
 - Multi-scale denoiser
@@ -35,7 +45,6 @@
 - match denoised  AO at fidelity closer to that of temporal variance sharpness image
 - improve matching on TSS. Dragon surface hits lots of likely unnecessary disocclusions on camero movement/zoom.
 - fix the temporal variance shimmer on boundaries with skybox.
-- Make clamping great again.
 - map local variance to only valid AO values
 - retain per window frame seed on static geometry
 
@@ -48,7 +57,6 @@
 -  no modes, no AOon phong, denoised artifacts onb normalMaps
 - Fireflies
 - quad blur in Variance
-- Split AO raytracing into its own hlsl
 - AO raypayload of 2B.
 - split temporal pass to Reprojection and Clamping. 
     -Use reprojection to drive AO spp. 
