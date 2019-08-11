@@ -905,7 +905,6 @@ void RTAO::OnRender(
             activeRaytracingWidth,
             m_raytracingHeight,
             GpuKernels::SortRays::FilterType::CountingSort,
-            //GpuKernels::SortRays::FilterType::BitonicSort,
             SceneArgs::RTAORaySortingUseOctahedralRayDirectionQuantization,
             m_cbvSrvUavHeap->GetHeap(),
             m_AORayDirectionOriginDepth.gpuDescriptorReadAccess,

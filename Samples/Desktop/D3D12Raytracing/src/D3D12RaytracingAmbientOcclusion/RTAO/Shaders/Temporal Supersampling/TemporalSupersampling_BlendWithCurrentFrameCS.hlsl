@@ -120,7 +120,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         variance = max(0.1, variance);
 
         // RayHitDistance.
-        rayHitDistance = isCurrentFrameRayActive ? g_texInputCurrentFrameRayHitDistance[DTid] : 22; // ToDO use a common const.
+        rayHitDistance = isCurrentFrameRayActive ? g_texInputCurrentFrameRayHitDistance[DTid] : 0; // ToDO use a common const.
         float cachedRayHitDistance = cachedValues.w;
         rayHitDistance = lerp(cachedRayHitDistance, rayHitDistance, a);
 

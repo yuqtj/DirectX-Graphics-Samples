@@ -33,6 +33,10 @@ Optimization
 
 - demo video
 --- increase bounce
+-- comparison 100spp AO, 1spp, 1/2 spp
+-- PBR lighting AO ON / Off
+-- reflections
+
 
 
 - Multi-scale denoiser
