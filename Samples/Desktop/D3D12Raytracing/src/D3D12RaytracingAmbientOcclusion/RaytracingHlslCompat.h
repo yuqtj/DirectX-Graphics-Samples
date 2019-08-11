@@ -16,15 +16,16 @@
 
 /*
 //ToDo
-- depth aware variance calculation
 - fix adaptive kernel size
-- lower temporal blur on motion
-- add mirrors and and moving cars
 - improve the multi-blur - skip higher iter blur on higher frame age.
+- Run ray gen only for active pixels on checkerboard. Run Ray sort only for active pixels and combine two groups? 128x128?
+
 - progressive samplin
+- depth aware variance calculation
+- lower temporal blur on motion
 - Add bounce ID as edge stopping function
 Optimization
-- Combine ray gen and sort?
+- Skip
 - Get RTAO perf close to 50% at 50% sampling.
 - combine resources, lower bit format (ray hit distance)
 
@@ -96,6 +97,8 @@ Optimization
 #define ENABLE_RAYTRACING 1
 #define RUNTIME_AS_UPDATES 1
 #define USE_GPU_TRANSFORM 1
+
+#define MARK_PERFECT_MIRRORS_AS_NOT_OPAQUE 1
 
 #define WORKAROUND_ATROUS_VARYING_OUTPUTS 1
 #define VARIABLE_RATE_RAYTRACING 1

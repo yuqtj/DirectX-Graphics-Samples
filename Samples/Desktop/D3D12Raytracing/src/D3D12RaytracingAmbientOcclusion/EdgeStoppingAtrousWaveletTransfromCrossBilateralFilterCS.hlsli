@@ -419,7 +419,10 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         {
             //float filteredValue = weightSum > (FilterKernel::Kernel[FilterKernel::Radius][FilterKernel::Radius] + 0.00001) ? weightedValueSum / weightSum : valueSum / numValues;
             filteredValue = weightedValueSum / weightSum;
-            filteredVariance = weightedVarianceSum / (weightSum * weightSum);
+            if (g_CB.outputFilteredVariance)
+            {
+                filteredVariance = weightedVarianceSum / (weightSum * weightSum);
+            }
         }
         else
         {

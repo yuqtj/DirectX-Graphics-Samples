@@ -127,9 +127,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
 #if RTAO_GAUSSIAN_BLUR_AFTER_TSS
         value = isValidValue ? value : -value;
 #endif
-        rayHitDistance = isValidValue ? g_texInputCurrentFrameRayHitDistance[DTid] : 22;
-        variance = isValidValue ? g_texInputCurrentFrameLocalMeanVariance[DTid].y : 1;
-        valueSquaredMean = isValidValue ? valueSquaredMean : RTAO::InvalidAOValue;
+        rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
+        variance = g_texInputCurrentFrameLocalMeanVariance[DTid].y;
+        valueSquaredMean = valueSquaredMean;
     }
 #if STOP_TRACING_AND_DENOISING_AFTER_FEW_FRAMES
     if (isValidValue)

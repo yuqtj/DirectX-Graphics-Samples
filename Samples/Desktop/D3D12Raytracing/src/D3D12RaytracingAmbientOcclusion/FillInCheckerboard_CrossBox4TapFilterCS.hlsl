@@ -19,7 +19,7 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RTAO/Shaders/RTAO.hlsli"
 
-Texture2D<float2> g_inValues : register(t0);
+Texture2D<float2> g_inValues : register(t0);    // ToDo remove
 RWTexture2D<float2> g_inOutValues : register(u0);
 
 RWTexture2D<float4> g_outDebug1 : register(u3);
@@ -46,7 +46,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
     const int2 srcIndexOffsets[4] = { {-1, 0}, {0, -1}, {1, 0}, {0, 1} };
     float4x2 inValues_4x2;
     {
-        // ToDo use gather
         [unroll]
         for (uint i = 0; i < 4; i++)
         {

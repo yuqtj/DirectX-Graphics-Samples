@@ -166,19 +166,6 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
         uint rowID = GTid.y + r;
         uint rNumValues = NumValuesCache[rowID][GTid.x];
 
-        if (IsInRange(r, 0, 3))
-        {
-            val1[r] = rNumValues;
-        }
-        else if (r < 8)
-        {
-            val2[r-4] = rNumValues;
-        }
-        else
-        {
-            val2[0] += rNumValues;
-        }
-
         if (rNumValues > 0)
         {
             float2 unpackedRowSum = HalfToFloat2(PackedRowResultCache[rowID][GTid.x]);
@@ -190,8 +177,6 @@ void FilterVertically(uint2 DTid, in uint2 GTid)
             numValues += rNumValues;
         }
     }
-    g_outDebug1[DTid] = val1;
-    g_outDebug2[DTid] = val2;
 
     // Calculate mean and variance.
     float invN = 1.f / max(numValues, 1);

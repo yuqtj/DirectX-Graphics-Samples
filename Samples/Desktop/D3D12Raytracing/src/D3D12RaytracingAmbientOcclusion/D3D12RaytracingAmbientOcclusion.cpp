@@ -227,7 +227,7 @@ namespace SceneArgs
     BoolVar RTAO_TemporalSupersampling_CacheSquaredMean(L"Render/AO/RTAO/Temporal Cache/Cached SquaredMean", false);
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_StdDevGamma(L"Render/AO/RTAO/Temporal Cache/Clamping/Std.dev gamma", 1.0f, 0.1f, 20.f, 0.1f);
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_MinStdDevTolerance(L"Render/AO/RTAO/Temporal Cache/Clamping/Minimum std.dev", 0.04f, 0.0f, 1.f, 0.01f);   // ToDo finetune
-    NumVar RTAO_TemporalSupersampling_ClampDifferenceToFrameAgeScale(L"Render/AO/RTAO/Temporal Cache/Clamping/Frame Age scale", 1.00f, 0, 10.f, 0.05f);
+    NumVar RTAO_TemporalSupersampling_ClampDifferenceToFrameAgeScale(L"Render/AO/RTAO/Temporal Cache/Clamping/Frame Age scale", 4.00f, 0, 10.f, 0.05f);
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_AbsoluteDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Absolute depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_DepthBasedDepthTolerance(L"Render/AO/RTAO/Temporal Cache/Depth threshold/Depth based depth tolerance", 1.0f, 0.0f, 100.f, 1.f);
     BoolVar RTAO_TemporalSupersampling_TestFlag(L"Render/AO/RTAO/Temporal Cache/Test flag", false);
@@ -523,7 +523,11 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
 
             D3D12_RAYTRACING_GEOMETRY_FLAGS geometryFlags;
 
-            if (cb.opacity.x > 0.99f && cb.opacity.y > 0.99f && cb.opacity.z > 0.99f)
+            if (
+                cb.opacity.x > 0.99f && cb.opacity.y > 0.99f && cb.opacity.z > 0.99f
+#if MARK_PERFECT_MIRRORS_AS_NOT_OPAQUE
+                && !(cb.Kr.x > 0.99f && cb.Kr.y > 0.99f && cb.Kr.z > 0.99f))
+#endif
             {
                 geometryFlags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
             }
@@ -2255,7 +2259,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
     float radius = 75;
     XMMATRIX mTranslationSceneCenter = XMMatrixTranslation(-7, 0, 7);
     XMMATRIX mTranslation = XMMatrixTranslation(0, -1.5, radius);
-    XMMATRIX mScale = XMMatrixScaling(10, 15, 1);
+    XMMATRIX mScale = XMMatrixScaling(10, 20, 1);
     int NumMirrorQuads = 12;
     for (int i = 0; i < NumMirrorQuads; i++)
     {

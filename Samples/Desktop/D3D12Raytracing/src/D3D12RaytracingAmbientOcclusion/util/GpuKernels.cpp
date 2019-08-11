@@ -1648,7 +1648,7 @@ namespace GpuKernels
 #endif
             // Move vars not changing inside loop outside of it.
             CB->useCalculatedVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
-            CB->outputFilteredVariance = false;// filterMode == OutputFilteredValue && useCalculatedVariance;
+            CB->outputFilteredVariance = numFilterPasses > 1 && filterMode == OutputFilteredValue && useCalculatedVariance;
             CB->outputFilteredValue = filterMode == OutputFilteredValue;
             CB->outputFilterWeightSum = filterMode == OutputPerPixelFilterWeightSum;
             CB->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
