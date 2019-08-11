@@ -158,10 +158,10 @@ namespace SceneArgs
     // With default Ambient coefficient added to every hit along the ray, this visual difference is surpressed.
     NumVar DefaultAmbientIntensity(L"Render/PathTracing/Default ambient intensity", 0.4f, 0, 1, 0.01f);  
 
-    IntVar MaxRadianceRayRecursionDepth(L"Render/PathTracing/Max Radiance Ray recursion depth", 2, 1, MAX_RAY_RECURSION_DEPTH, 1);   // ToDo Replace with 3/4 depth as it adds visible differences on spaceship/car
-    IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 3, 1, MAX_RAY_RECURSION_DEPTH, 1);
+    IntVar MaxRadianceRayRecursionDepth(L"Render/PathTracing/Max Radiance Ray recursion depth", 3, 1, MAX_RAY_RECURSION_DEPTH, 1);   // ToDo Replace with 3/4 depth as it adds visible differences on spaceship/car
+    IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 4, 1, MAX_RAY_RECURSION_DEPTH, 1);
     
-    BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", true);        // ToDO use enumeration
+    BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", false);        // ToDO use enumeration
 
     // Avoid tracing rays where they have close to zero visual impact.
     // todo test perf gain or remove.
@@ -184,9 +184,13 @@ namespace SceneArgs
 #endif
 
     NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
-    BoolVar AnimateGrass(L"Scene2/Animate grass", false);
+    BoolVar AnimateGrass(L"Scene2/Animate grass", true);
 
     BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
+
+
+
+    NumVar DebugVar(L"Render/Debug var", -20, -90, 90, 0.5f);
 
     // Temporal Cache.
     // ToDo rename cache to accumulation/supersampling?
@@ -219,7 +223,7 @@ namespace SceneArgs
     // ToDo address: Clamping causes rejection of samples in low density areas - such as on ground plane at the end of max ray distance from other objects.
     BoolVar RTAO_TemporalSupersampling_CacheDenoisedOutput(L"Render/AO/RTAO/Temporal Cache/Cache denoised output", true);
     IntVar RTAO_TemporalSupersampling_CacheDenoisedOutputPassNumber(L"Render/AO/RTAO/Temporal Cache/Cache denoised output - pass number", 0, 0, 10, 1);
-    BoolVar RTAO_TemporalSupersampling_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", false);
+    BoolVar RTAO_TemporalSupersampling_ClampCachedValues_UseClamping(L"Render/AO/RTAO/Temporal Cache/Clamping/Enabled", true);
     BoolVar RTAO_TemporalSupersampling_CacheSquaredMean(L"Render/AO/RTAO/Temporal Cache/Cached SquaredMean", false);
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_StdDevGamma(L"Render/AO/RTAO/Temporal Cache/Clamping/Std.dev gamma", 1.0f, 0.1f, 20.f, 0.1f);
     NumVar RTAO_TemporalSupersampling_ClampCachedValues_MinStdDevTolerance(L"Render/AO/RTAO/Temporal Cache/Clamping/Minimum std.dev", 0.04f, 0.0f, 1.f, 0.01f);   // ToDo finetune
@@ -397,6 +401,7 @@ void D3D12RaytracingAmbientOcclusion::LoadPBRTScene()
         {L"House", "Assets\\house\\scene.pbrt"},
 
         {L"MirrorQuad", "Assets\\mirrorquad\\scene.pbrt"},
+        {L"Quad", "Assets\\quad\\scene.pbrt"},
 #endif
     };
 
@@ -2228,8 +2233,7 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 #if !LOAD_ONLY_ONE_PBRT_MESH
         L"Dragon",
         L"Car",
-        L"House",
-        L"MirrorQuad"
+        L"House"
 #endif    
         //L"Tesselated Geometry"
     };
@@ -2239,6 +2243,8 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
 
 #endif
 
+
+
     // Initialize the bottom-level AS instances.
     for (auto& bottomLevelASname : bottomLevelASnames)
     {
@@ -2246,7 +2252,32 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
     }
 
 
-    m_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
+    float radius = 75;
+    XMMATRIX mTranslationSceneCenter = XMMatrixTranslation(-7, 0, 7);
+    XMMATRIX mTranslation = XMMatrixTranslation(0, -1.5, radius);
+    XMMATRIX mScale = XMMatrixScaling(10, 15, 1);
+    int NumMirrorQuads = 12;
+    for (int i = 0; i < NumMirrorQuads; i++)
+    {
+        float angleToRotateBy = 360.0f * (2.f * i / (2.f*NumMirrorQuads));
+        XMMATRIX mRotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
+        XMMATRIX mTransform = mScale * mTranslation * mRotate * mTranslationSceneCenter;
+        m_accelerationStructure->AddBottomLevelASInstance(L"Quad", UINT_MAX, mTransform);
+    }
+
+    for (int i = 0; i < NumMirrorQuads; i++)
+    {
+        float angleToRotateBy = 360.0f * ((2.f * i + 1) / (2.f * NumMirrorQuads));
+        XMMATRIX mRotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
+        XMMATRIX mTransform = mScale * mTranslation * mRotate * mTranslationSceneCenter;
+        m_accelerationStructure->AddBottomLevelASInstance(L"MirrorQuad", UINT_MAX, mTransform);
+    }
+
+
+    m_animatedCarInstanceIndex = m_accelerationStructure->AddBottomLevelASInstance(L"Car", UINT_MAX, XMMatrixIdentity());
+
+
+    //m_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
 
 #if GENERATE_GRASS
 #if GRASS_NO_DEGENERATE_INSTANCES
@@ -2621,16 +2652,34 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
         float rotAngle1 = XMConvertToRadians(t * 360.0f / animationDuration);
         float rotAngle2 = XMConvertToRadians((t + 12) * 360.0f / animationDuration);
         float rotAngle3 = XMConvertToRadians((t + 24) * 360.0f / animationDuration);
-        m_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle1)
-            * XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
-        m_accelerationStructure->GetBottomLevelASInstance(6).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle2)
-            * XMMatrixTranslationFromVector(XMVectorSet(-15, 4, -10, 0)));
-        m_accelerationStructure->GetBottomLevelASInstance(7).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle3)
-            * XMMatrixTranslationFromVector(XMVectorSet(-5, 4, -10, 0)));
+        //m_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle1)
+        //    * XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
+        //m_accelerationStructure->GetBottomLevelASInstance(6).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle2)
+        //    * XMMatrixTranslationFromVector(XMVectorSet(-15, 4, -10, 0)));
+        //m_accelerationStructure->GetBottomLevelASInstance(7).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle3)
+        //    * XMMatrixTranslationFromVector(XMVectorSet(-5, 4, -10, 0)));
 
         //m_accelerationStructure->GetBottomLevelASInstance(3).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-5 + 10 * t, 0, 0, 0)));
         //m_accelerationStructure->GetBottomLevelASInstance(0).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 10 * t, 0, 0)));
         //m_accelerationStructure->GetBottomLevelASInstance(1).SetTransform(XMMatrixRotationX(XMConvertToRadians((t-0.5f) * 20)));
+
+
+        // Animated car.
+        {
+            float radius = 64;
+            XMMATRIX mTranslationSceneCenter = XMMatrixTranslation(-7, 0, 7);
+            XMMATRIX mTranslation = XMMatrixTranslation(0, 0, radius);
+
+            float lapSeconds = 50;
+            float angleToRotateBy = 360.0f * (-t) / lapSeconds;
+            XMMATRIX mRotateSceneCenter = XMMatrixRotationY(XMConvertToRadians(SceneArgs::DebugVar));
+            XMMATRIX mRotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
+            float scale = 1;
+            XMMATRIX mScale = XMMatrixScaling(scale, scale, scale);
+            XMMATRIX mTransform = mScale * mRotateSceneCenter * mTranslation * mRotate  *mTranslationSceneCenter;
+
+            m_accelerationStructure->GetBottomLevelASInstance(m_animatedCarInstanceIndex).SetTransform(mTransform);
+        }
     }
 
     // Rotate the camera around Y axis.

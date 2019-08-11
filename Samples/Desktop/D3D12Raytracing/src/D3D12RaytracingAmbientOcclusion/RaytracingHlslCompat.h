@@ -22,6 +22,7 @@
 - add mirrors and and moving cars
 - improve the multi-blur - skip higher iter blur on higher frame age.
 - progressive samplin
+- Add bounce ID as edge stopping function
 Optimization
 - Combine ray gen and sort?
 - Get RTAO perf close to 50% at 50% sampling.
@@ -314,7 +315,7 @@ typedef UINT16 Index;
 // ToDo revise
 // PERFORMANCE TIP: Set max recursion depth as low as needed
 // as drivers may apply optimization strategies for low recursion depths.
-#define MAX_RAY_RECURSION_DEPTH 4    // ~ primary rays + 2 x reflections + shadow rays from reflected geometry.  ToDo
+#define MAX_RAY_RECURSION_DEPTH 5    // ~ primary rays + 2 x reflections + shadow rays from reflected geometry.  ToDo
 // ToDo add recursion viz
 
 // ToDo:

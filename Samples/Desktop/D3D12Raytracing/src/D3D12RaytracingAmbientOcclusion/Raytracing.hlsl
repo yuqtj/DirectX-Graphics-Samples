@@ -1066,7 +1066,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 #else // ToDo fix derivatives
         float2 uv = hitPosition.xz / 2;
         float checkers = CheckersTextureBoxFilter(uv, ddx, ddy);
-        if ((abs(uv.x) < 20 && abs(uv.y) < 20) && (checkers > 0.5))
+        if (length(uv) < 45 && (checkers > 0.5))
         {
 #if 1
             material.Kd = float3(21, 33, 45) / 255;

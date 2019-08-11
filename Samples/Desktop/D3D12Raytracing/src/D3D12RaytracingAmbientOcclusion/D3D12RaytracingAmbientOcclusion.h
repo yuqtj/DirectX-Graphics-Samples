@@ -131,6 +131,7 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_nullVertexBufferGPUhandle;
     GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
 
+    UINT                                m_animatedCarInstanceIndex;
     UINT                                m_grassInstanceIndices[NumGrassPatchesX * NumGrassPatchesZ];
     UINT                                m_currentGrassPatchVBIndex = 0;
     RWGpuResource                       m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
