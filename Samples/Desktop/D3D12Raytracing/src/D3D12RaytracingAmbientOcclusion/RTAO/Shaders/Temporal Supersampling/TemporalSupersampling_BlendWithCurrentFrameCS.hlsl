@@ -56,7 +56,14 @@ void main(uint2 DTid : SV_DispatchThreadID)
     float4 cachedValues = float4(frameAge, f16tof32(encodedCachedValues.yzw));
     //g_texOutputDebug1[DTid] = cachedValues;
 
-    float value = g_texInputCurrentFrameValue[DTid];
+    bool isCurrentFrameRayActive = true;
+    if (cb.doCheckerboardSampling)
+    {
+        bool isEvenPixel = ((DTid.x + DTid.y) & 1) == 0;
+        isCurrentFrameRayActive = cb.areEvenPixelsActive == isEvenPixel;
+    }
+    float value = isCurrentFrameRayActive ? g_texInputCurrentFrameValue[DTid] : RTAO::InvalidAOValue;
+    
     bool isValidValue = value != RTAO::InvalidAOValue;
 
     float valueSquaredMean = value * value;
@@ -89,6 +96,8 @@ void main(uint2 DTid : SV_DispatchThreadID)
             frameAge = lerp(frameAge, 0, frameAgeScale);
         }
 
+        // ToDo avoid interpolation for inactive rays?
+
         // ToDo: use moving average (Koskela2019) for the first few samples 
         // to even out the weights for the noisy start instead of weighting first samples much more.
         float invFrameAge = 1.f / frameAge;
@@ -111,7 +120,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         variance = max(0.1, variance);
 
         // RayHitDistance.
-        rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
+        rayHitDistance = isCurrentFrameRayActive ? g_texInputCurrentFrameRayHitDistance[DTid] : 22; // ToDO use a common const.
         float cachedRayHitDistance = cachedValues.w;
         rayHitDistance = lerp(cachedRayHitDistance, rayHitDistance, a);
 

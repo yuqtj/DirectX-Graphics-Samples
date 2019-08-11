@@ -16,6 +16,7 @@
 
 /*
 //ToDo
+- test impact of depth hash key in RaySort
 - fix adaptive kernel size
 - improve the multi-blur - skip higher iter blur on higher frame age.
 - Run ray gen only for active pixels on checkerboard. Run Ray sort only for active pixels and combine two groups? 128x128?
@@ -28,6 +29,7 @@ Optimization
 - Skip
 - Get RTAO perf close to 50% at 50% sampling.
 - combine resources, lower bit format (ray hit distance)
+- RaySorting - test if need inverted indices and strip them if not. Strip depth bounds calculation?
 
 - demo video
 --- increase bounce
@@ -473,7 +475,7 @@ struct CalculateMeanVarianceConstantBuffer
     UINT kernelRadius;
 
     BOOL doCheckerboardSampling;
-    BOOL evenPixelsAreActive;
+    BOOL areEvenPixelsActive;
     UINT pixelStepY;
     float padding;
 };
@@ -627,12 +629,12 @@ struct RTAOConstantBuffer
     float RTAO_AdaptiveSamplingScaleExponent;   // ToDo weight exponent instead?
     BOOL RTAO_AdaptiveSamplingMinMaxSampling;
     UINT RTAO_AdaptiveSamplingMinSamples;
-    float padding;
-
     float RTAO_TraceRayOffsetAlongNormal;
+
     float RTAO_TraceRayOffsetAlongRayDirection;
     BOOL RTAO_UseSortedRays;
-    float padding2;
+    BOOL doCheckerboardSampling;
+    BOOL areEvenPixelsActive;
 };
 
  
@@ -844,6 +846,11 @@ struct RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer
     UINT blurStrength_MaxFrameAge;
     float blurDecayStrength;
     float padding;
+
+    BOOL doCheckerboardSampling;
+    BOOL areEvenPixelsActive;
+    float padding2[2];
+
 };
 
 struct CalculatePartialDerivativesConstantBuffer

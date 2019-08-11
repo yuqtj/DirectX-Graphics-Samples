@@ -714,9 +714,15 @@ void RTAO::OnUpdate()
     m_CB->RTAO_TraceRayOffsetAlongNormal = SceneArgs::RTAOTraceRayOffsetAlongNormal;
     m_CB->RTAO_TraceRayOffsetAlongRayDirection = SceneArgs::RTAOTraceRayOffsetAlongRayDirection;
     m_CB->RTAO_UseSortedRays = SceneArgs::RTAOUseRaySorting;
-    m_CB->raytracingDim = XMUINT2(m_raytracingWidth, m_raytracingHeight);
+
+    bool doCheckerboardRayGeneration = GetSpp() != 1;
+    m_CB->doCheckerboardSampling = doCheckerboardRayGeneration;
+    UINT pixelStepX = doCheckerboardRayGeneration ? 2 : 1;
+    m_CB->areEvenPixelsActive = m_checkerboardGenerateRaysForEvenPixels;
+    m_CB->raytracingDim = XMUINT2(CeilDivide(m_raytracingWidth, pixelStepX), m_raytracingHeight);
 
     SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
+
 
 
     // ToDo move
@@ -853,9 +859,14 @@ void RTAO::OnRender(
         bool doCheckerboardRayGeneration = GetSpp() != 1;
         m_checkerboardGenerateRaysForEvenPixels = !m_checkerboardGenerateRaysForEvenPixels;
 
+        // Todo verify odd width resolutions when using CB
+        UINT activeRaytracingWidth =
+            doCheckerboardRayGeneration
+            ? CeilDivide(m_raytracingWidth, 2)
+            : m_raytracingWidth;
         m_rayGen.Execute(
             commandList,
-            m_raytracingWidth,
+            activeRaytracingWidth,
             m_raytracingHeight,
             static_cast<GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType>(static_cast<UINT>(SceneArgs::RTAORayGenAdaptiveQuadSize)),
             SceneArgs::RTAORayGen_MaxFrameAge,
@@ -891,7 +902,7 @@ void RTAO::OnRender(
         m_raySorter.Execute(
             commandList,
             rayBinDepthSize,
-            m_raytracingWidth,
+            activeRaytracingWidth,
             m_raytracingHeight,
             GpuKernels::SortRays::FilterType::CountingSort,
             //GpuKernels::SortRays::FilterType::BitonicSort,
@@ -945,11 +956,13 @@ void RTAO::OnRender(
             commandList->SetComputeRootShaderResourceView(RTAOGlobalRootSignature::Slot::AccelerationStructure, accelerationStructure);
 
 #if RTAO_RAY_SORT_1DRAYTRACE
-            DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOSortedRays].Get(), m_raytracingWidth * m_raytracingHeight, 1);
+            UINT NumRays = activeRaytracingWidth * m_raytracingHeight;
+            DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOSortedRays].Get(), NumRays, 1);
 #else
             DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOSortedRays].Get(), m_raytracingWidth, m_raytracingHeight);
 #endif
         }
+
     }
 
     // Transition AO resources to shader resource state.

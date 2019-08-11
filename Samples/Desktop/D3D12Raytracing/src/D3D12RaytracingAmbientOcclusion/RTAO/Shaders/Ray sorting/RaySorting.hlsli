@@ -30,7 +30,7 @@
 #define INACTIVE_RAY_KEY (NUM_KEYS - 1)     // Hash key for an invalid/disabled ray. These rays will get sorted to the end and are not to be raytraced.
 
 // ToDo using ACTIVE instead of inactive may be easier to understand the code.
-#define INACTIVE_RAY_INDEX_BIT 0x2000
+#define INACTIVE_RAY_INDEX_BIT 0x4000
 #define INACTIVE_RAY_INDEX_BIT_Y 0x80
 
 #define INVALID_16BIT_KEY_BIT 0x8000      // A value used to denote if the SMEM entry is a 16bit key value or not.

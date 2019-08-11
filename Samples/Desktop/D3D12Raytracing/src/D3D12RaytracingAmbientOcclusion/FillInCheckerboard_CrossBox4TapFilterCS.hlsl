@@ -32,7 +32,7 @@ int2 GetInactivePixelIndex(int2 pixel)
 {
     bool isEvenPixel = ((pixel.x + pixel.y) & 1) == 0;
     return
-        cb.evenPixelsAreActive == isEvenPixel
+        cb.areEvenPixelsActive == isEvenPixel
         ? pixel + int2(0, 1)
         : pixel;
 }

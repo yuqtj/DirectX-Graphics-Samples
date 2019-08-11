@@ -372,6 +372,7 @@ uint CreateDepthHashKey(in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
     return depthHashKey;
 }
 
+// ToDo remove
 // Create a hash key from a ray index. 
 uint CreateIndexHashKey(in uint2 rayIndex)
 {
@@ -421,16 +422,38 @@ uint CreateRayHashKey(in uint2 rayIndex, in float2 encodedRayDirection, in float
     return hashKey;
 }
 
+// Adjust an index to a pixel that had a valid value generated for it.
+// Inactive pixel indices get increased by 1 in the x direction.
+uint2 GetActivePixelIndex(in uint2 pixel)
+{
+    if (CB.doCheckerboardSampling)
+    {
+       bool isEvenPixel = ((pixel.x + pixel.y) & 1) == 0;
+       return
+            CB.areEvenPixelsActive != isEvenPixel
+                ? pixel + int2(1, 0)
+                : pixel;
+    }
+    else
+    {
+        return pixel;
+    }
+}
 
 // Calculate ray direction hash keys and cache depths.
 void CalculatePartialRayDirectionHashKeyAndCacheDepth(in uint2 Gid, in uint GI)
 {
+    uint pixelStepX = CB.doCheckerboardSampling ? 2 : 1;
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 GroupStart = Gid * RayGroupDim;
+    GroupStart.x *= pixelStepX;
 
     for (uint ray = GI; ray < NUM_RAYS; ray += NUM_THREADS)
     {
-        uint2 pixel = GroupStart + uint2(ray % SortRays::RayGroup::Width, ray / SortRays::RayGroup::Width);
+        uint2 gtIndex = uint2(pixelStepX * (ray % RayGroupDim.x), ray / RayGroupDim.x);
+        uint2 rayIndex = GetActivePixelIndex(gtIndex);
+        uint2 pixel = GroupStart + rayIndex;
+
         if (IsWithinBounds(pixel, CB.dim))
         {
             float2 encodedRayDirection;
@@ -475,6 +498,7 @@ void CalculatePartialRayDirectionHashKeyAndCacheDepth(in uint2 Gid, in uint GI)
             // Cache the key.
             Store8bitUintInLow16bitSMem(ray, rayDirectionHashKey, SMem::Offset::Key8b);
 #if 0
+            TOdo fix PIXEL
             uint2 pixel = GroupStart + uint2(ray % SortRays::RayGroup::Width, ray / SortRays::RayGroup::Width);
             g_outDebug[pixel] = float4(pixel, rayOriginDepth, rayDirectionHashKey);
 #endif
@@ -483,6 +507,7 @@ void CalculatePartialRayDirectionHashKeyAndCacheDepth(in uint2 Gid, in uint GI)
     GroupMemoryBarrierWithGroupSync();
 }
 
+// ToDo cleanup/ remove
 // Calculate depth min max range of all rays within the ray group.
 float2 CalculateRayGroupMinMaxDepth(in uint GI, uint2 Gid)
 {
@@ -606,6 +631,7 @@ void FinalizeHashKeyAndCalculateKeyHistogram(in uint GI, in float2 rayGroupMinMa
     }
     GroupMemoryBarrierWithGroupSync();
 
+    uint pixelStepX = CB.doCheckerboardSampling ? 2 : 1;
     for (uint ray = GI; ray < NUM_RAYS; ray += NUM_THREADS)
     {
         float rayOriginDepth = Load16bitFloatFromSMem(ray, SMem::Offset::Depth16b);
@@ -615,9 +641,16 @@ void FinalizeHashKeyAndCalculateKeyHistogram(in uint GI, in float2 rayGroupMinMa
 
         if (isRayValid)
         {
-            uint2 rayIndex = uint2(ray % SortRays::RayGroup::Width, ray / SortRays::RayGroup::Width);
+#if INDEX_HASH_KEY_BITS == 0
+            uint2 rayIndex = 0;
+            hashKey = CreateRayHashKey(0, rayDirectionHashKey, rayOriginDepth, rayGroupMinMaxDepth);
+#else
+            uint2 gtIndex = uint2(pixelStepX * (ray % SortRays::RayGroup::Width), ray / SortRays::RayGroup::Width);
+            uint2 rayIndex = GetActivePixelIndex(gtIndex);
             hashKey = CreateRayHashKey(rayIndex, rayDirectionHashKey, rayOriginDepth, rayGroupMinMaxDepth);
+#endif
         }
+
 
         // Increase histogram bin count.
         AddTo16bitValueInSMem(hashKey, 1, SMem::Offset::Histogram);
@@ -690,33 +723,36 @@ void PrefixSum(in uint GI)
 }
 
 
-// Flattens a [128,128] ray index into a 13 bit flat index.
+// Flattens a [128,128] ray index into a 14 bit flat index.
 // Preserves inactive ray bit in the 8th bit of the y coordinate in the outputs 15th bit.
 uint FlattenRayIndex(in uint2 index)
 {
-    return index.x + (index.y << 7);
+    return (index.x & 0x7F) + (index.y << 7);
 }
 
 // Expands a 14 bit flat index into a [128,128] ray index.
 // Preserves inactive ray 15th bit information of the flat index in the 8th bit of the y coordinate.
 uint2 UnflattenRayIndex(in uint index)
 {
-    return uint2(index & 0x7F, index >> 7);
+    return uint2(index & 0x7F, index >> 7) ;
 }
 
 // Write the sorted indices to shared memory to avoid costly scatter writes to VRAM.
 // Later, these are linearly spilled from shared memory to VRAM.
 void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2 rayGroupMinMaxDepth)
 {
+    uint pixelStepX = CB.doCheckerboardSampling ? 2 : 1;
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 GroupStart = Gid * RayGroupDim;
-    uint2 RayGroupEnd = min(GroupStart + RayGroupDim, CB.dim);
-    RayGroupDim = RayGroupEnd - GroupStart;
-    
+    GroupStart.x *= pixelStepX;
+
     for (uint ray = GI; ray < NUM_RAYS; ray += NUM_THREADS)
     {
-        uint2 rayIndex = uint2(ray % SortRays::RayGroup::Width, ray / SortRays::RayGroup::Width);
+        // ToDo what if ray index goes out of bounds? 
+        uint2 gtIndex = uint2(pixelStepX * (ray % RayGroupDim.x), ray / RayGroupDim.x);
+        uint2 rayIndex = GetActivePixelIndex(gtIndex);
         uint2 pixel = GroupStart + rayIndex;
+
         if (IsWithinBounds(pixel, CB.dim))
         {
             // Get the key for the corresponding pixel.
@@ -766,7 +802,10 @@ void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2
 }
 
 
-// Spill cached sorted indices to VRAM
+// Spill cached sorted indices to VRAM.
+// When checkerboarding is active, this will compress all active indicec from
+// two ray groups into one and such ray groups are output one after another,
+// essentially halving the output in the X dimension.
 // Also scatter write the inversion of the indices.
 // The inverted table will be used to find sorted ray index given a ray index and 
 // instead of doing expensive scatter write after ray tracing, the subsequent pass
@@ -775,9 +814,10 @@ void SpillCachedIndicesToVRAMAndCacheInvertedSortedIndices(in uint2 Gid, in uint
 {
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 GroupStart = Gid * RayGroupDim;
-    
+
     // Sequentially spill cached source indices into VRAM.
     // Cache sorted indices for each source index in the Shared Memory.
+    // ToDo unroll?
     for (uint index = GI; index < NUM_RAYS; index += NUM_THREADS)
     {
         // ToDo rename packed to encoded
@@ -787,10 +827,11 @@ void SpillCachedIndicesToVRAMAndCacheInvertedSortedIndices(in uint2 Gid, in uint
         // Strip the invalid tag bit.
         packedSrcIndex &= ~INVALID_16BIT_KEY_BIT;
 
-        uint2 sortedIndex = uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
+        uint2 sortedIndex = uint2(index % RayGroupDim.x, index / RayGroupDim.x);
+
         uint2 outPixel = GroupStart + sortedIndex;
         g_outSortedToSourceRayIndexOffset[outPixel] = UnflattenRayIndex(packedSrcIndex);   // Output the source index for this sorted ray index.
-
+        
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
         // Cache the sorted index in Shared Memory.
         // The available Shared Memory space for the sorted index is not continuous, 
@@ -810,6 +851,8 @@ void SpillCachedIndicesToVRAMAndCacheInvertedSortedIndices(in uint2 Gid, in uint
 
 void SpillCachedInvertedSortedIndicesToVRAM(in uint2 Gid, in uint GI)
 {
+#if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
+    ToDo checkerboard support
     uint2 RayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
     uint2 GroupStart = Gid * RayGroupDim;
 
@@ -823,10 +866,12 @@ void SpillCachedInvertedSortedIndicesToVRAM(in uint2 Gid, in uint GI)
         uint indexWithinSegment = isInFirstSegment ? index : index - SMem::Size::SortedRayIndexFirstSegment;
         uint packedSortedIndex = Load16bitUintFromSMem(indexWithinSegment, smemSegmentOffset);
 
-        uint2 srcIndex = uint2(index % SortRays::RayGroup::Width, index / SortRays::RayGroup::Width);
+        uint2 srcIndex = uint2(pixelStepX * (index % RayGroupDim.x), index / RayGroupDim.y);
+        uint2 srcIndex = GetActivePixelIndex(gtIndex);
         uint2 outPixel = GroupStart + srcIndex;
         g_outSourceToSortedRayIndexOffset[outPixel] = UnflattenRayIndex(packedSortedIndex);   // Output the sorted index for this source ray index.
     }
+#endif
 }
 
 [numthreads(SortRays::ThreadGroup::Width, SortRays::ThreadGroup::Height, 1)]

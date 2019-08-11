@@ -390,7 +390,6 @@ namespace PBRTParser
     {
         Material material;
 		material.m_Opacity = Vector3(1, 1, 1);
-        char materialName[PBRTPARSER_STRINGBUFFERSIZE];
         string materialType;
 
         auto lineStream = GetLineStream();
@@ -549,7 +548,6 @@ namespace PBRTParser
         ThrowIfTrue(lastParsedWord.compare("["));
 
         AreaLightAttribute attribute;
-        char materialName[PBRTPARSER_STRINGBUFFERSIZE];
         lineStream >> attribute.m_lightColor.r;
         lineStream >> attribute.m_lightColor.g;
         lineStream >> attribute.m_lightColor.b;

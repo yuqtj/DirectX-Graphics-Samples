@@ -40,7 +40,7 @@ RaytracingAccelerationStructure g_scene : register(t0);
 // ToDo switch to depth == 0 for hit/no hit?
 Texture2D<float4> g_texRayOriginPosition : register(t7);
 Texture2D<NormalDepthTexFormat> g_texRayOriginSurfaceNormalDepth : register(t8);
-Texture2D<NormalDepthTexFormat> g_texAORaysDirectionOriginDepth : register(t22);
+Texture2D<NormalDepthTexFormat> g_texAORaysDirectionOriginDepthHit : register(t22);
 Texture2D<uint2> g_texAOSortedToSourceRayIndexOffset : register(t23);
 Texture2D<float4> g_texAOSurfaceAlbedo : register(t24);
 
@@ -323,8 +323,13 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
 {
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
 
+    uint pixelStepX = CB.doCheckerboardSampling ? 2 : 1;
+    uint activeRayTracingDimX = (CB.raytracingDim.x + (pixelStepX - 1)) / pixelStepX;
+    uint activeRayTracingSize = CB.raytracingDim.y * activeRayTracingDimX;
+
 #if SKIP_INVALID_RAYS
-        ToDo CB support.
+    ToDo handle checkerboard
+
     uint rayGroupSize = rayGroupDim.y * rayGroupDim.x;
     uint indexMultiplier = 2;
     uint _index1D = index1D * indexMultiplier;
@@ -345,7 +350,7 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
     }
 #else
     // Find the ray group row index.
-    uint numValidPixelsInRow = CB.raytracingDim.x;
+    uint numValidPixelsInRow = activeRayTracingDimX;
     uint rowOfRayGroupSize = rayGroupDim.y * numValidPixelsInRow;
     uint rayGroupRowIndex = index1D / rowOfRayGroupSize;
 
@@ -365,9 +370,12 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
     uint2 rayThreadIndex = uint2(rayThreadColumnIndex, rayThreadRowIndex);
 #endif
 
+    // Active pixels from two ray groups are compacted along X dimension on Checkerboard, jump over the dual groups.
+    uint2 adjustedRayGroupDim = uint2(pixelStepX * rayGroupDim.x, rayGroupDim.y);
+
     // Get the corresponding source index
     sortedRayIndex2D = rayGroupIndex * rayGroupDim + rayThreadIndex;
-    uint2 rayGroupBase = rayGroupIndex * rayGroupDim;
+    uint2 rayGroupBase = rayGroupIndex * adjustedRayGroupDim;
     uint2 rayGroupRayIndexOffset = g_texAOSortedToSourceRayIndexOffset[sortedRayIndex2D];   // ToDo rename to encoded
     srcRayIndex2D = rayGroupBase + GetRawRayIndexOffset(rayGroupRayIndexOffset);
 
@@ -382,16 +390,6 @@ void RayGenShader_sortedRays()
     uint2 sortedRayIndex;
     bool isActiveRay = Get2DRayIndices(sortedRayIndex, srcRayIndex, DTid_1D);
 
-    uint2 srcRayIndexFullRes = srcRayIndex;
-    if (CB.doCheckerboardSampling)
-    {
-        UINT pixelStepX = 2;
-        bool isEvenPixelY = (srcRayIndex.y & 1) == 0;
-        UINT pixelOffsetX = isEvenPixelY != CB.areEvenPixelsActive;
-        srcRayIndexFullRes.x = srcRayIndex.x * pixelStepX + pixelOffsetX;
-    }
-
-
     float tHit = RTAO::RayHitDistanceOnMiss;
     float ambientCoef = RTAO::InvalidAOValue;
     if (isActiveRay)
@@ -400,25 +398,23 @@ void RayGenShader_sortedRays()
         // ToDo split raydirection and origin into two resources?
         float dummy;
         float3 rayDirection;
-        DecodeNormalDepth(g_texAORaysDirectionOriginDepth[srcRayIndex], rayDirection, dummy);
-        float3 hitPosition = g_texRayOriginPosition[srcRayIndexFullRes].xyz;
+        DecodeNormalDepth(g_texAORaysDirectionOriginDepthHit[srcRayIndex], rayDirection, dummy);
+        float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;
 
         // ToDo test trading for using ray direction insteads
         float3 surfaceNormal;
         float depth;
-
-        // ToDo use ray direction instead?
-        DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[srcRayIndexFullRes], surfaceNormal, depth);
+        DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[srcRayIndex], surfaceNormal, depth);
 
         Ray AORay = { hitPosition, rayDirection };
         ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
     }
 
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
-    ToDo is sortedRayIndex correct?
+    ToDo sortedRay index is not correct
     uint2 outPixel = sortedRayIndex;
 #else
-    uint2 outPixel = srcRayIndexFullRes;
+    uint2 outPixel = srcRayIndex;
 #endif
 
     g_rtAOcoefficient[outPixel] = ambientCoef;

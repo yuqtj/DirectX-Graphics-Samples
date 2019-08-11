@@ -2128,7 +2128,7 @@ namespace GpuKernels
         m_CB->kernelRadius = kernelWidth >> 1;
         m_CB->doCheckerboardSampling = doCheckerboardSampling;
         m_CB->pixelStepY = doCheckerboardSampling ? 2 : 1;
-        m_CB->evenPixelsAreActive = checkerboardLoadEvenPixels;
+        m_CB->areEvenPixelsActive = checkerboardLoadEvenPixels;
         //ToDo move instance id tracking to the CB class.
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
@@ -2239,7 +2239,7 @@ namespace GpuKernels
         // Update the Constant Buffer.
         m_CB->textureDim = XMUINT2(width, height);
         // ToDo use custom CB
-        m_CB->evenPixelsAreActive = !fillEvenPixels;
+        m_CB->areEvenPixelsActive = !fillEvenPixels;
         //ToDo move instance id tracking to the CB class.
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
@@ -2549,7 +2549,9 @@ namespace GpuKernels
         RWGpuResource debugResources[2],
         UINT numFramesToDenoiseAfterLastTracedRay,
         UINT lowTsppBlurStrengthMaxFrameAge,
-        float lowTsppBlurStrengthDecayConstant)
+        float lowTsppBlurStrengthDecayConstant,
+        bool doCheckerboardSampling,
+        bool checkerboardLoadEvenPixels)
     {
         using namespace RootSignature::RTAO_TemporalSupersampling_BlendWithCurrentFrame;
         using namespace DefaultComputeShaderParams;
@@ -2568,6 +2570,8 @@ namespace GpuKernels
         m_CB->numFramesToDenoiseAfterLastTracedRay = numFramesToDenoiseAfterLastTracedRay;
         m_CB->blurStrength_MaxFrameAge = lowTsppBlurStrengthMaxFrameAge;
         m_CB->blurDecayStrength = lowTsppBlurStrengthDecayConstant;
+        m_CB->doCheckerboardSampling = doCheckerboardSampling;
+        m_CB->areEvenPixelsActive = checkerboardLoadEvenPixels;
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 
@@ -2889,7 +2893,7 @@ namespace GpuKernels
         }
 
         // Dispatch.
-        XMUINT2 groupSize(CeilDivide(width, RayGroup::Width), CeilDivide(height, RayGroup::Height));
+        XMUINT2 groupSize(CeilDivide(width, RayGroup::Width ), CeilDivide(height, RayGroup::Height));
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
     }
 

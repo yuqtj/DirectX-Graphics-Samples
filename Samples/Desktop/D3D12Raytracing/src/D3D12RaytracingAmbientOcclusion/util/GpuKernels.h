@@ -726,7 +726,9 @@ namespace GpuKernels
             RWGpuResource debugResources[2],
             UINT numFramesToDenoiseAfterLastTracedRay,
             UINT lowTsppBlurStrengthMaxFrameAge, 
-            float lowTsppBlurStrengthDecayConstant);
+            float lowTsppBlurStrengthDecayConstant,
+            bool doCheckerboardSampling = false,
+            bool checkerboardLoadEvenPixels = false);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;

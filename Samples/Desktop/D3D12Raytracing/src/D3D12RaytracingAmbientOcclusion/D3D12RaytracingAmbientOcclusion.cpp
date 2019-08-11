@@ -4774,15 +4774,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
 
+    bool isCheckerboardSamplingEnabled;
+    bool checkerboardLoadEvenPixels;
+    m_RTAO.GetRayGenParameters(&isCheckerboardSamplingEnabled, &checkerboardLoadEvenPixels);
+
     // ToDO Should use separable box filter instead?. Bilateral doesn't work for pixels that don't
     // have anycontribution with bilateral - their variance will be zero. Or set a variance to non-zero in that case?
     // Calculate local mean and variance.
     {
-
-        bool isCheckerboardSamplingEnabled;
-        bool checkerboardLoadEvenPixels;
-        m_RTAO.GetRayGenParameters(&isCheckerboardSamplingEnabled, &checkerboardLoadEvenPixels);
-
         // ToDo add Separable Bilateral and Square bilateral support how it affects image quality.
         // ToDo checkerboard is same perf ?
         ScopedTimer _prof(L"Calculate Mean and Variance", commandList);
@@ -4902,7 +4901,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         m_debugOutput,
         SceneArgs::RTAODenoisingnumFramesToDenoiseAfterLastTracedRay,
         SceneArgs::RTAODenoisingLowTsppMaxFrameAge,
-        SceneArgs::RTAODenoisingLowTsppDecayConstant);
+        SceneArgs::RTAODenoisingLowTsppDecayConstant,
+        isCheckerboardSamplingEnabled,
+        checkerboardLoadEvenPixels);
 
     // Transition output resource to SRV state.        
     {

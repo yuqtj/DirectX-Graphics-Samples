@@ -46,7 +46,7 @@ int2 GetActivePixelIndex(int2 pixel)
 {
     bool isEvenPixel = ((pixel.x + pixel.y) & 1) == 0;
     return
-        cb.doCheckerboardSampling && cb.evenPixelsAreActive != isEvenPixel
+        cb.doCheckerboardSampling && cb.areEvenPixelsActive != isEvenPixel
         ? pixel + int2(0, 1)
         : pixel;
 }
