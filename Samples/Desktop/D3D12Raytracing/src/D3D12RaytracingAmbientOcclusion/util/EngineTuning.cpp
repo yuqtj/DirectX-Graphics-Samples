@@ -652,13 +652,13 @@ function<void(void*)> StartLoadFunc = StartLoad;
 //ToDo static CallbackTrigger Load(L"Load Settings", StartLoadFunc, nullptr); 
 
 
-void EngineTuning::Display(wstringstream* renderText)
+void EngineTuning::Display(wstringstream* renderText, bool expandAllNodes)
 {
     EngineProfiling::DisplayFrameRate(*renderText, 0);
 
     if (!sm_IsVisible)
     {
-        EngineProfiling::Display(*renderText, 0);
+        EngineProfiling::Display(*renderText, 0, expandAllNodes);
         return;
     }
 

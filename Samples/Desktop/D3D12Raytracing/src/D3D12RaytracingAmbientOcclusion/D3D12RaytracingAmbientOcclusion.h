@@ -165,6 +165,10 @@ private:
     ConstantBuffer<SSAOSceneConstantBuffer> m_SSAOCB;
     UINT m_SSAOsrvDescriptorHeapIndex = UINT_MAX;
     D3D12_GPU_DESCRIPTOR_HANDLE SSAOgpuDescriptorReadAccess = { UINT64_MAX };
+
+    bool m_isProfiling = false;
+    UINT m_numRemainingFramesToProfile = 0;
+    std::map<std::wstring, std::list<std::wstring>> m_profilingResults;
     
 	// ToDo clean up buffer management
 	// SquidRoom buffers
@@ -380,6 +384,7 @@ private:
     void BuildShaderTables();
     void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
     void CalculateFrameStats();
-    void MultiPassBlur();
+    void MultiPassBlur(); 
+    void WriteProfilingResultsToFile();
 	//float NumCameraRaysPerSecondNumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimeManager.GetAverageMS(GpuTimers::Raytracing_GBuffer), m_raytracingWidth, m_raytracingHeight); }
 };

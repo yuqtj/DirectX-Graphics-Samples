@@ -197,7 +197,7 @@ namespace EngineTuning
 {
     void Initialize();
     void Update(float frameTime);
-    void Display(std::wstringstream* renderText);
+    void Display(std::wstringstream* renderText, bool expandAllNodes = false);
     bool IsFocused();
 
 } // namespace EngineTuning

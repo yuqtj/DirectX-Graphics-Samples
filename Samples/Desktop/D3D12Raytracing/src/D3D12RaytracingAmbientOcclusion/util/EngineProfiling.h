@@ -30,7 +30,7 @@ namespace EngineProfiling
     void EndBlock(ID3D12GraphicsCommandList4* CommandList = nullptr);
 
     void DisplayFrameRate(std::wstringstream& Text, UINT indent);
-    void Display(std::wstringstream& text, UINT indent);
+    void Display(std::wstringstream& text, UINT indent, bool expandAllNodes = false);
     bool IsPaused();
 }
 

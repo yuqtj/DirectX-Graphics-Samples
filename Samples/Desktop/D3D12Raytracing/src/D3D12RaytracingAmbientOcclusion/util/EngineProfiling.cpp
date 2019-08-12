@@ -212,9 +212,9 @@ public:
     float GetAverageGpuTimeMS(void) const { return m_GpuTimer.GetAverageMS(); }
 
 
-    static void Display(wstringstream& Text, UINT indent)
+    static void Display(wstringstream& Text, UINT indent, bool expandAllNodes)
     {
-        sm_RootScope.DisplayNode(Text, indent);
+        sm_RootScope.DisplayNode(Text, indent, expandAllNodes);
     }
 
     static const NestedTimingTree& Root() { return sm_RootScope; }
@@ -226,7 +226,7 @@ public:
     static GpuTimer& FrameGpuTimer() { return sm_FrameGpuTimer; }
 private:
 
-    void DisplayNode(wstringstream& Text, UINT indent);
+    void DisplayNode(wstringstream& Text, UINT indent, bool expandAllNodes);
     void DeleteChildren(void)
     {
         for (auto node : m_Children)
@@ -350,7 +350,7 @@ namespace EngineProfiling
         Text.precision(prevPrecision);
     }
 
-    void Display(wstringstream& Text, UINT indent)
+    void Display(wstringstream& Text, UINT indent, bool expandAllNodes)
     {
         if (DrawProfiler)
         {
@@ -364,7 +364,7 @@ namespace EngineProfiling
             }
             Text << L"GPU[ms]\n";
 
-            NestedTimingTree::Display(Text, indent);
+            NestedTimingTree::Display(Text, indent, expandAllNodes);
         }
     }
 
@@ -415,7 +415,7 @@ void NestedTimingTree::Update(void)
     }
 }
 
-void NestedTimingTree::DisplayNode(wstringstream& Text, UINT indent)
+void NestedTimingTree::DisplayNode(wstringstream& Text, UINT indent, bool expandAllNodes)
 {
 
     if (this == &sm_RootScope)
@@ -436,7 +436,7 @@ void NestedTimingTree::DisplayNode(wstringstream& Text, UINT indent)
         else
             Text << L"+  ";
 
-        Text << m_Name.c_str() << L" ";
+        Text << m_Name.c_str() << L": ";
 
         streamsize prevPrecision = Text.precision(3);
         streamsize prevWidth = Text.width(6);
@@ -454,10 +454,10 @@ void NestedTimingTree::DisplayNode(wstringstream& Text, UINT indent)
         indent += 2;
     }
 
-    if (!m_IsExpanded)
+    if (!expandAllNodes && !m_IsExpanded)
         return;
 
     for (auto node : m_Children)
-        node->DisplayNode(Text, indent);
+        node->DisplayNode(Text, indent, expandAllNodes);
 }
 

@@ -74,11 +74,17 @@ namespace Scene
 #endif
 
 #if DEBUG_CAMERA_POS
-#if 1 // Debug CB
+#if 1  // Profiling
 
-            camera.position.eye = { -26.4588f, 45.2775f, 42.3003f, 1 };
-            camera.position.at = { -26.1853f, 44.4875f, 41.7511f, 1 };
-            camera.position.up = { 0.385421f, 0.520927f, -0.761625f, 0 };
+            camera.position.eye = { -35.7656f, 14.7652f, -22.5312f, 1 };
+            camera.position.at = { -35.0984f, 14.345f, -21.9154f, 1 };
+            camera.position.up = { 0.378971f, 0.854677f, 0.354824f, 0 };
+            
+#elif 1 // Teaser
+
+            camera.position.eye = { -35.5118f, 8.80959f, -25.0768f, 1 };
+            camera.position.at = { -34.8053f, 8.69494f, -24.3781f, 1 };
+            camera.position.up = { 0.157816f, 0.974278f, 0.160827f, 0 };
 #elif 1 // Test upsampling jaggies
 
             camera.position.eye = { -24.1798f, 9.34552f, -13.6086f, 1 };

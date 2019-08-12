@@ -779,7 +779,7 @@ void RTAO::OnRender(
         m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
     }
 
-    ScopedTimer _prof(L"CalculateAmbientOcclusion", commandList);
+    ScopedTimer _prof(L"CalculateAmbientOcclusion_Root", commandList);
 
     // Transition AO resources to UAV state.        // ToDo check all comments
     {
@@ -841,6 +841,7 @@ void RTAO::OnRender(
 
     if (!SceneArgs::RTAOUseRaySorting)
     {
+        ScopedTimer _prof(L"AO DispatchRays 2D", commandList);
         DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOFullRes].Get());
     }
 #if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME

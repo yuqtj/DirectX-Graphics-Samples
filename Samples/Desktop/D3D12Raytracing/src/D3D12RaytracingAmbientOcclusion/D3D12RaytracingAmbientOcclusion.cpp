@@ -624,6 +624,38 @@ D3D12RaytracingAmbientOcclusion::~D3D12RaytracingAmbientOcclusion()
     GameInput::Shutdown();
 }
 
+
+void D3D12RaytracingAmbientOcclusion::WriteProfilingResultsToFile()
+{
+    std::wofstream outputFile(L"Profile.csv", std::ofstream::trunc);
+
+    // Column headers.
+    size_t maxNumResults = 0;
+    for (auto& column : m_profilingResults)
+    {
+        outputFile << column.first << L",";
+        maxNumResults = max(maxNumResults, column.second.size());
+    }
+    outputFile << L"\n";
+
+    // Column results.
+
+    for (size_t i = 0; i < maxNumResults; i++)
+    {
+        for (auto& column : m_profilingResults)
+        {
+            if (column.second.size())
+            {
+                outputFile << column.second.front();
+                column.second.pop_front();
+            }
+            outputFile << L",";
+        }
+        outputFile << L"\n";
+    }
+    outputFile.close();
+}
+
 // Update camera matrices passed into the shader.
 void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
 {
@@ -2589,6 +2621,18 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
     case 'B':
         m_cameraChangedIndex = 2;
         break;
+    case VK_F9:
+        if (m_isProfiling)
+            WriteProfilingResultsToFile();
+        else
+        {
+            m_numRemainingFramesToProfile = 1000;
+            float perFrameSeconds = SceneArgs::CameraRotationDuration / m_numRemainingFramesToProfile;
+            m_timer.SetTargetElapsedSeconds(perFrameSeconds);
+            m_animateCamera = true;
+        }
+        m_isProfiling = !m_isProfiling;
+        m_timer.SetFixedTimeStep(m_isProfiling);
     default:
         break;
     }
@@ -2598,6 +2642,21 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
 void D3D12RaytracingAmbientOcclusion::OnUpdate()
 {
     m_timer.Tick();
+
+    if (m_isProfiling)
+    {
+        if (m_numRemainingFramesToProfile == 0)
+        {
+            m_isProfiling = false;
+            m_timer.SetFixedTimeStep(false);
+            WriteProfilingResultsToFile();
+            m_animateCamera = false;
+        }
+        else
+        {
+            m_numRemainingFramesToProfile--;
+        }
+    }
 
     float elapsedTime = static_cast<float>(m_timer.GetElapsedSeconds());
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
@@ -2694,7 +2753,9 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 		// ToDo
         float secondsToRotateAround = SceneArgs::CameraRotationDuration;
         float angleToRotateBy = 360.0f * (elapsedTime / secondsToRotateAround);
+        XMMATRIX axisCenter = XMMatrixTranslation(5.87519f, 0, 8.52134f);
         XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
+
 		XMVECTOR eye =  m_camera.Eye();
 		XMVECTOR at = m_camera.At();
 		XMVECTOR up = m_camera.Up();		
@@ -3784,7 +3845,6 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
     wstring passName;
     GpuKernels::UpsampleBilateralFilter::FilterType filterType = GpuKernels::UpsampleBilateralFilter::Filter2x2R;
 
-
     switch (SceneArgs::CompositionMode)
     {
         // ToDo Cleanup
@@ -3798,14 +3858,14 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
         {
             outputHiResValueResource = &m_AOResources[AOResource::Coefficient];
         }
-        else if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
+        else// if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
         {
             outputHiResValueResource = &m_AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex];
         }
-        else
-        {
-            outputHiResValueResource = &m_AOResources[AOResource::Smoothed];
-        }
+        //else
+        //{
+        //    outputHiResValueResource = &m_AOResources[AOResource::Smoothed];
+        //}
         
         if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_RawOneFrame)
         {
@@ -3816,14 +3876,14 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
         {
             inputLowResValueResource = &m_multiScaleDenoisingResources[0].m_value;
         }*/
-        else if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
+        else //(SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
         {
             inputLowResValueResource = &m_lowResAOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex];
         }
-        else
-        {
-            inputLowResValueResource = &m_RTAO.AOResources()[AOResource::Smoothed];
-        }
+        //else
+        //{
+        //    inputLowResValueResource = &m_RTAO.AOResources()[AOResource::Smoothed];
+        //}
         break;
     }
     case CompositionType::AmbientOcclusionHighResSamplingPixels:
@@ -4379,8 +4439,46 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
     // Engine tuning.
     {
         wstringstream wLabel;
-        EngineTuning::Display(&wLabel);
+        EngineTuning::Display(&wLabel, m_isProfiling);
         labels.push_back(wLabel.str());
+
+
+
+        if (m_isProfiling)
+        {
+            set<wstring> profileMarkers = {
+                   L"DownsampleGBuffer",
+                   L"RTAO_Root",
+                   L"RenderPass_TemporalSupersamplingReverseProjection",
+                   L"[Sorted]CalculateAmbientOcclusion",
+                   L"CalculateAmbientOcclusion_Root",
+                   L"Adaptive Ray Gen",
+                   L"Sort Rays",
+                   L"AO DispatchRays 2D",
+                   L"RenderPass_TemporalSupersamplingBlendWithCurrentFrame",
+                   L"DenoiseAO",
+                   L"Upsample AO",
+                   L"Low-Tspp Multi-pass blur"
+            };
+            
+            wstring line;
+            while (getline(wLabel, line)) 
+            {
+                std::wstringstream ss(line);
+                wstring name;
+                wstring time;
+                getline(ss, name, L':');
+                getline(ss, time);
+                for (auto& profileMarker : profileMarkers)
+                {
+                    if (name.find(profileMarker) != wstring::npos)
+                    {
+                        m_profilingResults[profileMarker].push_back(time);
+                        break;
+                    }
+                }
+            }
+        }
     }
 
 #if 0 // ToDo
@@ -4747,7 +4845,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
 {
     auto commandList = m_deviceResources->GetCommandList();
 
-    ScopedTimer _prof(L"Temporal Supersampling p2 (Blend with Current Frame)", commandList);
+    ScopedTimer _prof(L"RenderPass_TemporalSupersamplingBlendWithCurrentFrame", commandList);
 
     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
     RWGpuResource* AOResources = m_RTAO.AOResources();
@@ -5391,7 +5489,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 // AO. 
                 if (SceneArgs::AOMode == SceneArgs::AOType::RTAO)
                 {
-                    ScopedTimer _prof(L"RTAO", commandList);
+                    ScopedTimer _prof(L"RTAO_Root", commandList);
 
                     RWGpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
 
@@ -5515,7 +5613,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
             {
                 AOSRV = AOResources[AOResource::Coefficient].gpuDescriptorReadAccess;
             }
-            else if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
+            else //if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
             {
                 AOSRV = m_AOTSSCoefficient[m_temporalCacheCurrentFrameResourceIndex].gpuDescriptorReadAccess;
             }

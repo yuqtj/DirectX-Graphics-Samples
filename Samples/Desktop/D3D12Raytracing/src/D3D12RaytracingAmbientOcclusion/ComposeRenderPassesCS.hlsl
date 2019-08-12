@@ -190,7 +190,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
         }
         else if (g_CB.compositionType == CompositionType::DepthOnly)
         {
-            color = float4(0, 0, 0, 1); // ToDo
+            color = depthDummy / 80; // ToDo
         }
         else if (g_CB.compositionType == CompositionType::Diffuse)
         {
