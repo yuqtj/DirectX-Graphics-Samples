@@ -98,7 +98,7 @@ namespace SceneArgs
 #else
     NumVar RTAOMaxRayHitTime(L"Render/AO/RTAO/Max ray hit time", AO_RAY_T_MAX, 0.0f, 1000.0f, 4);
 #endif
-    BoolVar RTAOApproximateInterreflections(L"Render/AO/RTAO/Approximate Interreflections/Enabled", false);
+    BoolVar RTAOApproximateInterreflections(L"Render/AO/RTAO/Approximate Interreflections/Enabled", true);
     NumVar RTAODiffuseReflectanceScale(L"Render/AO/RTAO/Approximate Interreflections/Diffuse Reflectance Scale", 0.5f, 0.0f, 1.0f, 0.1f);
     NumVar  RTAO_MinimumAmbientIllumination(L"Render/AO/RTAO/Minimum Ambient Illumination", 0.07f, 0.0f, 1.0f, 0.01f);
     BoolVar RTAOIsExponentialFalloffEnabled(L"Render/AO/RTAO/Exponential Falloff", true);
@@ -602,6 +602,11 @@ float RTAO::GetMaxRayHitTime()
 {
     return SceneArgs::RTAOMaxRayHitTime;
 }
+void RTAO::SetMaxRayHitTime(float maxRayHitTime)
+{
+    return SceneArgs::RTAOMaxRayHitTime.SetValue(maxRayHitTime);
+}
+
 
 float RTAO::GetSpp()
 {

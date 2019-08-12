@@ -207,7 +207,7 @@ namespace SceneArgs
     
     // ToDo remove
     BoolVar RTAO_KernelStepRotateShift0(L"Render/AO/RTAO/Kernel Step Shifts/Rotate 0:", true );
-    IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 2, 0, 10, 1);
+    IntVar RTAO_KernelStepShift0(L"Render/AO/RTAO/Kernel Step Shifts/0", 3, 0, 10, 1);
     IntVar RTAO_KernelStepShift1(L"Render/AO/RTAO/Kernel Step Shifts/1", 1, 0, 10, 1);
     IntVar RTAO_KernelStepShift2(L"Render/AO/RTAO/Kernel Step Shifts/2", 0, 0, 10, 1);
     IntVar RTAO_KernelStepShift3(L"Render/AO/RTAO/Kernel Step Shifts/3", 0, 0, 10, 1);
@@ -265,7 +265,7 @@ namespace SceneArgs
     IntVar RTAODenoisingFilterMinKernelWidth(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Min kernel width", 3, 3, 101);
     NumVar RTAODenoisingFilterMaxKernelWidthPercentage(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Max kernel width [%% of screen width]", 1.5f, 0, 100, 0.1f);
     NumVar RTAODenoisingFilterVarianceSigmaScaleOnSmallKernels(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Variance sigma scale on small kernels", 2.0f, 1.0f, 20.f, 0.5f); 
-    NumVar RTAO_Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Hit distance scale factor", 0.04f, 0.001f, 10.f, 0.005f);
+    NumVar RTAO_Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor(L"Render/AO/RTAO/Denoising/AdaptiveKernelSize/Hit distance scale factor", 0.07f, 0.001f, 10.f, 0.005f);
     BoolVar RTAODenoising_Variance_UseDepthWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true);
     BoolVar RTAODenoising_Variance_UseNormalWeights(L"Render/AO/RTAO/Denoising/Variance/Use normal weights", true);
     BoolVar RTAODenoising_ForceDenoisePass(L"Render/AO/RTAO/Denoising/Force denoise pass", false);
@@ -2579,6 +2579,7 @@ void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
 
 void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
 {
+    float fValue;
 	// ToDo 
     switch (key)
     {
@@ -2629,10 +2630,27 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
             m_numRemainingFramesToProfile = 1000;
             float perFrameSeconds = SceneArgs::CameraRotationDuration / m_numRemainingFramesToProfile;
             m_timer.SetTargetElapsedSeconds(perFrameSeconds);
+            m_timer.ResetElapsedTime();
             m_animateCamera = true;
         }
         m_isProfiling = !m_isProfiling;
         m_timer.SetFixedTimeStep(m_isProfiling);
+    case VK_NUMPAD1:
+        SceneArgs::CompositionMode.SetValue(CompositionType::AmbientOcclusionOnly_RawOneFrame);
+        break;
+    case VK_NUMPAD2:
+        SceneArgs::CompositionMode.SetValue(CompositionType::AmbientOcclusionOnly_Denoised);
+        break;
+    case VK_NUMPAD3:
+        SceneArgs::CompositionMode.SetValue(CompositionType::PhongLighting);
+        break;
+    case VK_NUMPAD0:
+        SceneArgs::AOEnabled.Bang();
+        break;
+    case VK_NUMPAD9:
+        fValue = IsInRange(m_RTAO.GetMaxRayHitTime(), 3.9f, 4.1f) ? 22 : 4;
+        m_RTAO.SetMaxRayHitTime(fValue);
+        break;
     default:
         break;
     }

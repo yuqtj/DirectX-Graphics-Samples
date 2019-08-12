@@ -47,6 +47,7 @@ public:
     void SetResolution(UINT width, UINT height);
     DXGI_FORMAT GetAOCoefficientFormat();
     float GetMaxRayHitTime();
+    void SetMaxRayHitTime(float maxRayHitTime);
     float GetSpp();
     void GetRayGenParameters(bool *isCheckerboardSamplingEnabled, bool *checkerboardLoadEvenPixels);
     // ToDo return only a subset

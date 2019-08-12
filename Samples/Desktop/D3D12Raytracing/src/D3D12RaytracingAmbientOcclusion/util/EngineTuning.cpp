@@ -387,6 +387,11 @@ void NumVar::SetValue(FILE* file, const wstring& setting)
         *this = valueRead; 
 }
 
+void NumVar::SetValue(float value)
+{
+    m_Value = Clamp(value);
+}
+
 #if _MSC_VER < 1800
 __forceinline float log2(float x) { return log(x) / log(2.0f); }
 __forceinline float exp2(float x) { return pow(2.0f, x); }
@@ -528,7 +533,12 @@ void EnumVar::SetValue(FILE* file, const wstring& setting)
             }
         }
     }
+}
 
+void EnumVar::SetValue(int32_t value)
+{
+    m_Value = Clamp(value);
+    // ToDO call the callback
 }
 
 CallbackTrigger::CallbackTrigger(const wstring& path, function<void (void*)> callback, void* args)

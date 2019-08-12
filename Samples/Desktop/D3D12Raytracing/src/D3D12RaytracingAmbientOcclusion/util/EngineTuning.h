@@ -87,6 +87,7 @@ public:
     virtual std::wstring ToFormattedString() const override;
     virtual std::wstring ToString() const override;
     virtual void SetValue(FILE* file, const std::wstring& setting)  override;       // ToDo remove/rename
+    virtual void SetValue(float value); // ToDo add to all
     void SetMaxValue(float value) { m_MaxValue = value; m_MinValue = std::min(m_MinValue, value); }
     void SetMinValue(float value) { m_MinValue = value; m_MaxValue = std::max(m_MaxValue, value); }
 
@@ -167,6 +168,7 @@ public:
     virtual std::wstring ToFormattedString() const override;
     virtual std::wstring ToString() const override;
     virtual void SetValue(FILE* file, const std::wstring& setting) override;
+    virtual void SetValue(int32_t value); // ToDo add to all
 
     void SetListLength(int32_t listLength) { m_EnumLength = listLength; m_Value = Clamp(m_Value); }
 
