@@ -381,7 +381,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         float2 varianceSigmaScale = 1; 
         if ( g_CB.useAdaptiveKernelSize)
         {
-            float avgRayHitDistance = g_inHitDistance[DTid];
+            float avgRayHitDistance = isValidValue ? g_inHitDistance[DTid] : 0;
 
             float perPixelViewAngle = (FOVY / g_CB.textureDim.y) * PI / 180; 
             float tan_a = tan(perPixelViewAngle);

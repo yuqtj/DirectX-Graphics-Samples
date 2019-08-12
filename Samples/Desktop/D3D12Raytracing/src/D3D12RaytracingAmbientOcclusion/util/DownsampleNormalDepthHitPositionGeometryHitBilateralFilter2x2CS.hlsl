@@ -24,6 +24,7 @@ Texture2D<float2> g_inPartialDistanceDerivatives : register(t4);  // update file
 Texture2D<float> g_inDepth : register(t5);
 Texture2D<float2> g_inMotionVector : register(t6);
 Texture2D<NormalDepthTexFormat> g_inReprojectedNormalDepth : register(t7);
+Texture2D<float4> g_inSurfaceAlbedo : register(t8);
 RWTexture2D<float> g_texOutput : register(u0);
 RWTexture2D<float4> g_outNormal : register(u1);
 RWTexture2D<float4> g_outHitPosition : register(u2);
@@ -32,6 +33,7 @@ RWTexture2D<float2> g_outPartialDistanceDerivatives : register(u4);   // ToDo re
 RWTexture2D<float> g_outDepth : register(u5);   // ToDo remove or we need hi bit depth?
 RWTexture2D<float2> g_outMotionVector : register(u6);
 RWTexture2D<NormalDepthTexFormat> g_outReprojectedNormalDepth : register(u7);
+RWTexture2D<float4> g_outSurfaceAlbedo : register(u8);
 
 #if EXACT_DDXY_ON_QUARTER_RES_USING_DOWNSAMPLED_PIXEL_OFFSETS
 // Stores a pixel offset of the selected hi-res pixel from the top-left corner.
@@ -96,4 +98,5 @@ void main(uint2 DTid : SV_DispatchThreadID)
     g_outReprojectedNormalDepth[DTid] = g_inReprojectedNormalDepth[selectedDTid];
     g_outHitPosition[DTid] = g_inHitPosition[selectedDTid];
     g_outGeometryHit[DTid] = g_inGeometryHit[selectedDTid];
+    g_outSurfaceAlbedo[DTid] = g_inSurfaceAlbedo[selectedDTid];
 }

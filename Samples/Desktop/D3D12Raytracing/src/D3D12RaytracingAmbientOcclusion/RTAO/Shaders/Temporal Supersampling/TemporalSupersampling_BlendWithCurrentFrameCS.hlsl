@@ -54,7 +54,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     uint numDenoisePasses = 0x7F & numRaysToGenerateOrDenoisePasses;
 
     float4 cachedValues = float4(frameAge, f16tof32(encodedCachedValues.yzw));
-    //g_texOutputDebug1[DTid] = cachedValues;
+    g_texOutputDebug1[DTid] = cachedValues;
 
     bool isCurrentFrameRayActive = true;
     if (cb.doCheckerboardSampling)
@@ -66,9 +66,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
     
     bool isValidValue = value != RTAO::InvalidAOValue;
 
-    float valueSquaredMean = value * value;
-    float rayHitDistance;
-    float variance;
+    float valueSquaredMean = isValidValue ? value * value : RTAO::InvalidAOValue;
+    float rayHitDistance = RTAO::InvalidAOValue;
+    float variance = RTAO::InvalidAOValue;
     
     // ToDo can this ever fail? reproject sets frameage to 1 at minimum.
     if (frameAge > 0)
@@ -104,14 +104,13 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float a = cb.forceUseMinSmoothingFactor ? cb.minSmoothingFactor : max(invFrameAge, cb.minSmoothingFactor);
         float MaxSmoothingFactor = 1;// 0.2;
         a = min(a, MaxSmoothingFactor);
-        a = isValidValue ? a : 0;
 
         // Value.
-        value = lerp(cachedValue, value, a);
+        value = isValidValue ? lerp(cachedValue, value, a) : cachedValue;
 
         // Value Squared Mean.
         float cachedSquaredMeanValue = cachedValues.z; 
-        valueSquaredMean = lerp(cachedSquaredMeanValue, valueSquaredMean, a);
+        valueSquaredMean = isValidValue ? lerp(cachedSquaredMeanValue, valueSquaredMean, a) : cachedSquaredMeanValue;
 
         // Variance.
         float temporalVariance = valueSquaredMean - value * value;
@@ -120,9 +119,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
         variance = max(0.1, variance);
 
         // RayHitDistance.
-        rayHitDistance = isCurrentFrameRayActive ? g_texInputCurrentFrameRayHitDistance[DTid] : 0; // ToDO use a common const.
+        rayHitDistance = isValidValue ? g_texInputCurrentFrameRayHitDistance[DTid] : 0; // ToDO use a common const.
         float cachedRayHitDistance = cachedValues.w;
-        rayHitDistance = lerp(cachedRayHitDistance, rayHitDistance, a);
+        rayHitDistance = isValidValue ? lerp(cachedRayHitDistance, rayHitDistance, a) : cachedRayHitDistance;
 
 
         // ToDo use an helper 0/1 resource instead ?
@@ -132,10 +131,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
     }
     else if (isValidValue)
     {
-        frameAge = isValidValue ? 1 : 0;
-#if RTAO_GAUSSIAN_BLUR_AFTER_TSS
-        value = isValidValue ? value : -value;
-#endif
+        frameAge = 1;
+        value = value;
+
         rayHitDistance = g_texInputCurrentFrameRayHitDistance[DTid];
         variance = g_texInputCurrentFrameLocalMeanVariance[DTid].y;
         valueSquaredMean = valueSquaredMean;

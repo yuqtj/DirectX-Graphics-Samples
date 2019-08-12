@@ -716,9 +716,10 @@ void RTAO::OnUpdate()
     m_CB->RTAO_UseSortedRays = SceneArgs::RTAOUseRaySorting;
 
     bool doCheckerboardRayGeneration = GetSpp() != 1;
+    m_checkerboardGenerateRaysForEvenPixels = !m_checkerboardGenerateRaysForEvenPixels;
     m_CB->doCheckerboardSampling = doCheckerboardRayGeneration;
-    UINT pixelStepX = doCheckerboardRayGeneration ? 2 : 1;
     m_CB->areEvenPixelsActive = m_checkerboardGenerateRaysForEvenPixels;
+    UINT pixelStepX = doCheckerboardRayGeneration ? 2 : 1;
     m_CB->raytracingDim = XMUINT2(CeilDivide(m_raytracingWidth, pixelStepX), m_raytracingHeight);
 
     SceneArgs::RTAOAdaptiveSamplingMinSamples.SetMaxValue(SceneArgs::AOSampleCountPerDimension * SceneArgs::AOSampleCountPerDimension);
@@ -857,7 +858,6 @@ void RTAO::OnRender(
     if (SceneArgs::RTAOUseRaySorting)
     {
         bool doCheckerboardRayGeneration = GetSpp() != 1;
-        m_checkerboardGenerateRaysForEvenPixels = !m_checkerboardGenerateRaysForEvenPixels;
 
         // Todo verify odd width resolutions when using CB
         UINT activeRaytracingWidth =

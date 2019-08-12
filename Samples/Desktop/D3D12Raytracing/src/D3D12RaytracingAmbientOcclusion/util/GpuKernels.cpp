@@ -454,6 +454,7 @@ namespace GpuKernels
                     OutputMotionVector,
                     OutputPrevFrameHitPosition,
                     OutputDepth,
+                    OutputSurfaceAlbedo,
 #if EXACT_DDXY_ON_QUARTER_RES_USING_DOWNSAMPLED_PIXEL_OFFSETS
 #endif
                     Input,
@@ -464,6 +465,7 @@ namespace GpuKernels
                     InputMotionVector,
                     InputPrevFrameHitPosition,
                     InputDepth,
+                    InputSurfaceAlbedo,
                     ConstantBuffer,
                     Count
                 };
@@ -479,7 +481,7 @@ namespace GpuKernels
             using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
 
             // ToDo review access frequency or remove performance tip
-            CD3DX12_DESCRIPTOR_RANGE ranges[17]; 
+            CD3DX12_DESCRIPTOR_RANGE ranges[18]; 
             ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
             ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input normal texture
             ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 input position texture
@@ -496,6 +498,8 @@ namespace GpuKernels
             ranges[13].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 6);  // 1 output motion vector
             ranges[14].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);  // 1 input previous frame hit position
             ranges[15].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 7);  // 1 output previous frame hit position
+            ranges[16].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  
+            ranges[17].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 8);  
         
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[0]);
@@ -514,6 +518,8 @@ namespace GpuKernels
             rootParameters[Slot::OutputMotionVector].InitAsDescriptorTable(1, &ranges[13]);
             rootParameters[Slot::InputPrevFrameHitPosition].InitAsDescriptorTable(1, &ranges[14]);
             rootParameters[Slot::OutputPrevFrameHitPosition].InitAsDescriptorTable(1, &ranges[15]);
+            rootParameters[Slot::InputSurfaceAlbedo].InitAsDescriptorTable(1, &ranges[16]);
+            rootParameters[Slot::OutputSurfaceAlbedo].InitAsDescriptorTable(1, &ranges[17]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_STATIC_SAMPLER_DESC staticSamplers[] = {
@@ -558,13 +564,15 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputMotionVectorResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPrevFrameHitPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& inputSurfaceAlbedoResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputNormalResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPositionResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputGeometryHitResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPartialDistanceDerivativesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputMotionVectorResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputPrevFrameHitPositionResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputDepthResourceHandle)
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputDepthResourceHandle,
+        const D3D12_GPU_DESCRIPTOR_HANDLE& outputSurfaceAlbedoResourceHandle)
     {
         using namespace RootSignature::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter;
         using namespace DefaultComputeShaderParams;
@@ -587,6 +595,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::InputMotionVector, inputMotionVectorResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputPrevFrameHitPosition, inputPrevFrameHitPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputDepth, inputDepthResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::InputSurfaceAlbedo, inputSurfaceAlbedoResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputNormal, outputNormalResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPosition, outputPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputGeometryHit, outputGeometryHitResourceHandle);
@@ -594,6 +603,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::OutputMotionVector, outputMotionVectorResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputPrevFrameHitPosition, outputPrevFrameHitPositionResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDepth, outputDepthResourceHandle);
+            commandList->SetComputeRootDescriptorTable(Slot::OutputSurfaceAlbedo, outputSurfaceAlbedoResourceHandle);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
             commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
@@ -1704,6 +1714,11 @@ namespace GpuKernels
             };
 
 
+            if (numFilterPasses == 1 && outputIntermediateResource && 0 == passNumberToOutputToIntermediateResource)
+            {
+                outValueResources[0] = outputIntermediateResource;
+            }
+
             // First iteration reads from input resource.		
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
 #if WORKAROUND_ATROUS_VARYING_OUTPUTS
@@ -1724,7 +1739,7 @@ namespace GpuKernels
                 commandList->Dispatch(groupSize.x, groupSize.y, 1);
 
                 // ToDo remove the copy, write directly to the resource instead.
-                if (outputIntermediateResource && i == passNumberToOutputToIntermediateResource)
+                if (i > 0 && outputIntermediateResource && i == passNumberToOutputToIntermediateResource)
                 {
                     commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(outValueResources[i % 2]->resource.Get()));
 

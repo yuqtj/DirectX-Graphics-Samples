@@ -411,7 +411,7 @@ void RayGenShader_sortedRays()
         DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[srcRayIndexFullRes], surfaceNormal, depth);
 
         Ray AORay = { hitPosition, rayDirection };
-        ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
+        ambientCoef = CalculateAO(tHit, srcRayIndexFullRes, AORay, surfaceNormal);
     }
 
 #if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
