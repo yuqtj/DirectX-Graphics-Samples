@@ -12,6 +12,7 @@
 #include "../stdafx.h"
 #include "DeviceResources.h"
 #include "Win32Application.h"
+#include "GpuResourceStateTracker.h"
 
 using namespace DX;
 using namespace std;
@@ -229,6 +230,7 @@ void DeviceResources::CreateDeviceResources()
     // Create a command list for recording graphics commands.
     ThrowIfFailed(m_d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[0].Get(), nullptr, IID_PPV_ARGS(&m_commandList)));
     ThrowIfFailed(m_commandList->Close());
+    m_gpuResourceStateTracker.Bind(m_commandList);
 
     // Create a fence for tracking GPU execution progress.
     ThrowIfFailed(m_d3dDevice->CreateFence(m_fenceValues[m_backBufferIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
@@ -477,6 +479,7 @@ void DeviceResources::HandleDeviceLost()
     m_depthStencil.Reset();
     m_commandQueue.Reset();
     m_commandList.Reset();
+    m_gpuResourceStateTracker.Reset();
     m_fence.Reset();
     m_rtvDescriptorHeap.Reset();
     m_dsvDescriptorHeap.Reset();

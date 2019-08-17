@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "GpuResourceStateTracker.h"
+
 namespace DX
 {
     // Provides an interface for an application that owns DeviceResources to be notified of the device being lost or created.
@@ -90,6 +92,7 @@ namespace DX
         ID3D12CommandQueue*         GetCommandQueue() const { return m_commandQueue.Get(); }
         ID3D12CommandAllocator*     GetCommandAllocator() const { return m_commandAllocators[m_backBufferIndex].Get(); }
         ID3D12GraphicsCommandList4* GetCommandList() const { return m_commandList.Get(); }
+        GpuResourceStateTracker*    GetGpuResourceStateTracker() { return &m_gpuResourceStateTracker; }
         DXGI_FORMAT                 GetBackBufferFormat() const { return m_backBufferFormat; }
         DXGI_FORMAT                 GetDepthBufferFormat() const { return m_depthBufferFormat; }
         D3D12_VIEWPORT              GetScreenViewport() const { return m_screenViewport; }
@@ -131,6 +134,7 @@ namespace DX
         ComPtr<ID3D12GraphicsCommandList4>  m_commandList;
         ComPtr<ID3D12CommandAllocator>      m_commandAllocators[MAX_BACK_BUFFER_COUNT];
 		bool								m_openCommandList;
+        GpuResourceStateTracker             m_gpuResourceStateTracker;
 
         // Swap chain objects.
         ComPtr<IDXGIFactory4>               m_dxgiFactory;

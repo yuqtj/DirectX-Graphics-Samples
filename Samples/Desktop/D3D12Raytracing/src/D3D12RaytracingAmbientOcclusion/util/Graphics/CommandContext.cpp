@@ -10,16 +10,11 @@
 //*********************************************************
 #pragma once
 
+#include "CommandContext.h"
 #include "DXSampleHelper.h"
 #include "Utility.h"
 
-void GpuResourceStateTracker::Reset()
-{ 
-    m_commandList.Reset(); 
-    m_NumBarriersToFlush = 0; 
-}
-
-void GpuResourceStateTracker::TransitionResource(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate)
+void CommandContext::TransitionResource(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate)
 {
     D3D12_RESOURCE_STATES OldState = Resource.m_UsageState;
 
@@ -52,7 +47,7 @@ void GpuResourceStateTracker::TransitionResource(GpuResource& Resource, D3D12_RE
         FlushResourceBarriers();
 }
 
-void GpuResourceStateTracker::BeginResourceTransition(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate)
+void CommandContext::BeginResourceTransition(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate)
 {
     // If it's already transitioning, finish that transition
     if (Resource.m_TransitioningState != (D3D12_RESOURCE_STATES)-1)
@@ -79,7 +74,7 @@ void GpuResourceStateTracker::BeginResourceTransition(GpuResource& Resource, D3D
         FlushResourceBarriers();
 }
 
-void GpuResourceStateTracker::InsertUAVBarrier(GpuResource& Resource, bool FlushImmediate)
+void CommandContext::InsertUAVBarrier(GpuResource& Resource, bool FlushImmediate)
 {
     ASSERT(m_NumBarriersToFlush < c_MaxNumBarriers, "Exceeded arbitrary limit on buffered barriers");
     D3D12_RESOURCE_BARRIER& BarrierDesc = m_ResourceBarrierBuffer[m_NumBarriersToFlush++];
@@ -92,7 +87,7 @@ void GpuResourceStateTracker::InsertUAVBarrier(GpuResource& Resource, bool Flush
         FlushResourceBarriers();
 }
 
-void GpuResourceStateTracker::InsertAliasBarrier(GpuResource& Before, GpuResource& After, bool FlushImmediate)
+void CommandContext::InsertAliasBarrier(GpuResource& Before, GpuResource& After, bool FlushImmediate)
 {
     ASSERT(m_NumBarriersToFlush < c_MaxNumBarriers, "Exceeded arbitrary limit on buffered barriers");
     D3D12_RESOURCE_BARRIER& BarrierDesc = m_ResourceBarrierBuffer[m_NumBarriersToFlush++];
@@ -106,11 +101,11 @@ void GpuResourceStateTracker::InsertAliasBarrier(GpuResource& Before, GpuResourc
         FlushResourceBarriers();
 }
 
-void GpuResourceStateTracker::FlushResourceBarriers()
+void CommandContext::FlushResourceBarriers()
 {
     if (m_NumBarriersToFlush > 0)
     {
-        m_commandList->ResourceBarrier(m_NumBarriersToFlush, m_ResourceBarrierBuffer);
+        ResourceBarrier(m_NumBarriersToFlush, m_ResourceBarrierBuffer);
         m_NumBarriersToFlush = 0;
     }
 }
