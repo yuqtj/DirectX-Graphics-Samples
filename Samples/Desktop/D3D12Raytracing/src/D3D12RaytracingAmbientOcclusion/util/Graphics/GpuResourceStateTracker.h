@@ -19,10 +19,9 @@ public:
     void Bind(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList) { m_commandList = commandList; }
     void Reset();
 
-    void TransitionResource(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate = false);
-    void BeginResourceTransition(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate = false);
-    void InsertUAVBarrier(GpuResource& Resource, bool FlushImmediate = false);
-    void InsertAliasBarrier(GpuResource& Before, GpuResource& After, bool FlushImmediate = false);
+    void TransitionResource(GpuResource* Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate = false);
+    void BeginResourceTransition(GpuResource* Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate = false);
+    void InsertUAVBarrier(GpuResource* Resource, bool FlushImmediate = false);
     void FlushResourceBarriers();
 
 protected:
@@ -30,5 +29,5 @@ protected:
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_commandList;
     static const UINT c_MaxNumBarriers = 16;
     D3D12_RESOURCE_BARRIER m_ResourceBarrierBuffer[c_MaxNumBarriers];
-    UINT m_NumBarriersToFlush;
+    UINT m_NumBarriersToFlush = 0;
 };

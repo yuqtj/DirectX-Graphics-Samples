@@ -314,9 +314,7 @@ private:
 	void RenderPass_CalculateVisibility();
     void RenderPass_GenerateShadowMap();
 	void RenderPass_CalculateAmbientOcclusion();
-    void RenderPass_BlurAmbientOcclusion();
 	void RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV);
-    void RenderPass_TestEarlyExitOVerhead();
     void RenderPass_TemporalSupersamplingReverseProjection();
     void RenderPass_TemporalSupersamplingBlendWithCurrentFrame();
 

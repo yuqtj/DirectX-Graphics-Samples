@@ -1458,7 +1458,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     
 
     // ToDo
-    m_SSAO.BindGBufferResources(m_GBufferResources[GBufferResource::SurfaceNormalDepth].resource.Get(), m_GBufferResources[GBufferResource::Depth].resource.Get());
+    m_SSAO.BindGBufferResources(m_GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource(), m_GBufferResources[GBufferResource::Depth].GetResource());
 
     // ToDo remove unneeded ones
     // Full-res AO resources.
@@ -2856,12 +2856,14 @@ void D3D12RaytracingAmbientOcclusion::ParseCommandLineArgs(WCHAR* argv[], int ar
 void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructure()
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
     if (SceneArgs::EnableGeometryAndASBuildsAndUpdates)
     {
         bool forceBuild = false;    // ToDo
 
+        resourceStateTracker->FlushResourceBarriers();
         m_accelerationStructure->Build(commandList, m_cbvSrvUavHeap->GetHeap(), frameIndex, forceBuild);
     }
 
@@ -2879,6 +2881,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructure()
 void D3D12RaytracingAmbientOcclusion::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT height)
 {
 	auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
     ScopedTimer _prof(L"DispatchRays", commandList);
@@ -2897,6 +2900,7 @@ void D3D12RaytracingAmbientOcclusion::DispatchRays(ID3D12Resource* rayGenShaderT
 	dispatchDesc.Depth = 1;
 	commandList->SetPipelineState1(m_dxrStateObject.Get());
 
+    resourceStateTracker->FlushResourceBarriers();
 	commandList->DispatchRays(&dispatchDesc);
 };
 
@@ -2905,6 +2909,7 @@ void D3D12RaytracingAmbientOcclusion::CalculateCameraRayHitCount()
 	auto device = m_deviceResources->GetD3DDevice();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 	auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 
 	GpuResource* inputResource = &m_GBufferResources[GBufferResource::Hit];
 
@@ -2916,6 +2921,7 @@ void D3D12RaytracingAmbientOcclusion::CalculateCameraRayHitCount()
         return;
     }
 
+    resourceStateTracker->FlushResourceBarriers();
 	m_reduceSumKernel.Execute(
 		commandList,
 		m_cbvSrvUavHeap->GetHeap(),
@@ -2927,6 +2933,8 @@ void D3D12RaytracingAmbientOcclusion::CalculateCameraRayHitCount()
 void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isFirstPass)
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
+
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
     GpuResource* AOResources = m_RTAO.AOResources();
@@ -2940,15 +2948,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
     
     ScopedTimer _prof(L"DenoiseAO", commandList);
 
-    // Transition Smoothed AO to UAV.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), before, after)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
+    // Transition Resources.
+    resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     
 #if RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS
     static UINT frameID = 0;
@@ -3016,12 +3017,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
 
     if (OutputIntermediateResource)
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(OutputIntermediateResource->GetResource(), before, after)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(OutputIntermediateResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
 
     
@@ -3036,6 +3032,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
     if (numFilterPasses > 0)
     {
         ScopedTimer _prof(L"AtrousWaveletTransformFilter", commandList);
+        resourceStateTracker->FlushResourceBarriers();
         m_atrousWaveletTransformFilter.Execute(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
@@ -3079,24 +3076,9 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
             SceneArgs::RTAODenoisingFilterWeightByFrameAge);
     }
 
-    // Transition the output resource to SRV.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), before, after)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);    
-    }
-    if (OutputIntermediateResource)
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(OutputIntermediateResource->GetResource(), before, after)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
+    // ToDo move these right before the call?
+    resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    resourceStateTracker->TransitionResource(OutputIntermediateResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 };
 
 
@@ -3105,6 +3087,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
 void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilter(bool filterFirstLevel)
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 
     GpuResource* AOResources = m_RTAO.AOResources();
     GpuResource* TSSAOCoefficient = SceneArgs::QuarterResAO ? m_lowResTSSAOCoefficient : m_TSSAOCoefficient;
@@ -3123,54 +3106,44 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
             
             ScopedTimer _prof(L"Scale Level", i, commandList);
             
-            // ToDo combine barriers
             // ToDo avoid the copy and use source directly?
             // Copy the inputs to the first level
             if (i == 0)
             {
-                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                D3D12_RESOURCE_BARRIER preCopyBarriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedValue.resource.Get(), before, D3D12_RESOURCE_STATE_COPY_DEST),
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_normalDepth.resource.Get(), before, D3D12_RESOURCE_STATE_COPY_DEST),
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_partialDistanceDerivatives.resource.Get(), before, D3D12_RESOURCE_STATE_COPY_DEST),
-                    CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), before, D3D12_RESOURCE_STATE_COPY_SOURCE),
-                    CD3DX12_RESOURCE_BARRIER::Transition(GBufferResources[GBufferResource::SurfaceNormalDepth].resource.Get(), before, D3D12_RESOURCE_STATE_COPY_SOURCE),
-                    CD3DX12_RESOURCE_BARRIER::Transition(GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, D3D12_RESOURCE_STATE_COPY_SOURCE)
-                };
-                commandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
+                resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_COPY_DEST);
+                resourceStateTracker->TransitionResource(&msResource.m_normalDepth, D3D12_RESOURCE_STATE_COPY_DEST);
+                resourceStateTracker->TransitionResource(&msResource.m_partialDistanceDerivatives, D3D12_RESOURCE_STATE_COPY_DEST);
+                resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_COPY_SOURCE);
+                resourceStateTracker->TransitionResource(&GBufferResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_COPY_SOURCE);
+                resourceStateTracker->TransitionResource(&GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-                commandList->CopyResource(msResource.m_smoothedValue.resource.Get(), AOResources[AOResource::Smoothed].resource.Get());
-                commandList->CopyResource(msResource.m_normalDepth.resource.Get(), GBufferResources[GBufferResource::SurfaceNormalDepth].resource.Get());
-                commandList->CopyResource(msResource.m_partialDistanceDerivatives.resource.Get(), GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get());
+                resourceStateTracker->FlushResourceBarriers();
+                commandList->CopyResource(msResource.m_smoothedValue.GetResource(), AOResources[AOResource::Smoothed].GetResource());
+                commandList->CopyResource(msResource.m_normalDepth.GetResource(), GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource());
+                commandList->CopyResource(msResource.m_partialDistanceDerivatives.GetResource(), GBufferResources[GBufferResource::PartialDepthDerivatives].GetResource());
 
-                D3D12_RESOURCE_STATES after = before;
-                D3D12_RESOURCE_BARRIER postCopyBarriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedValue.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, after),
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_normalDepth.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, after),
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_partialDistanceDerivatives.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, after),
-                    CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, after),
-                    CD3DX12_RESOURCE_BARRIER::Transition(GBufferResources[GBufferResource::SurfaceNormalDepth].resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, after),
-                    CD3DX12_RESOURCE_BARRIER::Transition(GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, after)
-                };
-                commandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
+                resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                resourceStateTracker->TransitionResource(&msResource.m_normalDepth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                resourceStateTracker->TransitionResource(&msResource.m_partialDistanceDerivatives, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                resourceStateTracker->TransitionResource(&GBufferResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                resourceStateTracker->TransitionResource(&GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                
             }
             // ToDo downsample depth resoruce at the same time as the smoothed values
             // ToDo Cleanup - don't need to downsample values
             else
             {
-                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                D3D12_RESOURCE_BARRIER barriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), before, after),
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_normalDepth.resource.Get(), before, after),
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_partialDistanceDerivatives.resource.Get(), before, after)
-                };
-                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+                resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                resourceStateTracker->TransitionResource(&msResource.m_normalDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                resourceStateTracker->TransitionResource(&msResource.m_partialDistanceDerivatives, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+ 
 
                 MultiScaleDenoisingResource& msPrevIterResource = m_multiScaleDenoisingResources[i - 1];
-                D3D12_RESOURCE_DESC desc = msPrevIterResource.m_value.resource.Get()->GetDesc();
+                D3D12_RESOURCE_DESC desc = msPrevIterResource.m_value.GetResource()->GetDesc();
                 UINT width = static_cast<UINT>(desc.Width);
                 UINT height = static_cast<UINT>(desc.Height);
+                resourceStateTracker->FlushResourceBarriers();
                 m_downsampleValueNormalDepthBilateralFilterKernel.Execute(
                     commandList,
                     width,
@@ -3185,17 +3158,12 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
 
                 // Transition the output resources to shader resource state.
                 {
-                    D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                    D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                    D3D12_RESOURCE_BARRIER barriers[] = {
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), before, after),
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_normalDepth.resource.Get(), before, after),
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_partialDistanceDerivatives.resource.Get(), before, after),
-                        CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_value.resource.Get()),
-                        CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_normalDepth.resource.Get()),
-                        CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_partialDistanceDerivatives.resource.Get())
-                    };
-                    commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+                    resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                    resourceStateTracker->TransitionResource(&msResource.m_normalDepth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                    resourceStateTracker->TransitionResource(&msResource.m_partialDistanceDerivatives, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                    resourceStateTracker->InsertUAVBarrier(&msResource.m_value);
+                    resourceStateTracker->InsertUAVBarrier(&msResource.m_normalDepth);
+                    resourceStateTracker->InsertUAVBarrier(&msResource.m_partialDistanceDerivatives);
                 }
             }
         }
@@ -3212,14 +3180,9 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
 
             // Transition all output resources to UAV state.
             {
-                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                D3D12_RESOURCE_BARRIER barriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedValue.resource.Get(), before, after),
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_varianceResource.resource.Get(), before, after),
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedVarianceResource.resource.Get(), before, after)
-                };
-                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+                resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                resourceStateTracker->TransitionResource(&msResource.m_varianceResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                resourceStateTracker->TransitionResource(&msResource.m_smoothedVarianceResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             }
 
             // ToDo skip some downsampling above due to following?
@@ -3240,6 +3203,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
             if (i > 0 || filterFirstLevel)
             {
 #if 1
+                resourceStateTracker->FlushResourceBarriers();
                 m_bilateralFilterKernel.Execute(
                     commandList,
                     GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5,
@@ -3265,6 +3229,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                     UINT_MAX,
                     UINT_MAX);
             }
+            resourceStateTracker->FlushResourceBarriers();
             m_atrousWaveletTransformFilter.Execute(
                 commandList,
                 m_cbvSrvUavHeap->GetHeap(),
@@ -3312,25 +3277,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
 
             // Downsample the denoised value.
             {
-                // Transition input resource to SRV and output resources to UAV state.
-                {
-                    D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                    D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                    D3D12_RESOURCE_BARRIER barriers[] = {
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedValue.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_varianceResource.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedVarianceResource.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-                        CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_smoothedValue.resource.Get()),
-                        CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_varianceResource.resource.Get()),
-                        CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_smoothedVarianceResource.resource.Get()),
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_downsampledSmoothedValue.resource.Get(), before, after),
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_downsampledNormalDepthValue.resource.Get(), before, after),
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_downsampledPartialDistanceDerivatives.resource.Get(), before, after)
-                    };
-                    commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-                }
-
-                D3D12_RESOURCE_DESC desc = msResource.m_smoothedValue.resource.Get()->GetDesc();
+                D3D12_RESOURCE_DESC desc = msResource.m_smoothedValue.GetResource()->GetDesc();
                 UINT width = static_cast<UINT>(desc.Width);
                 UINT height = static_cast<UINT>(desc.Height);
 
@@ -3339,6 +3286,20 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                 {
                     ScopedTimer _prof(L"Downsample", i, commandList);
 
+                    // Transition input resource to SRV and output resources to UAV state.
+                    {
+                        resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                        resourceStateTracker->TransitionResource(&msResource.m_varianceResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                        resourceStateTracker->TransitionResource(&msResource.m_smoothedVarianceResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                        resourceStateTracker->InsertUAVBarrier(&msResource.m_smoothedValue);
+                        resourceStateTracker->InsertUAVBarrier(&msResource.m_varianceResource);
+                        resourceStateTracker->InsertUAVBarrier(&msResource.m_smoothedVarianceResource);
+                        resourceStateTracker->TransitionResource(&msResource.m_downsampledSmoothedValue, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                        resourceStateTracker->TransitionResource(&msResource.m_downsampledNormalDepthValue, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                        resourceStateTracker->TransitionResource(&msResource.m_downsampledPartialDistanceDerivatives, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                    }
+
+                    resourceStateTracker->FlushResourceBarriers();
                     m_downsampleValueNormalDepthBilateralFilterKernel.Execute(
                         commandList,
                         width,
@@ -3352,21 +3313,15 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
                         msResource.m_downsampledNormalDepthValue.gpuDescriptorWriteAccess,
                         msResource.m_downsampledPartialDistanceDerivatives.gpuDescriptorWriteAccess);
 
-                }
-
-                // Transition the output resources to shader resource state.    // ToDo say SRV instead to match UAV wording
-                {
-                    D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                    D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                    D3D12_RESOURCE_BARRIER barriers[] = {
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_downsampledSmoothedValue.resource.Get(), before, after),
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_downsampledNormalDepthValue.resource.Get(), before, after),
-                        CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_downsampledPartialDistanceDerivatives.resource.Get(), before, after),
-                        CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_downsampledSmoothedValue.resource.Get()),
-                        CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_downsampledNormalDepthValue.resource.Get()),
-                        CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_downsampledPartialDistanceDerivatives.resource.Get())
-                    };
-                    commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+                    // Transition the output resources to shader resource state.    // ToDo say SRV instead to match UAV wording
+                    {
+                        resourceStateTracker->TransitionResource(&msResource.m_downsampledSmoothedValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                        resourceStateTracker->TransitionResource(&msResource.m_downsampledNormalDepthValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                        resourceStateTracker->TransitionResource(&msResource.m_downsampledPartialDistanceDerivatives, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                        resourceStateTracker->InsertUAVBarrier(&msResource.m_downsampledSmoothedValue);
+                        resourceStateTracker->InsertUAVBarrier(&msResource.m_downsampledNormalDepthValue);
+                        resourceStateTracker->InsertUAVBarrier(&msResource.m_downsampledPartialDistanceDerivatives);
+                    }
                 }
             }
         }
@@ -3377,21 +3332,14 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
     {
         MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[0];
 
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER preCopyBarriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedValue.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
-            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
+        resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_COPY_DEST);
 
-        commandList->CopyResource(msResource.m_value.resource.Get(), msResource.m_smoothedValue.resource.Get());
+        resourceStateTracker->FlushResourceBarriers();
+        commandList->CopyResource(msResource.m_value.GetResource(), msResource.m_smoothedValue.GetResource());
 
-        D3D12_RESOURCE_BARRIER postCopyBarriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_smoothedValue.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
+        resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
     // Reconstruct the final result from all denoised scales.
     else 
@@ -3407,9 +3355,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
 
             // Transition output resource to UAV state.
             {
-                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), before, after));
+                resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             }
 
             // m_value resource is being used as an output resource going up the chain.
@@ -3418,9 +3364,10 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
             const bool isFirstIter = i == SceneArgs::RTAODenoisingMultiscaleLevels - 2;
             GpuResource *inLowResResource = isFirstIter ? &msLowResLevelResource.m_smoothedValue : &msLowResLevelResource.m_value;
 
-            D3D12_RESOURCE_DESC desc = msResource.m_value.resource.Get()->GetDesc();
+            D3D12_RESOURCE_DESC desc = msResource.m_value.GetResource()->GetDesc();
             UINT width = static_cast<UINT>(desc.Width);
             UINT height = static_cast<UINT>(desc.Height);
+            resourceStateTracker->FlushResourceBarriers();
             m_multiScale_upsampleBilateralFilterAndCombineKernel.Execute(
                 commandList,
                 width,
@@ -3436,13 +3383,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
 
             // Transition the output resource to shader resource state.
             {
-                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                D3D12_RESOURCE_BARRIER barriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), before, after),
-                    CD3DX12_RESOURCE_BARRIER::UAV(msResource.m_value.resource.Get())
-                };
-                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+                resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                resourceStateTracker->InsertUAVBarrier(&msResource.m_value);
             }
         }
     }
@@ -3453,21 +3395,14 @@ void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilte
     {
         MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[0];
 
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER preCopyBarriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
-            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(preCopyBarriers), preCopyBarriers);
+        resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_COPY_DEST);
 
-        commandList->CopyResource(AOResources[AOResource::Smoothed].resource.Get(), msResource.m_value.resource.Get());
+        resourceStateTracker->FlushResourceBarriers();
+        commandList->CopyResource(AOResources[AOResource::Smoothed].GetResource(), msResource.m_value.GetResource());
 
-        D3D12_RESOURCE_BARRIER postCopyBarriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(msResource.m_value.resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-            CD3DX12_RESOURCE_BARRIER::Transition(AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(postCopyBarriers), postCopyBarriers);
+        resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
 }
 
@@ -3491,7 +3426,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
 #if 0
     auto commandList = m_deviceResources->GetCommandList();
     
-    auto desc = inValueResource.resource.Get()->GetDesc();
+    auto desc = inValueResource->GetDesc();
     // ToDo cleanup widths on GPU kernels, it should be the one of input resource.
     UINT width = static_cast<UINT>(desc.Width);
     UINT height = static_cast<UINT>(desc.Height);
@@ -3500,6 +3435,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
     // Calculate local variance.
     {
         ScopedTimer _prof(L"CalculateVariance", commandList);
+        resourceStateTracker->FlushResourceBarriers();
         m_calculateVarianceKernel.Execute(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
@@ -3520,13 +3456,14 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
 
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(varianceResource->resource.Get(), before, after));
+        resourceStateTracker->TransitionResource(&varianceResource->resource.Get(), after));
     }
 
     // ToDo, should the smoothing be applied after each pass?
     // Smoothen the local variance which is prone to error due to undersampled input.
     {
         ScopedTimer _prof(L"VarianceSmoothing", commandList);
+        resourceStateTracker->FlushResourceBarriers();
         m_gaussianSmoothingKernel.Execute(
             commandList,
             width,
@@ -3543,8 +3480,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(smoothedVarianceResource->resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-      // ToDo Remove      CD3DX12_RESOURCE_BARRIER::Transition(outSmoothedValueResource->resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+            resourceStateTracker->TransitionResource(&smoothedVarianceResource->resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+      // ToDo Remove      resourceStateTracker->TransitionResource(&outSmoothedValueResource->resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
     }
@@ -3568,6 +3505,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
     // A-trous edge-preserving wavelet tranform filter.
     {
         ScopedTimer _prof(L"AtrousWaveletTransformFilter", commandList);
+        resourceStateTracker->FlushResourceBarriers();
         m_atrousWaveletTransformFilter.Execute(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
@@ -3607,12 +3545,14 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
 void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
 {
 	auto commandList = m_deviceResources->GetCommandList();
-
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_raytracingOutputIntermediate.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 
     ScopedTimer _prof(L"DownsampleToBackbuffer", commandList);
 
+    resourceStateTracker->TransitionResource(&m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
     // ToDo pass the filter to the kernel instead of using 3 different instances
+    resourceStateTracker->FlushResourceBarriers();
 	switch (SceneArgs::AntialiasingMode)
 	{
 	case DownsampleFilter::BoxFilter2x2:
@@ -3644,7 +3584,7 @@ void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
 		break;
 	}
 
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_raytracingOutputIntermediate.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+	resourceStateTracker->TransitionResource(&m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 };
 
 
@@ -3652,6 +3592,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 {
 	auto device = m_deviceResources->GetD3DDevice();
 	auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();        // ToDo rename to Backbuffer index
 
     ScopedTimer _prof(L"GenerateGbuffer", commandList);
@@ -3710,27 +3651,19 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     // ToDo move this/part(AO,..) of transitions out?
 	// Transition all output resources to UAV state.
 	{
-		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-		D3D12_RESOURCE_BARRIER barriers[] = {
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Hit].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Material].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormalDepth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Distance].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Depth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MotionVector].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::ReprojectedNormalDepth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Color].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::AOSurfaceAlbedo].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Debug].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Debug2].resource.Get(), before, after),
-           // ToDo remove
-            //CD3DX12_RESOURCE_BARRIER::Transition(m_varianceResource.resource.Get(), before, after) ,
-            //CD3DX12_RESOURCE_BARRIER::Transition(m_smoothedVarianceResource.resource.Get(), before, after)
-		};
-		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Hit], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Material], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::HitPosition], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Distance], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Depth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::MotionVector], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Color], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug2], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	}
 
 
@@ -3761,26 +3694,21 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 
 	// Transition GBuffer resources to shader resource state.
 	{
-		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;   // ToDo should it transition to NON_PIXEL_SHADER_RESOURCE for use in a CS?
-		D3D12_RESOURCE_BARRIER barriers[] = {
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Hit].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Material].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::HitPosition].resource.Get(), before, after),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::SurfaceNormalDepth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Distance].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Depth].resource.Get(), before, after),
+		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Hit], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Material], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::HitPosition], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Distance], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Depth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 #endif
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::MotionVector].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::ReprojectedNormalDepth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Color].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::AOSurfaceAlbedo].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Debug].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::Debug2].resource.Get(), before, after),
-		};
-		commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::MotionVector], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Color], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug2], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	}
 
     // Calculate ray hit counts.
@@ -3793,6 +3721,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
     // Calculate partial derivatives.
     {
         ScopedTimer _prof(L"Calculate Partial Depth Derivatives", commandList);
+        resourceStateTracker->FlushResourceBarriers();
         m_calculatePartialDerivativesKernel.Execute(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
@@ -3801,7 +3730,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
             m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
             m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
 
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferResources[GBufferResource::PartialDepthDerivatives].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
 #endif
     if (SceneArgs::QuarterResAO)
@@ -3816,26 +3745,24 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
 void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 
     // ToDo move this/part(AO,..) of transitions out?
     // Transition all output resources to UAV state.
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::Hit].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::HitPosition].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::MotionVector].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::ReprojectedNormalDepth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::Depth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::SurfaceNormalDepth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::AOSurfaceAlbedo].resource.Get(), before, after),
-       };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        // ToDo move these to the kernels?
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::Hit], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::HitPosition], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::MotionVector], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::Depth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }  
 
     ScopedTimer _prof(L"DownsampleGBuffer", commandList);
+    resourceStateTracker->FlushResourceBarriers();
     m_downsampleGBufferBilateralFilterKernel.Execute(
         commandList,
         m_GBufferWidth,
@@ -3857,21 +3784,17 @@ void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
         m_GBufferLowResResources[GBufferResource::ReprojectedNormalDepth].gpuDescriptorWriteAccess,
         m_GBufferLowResResources[GBufferResource::Depth].gpuDescriptorWriteAccess,
         m_GBufferLowResResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorWriteAccess);
+
     // Transition GBuffer resources to shader resource state.
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::Hit].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::HitPosition].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::SurfaceNormalDepth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::MotionVector].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::ReprojectedNormalDepth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::Depth].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_GBufferLowResResources[GBufferResource::AOSurfaceAlbedo].resource.Get(), before, after),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::Hit], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::HitPosition], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::MotionVector], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::Depth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
 };
 
@@ -3987,15 +3910,13 @@ void D3D12RaytracingAmbientOcclusion::BilateralUpsample(
     LPCWCHAR passName)
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
+
     ScopedTimer _prof(passName, commandList);
 
-    // Transition the output resource to UAV.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(outputHiResValueResource->resource.Get(), before, after));
-    }
+    resourceStateTracker->TransitionResource(outputHiResValueResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
+    resourceStateTracker->FlushResourceBarriers();
     m_upsampleBilateralFilterKernel.Execute(
         commandList,
         hiResWidth,
@@ -4013,12 +3934,7 @@ void D3D12RaytracingAmbientOcclusion::BilateralUpsample(
         SceneArgs::DownAndUpsamplingUseDynamicDepthThreshold
     );
 
-    // Transition the output resource to SRV.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(outputHiResValueResource->resource.Get(), before, after));
-    }
+    resourceStateTracker->TransitionResource(outputHiResValueResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 };
 
 
@@ -4030,15 +3946,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 
 	auto device = m_deviceResources->GetD3DDevice();
 	auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
     ScopedTimer _prof(L"Shadows", commandList);
 
     // Transition the shadow resource to UAV.
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after));
+        resourceStateTracker->TransitionResource(&m_VisibilityResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
     }
 
     commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
@@ -4058,12 +3973,9 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
     
 	// Transition shadow resources to shader resource state.
 	{
-		D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-		D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after));
+		resourceStateTracker->TransitionResource(&m_VisibilityResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	}
 
-	PIXEndEvent(commandList);
 #endif
 }
 
@@ -4076,6 +3988,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
     }
     auto device = m_deviceResources->GetD3DDevice();
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
     ScopedTimer _prof(L"Shadow Map", commandList);
@@ -4108,7 +4021,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
     m_sceneCB.CopyStagingToGpu(frameIndex);
 
     // Transition shadow map resourcee to UAV.
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_ShadowMapResource.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS ));
+    resourceStateTracker->TransitionResource(&m_ShadowMapResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
 
     commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
     commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
@@ -4126,165 +4039,14 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
 
     // Transition shadow resources to shader resource state.
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_ShadowMapResource.resource.Get(), before, after),
-            // Make sure the resource is done being written to.
-            CD3DX12_RESOURCE_BARRIER::UAV(m_ShadowMapResource.resource.Get())   
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);   
+        resourceStateTracker->TransitionResource(&m_ShadowMapResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->InsertUAVBarrier(&m_ShadowMapResource);
     }
     
-
     // ToDo add UAV barriers
 
     m_updateShadowMap = false;
     PIXEndEvent(commandList);
-}
-
-void D3D12RaytracingAmbientOcclusion::RenderPass_TestEarlyExitOVerhead()
-{
-#if 1
-    ThrowIfFalse(false, L"Dead code");
-#else
-    auto device = m_deviceResources->GetD3DDevice();
-    auto commandList = m_deviceResources->GetCommandList();
-    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-
-
-    D3D12_GPU_DESCRIPTOR_HANDLE resourceHandle;
-    m_writeValueToTexture.Execute(commandList, m_cbvSrvUavHeap->GetHeap(), &resourceHandle);
-
-    commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-    commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
-
-    m_sceneCB.CopyStagingToGpu(frameIndex);
-
-    // Bind inputs.
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOFrameAge, resourceHandle);
-    commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
-
-    // Bind output RT.
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::VisibilityResource, m_VisibilityResource.gpuDescriptorWriteAccess);
-
-    // Bind the heaps, acceleration structure and dispatch rays. 
-    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
-
-    DispatchRays(m_rayGenShaderTables[RayGenShaderType::Visibility].Get());
-
-    UINT width = SceneArgs::TestEarlyExit_TightScheduling ? 3840 / 2 : 3840;
-    UINT height = 2160;
-
-    D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
-    dispatchDesc.HitGroupTable.StartAddress = m_hitGroupShaderTable->GetGPUVirtualAddress();
-    dispatchDesc.HitGroupTable.SizeInBytes = m_hitGroupShaderTable->GetDesc().Width;
-    dispatchDesc.HitGroupTable.StrideInBytes = m_hitGroupShaderTableStrideInBytes;
-    dispatchDesc.MissShaderTable.StartAddress = m_missShaderTable->GetGPUVirtualAddress();
-    dispatchDesc.MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
-    dispatchDesc.MissShaderTable.StrideInBytes = m_missShaderTableStrideInBytes;
-    dispatchDesc.RayGenerationShaderRecord.StartAddress = m_rayGenShaderTables[RayGenShaderType::Visibility]->GetGPUVirtualAddress();
-    dispatchDesc.RayGenerationShaderRecord.SizeInBytes = m_rayGenShaderTables[RayGenShaderType::Visibility]->GetDesc().Width;
-    dispatchDesc.Width = width;
-    dispatchDesc.Height = height;
-    dispatchDesc.Depth = 1;
-    commandList->SetPipelineState1(m_dxrStateObject.Get());
-    
-    {
-        ScopedTimer _prof(L"TestEarlyExit", commandList);
-        for (UINT i = 0; i < 1000; i++)
-        {
-            commandList->DispatchRays(&dispatchDesc);
-        }
-    }
-    // Transition shadow resources to shader resource state.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_VisibilityResource.resource.Get(), before, after));
-    }
-
-    PIXEndEvent(commandList);
-#endif
-}
-
-
-
-void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
-{
-    ThrowIfFalse(0, L"ToDo");
-#if 0
-	auto commandList = m_deviceResources->GetCommandList();
-	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-
-    ScopedTimer _prof(L"BlurAO", commandList);
-    
-    m_csAoBlurCB->kRcpBufferDim.x = 1.0f / m_raytracingWidth;
-    m_csAoBlurCB->kRcpBufferDim.y = 1.0f / m_raytracingHeight;
-    m_csAoBlurCB->kDistanceTolerance = powf(10.0f, SceneArgs::g_DistanceTolerance);
-	m_csAoBlurCB.CopyStagingToGpu(frameIndex);
-
-	// Set common pipeline state
-	using namespace ComputeShader::RootSignature::AoBlurCS;
-
-    GpuResource* AOResources = m_RTAO.AOResources();
-    GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
-
-    GpuResource& NormalDepthLowPrecisionResource = SceneArgs::QuarterResAO ?
-            m_normalDepthLowResLowPrecision[m_normalDepthCurrentFrameResourceIndex]
-        : m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
-
-	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-	commandList->SetComputeRootSignature(m_computeRootSigs[CSType::AoBlurCS].Get());
-	commandList->SetPipelineState(m_computePSOs[SceneArgs::QuarterResAO ? CSType::AoBlurAndUpsampleCS : CSType::AoBlurCS].Get());
-	commandList->SetComputeRootDescriptorTable(Slot::Normal, NormalDepthLowPrecisionResource.gpuDescriptorReadAccess);
-    commandList->SetComputeRootDescriptorTable(Slot::Distance, GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess);
-	commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csAoBlurCB.GpuVirtualAddress(frameIndex));
-	XMUINT2 groupCount;
-    groupCount.x = CeilDivide(m_raytracingWidth, DefaultComputeShaderParams::ThreadGroup::Width);
-    groupCount.y = CeilDivide(m_raytracingHeight, DefaultComputeShaderParams::ThreadGroup::Height);
-
-    // Begin timing actual work
-
-    {
-	    D3D12_RESOURCE_BARRIER barriers = CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(),
-            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	    commandList->ResourceBarrier(1, &barriers);
-    }
-
-    // Pass 1:  Blurs once to "Smoothed" buffer
-	commandList->SetComputeRootDescriptorTable(Slot::Output, m_AOResources[AOResource::Smoothed].gpuDescriptorWriteAccess);
-	commandList->SetComputeRootDescriptorTable(Slot::InputAO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
-	commandList->Dispatch(groupCount.x, groupCount.y, 1);
-
-#if TWO_STAGE_AO_BLUR
-	D3D12_RESOURCE_BARRIER barriers[] =
-    {
-		CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(),
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-		CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(),
-            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-	};
-	commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-
-    // Pass 2:  Blurs a second time back to "Coefficient" buffer
-	commandList->SetComputeRootDescriptorTable(Slot::Output, m_AOResources[AOResource::Coefficient].gpuDescriptorWriteAccess);
-	commandList->SetComputeRootDescriptorTable(Slot::InputAO, m_AOResources[AOResource::Smoothed].gpuDescriptorReadAccess);
-	commandList->Dispatch(groupCount.x, groupCount.y, 1);
-
-    {
-	    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(),
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	    commandList->ResourceBarrier(1, &barrier);
-    }
-#else
-    {
-	    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(),
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	    commandList->ResourceBarrier(1, &barrier);
-    }
-#endif
-#endif
 }
 
 
@@ -4292,6 +4054,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_BlurAmbientOcclusion()
 void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV)
 {
 	auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
     ScopedTimer _prof(L"ComposeRenderPassesCS", commandList);
@@ -4365,6 +4128,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 	// Dispatch.
 	XMUINT2 groupSize(CeilDivide(m_GBufferWidth, DefaultComputeShaderParams::ThreadGroup::Width), CeilDivide(m_GBufferHeight, DefaultComputeShaderParams::ThreadGroup::Height));
 
+    resourceStateTracker->FlushResourceBarriers();
 	commandList->Dispatch(groupSize.x, groupSize.y, 1);
 }
 
@@ -4372,18 +4136,20 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 void D3D12RaytracingAmbientOcclusion::CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState)
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
     auto renderTarget = m_deviceResources->GetRenderTarget();
 
     ID3D12Resource* raytracingOutput = nullptr;
     if (m_GBufferWidth == m_width && m_GBufferHeight == m_height)
     {
-        raytracingOutput = m_raytracingOutputIntermediate.resource.Get();
+        raytracingOutput = m_raytracingOutputIntermediate.GetResource();
     }
     else
     {
-        raytracingOutput = m_raytracingOutput.resource.Get();
+        raytracingOutput = m_raytracingOutput.GetResource();
     }
 
+    resourceStateTracker->FlushResourceBarriers();
     CopyResource(
         commandList,
         raytracingOutput,
@@ -4706,6 +4472,7 @@ void D3D12RaytracingAmbientOcclusion::RenderRNGVisualizations()
 	}
 
 	// Dispatch.
+    resourceStateTracker->FlushResourceBarriers();
     commandList->Dispatch(rngWindowSize.x, rngWindowSize.y, 1);
 #endif
 }
@@ -4772,6 +4539,7 @@ void D3D12RaytracingAmbientOcclusion::CreateSamplesRNGVisualization()
 void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReverseProjection()
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 
     ScopedTimer _prof(L"Temporal Supersampling p1 (Reverse Reprojection)", commandList);
 
@@ -4819,16 +4587,12 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
 
     // Transition output resource to UAV state.        
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_cachedFrameAgeValueSquaredValueRayHitDistance.resource.Get(), before, after),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(&m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_cachedFrameAgeValueSquaredValueRayHitDistance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
     
     UINT maxFrameAge = static_cast<UINT>(1 / SceneArgs::RTAO_TemporalSupersampling_MinSmoothingFactor);
+    resourceStateTracker->FlushResourceBarriers();
     m_temporalCacheReverseReprojectKernel.Execute(
         commandList,
         m_raytracingWidth,
@@ -4870,20 +4634,16 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
     // Only the frame age is transitioned out of UAV state as it used in RTAO pass. 
     // All the others are used as input/output UAVs in 2nd stage of Temporal Supersampling.
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_cachedFrameAgeValueSquaredValueRayHitDistance.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::UAV(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].resource.Get())
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(&m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_cachedFrameAgeValueSquaredValueRayHitDistance, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->InsertUAVBarrier(&m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge]);
     }
 }
 
 void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithCurrentFrame()
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 
     ScopedTimer _prof(L"RenderPass_TemporalSupersamplingBlendWithCurrentFrame", commandList);
 
@@ -4907,14 +4667,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
     // ToDo reuse calculated variance for both TAO and denoising.
     // Transition all output resources to UAV state.
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(LocalMeanVarianceResources[AOVarianceResource::Raw].resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Coefficient].resource.Get())
-
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(&LocalMeanVarianceResources[AOVarianceResource::Raw], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->InsertUAVBarrier(&AOResources[AOResource::Coefficient]);
     }
 
     bool isCheckerboardSamplingEnabled;
@@ -4928,6 +4682,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         // ToDo add Separable Bilateral and Square bilateral support how it affects image quality.
         // ToDo checkerboard is same perf ?
         ScopedTimer _prof(L"Calculate Mean and Variance", commandList);
+        resourceStateTracker->FlushResourceBarriers();
         m_calculateMeanVarianceKernel.Execute(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
@@ -4945,6 +4700,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         if (isCheckerboardSamplingEnabled)
         {
             bool fillEvenPixels = !checkerboardLoadEvenPixels;
+            resourceStateTracker->FlushResourceBarriers();
             m_fillInCheckerboardKernel.Execute(
                 commandList,
                 m_cbvSrvUavHeap->GetHeap(),
@@ -4956,14 +4712,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
                 fillEvenPixels);
         }
 
-
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(LocalMeanVarianceResources[AOVarianceResource::Raw].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::UAV(LocalMeanVarianceResources[AOVarianceResource::Raw].resource.Get())  // ToDo
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(&LocalMeanVarianceResources[AOVarianceResource::Raw], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->InsertUAVBarrier(&LocalMeanVarianceResources[AOVarianceResource::Raw]);
     }
 #if 0 // !VARIABLE_RATE_RAYTRACING
     // ToDo - the filter needs to check for invalid values...
@@ -4972,6 +4722,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
     {
         {
             ScopedTimer _prof(L"Mean Variance Smoothing", commandList);
+            resourceStateTracker->FlushResourceBarriers();
             m_gaussianSmoothingKernel.Execute(
                 commandList,
                 m_raytracingWidth,
@@ -4985,12 +4736,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
 #endif
 
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::UAV(LocalMeanVarianceResources[AOVarianceResource::Smoothed].resource.Get())  // ToDo
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->InsertUAVBarrier(&LocalMeanVarianceResources[AOVarianceResource::Smoothed]);
     }
 
 
@@ -5004,22 +4750,16 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
 
     // Transition output resource to UAV state.      
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-
-            CD3DX12_RESOURCE_BARRIER::Transition(TSSOutCoefficient->resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(VarianceResources[AOVarianceResource::Raw].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_multiPassDenoisingBlurStrength.resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::UAV(m_cachedFrameAgeValueSquaredValueRayHitDistance.resource.Get()),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(TSSOutCoefficient, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&VarianceResources[AOVarianceResource::Raw], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->TransitionResource(&m_multiPassDenoisingBlurStrength, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->InsertUAVBarrier(&m_cachedFrameAgeValueSquaredValueRayHitDistance);
     }
 
-
+    resourceStateTracker->FlushResourceBarriers();
     m_temporalCacheBlendWithCurrentFrameKernel.Execute(
         commandList,
         m_raytracingWidth,
@@ -5055,29 +4795,19 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
 
     // Transition output resource to SRV state.        
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(VarianceResources[AOVarianceResource::Raw].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_multiPassDenoisingBlurStrength.resource.Get(), before, after),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(&m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&VarianceResources[AOVarianceResource::Raw], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_multiPassDenoisingBlurStrength, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
 
     // ToDo remove make condiotional
     // Smoothen the variance.
     {
         {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(VarianceResources[AOVarianceResource::Smoothed].resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::UAV(VarianceResources[AOVarianceResource::Raw].resource.Get())
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+            resourceStateTracker->TransitionResource(&VarianceResources[AOVarianceResource::Smoothed], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->InsertUAVBarrier(&VarianceResources[AOVarianceResource::Raw]);
         }
 
         // ToDo should we be smoothing before temporal?
@@ -5085,6 +4815,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
         {
             {
                 ScopedTimer _prof(L"Mean Variance Smoothing", commandList);
+                resourceStateTracker->FlushResourceBarriers();
                 m_gaussianSmoothingKernel.Execute(
                     commandList,
                     m_raytracingWidth,
@@ -5096,12 +4827,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
             }
         }
 
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(VarianceResources[AOVarianceResource::Smoothed].resource.Get(), before, after),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(&VarianceResources[AOVarianceResource::Smoothed], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
 
     // ToDo?
@@ -5114,6 +4840,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
             if (isCheckerboardSamplingEnabled)
             {
                 bool fillEvenPixels = !checkerboardLoadEvenPixels;
+                resourceStateTracker->FlushResourceBarriers();
                 m_fillInCheckerboardKernel.Execute(
                     commandList,
                     m_cbvSrvUavHeap->GetHeap(),
@@ -5128,16 +4855,11 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
 #else
             ScopedTimer _prof(L"Fill in missing values filter", commandList);
             {
-                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-
-                D3D12_RESOURCE_BARRIER barriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::UAV(TSSOutCoefficient->resource.Get()),
-                    CD3DX12_RESOURCE_BARRIER::Transition(TSSAOCoefficient[m_temporalCacheCurrentFrameResourceIndex].resource.Get(), before, after),
-                };
-                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+                resourceStateTracker->TransitionResource(&TSSAOCoefficient[m_temporalCacheCurrentFrameResourceIndex], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                resourceStateTracker->InsertUAVBarrier(&TSSOutCoefficient->resource.Get()),
             }
 
+            resourceStateTracker->FlushResourceBarriers();
             m_fillInMissingValuesFilterKernel.Execute(
                 commandList,
                 m_raytracingWidth,
@@ -5155,26 +4877,20 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
                 D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
                 D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
                 D3D12_RESOURCE_BARRIER barriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::Transition(TSSAOCoefficient[m_temporalCacheCurrentFrameResourceIndex].resource.Get(), before, after),
+                    resourceStateTracker->TransitionResource(&TSSAOCoefficient[m_temporalCacheCurrentFrameResourceIndex], after);
                 };
                 commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
             }
 #endif
         }
     }
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(TSSOutCoefficient->resource.Get(), before, after),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
+    resourceStateTracker->TransitionResource(TSSOutCoefficient, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 }
 
 void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
 
     ScopedTimer _prof(L"Low-Tspp Multi-pass blur", commandList);
 
@@ -5197,14 +4913,7 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
     if (SceneArgs::RTAODenoisingLowTsppUseUAVReadWrite)
     {
         readWriteUAV_and_skipPassthrough = true;
-
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(OutResource->resource.Get(), before, after),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(OutResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
 
     GpuKernels::BilateralFilter::FilterType filter =
@@ -5232,11 +4941,9 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
 
         if (SceneArgs::RTAODenoisingLowTsppUseUAVReadWrite)
         {
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::UAV(OutResource->resource.Get()),
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+            resourceStateTracker->InsertUAVBarrier(OutResource);
 
+            resourceStateTracker->FlushResourceBarriers();
             m_bilateralFilterKernel.Execute(
                 commandList,
                 filter,
@@ -5252,22 +4959,15 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
         }
         else
         {
-
             GpuResource* inResource = i > 0 ? resources[i % 2] : OutResource;
             GpuResource* outResource = i < numPasses - 1 ? resources[(i + 1) % 2] : OutResource;
-
-
+            
             {
-                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-
-                D3D12_RESOURCE_BARRIER barriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::UAV(inResource->resource.Get()),
-                    CD3DX12_RESOURCE_BARRIER::Transition(outResource->resource.Get(), before, after),
-                };
-                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+                resourceStateTracker->TransitionResource(outResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                resourceStateTracker->InsertUAVBarrier(inResource);
             }
 
+            resourceStateTracker->FlushResourceBarriers();
             m_bilateralFilterKernel.Execute(
                 commandList,
                 filter,
@@ -5282,13 +4982,8 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
                 readWriteUAV_and_skipPassthrough);
 
             {
-                D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-                D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-                D3D12_RESOURCE_BARRIER barriers[] = {
-                    CD3DX12_RESOURCE_BARRIER::Transition(outResource->resource.Get(), before, after),
-                    CD3DX12_RESOURCE_BARRIER::UAV(outResource->resource.Get()),
-                };
-                commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+                resourceStateTracker->TransitionResource(outResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                resourceStateTracker->InsertUAVBarrier(outResource);
             }
         }
 
@@ -5298,13 +4993,8 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
 
     if (SceneArgs::RTAODenoisingLowTsppUseUAVReadWrite)
     {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(OutResource->resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::UAV(OutResource->resource.Get()),
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+        resourceStateTracker->TransitionResource(OutResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->InsertUAVBarrier(OutResource);
     }
 }
 
@@ -5340,6 +5030,7 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
     return;
 #endif
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
     float totalTime = SceneArgs::AnimateGrass ? static_cast<float>(m_timer.GetTotalSeconds()) : 0;
 
     m_currentGrassPatchVBIndex = (m_currentGrassPatchVBIndex + 1) % 2;
@@ -5355,26 +5046,17 @@ void D3D12RaytracingAmbientOcclusion::GenerateGrassGeometry()
 
         // Transition output vertex buffer to UAV state and make sure the resource is done being read from.      
         {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(grassPatchVB.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::UAV(grassPatchVB.resource.Get())  // ToDo
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+            resourceStateTracker->TransitionResource(&grassPatchVB, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->InsertUAVBarrier(&grassPatchVB);
         }
 
+        resourceStateTracker->FlushResourceBarriers();
         m_grassGeometryGenerator.Execute(commandList, params, m_cbvSrvUavHeap->GetHeap(), grassPatchVB.gpuDescriptorWriteAccess);
 
         // Transition the output vertex buffer to VB state and make sure the CS is done writing.        
         {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(grassPatchVB.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::UAV(grassPatchVB.resource.Get())
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+            resourceStateTracker->TransitionResource(&grassPatchVB, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            resourceStateTracker->InsertUAVBarrier(&grassPatchVB);
         }
 
         // Point bottom-levelAS VB pointer to the updated VB.
@@ -5497,7 +5179,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #if 0
     auto commandList = m_deviceResources->GetCommandList();
     m_deviceResources->Prepare();
-    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_deviceResources->GetRenderTarget(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    D3D12_RESOURCE_BARRIER barrier = resourceStateTracker->TransitionResource(&m_deviceResources->GetRenderTarget(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
     commandList->ResourceBarrier(1, &barrier);
     m_deviceResources->ExecuteCommandList();
     m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
@@ -5568,26 +5250,30 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                             GpuResource* TSSAOCoefficient = SceneArgs::QuarterResAO ? m_lowResTSSAOCoefficient : m_TSSAOCoefficient;
                             GpuResource* AOResources = m_RTAO.AOResources();
 
-                            commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(AOResources[AOResource::Smoothed].resource.Get()));
+                            ToDo
+                            commandList->ResourceBarrier(1, &resourceStateTracker->InsertUAVBarrier(&AOResources[AOResource::Smoothed]));
 
+                            resourceStateTracker->FlushResourceBarriers();
                             CopyTextureRegion(
                                 commandList,
-                                AOResources[AOResource::Smoothed].resource.Get(),
-                                TSSAOCoefficient[m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex].resource.Get(),
+                                AOResources[AOResource::Smoothed],
+                                TSSAOCoefficient[m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex],
                                 &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
                                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
                             if (SceneArgs::RTAO_TemporalSupersampling_CacheSquaredMean)
-                            CopyTextureRegion(
-                                commandList,
-                                m_atrousWaveletTransformFilter.VarianceOutputResource().resource.Get(),
-                                m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean].resource.Get(),
-                                &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
-                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
-                            commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(TSSAOCoefficient[m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex].resource.Get()));
+                            {
+                                resourceStateTracker->FlushResourceBarriers();
+                                CopyTextureRegion(
+                                    commandList,
+                                    m_atrousWaveletTransformFilter.VarianceOutputResource(),
+                                    m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::CoefficientSquaredMean],
+                                    &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
+                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                            }
+                            commandList->ResourceBarrier(1, &resourceStateTracker->InsertUAVBarrier(&TSSAOCoefficient[m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex]));
                         }
 #endif
                         //ApplyAtrousWaveletTransformFilter(false);
@@ -5604,7 +5290,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                     else // ToDo move this to ApplyAtrousWaveletTransformFilter?
                     {
                         // Transition AO Smoothed resource to SRV.
-                        //commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Smoothed].resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+                        //resourceStateTracker->TransitionResource(&m_AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
                     }
                 }
                 else // SSAO
@@ -5635,11 +5321,11 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
                 CopyTextureRegion(
                     commandList,
-                    GBufferResources[GBufferResource::SurfaceNormalDepth].resource.Get(),
-                    m_prevFrameGBufferNormalDepth.resource.Get(),
+                    GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource(),
+                    m_prevFrameGBufferNormalDepth.GetResource(),
                     &CD3DX12_BOX(0, 0, m_raytracingWidth, m_raytracingHeight),
-                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                    GBufferResources[GBufferResource::SurfaceNormalDepth].m_UsageState,
+                    m_prevFrameGBufferNormalDepth.m_UsageState);
             }
 
             GpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOResources : m_RTAO.GetAOResources();
