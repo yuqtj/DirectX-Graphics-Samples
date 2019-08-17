@@ -17,6 +17,8 @@
 /*
 //ToDo
 - todo finetune clamping/remove ghosting (test gliding spaceship)
+- Adaptive kernel size - overblur under roof edge
+- Full res - adaptive kernel size visible horizontal lines
 - test impact of depth hash key in RaySort
 - fix adaptive kernel size
 - improve the multi-blur - skip higher iter blur on higher frame age.

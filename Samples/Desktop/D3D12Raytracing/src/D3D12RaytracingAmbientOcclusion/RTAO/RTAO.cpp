@@ -537,6 +537,7 @@ void RTAO::CalculateAdaptiveSamplingCounts()
 {
     ThrowIfFalse(false, L"ToDo. Should this be part of AO or result passed in from outside?");
 #if 0
+    fix barrier/resource state
     auto commandList = m_deviceResources->GetCommandList();
 
     GpuResource* m_AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
@@ -549,12 +550,13 @@ void RTAO::CalculateAdaptiveSamplingCounts()
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::FilterWeightSum].resource.Get(), before, after));
+        commandList->ResourceBarrier(1, &resourceStateTracker->TransitionResource(&m_AOResources[AOResource::FilterWeightSum], after));
     }
     UINT offsets[5] = { 0, 1, 2, 3, 4 };    // ToDo
     // Calculate filter weight sum for each pixel. 
     {
         ScopedTimer _prof(L"CalculateFilterWeights", commandList);
+        resourceStateTracker->FlushResourceBarriers();
         m_atrousWaveletTransformFilter.Execute(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
@@ -588,7 +590,7 @@ void RTAO::CalculateAdaptiveSamplingCounts()
     {
         D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::FilterWeightSum].resource.Get(), before, after));
+        commandList->ResourceBarrier(1, &resourceStateTracker->TransitionResource(&m_AOResources[AOResource::FilterWeightSum], after));
     }
 #endif
 }
@@ -631,6 +633,7 @@ void RTAO::GetRayGenParameters(bool* isCheckerboardSamplingEnabled, bool* checke
 void RTAO::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT height)
 {
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
     ScopedTimer _prof(L"DispatchRays", commandList);
@@ -649,6 +652,7 @@ void RTAO::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT heig
     dispatchDesc.Depth = 1;
     commandList->SetPipelineState1(m_dxrStateObject.Get());
 
+    resourceStateTracker->FlushResourceBarriers();
     commandList->DispatchRays(&dispatchDesc);
 };
 
@@ -768,6 +772,7 @@ void RTAO::OnRender(
 {
     auto device = m_deviceResources->GetD3DDevice();
     auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
 
     if (SceneArgs::RTAOAdaptiveSampling)
@@ -791,29 +796,19 @@ void RTAO::OnRender(
         // ToDo remove the if-else
         if (SceneArgs::RTAOUseRaySorting)
         {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_sourceToSortedRayIndexOffset.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndexOffset.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+            resourceStateTracker->TransitionResource(&m_AOResources[AOResource::HitCount], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->TransitionResource(&m_AOResources[AOResource::Coefficient], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->TransitionResource(&m_AOResources[AOResource::RayHitDistance], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->TransitionResource(&m_sourceToSortedRayIndexOffset, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->TransitionResource(&m_sortedToSourceRayIndexOffset, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->TransitionResource(&m_sortedRayGroupDebug, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->TransitionResource(&m_AORayDirectionOriginDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
         else
         {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
+            resourceStateTracker->TransitionResource(&m_AOResources[AOResource::HitCount], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->TransitionResource(&m_AOResources[AOResource::Coefficient], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->TransitionResource(&m_AOResources[AOResource::RayHitDistance], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
     }
 
@@ -844,6 +839,7 @@ void RTAO::OnRender(
     dispatchRayTime.Start(commandList);
 #endif
 
+
     if (!SceneArgs::RTAOUseRaySorting)
     {
         ScopedTimer _prof(L"AO DispatchRays 2D", commandList);
@@ -870,6 +866,7 @@ void RTAO::OnRender(
             doCheckerboardRayGeneration
             ? CeilDivide(m_raytracingWidth, 2)
             : m_raytracingWidth;
+        resourceStateTracker->FlushResourceBarriers();
         m_rayGen.Execute(
             commandList,
             activeRaytracingWidth,
@@ -892,19 +889,11 @@ void RTAO::OnRender(
             m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex),
             m_AORayDirectionOriginDepth.gpuDescriptorWriteAccess);
 
-
-        // Transition AO resources to shader resource state.
-        {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(m_AORayDirectionOriginDepth.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::UAV(m_AORayDirectionOriginDepth.resource.Get()),  // ToDo
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-        }
+        resourceStateTracker->TransitionResource(&m_AORayDirectionOriginDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        resourceStateTracker->InsertUAVBarrier(&m_AORayDirectionOriginDepth);
 
         float rayBinDepthSize = SceneArgs::RTAORayBinDepthSizeMultiplier * SceneArgs::RTAOMaxRayHitTime;
+        resourceStateTracker->FlushResourceBarriers();
         m_raySorter.Execute(
             commandList,
             rayBinDepthSize,
@@ -918,19 +907,11 @@ void RTAO::OnRender(
             m_sourceToSortedRayIndexOffset.gpuDescriptorWriteAccess,
             m_sortedRayGroupDebug.gpuDescriptorWriteAccess);
 
-        // Transition the output to SRV state. 
-        {
-            D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-            D3D12_RESOURCE_BARRIER barriers[] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(m_sourceToSortedRayIndexOffset.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_sortedToSourceRayIndexOffset.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_sortedRayGroupDebug.resource.Get(), before, after),
-                CD3DX12_RESOURCE_BARRIER::UAV(m_sourceToSortedRayIndexOffset.resource.Get()),
-                CD3DX12_RESOURCE_BARRIER::UAV(m_sortedToSourceRayIndexOffset.resource.Get())
-            };
-            commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-        }
+        resourceStateTracker->TransitionResource(&m_sourceToSortedRayIndexOffset, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_sortedToSourceRayIndexOffset, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&m_sortedRayGroupDebug, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->InsertUAVBarrier(&m_sourceToSortedRayIndexOffset);
+        resourceStateTracker->InsertUAVBarrier(&m_sortedToSourceRayIndexOffset);
 
         {
             ScopedTimer _prof(L"[Sorted]CalculateAmbientOcclusion", commandList);
@@ -970,19 +951,11 @@ void RTAO::OnRender(
 
     }
 
-    // Transition AO resources to shader resource state.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::HitCount].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::Coefficient].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_AOResources[AOResource::RayHitDistance].resource.Get(), before, after),
-            CD3DX12_RESOURCE_BARRIER::UAV(m_AOResources[AOResource::Coefficient].resource.Get()),  // ToDo
-            CD3DX12_RESOURCE_BARRIER::UAV(m_AOResources[AOResource::RayHitDistance].resource.Get()),  // ToDo
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
+    resourceStateTracker->TransitionResource(&m_AOResources[AOResource::HitCount], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    resourceStateTracker->TransitionResource(&m_AOResources[AOResource::Coefficient], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    resourceStateTracker->TransitionResource(&m_AOResources[AOResource::RayHitDistance], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    resourceStateTracker->InsertUAVBarrier(&m_AOResources[AOResource::Coefficient]);
+    resourceStateTracker->InsertUAVBarrier(&m_AOResources[AOResource::RayHitDistance]);
 
     // Calculate AO ray hit count.
     if (m_calculateRayHitCounts)
@@ -999,7 +972,9 @@ void RTAO::CalculateRayHitCount()
     auto device = m_deviceResources->GetD3DDevice();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
     auto commandList = m_deviceResources->GetCommandList();
-    
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
+
+    resourceStateTracker->FlushResourceBarriers();
     m_reduceSumKernel.Execute(
         commandList,
         m_cbvSrvUavHeap->GetHeap(),
