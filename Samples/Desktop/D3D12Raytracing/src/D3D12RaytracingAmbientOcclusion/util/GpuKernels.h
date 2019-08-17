@@ -53,7 +53,7 @@ namespace GpuKernels
         UINT                                m_resultSize;
 		ComPtr<ID3D12RootSignature>         m_rootSignature;
 		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-		std::vector<RWGpuResource>			m_csReduceSumOutputs;
+		std::vector<GpuResource>			m_csReduceSumOutputs;
 		std::vector<ComPtr<ID3D12Resource>>	m_readbackResources;
 	};
 
@@ -77,7 +77,7 @@ namespace GpuKernels
 	private:
 		ComPtr<ID3D12RootSignature>         m_rootSignature;
 		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-		std::vector<RWGpuResource>			m_csReduceSumOutputs;
+		std::vector<GpuResource>			m_csReduceSumOutputs;
 		std::vector<ComPtr<ID3D12Resource>>	m_readbackResources;
 		ConstantBuffer<DownsampleFilterConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
@@ -351,7 +351,7 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputBlurStrengthResourceHandle,
-            RWGpuResource* outputResource,
+            GpuResource* outputResource,
             bool writeOutOnPassthrough = true);
 
     private:
@@ -391,7 +391,7 @@ namespace GpuKernels
         typedef UINT ResultType;
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-        RWGpuResource			            m_perPixelMeanSquareError;
+        GpuResource			            m_perPixelMeanSquareError;
         ReduceSum                           m_reduceSumKernel;
     };
 
@@ -433,10 +433,10 @@ namespace GpuKernels
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,   // ToDo standardize depth vs distance
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
-            RWGpuResource* outputResource,  // ToDo pass these as handles
-            RWGpuResource* outputIntermediateResource,
-            RWGpuResource* outputDebug1ResourceHandle,
-            RWGpuResource* outputDebug2ResourceHandle,
+            GpuResource* outputResource,  // ToDo pass these as handles
+            GpuResource* outputIntermediateResource,
+            GpuResource* outputDebug1ResourceHandle,
+            GpuResource* outputDebug2ResourceHandle,
             float valueSigma,
             float depthSigma,
             float normalSigma,
@@ -464,14 +464,14 @@ namespace GpuKernels
             bool forceDenoisePass = false,
             bool weightByFrameAge = false);
 
-        RWGpuResource& VarianceOutputResource() { return m_intermediateVarianceOutputs[0]; }
+        GpuResource& VarianceOutputResource() { return m_intermediateVarianceOutputs[0]; }
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
-        RWGpuResource			            m_intermediateValueOutput;
-        RWGpuResource			            m_intermediateVarianceOutputs[2];
-        RWGpuResource			            m_filterWeightOutput;
+        GpuResource			            m_intermediateValueOutput;
+        GpuResource			            m_intermediateVarianceOutputs[2];
+        GpuResource			            m_filterWeightOutput;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CB;
         ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> m_CBfilterWeight;
         UINT                                m_CBinstanceID = 0;
@@ -495,7 +495,7 @@ namespace GpuKernels
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-        RWGpuResource			            m_output;
+        GpuResource			            m_output;
         UINT m_width = 3840;
         UINT m_height = 2160;
     };
@@ -678,7 +678,7 @@ namespace GpuKernels
 #if !NORMAL_DEPTH_R8G8B16_ENCODING
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
 #endif
-        RWGpuResource debugResources[2],
+        GpuResource debugResources[2],
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin,
         UINT maxFrameAge,
@@ -725,7 +725,7 @@ namespace GpuKernels
             float clampMinStdDevTolerance,
             UINT minFrameAgeToUseTemporalVariance,
             float clampDifferenceToFrameAgeScale,
-            RWGpuResource debugResources[2],
+            GpuResource debugResources[2],
             UINT numFramesToDenoiseAfterLastTracedRay,
             UINT lowTsppBlurStrengthMaxFrameAge, 
             float lowTsppBlurStrengthDecayConstant,

@@ -58,6 +58,12 @@
     <Filter Include="Assets\Shaders\RTAO\Temporal Supersampling">
       <UniqueIdentifier>{0438e044-fa3b-461f-8c7b-a6cba747c717}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Util\Graphics">
+      <UniqueIdentifier>{75a06325-3576-49bb-ba98-53d7f3140681}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Util\Misc">
+      <UniqueIdentifier>{c333ac89-c661-4845-8db0-f2384493ecf0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -171,6 +177,15 @@
     <ClInclude Include="RTAO\RTAO.h">
       <Filter>RTAO</Filter>
     </ClInclude>
+    <ClInclude Include="util\Graphics\GpuResource.h">
+      <Filter>Header Files\Util\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="util\Graphics\GpuResourceStateTracker.h">
+      <Filter>Header Files\Util\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="util\Misc\Utility.h">
+      <Filter>Header Files\Util\Misc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -250,6 +265,9 @@
     </ClCompile>
     <ClCompile Include="RTAO\RTAO.cpp">
       <Filter>RTAO</Filter>
+    </ClCompile>
+    <ClCompile Include="util\Graphics\GpuResourceStateTracker.cpp">
+      <Filter>Header Files\Util\Graphics</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

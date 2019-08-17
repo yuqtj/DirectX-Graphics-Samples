@@ -95,7 +95,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir);util;util/PBRTParser;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);util;util/Graphics;util/Misc;util/PBRTParser;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <CompileAsWinRT>false</CompileAsWinRT>
       <DisableSpecificWarnings>
       </DisableSpecificWarnings>
@@ -152,7 +152,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;PROFILE;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir);util;util/PBRTParser;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);util;util/Graphics;util/Misc;util/PBRTParser;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <CompileAsWinRT>false</CompileAsWinRT>
       <ForcedIncludeFiles>stdafx.h</ForcedIncludeFiles>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -207,7 +207,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;PROFILE;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir);util;util/PBRTParser;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);util;util/Graphics;util/Misc;util/PBRTParser;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <CompileAsWinRT>false</CompileAsWinRT>
       <ForcedIncludeFiles>stdafx.h</ForcedIncludeFiles>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -283,7 +283,10 @@
     <ClInclude Include="util\GameInput.h" />
     <ClInclude Include="util\GpuKernels.h" />
     <ClInclude Include="util\GpuTimeManager.h" />
+    <ClInclude Include="util\Graphics\GpuResource.h" />
+    <ClInclude Include="util\Graphics\GpuResourceStateTracker.h" />
     <ClInclude Include="util\HlslCompat.h" />
+    <ClInclude Include="util\Misc\Utility.h" />
     <ClInclude Include="util\PBRTParser\PBRTParser.h" />
     <ClInclude Include="util\PBRTParser\PlyParser.h" />
     <ClInclude Include="util\PBRTParser\SceneParser.h" />
@@ -340,6 +343,7 @@
     <ClCompile Include="util\GameInput.cpp" />
     <ClCompile Include="util\GpuKernels.cpp" />
     <ClCompile Include="util\GpuTimeManager.cpp" />
+    <ClCompile Include="util\Graphics\GpuResourceStateTracker.cpp" />
     <ClCompile Include="util\PBRTParser\PBRTParser.cpp" />
     <ClCompile Include="util\PBRTParser\PlyParser.cpp" />
     <ClCompile Include="util\PerformanceTimers.cpp" />

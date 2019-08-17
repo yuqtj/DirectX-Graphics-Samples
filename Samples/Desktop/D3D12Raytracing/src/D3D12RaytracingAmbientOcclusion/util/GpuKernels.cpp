@@ -139,7 +139,7 @@ namespace GpuKernels
 				width = max(1u, CeilDivide(width, ReduceSumCS::ThreadGroup::Width));
 				height = max(1u, CeilDivide(height, ReduceSumCS::ThreadGroup::Height));
 
-				m_csReduceSumOutputs[i].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+				m_csReduceSumOutputs[i].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
 				CreateRenderTargetResource(device, format, width, height, descriptorHeap,
 					&m_csReduceSumOutputs[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: ReduceSum intermediate output");
 			}
@@ -1259,7 +1259,7 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputBlurStrengthResourceHandle,
-        RWGpuResource* outputResource,
+        GpuResource* outputResource,
         bool readWriteUAV_and_skipPassthrough)
     {
         using namespace RootSignature::BilateralFilter;
@@ -1288,7 +1288,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResource->gpuDescriptorWriteAccess);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
 
-            RWGpuResource* debugResources = global_pSample->GetDebugResources();
+            GpuResource* debugResources = global_pSample->GetDebugResources();
             commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
 
@@ -1358,7 +1358,7 @@ namespace GpuKernels
     {
         // Create shader resources
         {
-            m_perPixelMeanSquareError.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            m_perPixelMeanSquareError.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, width, height, descriptorHeap,
                 &m_perPixelMeanSquareError, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: PerPixelMeanSquareError output");
         }
@@ -1528,21 +1528,21 @@ namespace GpuKernels
     {
         // Create shader resources
         {
-            m_intermediateValueOutput.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            m_intermediateValueOutput.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             // ToDo pass in the format
             CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_intermediateValueOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate value output");
 
-            m_intermediateVarianceOutputs[0].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            m_intermediateVarianceOutputs[0].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_intermediateVarianceOutputs[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate variance output 0");
 
-            m_intermediateVarianceOutputs[1].rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            m_intermediateVarianceOutputs[1].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_intermediateVarianceOutputs[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate variance output 1");
 
             // ToDo remove
-            m_filterWeightOutput.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            m_filterWeightOutput.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_filterWeightOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter filter weight sum output");
         }
@@ -1562,10 +1562,10 @@ namespace GpuKernels
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHitDistanceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputPartialDistanceDerivativesResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
-        RWGpuResource* outputResource,
-        RWGpuResource* outputIntermediateResource,
-        RWGpuResource* outputDebug1Resource,
-        RWGpuResource* outputDebug2Resource,
+        GpuResource* outputResource,
+        GpuResource* outputIntermediateResource,
+        GpuResource* outputDebug1Resource,
+        GpuResource* outputDebug2Resource,
         float valueSigma,
         float depthSigma,
         float normalSigma,
@@ -1701,13 +1701,13 @@ namespace GpuKernels
             UINT i = numFilterPasses - 1;
             numFilterPasses = 1;
 
-            RWGpuResource* outValueResources[2] = { outputResource, &m_intermediateValueOutput };
+            GpuResource* outValueResources[2] = { outputResource, &m_intermediateValueOutput };
 
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outValueResources[0]->gpuDescriptorWriteAccess);
 #else
             // Order the resources such that the final pass writes to outputResource.
-            RWGpuResource* outValueResources[2] =
+            GpuResource* outValueResources[2] =
             {
                 numFilterPasses % 2 == 1 ? outputResource : &m_intermediateValueOutput,
                 numFilterPasses % 2 == 1 ? &m_intermediateValueOutput : outputResource,
@@ -2132,7 +2132,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputMeanVariance, outputMeanVarianceResourceHandle);
 
-            RWGpuResource* debugResources = global_pSample->GetDebugResources();
+            GpuResource* debugResources = global_pSample->GetDebugResources();
             commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
         }
@@ -2246,7 +2246,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
 
-            RWGpuResource* debugResources = global_pSample->GetDebugResources();
+            GpuResource* debugResources = global_pSample->GetDebugResources();
             commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
         }
@@ -2387,7 +2387,7 @@ namespace GpuKernels
 #if !NORMAL_DEPTH_R8G8B16_ENCODING
         TextureResourceFormatRGB::Type normalDepthResourceFormat,
 #endif
-        RWGpuResource debugResources[2],
+        GpuResource debugResources[2],
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin,
         UINT maxFrameAge,
@@ -2561,7 +2561,7 @@ namespace GpuKernels
         float clampMinStdDevTolerance,
         UINT minFrameAgeToUseTemporalVariance,
         float clampDifferenceToFrameAgeScale,
-        RWGpuResource debugResources[2],
+        GpuResource debugResources[2],
         UINT numFramesToDenoiseAfterLastTracedRay,
         UINT lowTsppBlurStrengthMaxFrameAge,
         float lowTsppBlurStrengthDecayConstant,
@@ -2662,7 +2662,7 @@ namespace GpuKernels
 
         // Create shader resources
         {
-            m_output.rwFlags = ResourceRWFlags::AllowWrite | ResourceRWFlags::AllowRead;
+            m_output.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_width, m_height, descriptorHeap,
                 &m_output, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"UAV texture: WriteValueToTexture intermediate value output");
 

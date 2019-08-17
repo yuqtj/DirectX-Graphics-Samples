@@ -11,87 +11,15 @@
 //ToDo cleanup
 #pragma once
 
+// ToDo remove
+#include "GpuResource.h"
+#include "Utility.h"
+
 // Note that while ComPtr is used to manage the lifetime of resources on the CPU,
 // it has no understanding of the lifetime of resources on the GPU. Apps must account
 // for the GPU lifetime of resources to avoid destroying objects that may still be
 // referenced by the GPU.
 using Microsoft::WRL::ComPtr;
-
-class HrException : public std::runtime_error
-{
-    inline std::string HrToString(HRESULT hr)
-    {
-        char s_str[64] = {};
-        sprintf_s(s_str, "HRESULT of 0x%08X", static_cast<UINT>(hr));
-        return std::string(s_str);
-    }
-public:
-    HrException(HRESULT hr) : std::runtime_error(HrToString(hr)), m_hr(hr) {}
-    HRESULT Error() const { return m_hr; }
-private:
-    const HRESULT m_hr;
-};
-
-#define SAFE_RELEASE(p) if (p) (p)->Release()
-
-inline void ThrowIfFailed(HRESULT hr)
-{
-    if (FAILED(hr))
-    {
-        DebugBreak();
-        throw HrException(hr);
-    }
-}
-
-inline void ThrowIfFailed(HRESULT hr, const wchar_t* msg)
-{
-    if (FAILED(hr))
-    {
-        OutputDebugString(msg);
-        DebugBreak();
-        throw HrException(hr);
-    }
-}
-
-template<typename... Args>
-inline void ThrowIfFailed(HRESULT hr, const wchar_t* format, Args... args)
-{
-	if (FAILED(hr))
-	{
-		WCHAR msg[128];
-		swprintf_s(msg, format, args...);
-		OutputDebugString(msg);
-        DebugBreak();
-		throw HrException(hr);
-	}
-}
-
-inline void ThrowIfFalse(bool value)
-{
-    ThrowIfFailed(value ? S_OK : E_FAIL);
-}
-
-inline void ThrowIfFalse(bool value, const wchar_t* msg)
-{
-    ThrowIfFailed(value ? S_OK : E_FAIL, msg);
-}
-
-
-template<typename... Args>
-inline void ThrowIfFalse(bool value, const wchar_t* format, Args... args)
-{
-    ThrowIfFailed(value ? S_OK : E_FAIL, format, args...);
-}
-
-inline void ThrowIfTrue(bool value)
-{
-	ThrowIfFalse(!value);
-}
-
-inline void ThrowIfTrue(bool value, const wchar_t* msg)
-{
-	ThrowIfFalse(!value, msg);
-}
 
 
 inline void GetAssetsPath(_Out_writes_(pathSize) WCHAR* path, UINT pathSize)
@@ -522,29 +450,6 @@ inline float NumMPixelsPerSecond(float timeMs, UINT width, UINT height)
 	return resolution / (raytracingTime * static_cast<float>(1e6));
 }
 
-
-// ToDo Gpu*flags?
-namespace ResourceRWFlags {
-	enum Enum
-	{
-		None = 0x0,
-		AllowRead = 0x1,
-		AllowWrite = 0x2,
-	};
-}
-
-// ToDo turn into class and check rwFlags being properly set on access.
-// ToDo add state tracking
-struct RWGpuResource
-{
-	UINT rwFlags = ResourceRWFlags::None;
-	ComPtr<ID3D12Resource> resource;
-	D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorReadAccess = { UINT64_MAX };
-	D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorWriteAccess = { UINT64_MAX };
-	UINT srvDescriptorHeapIndex = UINT_MAX;
-	UINT uavDescriptorHeapIndex = UINT_MAX;
-};
-
 // ToDo Combine with CreateRT?
 inline void CreateTextureSRV(
 	ID3D12Device5* device,
@@ -701,7 +606,7 @@ inline void CreateRenderTargetResource(
 	UINT width,
 	UINT height,
 	DX::DescriptorHeap* descriptorHeap,
-	RWGpuResource* dest,
+	GpuResource* dest,
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_RENDER_TARGET,
 	const wchar_t* resourceName = nullptr)
 {
@@ -716,7 +621,7 @@ inline void CreateRenderTargetResource(
 	}
 
 
-	if (dest->rwFlags & ResourceRWFlags::AllowWrite)
+	if (dest->rwFlags & GpuResource::RWFlags::AllowWrite)
 	{
 		D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptorHandle;
 		dest->uavDescriptorHeapIndex = descriptorHeap->AllocateDescriptor(&uavDescriptorHandle, dest->uavDescriptorHeapIndex);
@@ -726,7 +631,7 @@ inline void CreateRenderTargetResource(
 		dest->gpuDescriptorWriteAccess = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(), dest->uavDescriptorHeapIndex, descriptorHeap->DescriptorSize());
 	}
 
-	if (dest->rwFlags & ResourceRWFlags::AllowRead)
+	if (dest->rwFlags & GpuResource::RWFlags::AllowRead)
 	{
 		// ToDo cleanup and combine
 		D3D12_CPU_DESCRIPTOR_HANDLE dummyHandle;
@@ -792,7 +697,7 @@ inline void AllocateUAVBuffer(
 	ID3D12Device5* device, 
 	UINT numElements,	// ToDo use template?
 	UINT elementSize,
-	RWGpuResource* dest,
+	GpuResource* dest,
 	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN,
 	DX::DescriptorHeap* descriptorHeap = nullptr,
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_COMMON, 
@@ -800,7 +705,7 @@ inline void AllocateUAVBuffer(
 {
 	AllocateUAVBuffer(device, numElements * elementSize, &dest->resource, initialResourceState, resourceName);
 
-	if (dest->rwFlags & ResourceRWFlags::AllowWrite)
+	if (dest->rwFlags & GpuResource::RWFlags::AllowWrite)
 	{
 		assert(descriptorHeap); // ToDo
 		D3D12_CPU_DESCRIPTOR_HANDLE uavDescriptorHandle;
@@ -816,7 +721,7 @@ inline void AllocateUAVBuffer(
 		dest->gpuDescriptorWriteAccess = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(), dest->uavDescriptorHeapIndex, descriptorHeap->DescriptorSize());
 	}
 
-	if (dest->rwFlags & ResourceRWFlags::AllowRead)
+	if (dest->rwFlags & GpuResource::RWFlags::AllowRead)
 	{
         D3D12_CPU_DESCRIPTOR_HANDLE dummyHandle;
         CreateBufferSRV(

@@ -54,7 +54,7 @@ public:
 	void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
 	void RequestSceneInitialization() { m_isSceneInitializationRequested = true; }
 	void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
-    RWGpuResource* GetDebugResources() { return m_debugOutput; }
+    GpuResource* GetDebugResources() { return m_debugOutput; }
 
 
     static const UINT NumGrassPatchesX = 30;
@@ -64,7 +64,7 @@ public:
 private:
 	static const UINT FrameCount = 3;
 
-	// ToDo change ID3D12Resourcs with views to RWGpuResource
+	// ToDo change ID3D12Resourcs with views to GpuResource
 
 	std::mt19937 m_generatorURNG;
     
@@ -134,7 +134,7 @@ private:
     UINT                                m_animatedCarInstanceIndex;
     UINT                                m_grassInstanceIndices[NumGrassPatchesX * NumGrassPatchesZ];
     UINT                                m_currentGrassPatchVBIndex = 0;
-    RWGpuResource                       m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
+    GpuResource                       m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
     D3DBuffer                           m_nullVB;               // Null vertex Buffer - used for geometries that don't animate and don't need double buffering for motion vector calculation.
     UINT                                m_grassInstanceShaderRecordOffsets[2];
     UINT                                m_prevFrameLODs[NumGrassPatchesX * NumGrassPatchesZ];
@@ -197,45 +197,45 @@ private:
 	StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
 
 
-    RWGpuResource m_debugOutput[2];
+    GpuResource m_debugOutput[2];
 
     RTAO m_RTAO;
 
 	// Raytracing output
 	// ToDo use the struct
-	RWGpuResource m_raytracingOutput;
-    RWGpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
-	RWGpuResource m_GBufferResources[GBufferResource::Count];
-    RWGpuResource m_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
-    RWGpuResource m_prevFrameGBufferNormalDepth;
+	GpuResource m_raytracingOutput;
+    GpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
+	GpuResource m_GBufferResources[GBufferResource::Count];
+    GpuResource m_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
+    GpuResource m_prevFrameGBufferNormalDepth;
 
-    RWGpuResource m_multiPassDenoisingBlurStrength;
+    GpuResource m_multiPassDenoisingBlurStrength;
 
-	RWGpuResource m_AOResources[AOResource::Count];
+	GpuResource m_AOResources[AOResource::Count];
 
 
-    RWGpuResource m_AOTSSCoefficient[2];    // ToDo why is this not part of m_temporalCache?
-    RWGpuResource m_lowResAOTSSCoefficient[2];
-    RWGpuResource m_temporalSupersampling_blendedAOCoefficient[2];
-	RWGpuResource m_VisibilityResource;
-    RWGpuResource m_cachedFrameAgeValueSquaredValueRayHitDistance;
+    GpuResource m_AOTSSCoefficient[2];    // ToDo why is this not part of m_temporalCache?
+    GpuResource m_lowResAOTSSCoefficient[2];
+    GpuResource m_temporalSupersampling_blendedAOCoefficient[2];
+	GpuResource m_VisibilityResource;
+    GpuResource m_cachedFrameAgeValueSquaredValueRayHitDistance;
 
     XMUINT2 c_shadowMapDim = XMUINT2(1024, 1024);
-    RWGpuResource m_ShadowMapResource;
+    GpuResource m_ShadowMapResource;
     bool m_updateShadowMap = true;
 
     // ToDo dedupe resources. Does dpeth need to have 2 instances?   
-    RWGpuResource m_temporalCache[2][TemporalSupersampling::Count]; // ~array[Read/Write ping pong resource][Resources].
+    GpuResource m_temporalCache[2][TemporalSupersampling::Count]; // ~array[Read/Write ping pong resource][Resources].
     
     // ToDo use a common ping-pong index? 
     // ToDo cleanup readId should be for input to TAO, confusing.
     UINT          m_temporalCacheCurrentFrameResourceIndex = 0;
     UINT          m_normalDepthCurrentFrameResourceIndex = 0;
 
-    RWGpuResource m_varianceResource[AOVarianceResource::Count];
-    RWGpuResource m_lowResVarianceResource[AOVarianceResource::Count];
-    RWGpuResource m_localMeanVarianceResource[AOVarianceResource::Count];
-    RWGpuResource m_lowResLocalMeanVarianceResource[AOVarianceResource::Count];
+    GpuResource m_varianceResource[AOVarianceResource::Count];
+    GpuResource m_lowResVarianceResource[AOVarianceResource::Count];
+    GpuResource m_localMeanVarianceResource[AOVarianceResource::Count];
+    GpuResource m_lowResLocalMeanVarianceResource[AOVarianceResource::Count];
 
     // Multi-scale
     // ToDo Cleanup
@@ -245,18 +245,18 @@ private:
 
     struct MultiScaleDenoisingResource
     {
-        RWGpuResource m_value;
-        RWGpuResource m_normalDepth;
-        RWGpuResource m_partialDistanceDerivatives;
+        GpuResource m_value;
+        GpuResource m_normalDepth;
+        GpuResource m_partialDistanceDerivatives;
 
-        RWGpuResource m_smoothedValue;              // ToDo rename smoothed to denoised
+        GpuResource m_smoothedValue;              // ToDo rename smoothed to denoised
 
-        RWGpuResource m_downsampledSmoothedValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
-        RWGpuResource m_downsampledNormalDepthValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
-        RWGpuResource m_downsampledPartialDistanceDerivatives;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
+        GpuResource m_downsampledSmoothedValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
+        GpuResource m_downsampledNormalDepthValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
+        GpuResource m_downsampledPartialDistanceDerivatives;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
 
-        RWGpuResource m_varianceResource;
-        RWGpuResource m_smoothedVarianceResource;
+        GpuResource m_varianceResource;
+        GpuResource m_smoothedVarianceResource;
     };
     MultiScaleDenoisingResource m_multiScaleDenoisingResources[c_MaxDenoisingScaleLevels];
     
@@ -339,7 +339,7 @@ private:
 	void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width=0, UINT height=0);
 	void CalculateCameraRayHitCount();
     void ApplyAtrousWaveletTransformFilter(bool isFirstPass);
-    void ApplyAtrousWaveletTransformFilter(const  RWGpuResource& inValueResource, const  RWGpuResource& inNormalDepthResource, const  RWGpuResource& inDepthResource, const  RWGpuResource& inRayHitDistanceResource, const  RWGpuResource& inPartialDistanceDerivativesResource, RWGpuResource* outSmoothedValueResource, RWGpuResource* varianceResource, RWGpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
+    void ApplyAtrousWaveletTransformFilter(const  GpuResource& inValueResource, const  GpuResource& inNormalDepthResource, const  GpuResource& inDepthResource, const  GpuResource& inRayHitDistanceResource, const  GpuResource& inPartialDistanceDerivativesResource, GpuResource* outSmoothedValueResource, GpuResource* varianceResource, GpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter(bool filterFirstLevel);
     void DownsampleRaytracingOutput();
     void DownsampleGBuffer();
@@ -354,7 +354,7 @@ private:
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDepthDerivativesResourceHandle,
-        RWGpuResource* outputHiResValueResource,
+        GpuResource* outputHiResValueResource,
         LPCWCHAR passName);
 
     void CreateConstantBuffers();

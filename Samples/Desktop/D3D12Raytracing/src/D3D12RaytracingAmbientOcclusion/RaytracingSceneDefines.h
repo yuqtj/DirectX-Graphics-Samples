@@ -263,6 +263,7 @@ namespace AOVarianceResource {
 
 namespace TemporalSupersampling {
     enum Enum {
+        // ToDo rename to TRpp
         FrameAge = 0,
         RayHitDistance,
         CoefficientSquaredMean,

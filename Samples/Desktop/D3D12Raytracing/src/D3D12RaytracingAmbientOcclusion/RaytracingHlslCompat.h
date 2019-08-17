@@ -87,6 +87,11 @@ Optimization
     - Tearing with VSync on at 4K full res.
 - Cleanup:
     - ToDo remove .f specifier from floating numbers in hlsl
+
+- Sample generic
+    - Add device removal support
+
+
 */
 // Workarounds - ToDo remove/document
 #define REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO 0

@@ -51,8 +51,8 @@ public:
     float GetSpp();
     void GetRayGenParameters(bool *isCheckerboardSamplingEnabled, bool *checkerboardLoadEvenPixels);
     // ToDo return only a subset
-    RWGpuResource (&AOResources())[AOResource::Count]{ return m_AOResources; }
-    RWGpuResource* GetAOResources(){ return m_AOResources; }
+    GpuResource (&AOResources())[AOResource::Count]{ return m_AOResources; }
+    GpuResource* GetAOResources(){ return m_AOResources; }
 
     void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
     void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
@@ -90,11 +90,11 @@ private:
     static const wchar_t* c_missShaderName;
 
     // Raytracing shader resources.
-    RWGpuResource   m_AOResources[AOResource::Count];
-    RWGpuResource   m_AORayDirectionOriginDepth;
-    RWGpuResource   m_sortedToSourceRayIndexOffset;   // Index of a ray in the source array given a sorted index.
-    RWGpuResource   m_sourceToSortedRayIndexOffset;   // Index of a ray in the sorted array given a source index.
-    RWGpuResource   m_sortedRayGroupDebug;            // ToDo remove
+    GpuResource   m_AOResources[AOResource::Count];
+    GpuResource   m_AORayDirectionOriginDepth;
+    GpuResource   m_sortedToSourceRayIndexOffset;   // Index of a ray in the source array given a sorted index.
+    GpuResource   m_sourceToSortedRayIndexOffset;   // Index of a ray in the sorted array given a source index.
+    GpuResource   m_sortedRayGroupDebug;            // ToDo remove
     ConstantBuffer<RTAOConstantBuffer> m_CB;
     Samplers::MultiJittered m_randomSampler;
     StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;
