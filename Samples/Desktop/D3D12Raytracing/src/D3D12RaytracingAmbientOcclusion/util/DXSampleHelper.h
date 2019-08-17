@@ -599,7 +599,8 @@ inline void LoadTexture(
     }
 }
 
-
+// ToDo move this to GpuResource class?
+// ToDo rename to CreateUAVResource ?
 inline void CreateRenderTargetResource(
 	ID3D12Device5* device,
 	DXGI_FORMAT format,
@@ -615,6 +616,7 @@ inline void CreateRenderTargetResource(
 	auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 	ThrowIfFailed(device->CreateCommittedResource(
 		&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &uavDesc, initialResourceState, nullptr, IID_PPV_ARGS(&dest->resource)));
+    dest->m_UsageState = initialResourceState;
 	if (resourceName)
 	{
 		dest->resource->SetName(resourceName);
@@ -703,7 +705,8 @@ inline void AllocateUAVBuffer(
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_COMMON, 
 	const wchar_t* resourceName = nullptr)
 {
-	AllocateUAVBuffer(device, numElements * elementSize, &dest->resource, initialResourceState, resourceName);
+	AllocateUAVBuffer(device, numElements * elementSize, &dest->resource, initialResourceState, resourceName); 
+    dest->m_UsageState = initialResourceState;
 
 	if (dest->rwFlags & GpuResource::RWFlags::AllowWrite)
 	{

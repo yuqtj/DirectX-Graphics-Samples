@@ -214,8 +214,8 @@ private:
 	GpuResource m_AOResources[AOResource::Count];
 
 
-    GpuResource m_AOTSSCoefficient[2];    // ToDo why is this not part of m_temporalCache?
-    GpuResource m_lowResAOTSSCoefficient[2];
+    GpuResource m_TSSAOCoefficient[2];    // ToDo why is this not part of m_temporalCache?
+    GpuResource m_lowResTSSAOCoefficient[2];
     GpuResource m_temporalSupersampling_blendedAOCoefficient[2];
 	GpuResource m_VisibilityResource;
     GpuResource m_cachedFrameAgeValueSquaredValueRayHitDistance;
@@ -230,6 +230,7 @@ private:
     // ToDo use a common ping-pong index? 
     // ToDo cleanup readId should be for input to TAO, confusing.
     UINT          m_temporalCacheCurrentFrameResourceIndex = 0;
+    UINT          m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex = 0;
     UINT          m_normalDepthCurrentFrameResourceIndex = 0;
 
     GpuResource m_varianceResource[AOVarianceResource::Count];

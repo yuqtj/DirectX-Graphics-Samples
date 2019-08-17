@@ -16,11 +16,12 @@
 
 /*
 //ToDo
+- todo finetune clamping/remove ghosting (test gliding spaceship)
 - test impact of depth hash key in RaySort
 - fix adaptive kernel size
 - improve the multi-blur - skip higher iter blur on higher frame age.
 - Run ray gen only for active pixels on checkerboard. Run Ray sort only for active pixels and combine two groups? 128x128?
-
+- initialize resources
 - progressive samplin
 - depth aware variance calculation
 - lower temporal blur on motion
