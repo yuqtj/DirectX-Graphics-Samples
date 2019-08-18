@@ -12,8 +12,7 @@
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
-#include "util/BxDF.hlsli"
-#include "RTAO/Shaders/RTAO.hlsli"
+#include "RTAO.hlsli"
 
 // Output.
 RWTexture2D<float4> g_renderTarget : register(u0);

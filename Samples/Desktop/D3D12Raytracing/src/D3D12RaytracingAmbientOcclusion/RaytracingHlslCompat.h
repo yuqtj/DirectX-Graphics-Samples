@@ -566,7 +566,7 @@ namespace SortRays {
 // ToDo capitalize?
 // ToDo padding?
 // ToDo remove unused
-struct SceneConstantBuffer
+struct PathtracerConstantBuffer
 {
     // ToDo rename to world to view matrix and drop (0,0,0) note.
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
@@ -575,7 +575,7 @@ struct SceneConstantBuffer
 
     XMMATRIX lightProjectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
     XMMATRIX lightViewProj;
-    XMVECTOR lightPosition;
+    XMVECTOR lightPosition;     // ToDo use float3
 
     XMFLOAT3 lightColor;
     float defaultAmbientIntensity;

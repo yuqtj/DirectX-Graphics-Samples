@@ -173,20 +173,10 @@ void RTAO::CreateAuxilaryDeviceResources()
     auto commandList = m_deviceResources->GetCommandList();
     auto FrameCount = m_deviceResources->GetBackBufferCount();
 
-    EngineProfiling::RestoreDevice(device, commandQueue, FrameCount);
-    ResourceUploadBatch resourceUpload(device);
-    resourceUpload.Begin();
-
     // ToDo move?
     m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
     m_rayGen.Initialize(device, FrameCount);
     m_raySorter.Initialize(device, FrameCount);
-
-    // Upload the resources to the GPU.
-    auto finish = resourceUpload.End(commandQueue);
-
-    // Wait for the upload thread to terminate
-    finish.wait();
 }
 
 // Create constant buffers.
@@ -654,7 +644,7 @@ void RTAO::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT heig
 
     resourceStateTracker->FlushResourceBarriers();
     commandList->DispatchRays(&dispatchDesc);
-};
+}
 
 
 void RTAO::OnUpdate()
@@ -963,8 +953,6 @@ void RTAO::OnRender(
         ScopedTimer _prof(L"CalculateAORayHitCount", commandList);
         CalculateRayHitCount();
     }
-
-    PIXEndEvent(commandList);
 }
 
 void RTAO::CalculateRayHitCount()
@@ -981,7 +969,7 @@ void RTAO::CalculateRayHitCount()
         frameIndex,
         m_AOResources[AOResource::HitCount].gpuDescriptorReadAccess,
         &m_numAORayGeometryHits);
-};
+}
 
 void RTAO::CreateResolutionDependentResources()
 {

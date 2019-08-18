@@ -34,9 +34,6 @@
     <Filter Include="SSAO\Shaders">
       <UniqueIdentifier>{af9acbca-a1ba-4545-a926-c92c125f398b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Assets\Shaders\Lighting">
-      <UniqueIdentifier>{c977e725-2a30-4742-ac24-f4ece4a6c6df}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Assets\Scene\Assets">
       <UniqueIdentifier>{ae18df80-754a-4361-baae-440ce51538d8}</UniqueIdentifier>
     </Filter>
@@ -49,9 +46,6 @@
     <Filter Include="Assets\Shaders\RTAO\VarianceMean">
       <UniqueIdentifier>{2fbe6f49-be73-41a0-8fdc-29d6b38db505}</UniqueIdentifier>
     </Filter>
-    <Filter Include="RTAO">
-      <UniqueIdentifier>{09737061-0eea-4880-bd21-08a05295f874}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Assets\Shaders\RTAO\Denoising">
       <UniqueIdentifier>{15d32f45-7439-4bb1-94c9-53c49f5f62dd}</UniqueIdentifier>
     </Filter>
@@ -63,6 +57,18 @@
     </Filter>
     <Filter Include="Header Files\Util\Misc">
       <UniqueIdentifier>{c333ac89-c661-4845-8db0-f2384493ecf0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\RTAO">
+      <UniqueIdentifier>{09737061-0eea-4880-bd21-08a05295f874}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Pathtracer">
+      <UniqueIdentifier>{e1aa48cf-7f32-430a-859e-e9d8969cbf3f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Denoiser">
+      <UniqueIdentifier>{5efc5e8a-222c-4460-a982-563f8a9d071b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Assets\Shaders\Pathtracer">
+      <UniqueIdentifier>{737496f1-4345-4088-ba6d-023e35584733}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -175,7 +181,7 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="RTAO\RTAO.h">
-      <Filter>RTAO</Filter>
+      <Filter>Source Files\RTAO</Filter>
     </ClInclude>
     <ClInclude Include="util\Graphics\GpuResource.h">
       <Filter>Header Files\Util\Graphics</Filter>
@@ -185,6 +191,9 @@
     </ClInclude>
     <ClInclude Include="util\Misc\Utility.h">
       <Filter>Header Files\Util\Misc</Filter>
+    </ClInclude>
+    <ClInclude Include="Pathtracer\Pathtracer.h">
+      <Filter>Source Files\Pathtracer</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -264,10 +273,13 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="RTAO\RTAO.cpp">
-      <Filter>RTAO</Filter>
+      <Filter>Source Files\RTAO</Filter>
     </ClCompile>
     <ClCompile Include="util\Graphics\GpuResourceStateTracker.cpp">
       <Filter>Header Files\Util\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Pathtracer\Pathtracer.cpp">
+      <Filter>Source Files\Pathtracer</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -285,9 +297,6 @@
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="packages.config" />
-    <None Include="util\BxDF.hlsli">
-      <Filter>Assets\Shaders\Lighting</Filter>
-    </None>
     <None Include="RTAO\Shaders\RTAO.hlsli">
       <Filter>Assets\Shaders\RTAO</Filter>
     </None>
@@ -310,11 +319,11 @@
     <None Include="util\CrossBilateralWeights.hlsli">
       <Filter>Assets\Shaders\Util</Filter>
     </None>
+    <None Include="Pathtracer\Shaders\BxDF.hlsli">
+      <Filter>Assets\Shaders\Pathtracer</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Raytracing.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="RNGVisualizerCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
@@ -474,6 +483,9 @@
     </FxCompile>
     <FxCompile Include="FillInCheckerboard_CrossBox4TapFilterCS.hlsl">
       <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
+    </FxCompile>
+    <FxCompile Include="Pathtracer\Shaders\Pathtracer.hlsl">
+      <Filter>Assets\Shaders\Pathtracer</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

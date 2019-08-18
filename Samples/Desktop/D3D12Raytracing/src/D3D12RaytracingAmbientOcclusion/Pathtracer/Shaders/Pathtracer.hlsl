@@ -19,8 +19,8 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RandomNumberGenerator.hlsli"
 #include "SSAO/GlobalSharedHlslCompat.h" // ToDo remove
-#include "util/AnalyticalTextures.hlsli"
-#include "util/BxDF.hlsli"
+#include "AnalyticalTextures.hlsli"
+#include "BxDF.hlsli"
 #define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS
 
 // ToDo split to Raytracing for GBUffer and AO?

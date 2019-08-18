@@ -40,26 +40,7 @@ UINT D3D12RaytracingAmbientOcclusion::s_numInstances = 0;
 HWND g_hWnd = 0;
 UIParameters g_UIparameters;    // ToDo move
 
-// Shader entry points.
-const wchar_t* D3D12RaytracingAmbientOcclusion::c_rayGenShaderNames[] = 
-{
-	// ToDo reorder
-    // ToDo rename visiblity to shadow? standardize naming
-	L"MyRayGenShader_GBuffer", L"MyRayGenShader_Visibility", L"MyRayGenShader_ShadowMap"
-};
-const wchar_t* D3D12RaytracingAmbientOcclusion::c_closestHitShaderNames[] =
-{
-     L"MyClosestHitShader_GBuffer", L"MyClosestHitShader_ShadowRay"
-};
-const wchar_t* D3D12RaytracingAmbientOcclusion::c_missShaderNames[] =
-{
-    L"MyMissShader_GBuffer", L"MyMissShader_ShadowRay",
-};
-// Hit groups.
-const wchar_t* D3D12RaytracingAmbientOcclusion::c_hitGroupNames_TriangleGeometry[] = 
-{ 
-    L"MyHitGroup_Triangle_GBuffer", L"MyHitGroup_Triangle_ShadowRay",
-};
+
 namespace SceneArgs
 {
     void OnGeometryReinitializationNeeded(void* args)
@@ -152,23 +133,7 @@ namespace SceneArgs
 #endif
     BoolVar AOEnabled(L"Render/AO/Enabled", true);
 
-    // Default ambient intensity for hitPositions that don't have a calculated Ambient coefficient.
-    // Calculating AO just for a single hitPosition per pixel can cause visible visual differences
-    // in bounces off surfaces that have non-zero Albedo, such as reflection on car paint at sharp angles. 
-    // With default Ambient coefficient added to every hit along the ray, this visual difference is surpressed.
-    NumVar DefaultAmbientIntensity(L"Render/PathTracing/Default ambient intensity", 0.4f, 0, 1, 0.01f);  
-
-    IntVar MaxRadianceRayRecursionDepth(L"Render/PathTracing/Max Radiance Ray recursion depth", 3, 1, MAX_RAY_RECURSION_DEPTH, 1);   // ToDo Replace with 3/4 depth as it adds visible differences on spaceship/car
-    IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 4, 1, MAX_RAY_RECURSION_DEPTH, 1);
-    
-    BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", false);        // ToDO use enumeration
-
-    // Avoid tracing rays where they have close to zero visual impact.
-    // todo test perf gain or remove.
-    // ToDo remove RTAO from name
-    NumVar RTAO_minimumFrBounceCoefficient(L"Render/PathTracing/Minimum BRDF bounce contribution coefficient", 0.03f, 0, 1.01f, 0.01f);        // Minimum BRDF coefficient to cast a ray for.
-    NumVar RTAO_minimumFtBounceCoefficient(L"Render/PathTracing/Minimum BTDF bounce contribution coefficient", 0.00f, 0, 1.01f, 0.01f);        // Minimum BTDF coefficient to cast a ray for.
-
+ 
     // ToDo standardize capitalization
     // ToDo naming down/ up
     const WCHAR* DownsamplingBilateralFilters[GpuKernels::DownsampleValueNormalDepthBilateralFilter::Count] = { L"Point Sampling", L"Depth Weighted", L"Depth Normal Weighted" };
@@ -568,10 +533,6 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
     ThrowIfFalse(++s_numInstances == 1, L"There can be only one D3D12RaytracingAmbientOcclusion instance.");
     global_pSample = this;
 
-    for (auto& rayGenShaderTableRecordSizeInBytes : m_rayGenShaderTableRecordSizeInBytes)
-    {
-        rayGenShaderTableRecordSizeInBytes = UINT_MAX;
-    }
     global_pSample = this;
     UpdateForSizeChange(width, height);
 	m_generatorURNG.seed(1729);
@@ -659,29 +620,7 @@ void D3D12RaytracingAmbientOcclusion::WriteProfilingResultsToFile()
 // Update camera matrices passed into the shader.
 void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
 {
-    // Main scene.
-    {
-        m_sceneCB->cameraPosition = m_camera.Eye();
-        XMStoreFloat3(&m_csComposeRenderPassesCB->cameraPosition, m_camera.Eye());
-
-        XMMATRIX view, proj;
-        m_camera.GetProj(&proj, m_GBufferWidth, m_GBufferHeight);
-
-        // Calculate view matrix as if the camera was at (0,0,0) to avoid 
-        // precision issues when camera position is too far from (0,0,0).
-        // GenerateCameraRay takes this into consideration in the raytracing shader.
-        view = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_camera.At() - m_camera.Eye(), 1), m_camera.Up());
-        XMMATRIX viewProj = view * proj;
-        m_sceneCB->projectionToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj);
-        // ToDo switch to default column major in hlsl and do a transpose before passing matrices to HLSL.
-        m_sceneCB->viewProjection = viewProj;
-        m_sceneCB->Znear = m_camera.ZMin;
-        m_sceneCB->Zfar = m_camera.ZMax;
-
-        m_sceneCB->cameraAt = m_camera.At();
-        m_sceneCB->cameraUp = m_camera.Up();
-        m_sceneCB->cameraRight = XMVector3Normalize(XMVector3Cross(m_camera.Up(), m_camera.At() - m_camera.Eye()));
-    }
+    m_pathtracer.SetCamera(m_camera);
 
     // SSAO.
     {
@@ -936,15 +875,12 @@ void D3D12RaytracingAmbientOcclusion::InitializeScene()
     // Setup lights.
     {
         // Initialize the lighting parameters.
-		// ToDo remove
+		
 		m_csComposeRenderPassesCB->lightPosition = XMFLOAT3(-20.0f, 60.0f, 20.0f);
-		m_sceneCB->lightPosition = XMLoadFloat3(&m_csComposeRenderPassesCB->lightPosition);
-
-		m_csComposeRenderPassesCB->lightAmbientColor = XMFLOAT3(0.45f, 0.45f, 0.45f);
-
+		m_csComposeRenderPassesCB->lightAmbientColor = XMFLOAT3(0.45f, 0.45f, 0.45f); // ToDo remove?
         float d = 0.6f;
-        m_sceneCB->lightColor = XMFLOAT3(d, d, d);
 		m_csComposeRenderPassesCB->lightDiffuseColor = XMFLOAT3(d, d, d);
+        m_pathtracer.SetLight(XMLoadFloat3(&m_csComposeRenderPassesCB->lightPosition), XMFLOAT3(d, d, d));
     }
 }
 
@@ -953,8 +889,6 @@ void D3D12RaytracingAmbientOcclusion::CreateConstantBuffers()
 {
     auto device = m_deviceResources->GetD3DDevice();
     auto FrameCount = m_deviceResources->GetBackBufferCount();
-
-    m_sceneCB.Create(device, FrameCount, L"Scene Constant Buffer");
 
     m_SSAOCB.Create(device, FrameCount, L"SSAO Constant Buffer");
 }
@@ -1091,19 +1025,10 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
     // Build raytracing acceleration structures from the generated geometry.
     m_isASinitializationRequested = true;
 
-#if ENABLE_RAYTRACING
-    // Create root signatures for the shaders.
-    CreateRootSignatures();
- 
-    // Create a raytracing pipeline state object which defines the binding of shaders, state and resources to be used during raytracing.
-    CreateRaytracingPipelineStateObject();
-#endif
     // Create constant buffers for the geometry and the scene.
     CreateConstantBuffers();
 
  
-	// Build shader tables, which define shaders and their local root arguments.
-    BuildShaderTables();
 
     InitializeAccelerationStructures();
    
@@ -1113,6 +1038,7 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 
     CreateAoBlurCSResources();
 
+    m_pathtracer.Setup(m_deviceResources, m_cbvSrvUavHeap, m_maxInstanceContributionToHitGroupIndex);
     m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_maxInstanceContributionToHitGroupIndex);
     m_SSAO.Setup(m_deviceResources);
 
@@ -1120,231 +1046,6 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
     m_prevFrameBottomLevelASInstanceTransforms.Create(device, MaxNumBottomLevelInstances, FrameCount, L"GPU buffer: Bottom Level AS Instance transforms for previous frame");
 }
 
-void D3D12RaytracingAmbientOcclusion::CreateRootSignatures()
-{
-    auto device = m_deviceResources->GetD3DDevice();
-
-    // Global Root Signature
-    // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
-    {
-        using namespace GlobalRootSignature;
-
-        // ToDo reorder
-        // ToDo use slot index in ranges everywhere
-        CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
-        ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output textures
-        ranges[Slot::GBufferResources].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 5);  // 5 output GBuffer textures
-        ranges[Slot::AOResourcesOut].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 10);  // 2 output AO textures
-        ranges[Slot::VisibilityResource].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 12);  // 1 output visibility texture
-        ranges[Slot::GBufferDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 13);  // 1 output depth texture
-        ranges[Slot::GbufferNormalRGB].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 14);  // 1 output normal texture
-        ranges[Slot::AORayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 15);  // 1 output ray hit distance texture
-        ranges[Slot::MotionVector].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 17);  // 1 output texture space motion vector.
-        ranges[Slot::ReprojectedNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 18);  // 1 output texture reprojected hit position
-        ranges[Slot::Color].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 19);  // 1 output texture shaded color
-        ranges[Slot::AOSurfaceAlbedo].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 20);  // 1 output texture AO diffuse
-        ranges[Slot::ShadowMapUAV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 21);  // 1 output ShadowMap texture
-        ranges[Slot::Debug].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 22);
-        ranges[Slot::Debug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 24);
-        
-
-#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-        ranges[Slot::PartialDepthDerivatives].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 16);  // 1 output partial depth derivative texture
-#endif
-        ranges[Slot::GBufferResourcesIn].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);  // 4 input GBuffer textures
-        ranges[Slot::EnvironmentMap].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12);  // 1 input environment map texture
-        ranges[Slot::FilterWeightSum].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 13);  // 1 input filter weight sum texture
-        ranges[Slot::AOFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 14);  // 1 input AO frame age
-        
-        ranges[Slot::ShadowMapSRV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 21);  // 1 ShadowMap texture
-        ranges[Slot::AORayDirectionOriginDepthHitSRV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 22);  // 1 AO ray direction and origin depth texture
-        ranges[Slot::AOSourceToSortedRayIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 23);  // 1 input AO ray group thread offsets
-
-        CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-        rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
-        rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[Slot::GBufferResources]);
-        rootParameters[Slot::GBufferResourcesIn].InitAsDescriptorTable(1, &ranges[Slot::GBufferResourcesIn]);
-        rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[Slot::AOResourcesOut]);
-        rootParameters[Slot::VisibilityResource].InitAsDescriptorTable(1, &ranges[Slot::VisibilityResource]);
-        rootParameters[Slot::EnvironmentMap].InitAsDescriptorTable(1, &ranges[Slot::EnvironmentMap]);
-        rootParameters[Slot::GBufferDepth].InitAsDescriptorTable(1, &ranges[Slot::GBufferDepth]);
-        rootParameters[Slot::GbufferNormalRGB].InitAsDescriptorTable(1, &ranges[Slot::GbufferNormalRGB]);
-         rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[Slot::FilterWeightSum]);
-        rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::AORayHitDistance]);
-        rootParameters[Slot::AOFrameAge].InitAsDescriptorTable(1, &ranges[Slot::AOFrameAge]);
-        rootParameters[Slot::AORayDirectionOriginDepthHitSRV].InitAsDescriptorTable(1, &ranges[Slot::AORayDirectionOriginDepthHitSRV]);
-        rootParameters[Slot::AOSourceToSortedRayIndex].InitAsDescriptorTable(1, &ranges[Slot::AOSourceToSortedRayIndex]);
-#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-        rootParameters[Slot::PartialDepthDerivatives].InitAsDescriptorTable(1, &ranges[Slot::PartialDepthDerivatives]);
-#endif
-        rootParameters[Slot::MotionVector].InitAsDescriptorTable(1, &ranges[Slot::MotionVector]);
-        rootParameters[Slot::ReprojectedNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::ReprojectedNormalDepth]);
-        rootParameters[Slot::Color].InitAsDescriptorTable(1, &ranges[Slot::Color]);
-        rootParameters[Slot::AOSurfaceAlbedo].InitAsDescriptorTable(1, &ranges[Slot::AOSurfaceAlbedo]);
-        rootParameters[Slot::ShadowMapSRV].InitAsDescriptorTable(1, &ranges[Slot::ShadowMapSRV]);
-        rootParameters[Slot::ShadowMapUAV].InitAsDescriptorTable(1, &ranges[Slot::ShadowMapUAV]);
-        rootParameters[Slot::Debug].InitAsDescriptorTable(1, &ranges[Slot::Debug]);
-        rootParameters[Slot::Debug2].InitAsDescriptorTable(1, &ranges[Slot::Debug2]);
-
-        rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
-        rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
-        rootParameters[Slot::MaterialBuffer].InitAsShaderResourceView(3);
-        rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(4);
-        rootParameters[Slot::PrevFrameBottomLevelASIstanceTransforms].InitAsShaderResourceView(15);
-
-        CD3DX12_STATIC_SAMPLER_DESC staticSamplers[] =
-        {
-            // LinearWrapSampler
-            CD3DX12_STATIC_SAMPLER_DESC(0, SAMPLER_FILTER),
-            // ShadowMapSamplerComp
-            CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT),
-            // ShadowMapSampler
-            CD3DX12_STATIC_SAMPLER_DESC(2, D3D12_FILTER_MIN_MAG_MIP_POINT)
-        };
-
-        CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, ARRAYSIZE(staticSamplers), staticSamplers);
-		SerializeAndCreateRootSignature(device, globalRootSignatureDesc, &m_raytracingGlobalRootSignature, L"Global root signature");
-    }
-
-    // Local Root Signature
-    // This is a root signature that enables a shader to have unique arguments that come from shader tables.
-    {
-        // Triangle geometry
-        {
-			using namespace LocalRootSignature::Triangle;
-
-            CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
-            ranges[Slot::IndexBuffer].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 1 buffer - index buffer.
-            ranges[Slot::VertexBuffer].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);  // 1 buffer - current frame vertex buffer.
-            ranges[Slot::PreviousFrameVertexBuffer].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1);  // 1 buffer - previous frame vertex buffer.
-            ranges[Slot::DiffuseTexture].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 1);  // 1 diffuse texture
-            ranges[Slot::NormalTexture].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4, 1);  // 1 normal texture
-
-            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-            rootParameters[Slot::ConstantBuffer].InitAsConstants(SizeOfInUint32(PrimitiveConstantBuffer), 0, 1);
-            rootParameters[Slot::IndexBuffer].InitAsDescriptorTable(1, &ranges[Slot::IndexBuffer]);
-            rootParameters[Slot::VertexBuffer].InitAsDescriptorTable(1, &ranges[Slot::VertexBuffer]);
-            rootParameters[Slot::PreviousFrameVertexBuffer].InitAsDescriptorTable(1, &ranges[Slot::PreviousFrameVertexBuffer]);
-            rootParameters[Slot::DiffuseTexture].InitAsDescriptorTable(1, &ranges[Slot::DiffuseTexture]);
-            rootParameters[Slot::NormalTexture].InitAsDescriptorTable(1, &ranges[Slot::NormalTexture]);
-
-            CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
-            localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
-			SerializeAndCreateRootSignature(device, localRootSignatureDesc, &m_raytracingLocalRootSignature[LocalRootSignature::Type::Triangle], L"Local root signature: triangle geometry");
-        }
-    }
-}
-
-// DXIL library
-// This contains the shaders and their entrypoints for the state object.
-// Since shaders are not considered a subobject, they need to be passed in via DXIL library subobjects.
-void D3D12RaytracingAmbientOcclusion::CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline)
-{
-    auto lib = raytracingPipeline->CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
-    D3D12_SHADER_BYTECODE libdxil = CD3DX12_SHADER_BYTECODE((void *)g_pRaytracing, ARRAYSIZE(g_pRaytracing));
-    lib->SetDXILLibrary(&libdxil);
-    // Use default shader exports for a DXIL library/collection subobject ~ surface all shaders.
-}
-
-// Hit groups
-// A hit group specifies closest hit, any hit and intersection shaders 
-// to be executed when a ray intersects the geometry.
-void D3D12RaytracingAmbientOcclusion::CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline)
-{
-    // Triangle geometry hit groups
-    {
-        for (UINT rayType = 0; rayType < RayType::Count; rayType++)
-        {
-            auto hitGroup = raytracingPipeline->CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
-
-            if (c_closestHitShaderNames[rayType])
-            {
-
-                hitGroup->SetClosestHitShaderImport(c_closestHitShaderNames[rayType]);
-            }
-            hitGroup->SetHitGroupExport(c_hitGroupNames_TriangleGeometry[rayType]);
-            hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
-        }
-    }
-}
-
-// Local root signature and shader association
-// This is a root signature that enables a shader to have unique arguments that come from shader tables.
-void D3D12RaytracingAmbientOcclusion::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline)
-{
-    // Ray gen and miss shaders in this sample are not using a local root signature and thus one is not associated with them.
-
-    // Hit groups
-    // Triangle geometry
-    {
-        auto localRootSignature = raytracingPipeline->CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
-        localRootSignature->SetRootSignature(m_raytracingLocalRootSignature[LocalRootSignature::Type::Triangle].Get());
-        // Shader association
-        auto rootSignatureAssociation = raytracingPipeline->CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
-        rootSignatureAssociation->SetSubobjectToAssociate(*localRootSignature);
-        rootSignatureAssociation->AddExports(c_hitGroupNames_TriangleGeometry);
-    }
-}
-
-// Create a raytracing pipeline state object (RTPSO).
-// An RTPSO represents a full set of shaders reachable by a DispatchRays() call,
-// with all configuration options resolved, such as local signatures and other state.
-void D3D12RaytracingAmbientOcclusion::CreateRaytracingPipelineStateObject()
-{
-    auto device = m_deviceResources->GetD3DDevice();
-    // Pathracing state object.
-    {
-        // ToDo review
-        // Create 18 subobjects that combine into a RTPSO:
-        // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
-        // Default association applies to every exported shader entrypoint that doesn't have any of the same type of subobject associated with it.
-        // This simple sample utilizes default shader association except for local root signature subobject
-        // which has an explicit association specified purely for demonstration purposes.
-        // 1 - DXIL library
-        // 8 - Hit group types - 4 geometries (1 triangle, 3 aabb) x 2 ray types (ray, shadowRay)
-        // 1 - Shader config
-        // 6 - 3 x Local root signature and association
-        // 1 - Global root signature
-        // 1 - Pipeline config
-        CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
-
-        // DXIL library
-        CreateDxilLibrarySubobject(&raytracingPipeline);
-
-        // Hit groups
-        CreateHitGroupSubobjects(&raytracingPipeline);
-
-        // Shader config
-        // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
-        auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-        UINT payloadSize = static_cast<UINT>(max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload)));		// ToDo revise
-
-        UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics
-        shaderConfig->Config(payloadSize, attributeSize);
-
-        // Local root signature and shader association
-        // This is a root signature that enables a shader to have unique arguments that come from shader tables.
-        CreateLocalRootSignatureSubobjects(&raytracingPipeline);
-
-        // Global root signature
-        // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
-        auto globalRootSignature = raytracingPipeline.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
-        globalRootSignature->SetRootSignature(m_raytracingGlobalRootSignature.Get());
-
-        // Pipeline config
-        // Defines the maximum TraceRay() recursion depth.
-        auto pipelineConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
-        // PERFOMANCE TIP: Set max recursion depth as low as needed
-        // as drivers may apply optimization strategies for low recursion depths.
-        UINT maxRecursionDepth = MAX_RAY_RECURSION_DEPTH;
-        pipelineConfig->Config(maxRecursionDepth);
-
-        PrintStateObjectDesc(raytracingPipeline);
-
-        // Create the state object.
-        ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object.\n");
-    }
-}
 
 // Create a 2D output texture for raytracing.
 void D3D12RaytracingAmbientOcclusion::CreateRaytracingOutputResource()
@@ -1385,78 +1086,10 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
     // ToDo remove obsolete resources, QuarterResAO event triggers this so we may not need all low/gbuffer width AO resources.
-
-    // Full-res GBuffer resources.
-    {
-        // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-        m_GBufferResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count);
-        m_GBufferResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count);
-        for (UINT i = 0; i < GBufferResource::Count; i++)
-        {
-            m_GBufferResources[i].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-            m_GBufferResources[i].uavDescriptorHeapIndex = m_GBufferResources[0].uavDescriptorHeapIndex + i;
-            m_GBufferResources[i].srvDescriptorHeapIndex = m_GBufferResources[0].srvDescriptorHeapIndex + i;
-        }
-        CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Hit], initialResourceState, L"GBuffer Hit");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Material], initialResourceState, L"GBuffer Material");
-
-        
-        CreateRenderTargetResource(device, hitPositionFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer HitPosition");
-
-        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormalDepth], initialResourceState, L"GBuffer Normal Depth");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Distance], initialResourceState, L"GBuffer Distance");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Depth], initialResourceState, L"GBuffer Depth");
-       
-        CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(SceneArgs::RTAO_PartialDepthDerivativesResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::PartialDepthDerivatives], initialResourceState, L"GBuffer Partial Depth Derivatives");
-
-        CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(SceneArgs::RTAO_MotionVectorResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::MotionVector], initialResourceState, L"GBuffer Texture Space Motion Vector");
-        
-        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::ReprojectedNormalDepth], initialResourceState, L"GBuffer Reprojected Hit Position");
-        
-        CreateRenderTargetResource(device, backbufferFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Color], initialResourceState, L"GBuffer Color");
-
-        CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer AO Surface Albedo");
-
-        CreateRenderTargetResource(device, debugFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug], initialResourceState, L"GBuffer Debug");
-        CreateRenderTargetResource(device, debugFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug2], initialResourceState, L"GBuffer Debug2");
-
-    }
-    
-    // Low-res GBuffer resources.
-    {
-        // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-        m_GBufferLowResResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count);
-        m_GBufferLowResResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count);
-        for (UINT i = 0; i < GBufferResource::Count; i++)
-        {
-            m_GBufferLowResResources[i].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-            m_GBufferLowResResources[i].uavDescriptorHeapIndex = m_GBufferLowResResources[0].uavDescriptorHeapIndex + i;
-            m_GBufferLowResResources[i].srvDescriptorHeapIndex = m_GBufferLowResResources[0].srvDescriptorHeapIndex + i;
-        }
- 
-        CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::Hit], initialResourceState, L"GBuffer LowRes Hit");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::Material], initialResourceState, L"GBuffer LowRes Material");
-        CreateRenderTargetResource(device, hitPositionFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer LowRes HitPosition");
-        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::SurfaceNormalDepth], initialResourceState, L"GBuffer LowRes Normal");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::Distance], initialResourceState, L"GBuffer LowRes Distance");
-        // ToDo are below two used?
-        CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::Depth], initialResourceState, L"GBuffer LowRes Depth");
-        CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(SceneArgs::RTAO_PartialDepthDerivativesResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives], initialResourceState, L"GBuffer LowRes Partial Depth Derivatives");
-
-        CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(SceneArgs::RTAO_MotionVectorResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::MotionVector], initialResourceState, L"GBuffer LowRes Texture Space Motion Vector");
-
-        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::ReprojectedNormalDepth], initialResourceState, L"GBuffer LowRes Reprojected Normal Depth");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferLowResResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer LowRes AO Surface Albedo");
-    
-    }
-
-    m_prevFrameGBufferNormalDepth.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-    CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_prevFrameGBufferNormalDepth, initialResourceState, L"Previous Frame GBuffer Normal Depth");
     m_multiPassDenoisingBlurStrength.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
     CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_multiPassDenoisingBlurStrength, initialResourceState, L"Multi Pass Denoising Blur Strength");
     
-    
-
+  
     // ToDo
     m_SSAO.BindGBufferResources(m_GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource(), m_GBufferResources[GBufferResource::Depth].GetResource());
 
@@ -1593,51 +1226,6 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
             CreateRenderTargetResource(device, meanVarianceTexFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_lowResLocalMeanVarianceResource[AOVarianceResource::Smoothed], initialResourceState, L"LowRes Smoothed Local Mean Variance");
         }
     }
-
-    // ToDo move
-    for (UINT i = 0; i < c_MaxDenoisingScaleLevels; i++)
-    {
-        MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[i];
-        msResource.m_value.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        msResource.m_normalDepth.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        msResource.m_partialDistanceDerivatives.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        msResource.m_smoothedValue.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        msResource.m_downsampledSmoothedValue.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        msResource.m_downsampledNormalDepthValue.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        msResource.m_downsampledPartialDistanceDerivatives.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        msResource.m_varianceResource.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        msResource.m_smoothedVarianceResource.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-
-        UINT width = CeilDivide(m_raytracingWidth, 1 << i);
-        UINT height = CeilDivide(m_raytracingHeight, 1 << i);
-        CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), width, height, m_cbvSrvUavHeap.get(), &msResource.m_value, initialResourceState, L"MultiScaleDenoisingResource Value");
-        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, width, height, m_cbvSrvUavHeap.get(), &msResource.m_normalDepth, initialResourceState, L"MultiScaleDenoisingResource Normal and Depth");
-        CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(SceneArgs::RTAO_PartialDepthDerivativesResourceFormat), width, height, m_cbvSrvUavHeap.get(), &msResource.m_partialDistanceDerivatives, initialResourceState, L"MultiScaleDenoisingResource Partial Distance Derivatives");
-        CreateRenderTargetResource(device, m_RTAO.GetAOCoefficientFormat(), width, height, m_cbvSrvUavHeap.get(), &msResource.m_smoothedValue, initialResourceState, L"MultiScaleDenoisingResource Smoothed");
-        CreateRenderTargetResource(device, varianceTexFormat, width, height, m_cbvSrvUavHeap.get(), &msResource.m_varianceResource, initialResourceState, L"MultiScaleDenoisingResource Variance");
-        CreateRenderTargetResource(device, varianceTexFormat, width, height, m_cbvSrvUavHeap.get(), &msResource.m_smoothedVarianceResource, initialResourceState, L"MultiScaleDenoisingResource SmoothedVariance");
-
-        UINT downsampledWidth = CeilDivide(width, 2);
-        UINT downsampledHeight = CeilDivide(height, 2);
-        CreateRenderTargetResource(device, texFormat, downsampledWidth, downsampledHeight, m_cbvSrvUavHeap.get(), &msResource.m_downsampledSmoothedValue, initialResourceState, L"MultiScaleDenoisingResource Downsampled Smoothed");
-        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, downsampledWidth, downsampledHeight, m_cbvSrvUavHeap.get(), &msResource.m_downsampledNormalDepthValue, initialResourceState, L"MultiScaleDenoisingResource Downsampled Normal and Depth");
-        CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(SceneArgs::RTAO_PartialDepthDerivativesResourceFormat), downsampledWidth, downsampledHeight, m_cbvSrvUavHeap.get(), &msResource.m_downsampledPartialDistanceDerivatives, initialResourceState, L"MultiScaleDenoisingResource Downsampled Partial Distance Derivatives");
-    }
-
-	// ToDo
-	// Describe and create the point clamping sampler used for reading from the GBuffer resources.
-	//CD3DX12_CPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetHeap()->GetCPUDescriptorHandleForHeapStart());
-	//D3D12_SAMPLER_DESC clampSamplerDesc = {};
-	//clampSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
-	//clampSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-	//clampSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-	//clampSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-	//clampSamplerDesc.MipLODBias = 0.0f;
-	//clampSamplerDesc.MaxAnisotropy = 1;
-	//clampSamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-	//clampSamplerDesc.MinLOD = 0;
-	//clampSamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-	//device->CreateSampler(&clampSamplerDesc, samplerHandle);
 }
 
 void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
@@ -2355,227 +1943,6 @@ void D3D12RaytracingAmbientOcclusion::InitializeAccelerationStructures()
     m_accelerationStructure->InitializeTopLevelAS(device, buildFlags, allowUpdate, performUpdateOnBuild, L"Top-Level Acceleration Structure");
 }
 
-// Build shader tables.
-// This encapsulates all shader records - shaders and the arguments for their local root signatures.
-void D3D12RaytracingAmbientOcclusion::BuildShaderTables()
-{
-	auto device = m_deviceResources->GetD3DDevice();
-
-	void* rayGenShaderIDs[RayGenShaderType::Count];
-	void* missShaderIDs[RayType::Count];
-	void* hitGroupShaderIDs_TriangleGeometry[RayType::Count];
-
-	// A shader name look-up table for shader table debug print out.
-	unordered_map<void*, wstring> shaderIdToStringMap;
-
-	auto GetShaderIDs = [&](auto* stateObjectProperties)
-	{
-        for (UINT i = 0; i < RayGenShaderType::Count; i++)
-        {
-            rayGenShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_rayGenShaderNames[i]);
-            shaderIdToStringMap[rayGenShaderIDs[i]] = c_rayGenShaderNames[i];
-		}
-
-		for (UINT i = 0; i < RayType::Count; i++)
-		{
-            missShaderIDs[i] = stateObjectProperties->GetShaderIdentifier(c_missShaderNames[i]);
-            shaderIdToStringMap[missShaderIDs[i]] = c_missShaderNames[i];
-		}
-
-		for (UINT i = 0; i < RayType::Count; i++)
-		{
-            hitGroupShaderIDs_TriangleGeometry[i] = stateObjectProperties->GetShaderIdentifier(c_hitGroupNames_TriangleGeometry[i]);
-            shaderIdToStringMap[hitGroupShaderIDs_TriangleGeometry[i]] = c_hitGroupNames_TriangleGeometry[i];
-		}
-	};
-
-	// Get shader identifiers.
-	UINT shaderIDSize;
-	ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
-	ThrowIfFailed(m_dxrStateObject.As(&stateObjectProperties));
-	GetShaderIDs(stateObjectProperties.Get());
-	shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-
-	/*************--------- Shader table layout -------*******************
-	| -------------------------------------------------------------------
-	| -------------------------------------------------------------------
-	|Shader table - RayGenShaderTable: 32 | 32 bytes
-	| [0]: MyRaygenShader, 32 + 0 bytes
-	| -------------------------------------------------------------------
-
-	| -------------------------------------------------------------------
-	|Shader table - MissShaderTable: 32 | 64 bytes
-	| [0]: MyMissShader, 32 + 0 bytes
-	| [1]: MyMissShader_ShadowRay, 32 + 0 bytes
-	| -------------------------------------------------------------------
-
-	| -------------------------------------------------------------------
-	|Shader table - HitGroupShaderTable: 96 | 196800 bytes
-	| [0]: MyHitGroup_Triangle, 32 + 56 bytes
-	| [1]: MyHitGroup_Triangle_ShadowRay, 32 + 56 bytes
-	| [2]: MyHitGroup_Triangle, 32 + 56 bytes
-	| [3]: MyHitGroup_Triangle_ShadowRay, 32 + 56 bytes
-	| ...
-	| --------------------------------------------------------------------
-	**********************************************************************/
-
-	// RayGen shader tables.
-	{
-		UINT numShaderRecords = 1;
-		UINT shaderRecordSize = shaderIDSize;
-
-		for (UINT i = 0; i < RayGenShaderType::Count; i++)
-		{
-            ShaderTable rayGenShaderTable(device, numShaderRecords, shaderRecordSize, L"RayGenShaderTable");
-            rayGenShaderTable.push_back(ShaderRecord(rayGenShaderIDs[i], shaderIDSize, nullptr, 0));
-            rayGenShaderTable.DebugPrint(shaderIdToStringMap);
-            m_rayGenShaderTables[i] = rayGenShaderTable.GetResource();
-		}
-	}
-
-	// Miss shader table.
-	{
-		UINT numShaderRecords = RayType::Count;
-		UINT shaderRecordSize = shaderIDSize; // No root arguments
-
-		ShaderTable missShaderTable(device, numShaderRecords, shaderRecordSize, L"MissShaderTable");
-		for (UINT i = 0; i < RayType::Count; i++)
-		{
-            missShaderTable.push_back(ShaderRecord(missShaderIDs[i], shaderIDSize, nullptr, 0));
-		}
-		missShaderTable.DebugPrint(shaderIdToStringMap);
-		m_missShaderTableStrideInBytes = missShaderTable.GetShaderRecordSize();
-		m_missShaderTable = missShaderTable.GetResource();
-	}
-
-	// ToDo remove
-	vector<vector<GeometryInstance>*> geometryInstancesArray;
-
-    // ToDo split shader table per unique pass?
-
-    m_maxInstanceContributionToHitGroupIndex = 0;
-	// Hit group shader table.
-	{
-		UINT numShaderRecords = 0;
-        for (auto& bottomLevelASGeometryPair : m_bottomLevelASGeometries)
-        {
-            auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
-			numShaderRecords += static_cast<UINT>(bottomLevelASGeometry.m_geometryInstances.size()) * RayType::Count;
-		}
-        UINT numGrassGeometryShaderRecords = 2 * UIParameters::NumGrassGeometryLODs * 3 * RayType::Count;
-        numShaderRecords += numGrassGeometryShaderRecords;
-
-		UINT shaderRecordSize = shaderIDSize + LocalRootSignature::MaxRootArgumentsSize();
-		ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
-
-		// Triangle geometry hit groups.
-        for (auto& bottomLevelASGeometryPair : m_bottomLevelASGeometries)
-        {
-            auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
-            auto& name = bottomLevelASGeometry.GetName();
-
-            UINT shaderRecordOffset = hitGroupShaderTable.GeNumShaderRecords();
-            m_accelerationStructure->GetBottomLevelAS(bottomLevelASGeometryPair.first).SetInstanceContributionToHitGroupIndex(shaderRecordOffset);
-            m_maxInstanceContributionToHitGroupIndex = shaderRecordOffset;
-
-            // ToDo cleaner?
-            // Grass Patch LOD shader recods
-            if (name.find(L"Grass Patch LOD") != wstring::npos)
-            {
-                UINT LOD = stoi(name.data() + 15);
-
-                // ToDo remove assert
-                assert(bottomLevelASGeometry.m_geometryInstances.size() == 1);
-                auto& geometryInstance = bottomLevelASGeometry.m_geometryInstances[0];
-
-                LocalRootSignature::Triangle::RootArguments rootArgs;
-                rootArgs.cb.materialID = geometryInstance.materialID;
-                rootArgs.cb.isVertexAnimated = geometryInstance.isVertexAnimated;
-
-                memcpy(&rootArgs.indexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
-                memcpy(&rootArgs.diffuseTextureGPUHandle, &geometryInstance.diffuseTexture, sizeof(geometryInstance.diffuseTexture));
-                memcpy(&rootArgs.normalTextureGPUHandle, &geometryInstance.normalTexture, sizeof(geometryInstance.normalTexture));
-
-                // Create three variants:
-
-
-                struct VertexBufferHandles {
-                    D3D12_GPU_DESCRIPTOR_HANDLE prevFrameVertexBuffer;
-                    D3D12_GPU_DESCRIPTOR_HANDLE vertexBuffer;
-                };
-
-                // 2 * 3 Shader Records per LOD
-                //  2 - ping-pong frame to frame
-                //  3 - transition types
-                //      Transition from lower LOD in previous frame
-                //      Same LOD as previous frame
-                //      Transition from higher LOD in previous
-
-                VertexBufferHandles vbHandles[2][3];
-                for (UINT frameID = 0; frameID < 2; frameID++)
-                {
-                    UINT prevFrameID = (frameID + 1) % 2;
-                        
-                    // For simplicity, we assume the LOD difference from frame to frame is no greater than 1.
-                    // ToDo explain why multiple LODs somewhere.s
-                    // This can be false if camera moves fast, but in that case temporal reprojection 
-                    // would fail for the most part anyway, and consistency checks will prevent blending in from false geometry.
-
-                    // Transitioning from lower LOD.
-                    vbHandles[frameID][0].vertexBuffer = m_grassPatchVB[LOD][frameID].gpuDescriptorReadAccess;
-                    vbHandles[frameID][0].prevFrameVertexBuffer = LOD > 0 ? m_grassPatchVB[LOD - 1][prevFrameID].gpuDescriptorReadAccess
-                                                                          : m_grassPatchVB[LOD][prevFrameID].gpuDescriptorReadAccess;
-
-                    // Same LOD as previous frame.
-                    vbHandles[frameID][1].vertexBuffer = m_grassPatchVB[LOD][frameID].gpuDescriptorReadAccess;
-                    vbHandles[frameID][1].prevFrameVertexBuffer = m_grassPatchVB[LOD][prevFrameID].gpuDescriptorReadAccess;
-
-                    // Transitioning from higher LOD.
-                    vbHandles[frameID][2].vertexBuffer = m_grassPatchVB[LOD][frameID].gpuDescriptorReadAccess;
-                    vbHandles[frameID][2].prevFrameVertexBuffer = LOD < UIParameters::NumGrassGeometryLODs - 1 ? m_grassPatchVB[LOD + 1][prevFrameID].gpuDescriptorReadAccess
-                                                                                                               : m_grassPatchVB[LOD][prevFrameID].gpuDescriptorReadAccess;
-                }
-
-                for (UINT frameID = 0; frameID < 2; frameID++)
-                    for (UINT transitionType = 0; transitionType < 3; transitionType++)
-                    {
-                        memcpy(&rootArgs.vertexBufferGPUHandle, &vbHandles[frameID][transitionType].vertexBuffer, sizeof(vbHandles[frameID][transitionType].vertexBuffer));
-                        memcpy(&rootArgs.previousFrameVertexBufferGPUHandle, &vbHandles[frameID][transitionType].prevFrameVertexBuffer, sizeof(vbHandles[frameID][transitionType].prevFrameVertexBuffer));
-
-                        for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
-                        {
-                            hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIDSize, &rootArgs, sizeof(rootArgs)));
-                        }
-                    }
-            }
-            else // Non-vertex buffer animated geometry with 1 shader record per ray-type per bottom-level AS
-            {
-                for (auto& geometryInstance : bottomLevelASGeometry.m_geometryInstances)
-                {
-                    LocalRootSignature::Triangle::RootArguments rootArgs;
-                    rootArgs.cb.materialID = geometryInstance.materialID;
-                    rootArgs.cb.isVertexAnimated = geometryInstance.isVertexAnimated;
-
-                    memcpy(&rootArgs.indexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
-                    memcpy(&rootArgs.vertexBufferGPUHandle, &geometryInstance.vb.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
-                    memcpy(&rootArgs.previousFrameVertexBufferGPUHandle, &m_nullVertexBufferGPUhandle, sizeof(m_nullVertexBufferGPUhandle));
-                    memcpy(&rootArgs.diffuseTextureGPUHandle, &geometryInstance.diffuseTexture, sizeof(geometryInstance.diffuseTexture));
-                    memcpy(&rootArgs.normalTextureGPUHandle, &geometryInstance.normalTexture, sizeof(geometryInstance.normalTexture));
-
-
-                    for (auto& hitGroupShaderID : hitGroupShaderIDs_TriangleGeometry)
-                    {
-                        hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderID, shaderIDSize, &rootArgs, sizeof(rootArgs)));
-                    }
-                }
-            }
-        }
-        hitGroupShaderTable.DebugPrint(shaderIdToStringMap);
-        m_hitGroupShaderTableStrideInBytes = hitGroupShaderTable.GetShaderRecordSize();
-        m_hitGroupShaderTable = hitGroupShaderTable.GetResource();
-    }
-}
-
 void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
 {
     float fValue;
@@ -2839,12 +2206,6 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
         UpdateUI();
     }
 
-    // ToDo move
-    m_sceneCB->maxRadianceRayRecursionDepth = SceneArgs::MaxRadianceRayRecursionDepth;
-    m_sceneCB->maxShadowRayRecursionDepth = SceneArgs::MaxShadowRayRecursionDepth;
-    m_sceneCB->useShadowMap = SceneArgs::UseShadowMap;
-    m_sceneCB->RTAO_UseNormalMaps = SceneArgs::RTAOUseNormalMaps;
-    m_sceneCB->defaultAmbientIntensity = SceneArgs::DefaultAmbientIntensity;
  }
 
 // Parse supplied command line args.
@@ -2878,58 +2239,6 @@ void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructure()
     }
 }
 
-void D3D12RaytracingAmbientOcclusion::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT height)
-{
-	auto commandList = m_deviceResources->GetCommandList();
-    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-
-    ScopedTimer _prof(L"DispatchRays", commandList);
-
-	D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
-	dispatchDesc.HitGroupTable.StartAddress = m_hitGroupShaderTable->GetGPUVirtualAddress();
-	dispatchDesc.HitGroupTable.SizeInBytes = m_hitGroupShaderTable->GetDesc().Width;
-	dispatchDesc.HitGroupTable.StrideInBytes = m_hitGroupShaderTableStrideInBytes;
-	dispatchDesc.MissShaderTable.StartAddress = m_missShaderTable->GetGPUVirtualAddress();
-	dispatchDesc.MissShaderTable.SizeInBytes = m_missShaderTable->GetDesc().Width;
-	dispatchDesc.MissShaderTable.StrideInBytes = m_missShaderTableStrideInBytes;
-	dispatchDesc.RayGenerationShaderRecord.StartAddress = rayGenShaderTable->GetGPUVirtualAddress();
-	dispatchDesc.RayGenerationShaderRecord.SizeInBytes = rayGenShaderTable->GetDesc().Width;
-	dispatchDesc.Width = width != 0 ? width : m_GBufferWidth;
-	dispatchDesc.Height = height != 0 ? height : m_GBufferHeight;
-	dispatchDesc.Depth = 1;
-	commandList->SetPipelineState1(m_dxrStateObject.Get());
-
-    resourceStateTracker->FlushResourceBarriers();
-	commandList->DispatchRays(&dispatchDesc);
-};
-
-void D3D12RaytracingAmbientOcclusion::CalculateCameraRayHitCount()
-{
-	auto device = m_deviceResources->GetD3DDevice();
-	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-	auto commandList = m_deviceResources->GetCommandList();
-    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-
-	GpuResource* inputResource = &m_GBufferResources[GBufferResource::Hit];
-
-    // ToDo make this disabled by default/
-
-    // Todo
-    if (SceneArgs::QuarterResAO)
-    {
-        return;
-    }
-
-    resourceStateTracker->FlushResourceBarriers();
-	m_reduceSumKernel.Execute(
-		commandList,
-		m_cbvSrvUavHeap->GetHeap(),
-		frameIndex,
-        inputResource->gpuDescriptorReadAccess,
-		&m_numCameraRayGeometryHits);
-};
-
 void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isFirstPass)
 {
     auto commandList = m_deviceResources->GetCommandList();
@@ -2939,7 +2248,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
 
     GpuResource* AOResources = m_RTAO.AOResources();
     GpuResource* TSSAOCoefficient = SceneArgs::QuarterResAO ? m_lowResTSSAOCoefficient : m_TSSAOCoefficient;
-    GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
+    GpuResource* GBufferResources = m_pathtracer.m_pathtracer.GetGBufferResources(SceneArgs::QuarterResAO);
 
     GpuResource* VarianceResources = SceneArgs::QuarterResAO ? m_lowResVarianceResource : m_varianceResource;
     // ToDO use separate toggles for local and temporal
@@ -3079,332 +2388,8 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
     // ToDo move these right before the call?
     resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     resourceStateTracker->TransitionResource(OutputIntermediateResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-};
-
-
-// Apply multi scale denoising to denoise low frequencies.
-// Ref: Delbracio et al. 2014, Boosting Monte Carlo Rendering by Ray Histogram Fusion
-void D3D12RaytracingAmbientOcclusion::ApplyMultiScaleAtrousWaveletTransformFilter(bool filterFirstLevel)
-{
-    auto commandList = m_deviceResources->GetCommandList();
-    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-
-    GpuResource* AOResources = m_RTAO.AOResources();
-    GpuResource* TSSAOCoefficient = SceneArgs::QuarterResAO ? m_lowResTSSAOCoefficient : m_TSSAOCoefficient;
-    GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
-    
-    ScopedTimer _prof(L"MultiScaleAtrousWaveletTransform", commandList);
-
-    // ToDo remove this since the next iter is downsampling.
-    // Downsample input value.
-    {
-        ScopedTimer _prof(L"DownsampleValueBuffers", commandList);
-
-        for (int i = 0; i < SceneArgs::RTAODenoisingMultiscaleLevels; i++)
-        {
-            MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[i];
-            
-            ScopedTimer _prof(L"Scale Level", i, commandList);
-            
-            // ToDo avoid the copy and use source directly?
-            // Copy the inputs to the first level
-            if (i == 0)
-            {
-                resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_COPY_DEST);
-                resourceStateTracker->TransitionResource(&msResource.m_normalDepth, D3D12_RESOURCE_STATE_COPY_DEST);
-                resourceStateTracker->TransitionResource(&msResource.m_partialDistanceDerivatives, D3D12_RESOURCE_STATE_COPY_DEST);
-                resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_COPY_SOURCE);
-                resourceStateTracker->TransitionResource(&GBufferResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_COPY_SOURCE);
-                resourceStateTracker->TransitionResource(&GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_COPY_SOURCE);
-
-                resourceStateTracker->FlushResourceBarriers();
-                commandList->CopyResource(msResource.m_smoothedValue.GetResource(), AOResources[AOResource::Smoothed].GetResource());
-                commandList->CopyResource(msResource.m_normalDepth.GetResource(), GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource());
-                commandList->CopyResource(msResource.m_partialDistanceDerivatives.GetResource(), GBufferResources[GBufferResource::PartialDepthDerivatives].GetResource());
-
-                resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                resourceStateTracker->TransitionResource(&msResource.m_normalDepth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                resourceStateTracker->TransitionResource(&msResource.m_partialDistanceDerivatives, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                resourceStateTracker->TransitionResource(&GBufferResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                resourceStateTracker->TransitionResource(&GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                
-            }
-            // ToDo downsample depth resoruce at the same time as the smoothed values
-            // ToDo Cleanup - don't need to downsample values
-            else
-            {
-                resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                resourceStateTracker->TransitionResource(&msResource.m_normalDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                resourceStateTracker->TransitionResource(&msResource.m_partialDistanceDerivatives, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
- 
-
-                MultiScaleDenoisingResource& msPrevIterResource = m_multiScaleDenoisingResources[i - 1];
-                D3D12_RESOURCE_DESC desc = msPrevIterResource.m_value.GetResource()->GetDesc();
-                UINT width = static_cast<UINT>(desc.Width);
-                UINT height = static_cast<UINT>(desc.Height);
-                resourceStateTracker->FlushResourceBarriers();
-                m_downsampleValueNormalDepthBilateralFilterKernel.Execute(
-                    commandList,
-                    width,
-                    height,
-                    m_cbvSrvUavHeap->GetHeap(),
-                    msPrevIterResource.m_value.gpuDescriptorReadAccess,
-                    msPrevIterResource.m_normalDepth.gpuDescriptorReadAccess,
-                    msPrevIterResource.m_partialDistanceDerivatives.gpuDescriptorReadAccess,
-                    msResource.m_value.gpuDescriptorWriteAccess,
-                    msResource.m_normalDepth.gpuDescriptorWriteAccess,
-                    msResource.m_partialDistanceDerivatives.gpuDescriptorWriteAccess);
-
-                // Transition the output resources to shader resource state.
-                {
-                    resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                    resourceStateTracker->TransitionResource(&msResource.m_normalDepth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                    resourceStateTracker->TransitionResource(&msResource.m_partialDistanceDerivatives, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                    resourceStateTracker->InsertUAVBarrier(&msResource.m_value);
-                    resourceStateTracker->InsertUAVBarrier(&msResource.m_normalDepth);
-                    resourceStateTracker->InsertUAVBarrier(&msResource.m_partialDistanceDerivatives);
-                }
-            }
-        }
-    }
-
-    // Denoise and downsample each level.
-    {
-        ScopedTimer _prof(L"DenoiseBuffers", commandList);
-        for (int i = 0; i < SceneArgs::RTAODenoisingMultiscaleLevels; i++)
-        {
-            ScopedTimer _prof(L"Scale Level", i, commandList);
-
-            MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[i];
-
-            // Transition all output resources to UAV state.
-            {
-                resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                resourceStateTracker->TransitionResource(&msResource.m_varianceResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                resourceStateTracker->TransitionResource(&msResource.m_smoothedVarianceResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            }
-
-            // ToDo skip some downsampling above due to following?
-            // Denoise value resource on the 1st iteration and then propagate down the levels the downsampled denoised resource.
-            GpuResource* valueResource;
-            if (SceneArgs::RTAODenoisingMultiscaleDenoisedAsInput)
-            {
-                valueResource = i == 0 ? &msResource.m_value : &m_multiScaleDenoisingResources[i - 1].m_downsampledSmoothedValue;
-            }
-            else
-            {
-                valueResource = &msResource.m_value;
-            }
-
-#if 1
-            ThrowIfFalse(false, L"ToDo");
-#else
-            if (i > 0 || filterFirstLevel)
-            {
-#if 1
-                resourceStateTracker->FlushResourceBarriers();
-                m_bilateralFilterKernel.Execute(
-                    commandList,
-                    GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5,
-                    1, // ToDo
-                    m_cbvSrvUavHeap->GetHeap(),
-                    valueResource->gpuDescriptorReadAccess,
-                    msResource.m_normalDepth.gpuDescriptorReadAccess,
-                    m_multiPassDenoisingBlurStrength.gpuDescriptorReadAccess,
-                    &msResource.m_smoothedValue);
-#else
-                ApplyAtrousWaveletTransformFilter(
-                    *valueResource,
-                    msResource.m_normalDepth,
-                    // ToDo remove
-                    GBufferResources[GBufferResource::Distance],
-                    AOResources[AOResource::RayHitDistance],
-                    msResource.m_partialDistanceDerivatives,
-
-                    &msResource.m_smoothedValue,
-                    &msResource.m_varianceResource,
-                    &msResource.m_smoothedVarianceResource,
-                    UINT_MAX,
-                    UINT_MAX,
-                    UINT_MAX);
-            }
-            resourceStateTracker->FlushResourceBarriers();
-            m_atrousWaveletTransformFilter.Execute(
-                commandList,
-                m_cbvSrvUavHeap->GetHeap(),
-                static_cast<GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType>(static_cast<UINT>(SceneArgs::DenoisingMode)),
-                valueResource->gpuDescriptorReadAccess,
-                msResource.m_downsampledNormalDepthValue.gpuDescriptorReadAccess,
-                msResource.m_varianceResource.gpuDescriptorReadAccess,
-                // ToDo remove
-                m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::RayHitDistance].gpuDescriptorReadAccess,
-                msResource.m_partialDistanceDerivatives.gpuDescriptorReadAccess,
-                msResource.m_frameAge.gpuDescriptorReadAccess,
-                &msResource.m_smoothedValue,
-                nullptr,
-                &m_debugOutput[0],
-                &m_debugOutput[1],
-                ValueSigma,
-                DepthSigma,
-                NormalSigma,
-                SceneArgs::RTAODenoising_WeightScale,
-#if !NORMAL_DEPTH_R8G8B16_ENCODING
-                // ToDo rename this to be global normalDepth
-                static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(SceneArgs::RTAO_TemporalSupersampling_NormalDepthResourceFormat)),
-#endif
-                offsets,
-                static_cast<UINT>(SceneArgs::RTAO_TemporalSupersampling_CacheDenoisedOutputPassNumber),
-                numFilterPasses,
-                GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
-                SceneArgs::ReverseFilterOrder,
-                SceneArgs::UseSpatialVariance,
-                SceneArgs::RTAODenoisingPerspectiveCorrectDepthInterpolation,
-                SceneArgs::RTAODenoisingUseAdaptiveKernelSize,
-                SceneArgs::RTAO_Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor,
-                SceneArgs::RTAODenoisingFilterMinKernelWidth,
-                static_cast<UINT>((SceneArgs::RTAODenoisingFilterMaxKernelWidthPercentage / 100)* m_raytracingWidth),
-                SceneArgs::RTAODenoisingFilterVarianceSigmaScaleOnSmallKernels,
-                SceneArgs::QuarterResAO,
-                SceneArgs::RTAODenoisingMinVarianceToDenoise,
-                staleNeighborWeightScale,
-                SceneArgs::AODenoiseDepthWeightCutoff,
-                SceneArgs::RTAODenoisingUseProjectedDepthTest,
-                forceDenoisePass);
-#endif
-            }
-#endif
-
-            // Downsample the denoised value.
-            {
-                D3D12_RESOURCE_DESC desc = msResource.m_smoothedValue.GetResource()->GetDesc();
-                UINT width = static_cast<UINT>(desc.Width);
-                UINT height = static_cast<UINT>(desc.Height);
-
-                // Last denoised scale doesn't need to be downsampled as the denoised result itself is propagated upstream.
-                if (i < SceneArgs::RTAODenoisingMultiscaleLevels - 1)
-                {
-                    ScopedTimer _prof(L"Downsample", i, commandList);
-
-                    // Transition input resource to SRV and output resources to UAV state.
-                    {
-                        resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                        resourceStateTracker->TransitionResource(&msResource.m_varianceResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                        resourceStateTracker->TransitionResource(&msResource.m_smoothedVarianceResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                        resourceStateTracker->InsertUAVBarrier(&msResource.m_smoothedValue);
-                        resourceStateTracker->InsertUAVBarrier(&msResource.m_varianceResource);
-                        resourceStateTracker->InsertUAVBarrier(&msResource.m_smoothedVarianceResource);
-                        resourceStateTracker->TransitionResource(&msResource.m_downsampledSmoothedValue, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                        resourceStateTracker->TransitionResource(&msResource.m_downsampledNormalDepthValue, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                        resourceStateTracker->TransitionResource(&msResource.m_downsampledPartialDistanceDerivatives, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                    }
-
-                    resourceStateTracker->FlushResourceBarriers();
-                    m_downsampleValueNormalDepthBilateralFilterKernel.Execute(
-                        commandList,
-                        width,
-                        height,
-                        m_cbvSrvUavHeap->GetHeap(),
-                        msResource.m_smoothedValue.gpuDescriptorReadAccess,
-                        msResource.m_normalDepth.gpuDescriptorReadAccess,
-                        // ToDo Don't downsample ddxy if not used
-                        msResource.m_partialDistanceDerivatives.gpuDescriptorReadAccess,
-                        msResource.m_downsampledSmoothedValue.gpuDescriptorWriteAccess,
-                        msResource.m_downsampledNormalDepthValue.gpuDescriptorWriteAccess,
-                        msResource.m_downsampledPartialDistanceDerivatives.gpuDescriptorWriteAccess);
-
-                    // Transition the output resources to shader resource state.    // ToDo say SRV instead to match UAV wording
-                    {
-                        resourceStateTracker->TransitionResource(&msResource.m_downsampledSmoothedValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                        resourceStateTracker->TransitionResource(&msResource.m_downsampledNormalDepthValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                        resourceStateTracker->TransitionResource(&msResource.m_downsampledPartialDistanceDerivatives, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                        resourceStateTracker->InsertUAVBarrier(&msResource.m_downsampledSmoothedValue);
-                        resourceStateTracker->InsertUAVBarrier(&msResource.m_downsampledNormalDepthValue);
-                        resourceStateTracker->InsertUAVBarrier(&msResource.m_downsampledPartialDistanceDerivatives);
-                    }
-                }
-            }
-        }
-    }
-
-    // For single scale level, copy the denoised scale level 0 result.
-    if (SceneArgs::RTAODenoisingMultiscaleLevels < 2)
-    {
-        MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[0];
-
-        resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_COPY_SOURCE);
-        resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_COPY_DEST);
-
-        resourceStateTracker->FlushResourceBarriers();
-        commandList->CopyResource(msResource.m_value.GetResource(), msResource.m_smoothedValue.GetResource());
-
-        resourceStateTracker->TransitionResource(&msResource.m_smoothedValue, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    }
-    // Reconstruct the final result from all denoised scales.
-    else 
-    {
-        ScopedTimer _prof(L"CombineAllLevels", commandList);
-
-        for (int i = SceneArgs::RTAODenoisingMultiscaleLevels - 2; i >= 0; i--)
-        {
-            ScopedTimer _prof(L"Scale Level", i, commandList);
-
-            MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[i];
-            MultiScaleDenoisingResource& msLowResLevelResource = m_multiScaleDenoisingResources[i + 1];
-
-            // Transition output resource to UAV state.
-            {
-                resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            }
-
-            // m_value resource is being used as an output resource going up the chain.
-            // However, lowest resolution level is skipped and its m_value is m_smoothedValue.
-            // Thus, on first iteration, use lower resource's m_smoothedValue instead.
-            const bool isFirstIter = i == SceneArgs::RTAODenoisingMultiscaleLevels - 2;
-            GpuResource *inLowResResource = isFirstIter ? &msLowResLevelResource.m_smoothedValue : &msLowResLevelResource.m_value;
-
-            D3D12_RESOURCE_DESC desc = msResource.m_value.GetResource()->GetDesc();
-            UINT width = static_cast<UINT>(desc.Width);
-            UINT height = static_cast<UINT>(desc.Height);
-            resourceStateTracker->FlushResourceBarriers();
-            m_multiScale_upsampleBilateralFilterAndCombineKernel.Execute(
-                commandList,
-                width,
-                height,
-                m_cbvSrvUavHeap->GetHeap(),
-                msResource.m_downsampledSmoothedValue.gpuDescriptorReadAccess,
-                inLowResResource->gpuDescriptorReadAccess,
-                msResource.m_downsampledNormalDepthValue.gpuDescriptorReadAccess,
-                msResource.m_smoothedValue.gpuDescriptorReadAccess,
-                msResource.m_normalDepth.gpuDescriptorReadAccess,
-                msResource.m_partialDistanceDerivatives.gpuDescriptorReadAccess,
-                msResource.m_value.gpuDescriptorWriteAccess);
-
-            // Transition the output resource to shader resource state.
-            {
-                resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-                resourceStateTracker->InsertUAVBarrier(&msResource.m_value);
-            }
-        }
-    }
-
-
-    // ToDo write directly into the resource in the last pass.
-    // Copy the result to the dest resource.
-    {
-        MultiScaleDenoisingResource& msResource = m_multiScaleDenoisingResources[0];
-
-        resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_COPY_SOURCE);
-        resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_COPY_DEST);
-
-        resourceStateTracker->FlushResourceBarriers();
-        commandList->CopyResource(AOResources[AOResource::Smoothed].GetResource(), msResource.m_value.GetResource());
-
-        resourceStateTracker->TransitionResource(&msResource.m_value, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    }
 }
+
 
 // ToDo move out
 void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
@@ -3537,7 +2522,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(
             SceneArgs::QuarterResAO);
     }
 #endif
-};
+}
 
 
 
@@ -3585,218 +2570,8 @@ void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
 	}
 
 	resourceStateTracker->TransitionResource(&m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-};
-
-
-void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateGBuffers()
-{
-	auto device = m_deviceResources->GetD3DDevice();
-	auto commandList = m_deviceResources->GetCommandList();
-    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-	auto frameIndex = m_deviceResources->GetCurrentFrameIndex();        // ToDo rename to Backbuffer index
-
-    ScopedTimer _prof(L"GenerateGbuffer", commandList);
-
-
-    m_normalDepthCurrentFrameResourceIndex = (m_normalDepthCurrentFrameResourceIndex + 1) % 2;
-#if USE_NORMALIZED_Z
-    m_sceneCB->Znear = SceneArgs::PathTracing_Znear;
-    m_sceneCB->Zfar = SceneArgs::PathTracing_Zfar;
-#endif
-    m_sceneCB->useDiffuseFromMaterial = SceneArgs::CompositionMode == CompositionType::Diffuse;
-    m_sceneCB->doShading = SceneArgs::CompositionMode == CompositionType::PhongLighting;
-#if CAMERA_JITTER
-
-#if 1
-    uniform_real_distribution<float> jitterDistribution(-0.5f, 0.5f);
-    m_sceneCB->cameraJitter = XMFLOAT2(jitterDistribution(m_generatorURNG), jitterDistribution(m_generatorURNG));
-#else
-	// ToDo remove?
-	static UINT seed = 0;
-	static UINT counter = 0;
-	switch (counter++ % 4)
-	{
-	case 0: m_sceneCB->cameraJitter = XMFLOAT2(-0.25f, -0.25f); break;
-	case 1: m_sceneCB->cameraJitter = XMFLOAT2(0.25f, -0.25f); break;
-	case 2: m_sceneCB->cameraJitter = XMFLOAT2(-0.25f, 0.25f); break;
-	case 3: m_sceneCB->cameraJitter = XMFLOAT2(0.25f, 0.25f); break;
-	};
-#endif
-#endif
-
-
-
-    // ToDo should we use cameraAtPosition0 too and offset the world space pos vector in the shader?
-    XMMATRIX prevView, prevProj;
-    m_prevFrameCamera.GetViewProj(&prevView, &prevProj, m_GBufferWidth, m_GBufferHeight);
-    m_sceneCB->prevViewProj = prevView * prevProj;
-    m_sceneCB->prevCameraPosition = m_prevFrameCamera.Eye();
-
-    // ToDo cleanup
-    XMMATRIX prevView0 = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_prevFrameCamera.At() - m_prevFrameCamera.Eye(), 1), m_prevFrameCamera.Up());
-    XMMATRIX viewProj0 = prevView0 * prevProj;
-    m_sceneCB->prevProjToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj0);
-
-
-    m_sceneCB->raytracingDim = XMUINT2(m_raytracingWidth, m_raytracingHeight);
-	commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
-
-	// Copy dynamic buffers to GPU.
-	{
-		// ToDo copy on change
-		m_sceneCB.CopyStagingToGpu(frameIndex);
-	}
-
-    // ToDo move this/part(AO,..) of transitions out?
-	// Transition all output resources to UAV state.
-	{
-		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Hit], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Material], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::HitPosition], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Distance], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Depth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::MotionVector], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Color], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug2], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	}
-
-
-	// Bind inputs.
-	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
-	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
-	commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, m_environmentMap.gpuDescriptorHandle);
-    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::PrevFrameBottomLevelASIstanceTransforms, m_prevFrameBottomLevelASInstanceTransforms.GpuVirtualAddress(frameIndex));
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ShadowMapSRV, m_ShadowMapResource.gpuDescriptorReadAccess);
-
-    
-	// Bind output RTs.
-	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferDepth, m_GBufferResources[GBufferResource::Depth].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::MotionVector, m_GBufferResources[GBufferResource::MotionVector].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ReprojectedNormalDepth, m_GBufferResources[GBufferResource::ReprojectedNormalDepth].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Color, m_GBufferResources[GBufferResource::Color].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOSurfaceAlbedo, m_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Debug, m_GBufferResources[GBufferResource::Debug].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Debug2, m_GBufferResources[GBufferResource::Debug2].gpuDescriptorWriteAccess);
-    
-#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::PartialDepthDerivatives, m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
-#endif	
-	// Dispatch Rays.
-    DispatchRays(m_rayGenShaderTables[RayGenShaderType::GBuffer].Get());
-
-	// Transition GBuffer resources to shader resource state.
-	{
-		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Hit], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Material], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::HitPosition], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Distance], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Depth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-#endif
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::MotionVector], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Color], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug2], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	}
-
-    // Calculate ray hit counts.
-    {
-        ScopedTimer _prof(L"CalculateCameraRayHitCount", commandList);
-        CalculateCameraRayHitCount();
-    }
-
-#if !CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-    // Calculate partial derivatives.
-    {
-        ScopedTimer _prof(L"Calculate Partial Depth Derivatives", commandList);
-        resourceStateTracker->FlushResourceBarriers();
-        m_calculatePartialDerivativesKernel.Execute(
-            commandList,
-            m_cbvSrvUavHeap->GetHeap(),
-            m_GBufferWidth,
-            m_GBufferHeight,
-            m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
-            m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
-
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    }
-#endif
-    if (SceneArgs::QuarterResAO)
-    {
-        DownsampleGBuffer();
-    }
-
-	PIXEndEvent(commandList);
 }
 
-
-void D3D12RaytracingAmbientOcclusion::DownsampleGBuffer()
-{
-    auto commandList = m_deviceResources->GetCommandList();
-    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-
-    // ToDo move this/part(AO,..) of transitions out?
-    // Transition all output resources to UAV state.
-    {
-        // ToDo move these to the kernels?
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::Hit], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::HitPosition], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::MotionVector], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::Depth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    }  
-
-    ScopedTimer _prof(L"DownsampleGBuffer", commandList);
-    resourceStateTracker->FlushResourceBarriers();
-    m_downsampleGBufferBilateralFilterKernel.Execute(
-        commandList,
-        m_GBufferWidth,
-        m_GBufferHeight,
-        m_cbvSrvUavHeap->GetHeap(),
-        m_GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::Hit].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::MotionVector].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::ReprojectedNormalDepth].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::Depth].gpuDescriptorReadAccess,
-        m_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess,
-        m_GBufferLowResResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorWriteAccess,
-        m_GBufferLowResResources[GBufferResource::HitPosition].gpuDescriptorWriteAccess,
-        m_GBufferLowResResources[GBufferResource::Hit].gpuDescriptorWriteAccess,
-        m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess,
-        m_GBufferLowResResources[GBufferResource::MotionVector].gpuDescriptorWriteAccess,
-        m_GBufferLowResResources[GBufferResource::ReprojectedNormalDepth].gpuDescriptorWriteAccess,
-        m_GBufferLowResResources[GBufferResource::Depth].gpuDescriptorWriteAccess,
-        m_GBufferLowResResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorWriteAccess);
-
-    // Transition GBuffer resources to shader resource state.
-    {
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::Hit], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::HitPosition], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::MotionVector], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::Depth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferLowResResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    }
-};
 
 // Upsample quarter resources
 void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
@@ -3833,11 +2608,6 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
         {
             inputLowResValueResource = &m_RTAO.AOResources()[AOResource::Coefficient];
         }
-        /*
-        else if (SceneArgs::RTAODenoisingUseMultiscale)
-        {
-            inputLowResValueResource = &m_multiScaleDenoisingResources[0].m_value;
-        }*/
         else //(SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
         {
             inputLowResValueResource = &m_lowResTSSAOCoefficient[m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex];
@@ -3935,7 +2705,7 @@ void D3D12RaytracingAmbientOcclusion::BilateralUpsample(
     );
 
     resourceStateTracker->TransitionResource(outputHiResValueResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-};
+}
 
 
 // ToDo - rename to hardshadows?
@@ -4046,7 +2816,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
     // ToDo add UAV barriers
 
     m_updateShadowMap = false;
-    PIXEndEvent(commandList);
 }
 
 
@@ -4543,7 +3312,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
 
     ScopedTimer _prof(L"Temporal Supersampling p1 (Reverse Reprojection)", commandList);
 
-    GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
+    GpuResource* GBufferResources = m_pathtracer.GetGBufferResources(SceneArgs::QuarterResAO);
 
     UINT prevFrameNormalDepthResourceIndex = (m_normalDepthCurrentFrameResourceIndex + 1) % 2;
 
@@ -4647,7 +3416,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingBlendWithC
 
     ScopedTimer _prof(L"RenderPass_TemporalSupersamplingBlendWithCurrentFrame", commandList);
 
-    GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
+    GpuResource* GBufferResources = m_pathtracer.GetGBufferResources(SceneArgs::QuarterResAO);
     GpuResource* AOResources = m_RTAO.AOResources();
     
     GpuResource* TSSAOCoefficient = SceneArgs::QuarterResAO ? m_lowResTSSAOCoefficient : m_TSSAOCoefficient;
@@ -4896,7 +3665,7 @@ void D3D12RaytracingAmbientOcclusion::MultiPassBlur()
 
     UINT numPasses = static_cast<UINT>(SceneArgs::RTAODenoisingLowTspBlurPasses);
 
-    GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;  
+    GpuResource* GBufferResources = m_pathtracer.GetGBufferResources(SceneArgs::QuarterResAO);  
     GpuResource* AOResources = m_RTAO.AOResources();
 
     GpuResource* resources[2] = {
@@ -5176,14 +3945,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
     }
 #endif
 
-#if 0
-    auto commandList = m_deviceResources->GetCommandList();
-    m_deviceResources->Prepare();
-    D3D12_RESOURCE_BARRIER barrier = resourceStateTracker->TransitionResource(&m_deviceResources->GetRenderTarget(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-    commandList->ResourceBarrier(1, &barrier);
-    m_deviceResources->ExecuteCommandList();
-    m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
-#else
     auto commandList = m_deviceResources->GetCommandList();
     
     // Begin frame.
@@ -5202,20 +3963,19 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #if USE_GRASS_GEOMETRY
                 GenerateGrassGeometry();
 #endif
-
                 UpdateAccelerationStructure();
 
                 // Render.
                 RenderPass_GenerateShadowMap();
 
-                RenderPass_GenerateGBuffers();
-#if 1
+                m_pathtracer.OnRender(m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
+
                 // AO. 
                 if (SceneArgs::AOMode == SceneArgs::AOType::RTAO)
                 {
                     ScopedTimer _prof(L"RTAO_Root", commandList);
 
-                    GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
+                    GpuResource* GBufferResources = m_pathtracer.GetGBufferResources(SceneArgs::QuarterResAO);
 
                     RenderPass_TemporalSupersamplingReverseProjection();
                     m_RTAO.OnRender(
@@ -5227,8 +3987,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
                     RenderPass_TemporalSupersamplingBlendWithCurrentFrame();
 
-#if BLUR_AO
-#if ATROUS_DENOISER
                     ApplyAtrousWaveletTransformFilter(true);
 
                     if (SceneArgs::RTAODenoisingLowTspp)
@@ -5278,11 +4036,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #endif
                         //ApplyAtrousWaveletTransformFilter(false);
                     }
-#else
-                    ToDo - fix up resources
-                        RenderPass_BlurAmbientOcclusion();
-#endif
-#endif
+
                     if (SceneArgs::QuarterResAO)
                     {
                         UpsampleResourcesForRenderComposePass();
@@ -5305,20 +4059,11 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                     m_SSAO.ChangeScreenScale(1.f);
                     m_SSAO.Run(m_SSAOCB.GetResource());
                 }
-#if 0
-#if TEST_EARLY_EXIT
-                RenderPass_TestEarlyExitOVerhead();
-#else
-                RenderPass_CalculateVisibility();
-#endif
-#endif
-
-#endif
             }
 
             // ToDo ping-pong the resource instead of copy
             {
-                GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
+                GpuResource* GBufferResources = m_pathtracer.GetGBufferResources(SceneArgs::QuarterResAO);
                 CopyTextureRegion(
                     commandList,
                     GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource(),
@@ -5330,13 +4075,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
             GpuResource* AOResources = SceneArgs::QuarterResAO ? m_AOResources : m_RTAO.GetAOResources();
             D3D12_GPU_DESCRIPTOR_HANDLE AOSRV = SceneArgs::AOMode == SceneArgs::AOType::RTAO ? AOResources[AOResource::Smoothed].gpuDescriptorReadAccess : SSAOgpuDescriptorReadAccess;
-
-            //// ToDo cleanup
-            //if (SceneArgs::AOMode == SceneArgs::AOType::RTAO && SceneArgs::RTAODenoisingUseMultiscale && !SceneArgs::QuarterResAO)
-            //{
-            //    AOSRV = m_multiScaleDenoisingResources[0].m_value.gpuDescriptorReadAccess;
-            //}
-
+            
             if (SceneArgs::CompositionMode == CompositionType::AmbientOcclusionOnly_RawOneFrame)
             {
                 AOSRV = AOResources[AOResource::Coefficient].gpuDescriptorReadAccess;
@@ -5376,8 +4115,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 #else
     m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
 #endif 
-
-#endif
 
    // SceneArgs::TAO_LazyRender.Bang();
     //m_cameraChangedIndex = 0;

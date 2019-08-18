@@ -27,6 +27,7 @@
 #include "SSAO\SSAO.h"
 #include "SceneParameters.h"
 #include "RTAO\RTAO.h"
+#include "Pathtracer\Pathtracer.h"
 
 extern D3D12RaytracingAmbientOcclusion* global_pSample;
 
@@ -145,16 +146,12 @@ private:
 	ComPtr<ID3D12Fence>                 m_fence;
 	UINT64                              m_fenceValues[FrameCount];
     Microsoft::WRL::Wrappers::Event     m_fenceEvent;
-	// Root signatures
-	ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
-	ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature[LocalRootSignature::Type::Count];
 
 	// ToDo move to deviceResources
 	std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 	std::unique_ptr<DX::DescriptorHeap> m_samplerHeap;      
 
 	// Raytracing scene
-	ConstantBuffer<SceneConstantBuffer> m_sceneCB;
 	std::vector<PrimitiveMaterialBuffer> m_materials;	// ToDO dedupe mats - hash materials
 	StructuredBuffer<PrimitiveMaterialBuffer> m_materialBuffer;
 
@@ -199,15 +196,13 @@ private:
 
     GpuResource m_debugOutput[2];
 
+    Pathtracer m_pathtracer;
     RTAO m_RTAO;
 
 	// Raytracing output
 	// ToDo use the struct
 	GpuResource m_raytracingOutput;
     GpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
-	GpuResource m_GBufferResources[GBufferResource::Count];
-    GpuResource m_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
-    GpuResource m_prevFrameGBufferNormalDepth;
 
     GpuResource m_multiPassDenoisingBlurStrength;
 
@@ -244,42 +239,11 @@ private:
         static const UINT c_MaxDenoisingScaleLevels = 8;
     private:
 
-    struct MultiScaleDenoisingResource
-    {
-        GpuResource m_value;
-        GpuResource m_normalDepth;
-        GpuResource m_partialDistanceDerivatives;
-
-        GpuResource m_smoothedValue;              // ToDo rename smoothed to denoised
-
-        GpuResource m_downsampledSmoothedValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
-        GpuResource m_downsampledNormalDepthValue;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
-        GpuResource m_downsampledPartialDistanceDerivatives;   // ToDo could be removed and reuse m_value from the higher i of ms_resources.
-
-        GpuResource m_varianceResource;
-        GpuResource m_smoothedVarianceResource;
-    };
-    MultiScaleDenoisingResource m_multiScaleDenoisingResources[c_MaxDenoisingScaleLevels];
-    
 	UINT m_GBufferWidth;
 	UINT m_GBufferHeight;
 
     UINT m_raytracingWidth;
     UINT m_raytracingHeight;
-
-    // Raytracing shaders.
-    static const wchar_t* c_rayGenShaderNames[RayGenShaderType::Count];
-	static const wchar_t* c_closestHitShaderNames[RayType::Count];
-	static const wchar_t* c_missShaderNames[RayType::Count];
-    static const wchar_t* c_hitGroupNames_TriangleGeometry[RayType::Count];
-
-    // Shader tables
-	ComPtr<ID3D12Resource> m_rayGenShaderTables[RayGenShaderType::Count];
-	UINT m_rayGenShaderTableRecordSizeInBytes[RayGenShaderType::Count];
-	ComPtr<ID3D12Resource> m_hitGroupShaderTable;
-	UINT m_hitGroupShaderTableStrideInBytes = UINT_MAX;
-	ComPtr<ID3D12Resource> m_missShaderTable;
-	UINT m_missShaderTableStrideInBytes = UINT_MAX;
 
 	// Application state
 	StepTimer m_timer;
@@ -335,13 +299,10 @@ private:
     void UpdateGridGeometryTransforms();
     void InitializeScene();
 	void UpdateAccelerationStructure();
-	void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width=0, UINT height=0);
-	void CalculateCameraRayHitCount();
     void ApplyAtrousWaveletTransformFilter(bool isFirstPass);
     void ApplyAtrousWaveletTransformFilter(const  GpuResource& inValueResource, const  GpuResource& inNormalDepthResource, const  GpuResource& inDepthResource, const  GpuResource& inRayHitDistanceResource, const  GpuResource& inPartialDistanceDerivativesResource, GpuResource* outSmoothedValueResource, GpuResource* varianceResource, GpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void ApplyMultiScaleAtrousWaveletTransformFilter(bool filterFirstLevel);
     void DownsampleRaytracingOutput();
-    void DownsampleGBuffer();
 
     void UpsampleResourcesForRenderComposePass();
     // ToDo standardize const& vs *
@@ -364,10 +325,6 @@ private:
     void ReleaseWindowSizeDependentResources();
     void RenderRNGVisualizations();
     void CreateSamplesRNGVisualization();
-    void CreateRootSignatures();
-    void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
     void CreateRaytracingPipelineStateObject();
     void CreateDescriptorHeaps();
     void CreateRaytracingOutputResource();
@@ -380,7 +337,6 @@ private:
 	void GenerateBottomLevelASInstanceTransforms();
     void InitializeAllBottomLevelAccelerationStructures();
     void InitializeAccelerationStructures();
-    void BuildShaderTables();
     void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
     void CalculateFrameStats();
     void MultiPassBlur(); 

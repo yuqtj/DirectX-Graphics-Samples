@@ -27,7 +27,7 @@ Camera::~Camera()
     s_camera = nullptr;
 }
 
-void Camera::GetProj(XMMATRIX *proj, UINT screenWidth, UINT screenHeight, bool rhCoords)
+void Camera::GetProj(XMMATRIX *proj, UINT screenWidth, UINT screenHeight, bool rhCoords) const
 {
 	float aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 	float fovAngleY = XMConvertToRadians(fov);
@@ -47,7 +47,7 @@ void Camera::GetProj(XMMATRIX *proj, UINT screenWidth, UINT screenHeight, bool r
 	}
 }
 
-void Camera::GetViewProj(XMMATRIX *view, XMMATRIX *proj, UINT screenWidth, UINT screenHeight, bool rhCoords)
+void Camera::GetViewProj(XMMATRIX *view, XMMATRIX *proj, UINT screenWidth, UINT screenHeight, bool rhCoords) const
 {
 	if (rhCoords)
 	{
