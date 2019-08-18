@@ -590,12 +590,12 @@ struct PathtracerConstantBuffer
     XMVECTOR cameraRight;
 
     float reflectance;
-    float elapsedTime;                 // Elapsed application time.
+    float padding1;                 // Elapsed application time.
 	float Znear;     // ToDo rename to zNear
 	float Zfar;
 
     XMFLOAT2 cameraJitter;
-    XMUINT2 raytracingDim;
+    float padding2[2];
 
     UINT  maxRadianceRayRecursionDepth;
     UINT  maxShadowRayRecursionDepth;

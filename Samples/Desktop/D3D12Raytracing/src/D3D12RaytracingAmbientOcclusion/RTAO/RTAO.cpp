@@ -46,7 +46,7 @@ namespace SceneArgs
 
     void OnRecreateSampleRaytracingResources(void*)
     {
-        global_pSample->RequestRecreateRaytracingResources();
+        g_pSample->RequestRecreateRaytracingResources();
     }
 
     void OnRecreateSamples(void*)
@@ -531,7 +531,7 @@ void RTAO::CalculateAdaptiveSamplingCounts()
     auto commandList = m_deviceResources->GetCommandList();
 
     GpuResource* m_AOResources = SceneArgs::QuarterResAO ? m_AOLowResResources : m_AOResources;
-    GpuResource* GBufferResources = SceneArgs::QuarterResAO ? m_GBufferLowResResources : m_GBufferResources;
+    GpuResource* GBufferResources = SceneArgs::QuarterResAO ? g_GBufferLowResResources : g_GBufferResources;
     GpuResource& NormalDeptLowPrecisionResource = SceneArgs::QuarterResAO ?
         m_normalDepthLowResLowPrecision[m_normalDepthCurrentFrameResourceIndex]
         : m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];

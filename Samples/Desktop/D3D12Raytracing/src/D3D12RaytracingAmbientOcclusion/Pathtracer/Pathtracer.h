@@ -20,80 +20,84 @@
 #include "GpuKernels.h"
 
 
-class Pathtracer
+namespace Pathracer
 {
-public:
-    // Ctors.
-    Pathtracer();
+    extern GpuResource g_GBufferResources[GBufferResource::Count];
+    extern GpuResource g_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
 
-    // Public methods.
-    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
-    void OnUpdate();
-    void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource, D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource);
-    void ReleaseDeviceDependentResources();
-    void ReleaseWindowSizeDependentResources() {}; // ToDo
-    void SetCamera(const GameCore::Camera& camera);
-    void SetLight(const XMVECTOR& position, const XMFLOAT3& color);
+    class Pathtracer
+    {
+    public:
+        // Ctors.
+        Pathtracer();
 
-    // Getters & Setters.
-    GpuResource(&GBufferResources(bool retrieveLowResResources))[GBufferResource::Count];
-    GpuResource* GetGBufferResources(bool retrieveLowResResources);
+        // Public methods.
+        void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
+        void OnUpdate();
+        void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource, D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource);
+        void ReleaseDeviceDependentResources();
+        void ReleaseWindowSizeDependentResources() {}; // ToDo
+        void SetCamera(const GameCore::Camera& camera);
+        void SetLight(const XMVECTOR& position, const XMFLOAT3& color);
 
-    void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
-private:
-    void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
-    void CreateConstantBuffers();
-    void CreateAuxilaryDeviceResources();
-    void CreateRootSignatures();    
-    void CreateRaytracingPipelineStateObject();
-    void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateTextureResources();
-    
-    void CreateResolutionDependentResources();
-    void BuildShaderTables(UINT maxInstanceContributionToHitGroupIndex);
-    void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
-    void CalculateRayHitCount();
-    void DownsampleGBuffer();
+        // Getters & Setters.
+        GpuResource(&GBufferResources(bool retrieveLowResResources = false))[GBufferResource::Count];
+        GpuResource* GetGBufferResources(bool retrieveLowResResources = false);
 
-    UINT m_GBufferWidth;        // ToDo rename
-    UINT m_GBufferHeight;
-    UINT m_raytracingWidth;
-    UINT m_raytracingHeight;
+        void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
+    private:
+        void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
+        void CreateConstantBuffers();
+        void CreateAuxilaryDeviceResources();
+        void CreateRootSignatures();
+        void CreateRaytracingPipelineStateObject();
+        void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+        void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+        void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+        void CreateTextureResources();
 
-    std::shared_ptr<DX::DeviceResources> m_deviceResources;
-    std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
+        void CreateResolutionDependentResources();
+        void BuildShaderTables(UINT maxInstanceContributionToHitGroupIndex);
+        void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
+        void CalculateRayHitCount();
+        void DownsampleGBuffer();
 
-    // Raytracing shaders.
-    static const wchar_t* c_rayGenShaderNames[RayGenShaderType::Count];
-    static const wchar_t* c_closestHitShaderNames[RayType::Count];
-    static const wchar_t* c_missShaderNames[RayType::Count];
-    static const wchar_t* c_hitGroupNames[RayType::Count];
+        UINT m_GBufferWidth;        // ToDo rename
+        UINT m_GBufferHeight;
+        UINT m_raytracingWidth;
+        UINT m_raytracingHeight;
 
-    // DirectX Raytracing (DXR) attributes
-    ComPtr<ID3D12StateObject>   m_dxrStateObject;
+        std::shared_ptr<DX::DeviceResources> m_deviceResources;
+        std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 
-    // Shader tables
-    ComPtr<ID3D12Resource> m_rayGenShaderTables[RayGenShaderType::Count];
-    UINT m_rayGenShaderTableRecordSizeInBytes[RayGenShaderType::Count];
-    ComPtr<ID3D12Resource> m_hitGroupShaderTable;
-    UINT m_hitGroupShaderTableStrideInBytes = UINT_MAX;
-    ComPtr<ID3D12Resource> m_missShaderTable;
-    UINT m_missShaderTableStrideInBytes = UINT_MAX;
+        // Raytracing shaders.
+        static const wchar_t* c_rayGenShaderNames[RayGenShaderType::Count];
+        static const wchar_t* c_closestHitShaderNames[RayType::Count];
+        static const wchar_t* c_missShaderNames[RayType::Count];
+        static const wchar_t* c_hitGroupNames[RayType::Count];
 
-    // Root signatures
-    ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
-    ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature[LocalRootSignature::Type::Count];
+        // DirectX Raytracing (DXR) attributes
+        ComPtr<ID3D12StateObject>   m_dxrStateObject;
 
-    // Raytracing resources.
-    GpuResource m_GBufferResources[GBufferResource::Count];
-    GpuResource m_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
-    GpuResource m_prevFrameGBufferNormalDepth;
+        // Shader tables
+        ComPtr<ID3D12Resource> m_rayGenShaderTables[RayGenShaderType::Count];
+        UINT m_rayGenShaderTableRecordSizeInBytes[RayGenShaderType::Count];
+        ComPtr<ID3D12Resource> m_hitGroupShaderTable;
+        UINT m_hitGroupShaderTableStrideInBytes = UINT_MAX;
+        ComPtr<ID3D12Resource> m_missShaderTable;
+        UINT m_missShaderTableStrideInBytes = UINT_MAX;
 
-    ConstantBuffer<PathtracerConstantBuffer> m_sceneCB;
+        // Root signatures
+        ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
+        ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature[LocalRootSignature::Type::Count];
 
-    bool m_isRecreateRaytracingResourcesRequested = false;
+        // Raytracing resources.
+        GpuResource m_prevFrameGBufferNormalDepth;
 
-    static UINT             s_numInstances;
-};
+        ConstantBuffer<PathtracerConstantBuffer> m_sceneCB;
+
+        bool m_isRecreateRaytracingResourcesRequested = false;
+
+        static UINT             s_numInstances;
+    };
+}

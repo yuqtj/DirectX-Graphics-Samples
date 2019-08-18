@@ -33,37 +33,42 @@ using namespace GameCore;
 // ToDo tighten shader visibility in Root Sigs - CS + DXR
 
 // Singleton instance.
-D3D12RaytracingAmbientOcclusion* global_pSample;
-UINT D3D12RaytracingAmbientOcclusion::s_numInstances = 0;
 
 #define TWO_PASS_DENOISE 0
-HWND g_hWnd = 0;
-UIParameters g_UIparameters;    // ToDo move
 
 
-namespace SceneArgs
+namespace Sample
 {
+    HWND g_hWnd = 0;
+    UIParameters g_UIparameters;    // ToDo move
+    D3D12RaytracingAmbientOcclusion* g_pSample;
+    UINT D3D12RaytracingAmbientOcclusion::s_numInstances = 0;
+
+    std::map<std::wstring, BottomLevelAccelerationStructureGeometry> g_bottomLevelASGeometries;
+    std::unique_ptr<RaytracingAccelerationStructureManager> g_accelerationStructure;
+    GpuResource g_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
+
     void OnGeometryReinitializationNeeded(void* args)
     {
-        global_pSample->RequestGeometryInitialization(true);
-        global_pSample->RequestASInitialization(true);
+        g_pSample->RequestGeometryInitialization(true);
+        g_pSample->RequestASInitialization(true);
     }
 
     void OnASReinitializationNeeded(void* args)
     {
-        global_pSample->RequestASInitialization(true);
+        g_pSample->RequestASInitialization(true);
     }
     function<void(void*)> OnGeometryChange = OnGeometryReinitializationNeeded;
     function<void(void*)> OnASChange = OnASReinitializationNeeded;
 	
 	void OnSceneChange(void*)
 	{
-		global_pSample->RequestSceneInitialization();
+		g_pSample->RequestSceneInitialization();
 	}
 
 	void OnRecreateRaytracingResources(void*)
 	{
-		global_pSample->RequestRecreateRaytracingResources();
+		g_pSample->RequestRecreateRaytracingResources();
 	}
 
     BoolVar EnableGeometryAndASBuildsAndUpdates(L"Render/Acceleration structure/Enable geometry & AS builds and updates", true);
@@ -301,10 +306,8 @@ namespace SceneArgs
     NumVar SSAOUpsampleTolerance(L"Render/AO/SSAO/Upsample Tolerance (log10)", -7.f, -12.f, -1.f, .1f);
     NumVar SSAONormalMultiply(L"Render/AO/SSAO/Normal Factor", 1.f, .0f, 5.f, .125f);
     //**********************************************************************************************************************************
-
-};
-
-/*
+    
+    /*
 RTAO - Titan XP 1440p Quarter Res
 - Min kernel width 20
 - Depth Sigma 0.5, Cutoff 0.9
@@ -531,9 +534,9 @@ D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UIN
 	m_isCameraFrozen(false)
 {
     ThrowIfFalse(++s_numInstances == 1, L"There can be only one D3D12RaytracingAmbientOcclusion instance.");
-    global_pSample = this;
+    g_pSample = this;
 
-    global_pSample = this;
+    g_pSample = this;
     UpdateForSizeChange(width, height);
 	m_generatorURNG.seed(1729);
 
@@ -1091,7 +1094,7 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
     
   
     // ToDo
-    m_SSAO.BindGBufferResources(m_GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource(), m_GBufferResources[GBufferResource::Depth].GetResource());
+    m_SSAO.BindGBufferResources(g_GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource(), g_GBufferResources[GBufferResource::Depth].GetResource());
 
     // ToDo remove unneeded ones
     // Full-res AO resources.
@@ -2179,7 +2182,6 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
 
         m_updateShadowMap = true;
     }
-    m_sceneCB->elapsedTime = static_cast<float>(m_timer.GetTotalSeconds());
 
     // Lazy initialize and update geometries and acceleration structures.
 #if 0
@@ -2248,7 +2250,7 @@ void D3D12RaytracingAmbientOcclusion::ApplyAtrousWaveletTransformFilter(bool isF
 
     GpuResource* AOResources = m_RTAO.AOResources();
     GpuResource* TSSAOCoefficient = SceneArgs::QuarterResAO ? m_lowResTSSAOCoefficient : m_TSSAOCoefficient;
-    GpuResource* GBufferResources = m_pathtracer.m_pathtracer.GetGBufferResources(SceneArgs::QuarterResAO);
+    GpuResource* GBufferResources = m_pathtracer.GetGBufferResources(SceneArgs::QuarterResAO);
 
     GpuResource* VarianceResources = SceneArgs::QuarterResAO ? m_lowResVarianceResource : m_varianceResource;
     // ToDO use separate toggles for local and temporal
@@ -2654,14 +2656,18 @@ void D3D12RaytracingAmbientOcclusion::UpsampleResourcesForRenderComposePass()
 
     if (inputLowResValueResource)
     {
+        // ToDo move this within BilateralUpsample().
+        GpuResource* GBufferLowResResources = m_pathtracer.GetGBufferResources(true);
+        GpuResource* GBufferResources = m_pathtracer.GetGBufferResources();
+
         BilateralUpsample(
             m_GBufferWidth,
             m_GBufferHeight,
             filterType,
             inputLowResValueResource->gpuDescriptorReadAccess,
-            m_GBufferLowResResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
-            m_GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
-            m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
+            GBufferLowResResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
+            GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
+            GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
             outputHiResValueResource,
             passName.c_str());
     }
@@ -2730,7 +2736,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 	commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
 
 	// Bind inputs.
-	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResourcesIn, m_GBufferResources[0].gpuDescriptorReadAccess);
+	commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::GBufferResourcesIn, g_GBufferResources[0].gpuDescriptorReadAccess);
 	commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
 	
 	// Bind output RT.
@@ -2748,76 +2754,6 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_CalculateVisibility()
 
 #endif
 }
-
-
-void D3D12RaytracingAmbientOcclusion::RenderPass_GenerateShadowMap()
-{
-    if (!m_updateShadowMap)
-    {
-        return;
-    }
-    auto device = m_deviceResources->GetD3DDevice();
-    auto commandList = m_deviceResources->GetCommandList();
-    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-
-    ScopedTimer _prof(L"Shadow Map", commandList);
-    
-    
-    // ToDo tighten the fov.
-    // reuse the same camera
-    GameCore::Camera lightViewCamera = m_camera;
-
-    XMMATRIX proj;
-    lightViewCamera.fov = 90;
-    lightViewCamera.GetProj(&proj, c_shadowMapDim.x, c_shadowMapDim.y);
-
-    // Calculate view matrix as if the eye was at (0,0,0) to avoid 
-    // precision issues when camera position is too far from (0,0,0).
-    // GenerateCameraRay takes this into consideration in the raytracing shader.
-    XMVECTOR eye = m_sceneCB->lightPosition;
-    XMVECTOR at = XMVectorSetY(eye, 0);         // pointing down
-    XMVECTOR up = XMVectorSet(1, 0, 0, 0);
-    XMMATRIX viewAtOrigin = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(at - eye, 1), up);
-    XMMATRIX viewProjAtOrigin = viewAtOrigin * proj;
-    m_sceneCB->lightProjectionToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProjAtOrigin);
-    
-    // ToDo cleanup
-    XMMATRIX view = XMMatrixLookAtLH(eye, at, up);
-    XMMATRIX viewProj = view * proj;
-    m_sceneCB->lightViewProj = viewProj;
-
-    // Todo same m_sceneCB is copied multiple times.
-    m_sceneCB.CopyStagingToGpu(frameIndex);
-
-    // Transition shadow map resourcee to UAV.
-    resourceStateTracker->TransitionResource(&m_ShadowMapResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-
-    commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-    commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
-
-    // Bind inputs.
-    commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
-
-    // Bind output RT.
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ShadowMapUAV, m_ShadowMapResource.gpuDescriptorWriteAccess);
-
-    // Bind the heaps, acceleration structure and dispatch rays. 
-    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
-
-    DispatchRays(m_rayGenShaderTables[RayGenShaderType::ShadowMap].Get(), c_shadowMapDim.x, c_shadowMapDim.y);
-
-    // Transition shadow resources to shader resource state.
-    {
-        resourceStateTracker->TransitionResource(&m_ShadowMapResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->InsertUAVBarrier(&m_ShadowMapResource);
-    }
-    
-    // ToDo add UAV barriers
-
-    m_updateShadowMap = false;
-}
-
 
 // Composite results from multiple passed into a final image.
 void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV)
@@ -2873,7 +2809,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 		commandList->SetComputeRootDescriptorTable(Slot::Output, m_raytracingOutputIntermediate.gpuDescriptorWriteAccess);
 		
 		// Bind inputs.
-		commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, m_GBufferResources[0].gpuDescriptorReadAccess);
+		commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, g_GBufferResources[0].gpuDescriptorReadAccess);
 #if TWO_STAGE_AO_BLUR && !ATROUS_DENOISER
 		commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
 #else
@@ -2887,8 +2823,8 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU
 
         commandList->SetComputeRootDescriptorTable(Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
         commandList->SetComputeRootDescriptorTable(Slot::AORayHitDistance, RayHitDistance->gpuDescriptorReadAccess);
-        commandList->SetComputeRootDescriptorTable(Slot::Color, m_GBufferResources[GBufferResource::Color].gpuDescriptorReadAccess);
-        commandList->SetComputeRootDescriptorTable(Slot::AOSurfaceAlbedo, m_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
+        commandList->SetComputeRootDescriptorTable(Slot::Color, g_GBufferResources[GBufferResource::Color].gpuDescriptorReadAccess);
+        commandList->SetComputeRootDescriptorTable(Slot::AOSurfaceAlbedo, g_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
 
         
         commandList->SetComputeRootDescriptorTable(Slot::FrameAge, m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].gpuDescriptorReadAccess);
@@ -3163,23 +3099,13 @@ void D3D12RaytracingAmbientOcclusion::ReleaseDeviceDependentResources()
         m_uiLayer.reset();
     }
 
-    m_raytracingGlobalRootSignature.Reset();
-    ResetComPtrArray(&m_raytracingLocalRootSignature);
-    m_dxrStateObject.Reset();
-
-    m_raytracingGlobalRootSignature.Reset();
-    ResetComPtrArray(&m_raytracingLocalRootSignature);
-
     m_cbvSrvUavHeap.reset();
     m_csHemisphereVisualizationCB.Release();
 
+    m_pathtracer.ReleaseDeviceDependentResources();
     m_RTAO.ReleaseDeviceDependentResources();
 
     m_raytracingOutput.resource.Reset();
-
-    ResetComPtrArray(&m_rayGenShaderTables);
-    m_missShaderTable.Reset();
-    m_hitGroupShaderTable.Reset();
 }
 
 void D3D12RaytracingAmbientOcclusion::RecreateD3D()
@@ -3367,7 +3293,7 @@ void D3D12RaytracingAmbientOcclusion::RenderPass_TemporalSupersamplingReversePro
         m_raytracingWidth,
         m_raytracingHeight,
         m_cbvSrvUavHeap->GetHeap(),
-        m_GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
+        g_GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
         GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
         GBufferResources[GBufferResource::ReprojectedNormalDepth].gpuDescriptorReadAccess,
         GBufferResources[GBufferResource::MotionVector].gpuDescriptorReadAccess,
@@ -3966,8 +3892,6 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 UpdateAccelerationStructure();
 
                 // Render.
-                RenderPass_GenerateShadowMap();
-
                 m_pathtracer.OnRender(m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
 
                 // AO. 
@@ -4159,4 +4083,5 @@ void D3D12RaytracingAmbientOcclusion::OnSizeChanged(UINT width, UINT height, boo
     {
         return;
     }
+}
 }

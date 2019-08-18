@@ -1288,7 +1288,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResource->gpuDescriptorWriteAccess);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
 
-            GpuResource* debugResources = global_pSample->GetDebugResources();
+            GpuResource* debugResources = g_pSample->GetDebugResources();
             commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
 
@@ -2132,7 +2132,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputMeanVariance, outputMeanVarianceResourceHandle);
 
-            GpuResource* debugResources = global_pSample->GetDebugResources();
+            GpuResource* debugResources = g_pSample->GetDebugResources();
             commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
         }
@@ -2246,7 +2246,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
 
-            GpuResource* debugResources = global_pSample->GetDebugResources();
+            GpuResource* debugResources = g_pSample->GetDebugResources();
             commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
         }

@@ -20,10 +20,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     ThrowIfFailed(CoInitializeEx(nullptr, COINITBASE_MULTITHREADED), L"Failed to initialize WIC component");
 
 	// ToDo
-	//D3D12RaytracingAmbientOcclusion sample(1280, 720, L"D3D12 Raytracing - Ambient Occlusion");
-	D3D12RaytracingAmbientOcclusion sample(1920, 1080, L"D3D12 Raytracing - Ambient Occlusion");
-    //D3D12RaytracingAmbientOcclusion sample(2560, 1440, L"D3D12 Raytracing - Ambient Occlusion");
-    //D3D12RaytracingAmbientOcclusion sample(1280, 768, L"D3D12 Raytracing - Ambient Occlusion");
-    //D3D12RaytracingAmbientOcclusion sample(3840, 2160, L"D3D12 Raytracing - Ambient Occlusion");
+	//D3D12RaytracingAmbientOcclusion sample(1280, 720, L"D3D12 Raytracing - Real-Time Denoised Raytraced Ambient Occlusion");
+	D3D12RaytracingAmbientOcclusion sample(1920, 1080, L"D3D12 Raytracing - Real-Time Denoised Raytraced Ambient Occlusion");
+    //D3D12RaytracingAmbientOcclusion sample(2560, 1440, L"D3D12 Raytracing - Real-Time Denoised Raytraced Ambient Occlusion");
+    //D3D12RaytracingAmbientOcclusion sample(1280, 768, L"D3D12 Raytracing - Real-Time Denoised Raytraced Ambient Occlusion");
+    //D3D12RaytracingAmbientOcclusion sample(3840, 2160, L"D3D12 Raytracing - Real-Time Denoised Raytraced Ambient Occlusion");
     return Win32Application::Run(&sample, hInstance, nCmdShow);
 }
