@@ -80,7 +80,7 @@ RWTexture2D<float> g_rtShadowMap : register(u21);
 RWTexture2D<float4> g_rtDebug : register(u22);
 RWTexture2D<float4> g_rtDebug2 : register(u24);
 
-ConstantBuffer<SceneConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
+ConstantBuffer<PathtracerConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
 
@@ -206,7 +206,7 @@ float2 CalculateMotionVector(
     in uint2 DTid)
 {
     // Variables prefixed with underscore _ denote values in the previous frame.
-    float3 _hitViewPosition = _hitPosition - CB.prevCameraPosition.xyz;
+    float3 _hitViewPosition = _hitPosition - CB.prevCameraPosition;
     float3 _cameraDirection = GenerateForwardCameraRayDirection(CB.prevProjToWorldWithCameraEyeAtOrigin);
     _depth = dot(_hitViewPosition, _cameraDirection);
 
@@ -310,9 +310,6 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth, 
 {
     GBufferRayPayload rayPayload;
     rayPayload.rayRecursionDepth = currentRayRecursionDepth + 1;
-#if LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION
-    rayPayload.bounceContribution = bounceContribution;
-#endif
     rayPayload.radiance = 0;
     rayPayload.AOGBuffer.tHit = HitDistanceOnMiss;
     rayPayload.AOGBuffer.hitPosition = 0;
@@ -410,18 +407,10 @@ float3 TraceReflectedGBufferRay(in float3 hitPosition, in float3 wi, in float3 N
     float tMin = 0; // NEAR_PLANE ToDo
     float tMax = TMax;  //  FAR_PLANE - RayTCurrent()
 
-#if LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION
-#if USE_UV_DERIVATIVES
-    rayPayload = TraceGBufferRay(ray, rx, ry, rayPayload.rayRecursionDepth, tMin, tMax, rayPayload.bounceContribution);
-#else
-    rayPayload = TraceGBufferRay(ray, rayPayload.rayRecursionDepth, tMin, tMax, rayPayload.bounceContribution);
-#endif
-#else
 #if USE_UV_DERIVATIVES
     rayPayload = TraceGBufferRay(ray, rx, ry, rayPayload.rayRecursionDepth, tMin, tMax);
 #else
     rayPayload = TraceGBufferRay(ray, rayPayload.rayRecursionDepth, tMin, tMax);
-#endif
 #endif
     if (rayPayload.AOGBuffer.tHit != HitDistanceOnMiss)
     {
@@ -480,18 +469,10 @@ float3 TraceRefractedGBufferRay(in float3 hitPosition, in float3 wt, in float3 N
     // This can cause visual pop ins however, such as in a case of looking at the spaceship's glass cockpit through a window in the house. The cockpit will be skipped in this case.
     bool cullNonOpaque = true;
 
-#if LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION
-#if USE_UV_DERIVATIVES
-    rayPayload = TraceGBufferRay(ray, rayPayload.rx, rayPayload.ry, rayPayload.rayRecursionDepth, tMin, tMax, rayPayload.bounceContribution, cullNonOpaque);
-#else
-    rayPayload = TraceGBufferRay(ray, rayPayload.rayRecursionDepth, tMin, tMax, rayPayload.bounceContribution, cullNonOpaque);
-#endif
-#else
 #if USE_UV_DERIVATIVES
     rayPayload = TraceGBufferRay(ray, rayPayload.rx, rayPayload.ry, rayPayload.rayRecursionDepth, tMin, tMax, 0, cullNonOpaque);
 #else
     rayPayload = TraceGBufferRay(ray, rayPayload.rayRecursionDepth, tMin, tMax, 0, cullNonOpaque);
-#endif
 #endif
     if (rayPayload.AOGBuffer.tHit != HitDistanceOnMiss)
     {
@@ -531,55 +512,6 @@ void UpdateAOGBufferOnLargerDiffuseComponent(inout GBufferRayPayload rayPayload,
     }
 }
 
-// Returns [0,1] occlusion to light. 0 occluded, 1 fully visible
-float ShadowMap(in float3 hitPosition, in float3 N)
-{
-    float3 hitLightViewPosition = hitPosition - CB.lightPosition.xyz;
-    float NoL = dot(N, -hitLightViewPosition);
-    if (NoL < 0)
-    {
-        // Backfacing
-        return 0;
-    }
-    
-    float4 clipSpacePosition = mul(float4(hitPosition, 1), CB.lightViewProj);
-    float2 texCoord = ClipSpaceToTexturePosition(clipSpacePosition);
-
-    float lightVisibilityCoef = 1;
-    if (IsInRange(texCoord.x, 0, 1) && IsInRange(texCoord.y, 0, 1))
-    {
-        float3 centerLightViewRay = GenerateForwardCameraRayDirection(CB.lightProjectionToWorldWithCameraEyeAtOrigin);
-        float linearDepth = dot(hitLightViewPosition, centerLightViewRay);
-
-        // Use an offset value to mitigate shadow artifacts due to imprecise 
-        // floating-point values (shadow acne).
-        //
-        // This is an approximation of epsilon * tan(acos(saturate(NdotL))):
-        float margin = acos(saturate(NoL));
-        
-        // The offset can be slightly smaller with smoother shadow edges.
-        float epsilon = 0.0005 * linearDepth / margin;
-
-        // Clamp epsilon to a fixed range so it doesn't go overboard.
-        epsilon = clamp(epsilon, 0, 0.1);
-
-#if 0 // ToDo Doesn't work, return 0, except for testing a 0.
-        // Do LessOrEqual comparison of the current depth against the value in the shadow map.
-        lightVisibilityCoef = g_texShadowMap.SampleCmpLevelZero(
-            ShadowMapSamplerComp,
-            texCoord,
-            linearDepth - epsilon);
-#else
-        float shadowMapDepth = g_texShadowMap.SampleLevel(
-            ShadowMapSampler,
-            texCoord,
-            0);
-        lightVisibilityCoef = (linearDepth - epsilon) < shadowMapDepth;
-#endif
-    }
-
-    return lightVisibilityCoef;
-}
 
 float3 Shade(
     inout GBufferRayPayload rayPayload,
@@ -606,16 +538,8 @@ float3 Shade(
         // ToDo dedupe wi calculation
         float3 wi = normalize(CB.lightPosition.xyz - hitPosition);
 
-        bool isInShadow;
-        if (CB.useShadowMap)
-        {
-            float lightVisibilityCoef = ShadowMap(hitPosition, N);
-            isInShadow = lightVisibilityCoef < 0.5;
-        }
-        else    // Raytraced shadows
-        {
-            isInShadow = TraceShadowRayAndReportIfHit(hitPosition, wi, N, rayPayload);
-        }
+        // Raytraced shadows.
+        bool isInShadow = TraceShadowRayAndReportIfHit(hitPosition, wi, N, rayPayload);
 
         L += BxDF::DirectLighting::Shade(
             // ToDo have a substruct to pass around?
@@ -631,16 +555,16 @@ float3 Shade(
     }
 
     // Ambient Indirect Illumination
-     // Add a default ambient contribution to all hits. 
-     // This will be subtracted for hitPositions with 
-     // calculated Ambient coefficient in the composition pass.
+    // Add a default ambient contribution to all hits. 
+    // This will be subtracted for hitPositions with 
+    // calculated Ambient coefficient in the composition pass.
     L += CB.defaultAmbientIntensity * Kd;
 
     // Specular Indirect Illumination
     bool isReflective = !BxDF::IsBlack(Kr);
     bool isTransmissive = !BxDF::IsBlack(Kt);
 
-    // Handle cases where ray is coming from behind due error/imprecision,
+    // Handle cases where ray is coming from behind due to imprecision,
     // don't cast reflection rays in that case.
     float smallValue = 1e-6f;
     isReflective = dot(V, N) > smallValue ? isReflective : false;
@@ -652,20 +576,10 @@ float3 Shade(
                 || material.type == MaterialType::Mirror))
         {
             GBufferRayPayload reflectedRayPayLoad = rayPayload;
-#if LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION
-            float bounceContribution = dot(Kr, 1) * rayPayload.bounceContribution;
-            if (bounceContribution >= CB.RTAO_minimumFrBounceCoefficient)
-            {
-                reflectedRayPayLoad.bounceContribution = bounceContribution;
-#else
-            {
-#endif          
-                    
-                float3 wi = reflect(-V, N);
+            float3 wi = reflect(-V, N);
                 
-                L += Kr * TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
-                UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad, Kr);
-            }
+            L += Kr * TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
+            UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad, Kr);
         }
         else // No total internal reflection
         {
@@ -675,24 +589,11 @@ float3 Shade(
                 // Radiance contribution from reflection.
                 float3 wi;
                 float3 Fr = Kr * BxDF::Specular::Reflection::Sample_Fr(V, wi, N, Fo);    // Calculates wi
-
-#if LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION
-                float bounceContribution = RGBtoLuminance(Fr) * rayPayload.bounceContribution;
-                if (bounceContribution >= CB.RTAO_minimumFrBounceCoefficient)
-                {
-                    GBufferRayPayload reflectedRayPayLoad = rayPayload;
-                    reflectedRayPayLoad.bounceContribution = bounceContribution;
-#else
-                {
-                    GBufferRayPayload reflectedRayPayLoad = rayPayload;
-#endif
-                    // Ref: eq 24.4, RTG
-                    L += Fr * TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
-
-                    UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad, Fr);
-
-                    //L += float3(0.3f, 0, 0);
-                }
+                
+                GBufferRayPayload reflectedRayPayLoad = rayPayload;
+                // Ref: eq 24.4, RTG
+                L += Fr * TraceReflectedGBufferRay(hitPosition, wi, N, objectNormal, reflectedRayPayLoad);
+                UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, reflectedRayPayLoad, Fr);
             }
 
             if (isTransmissive)
@@ -701,97 +602,20 @@ float3 Shade(
                 float3 wt;
                 float3 Ft = Kt * BxDF::Specular::Transmission::Sample_Ft(V, wt, N, Fo);    // Calculates wt
 
-#if LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION
-                float bounceContribution = RGBtoLuminance(Ft) * rayPayload.bounceContribution;
-                if (bounceContribution >= CB.RTAO_minimumFtBounceCoefficient)
-                {
-                    GBufferRayPayload refractedRayPayLoad = rayPayload;
-                    refractedRayPayLoad.bounceContribution = bounceContribution;
-#else
-                {
-                    GBufferRayPayload refractedRayPayLoad = rayPayload;
-#endif
-                    L += Ft * TraceRefractedGBufferRay(hitPosition, wt, N, objectNormal, refractedRayPayLoad);
+                GBufferRayPayload refractedRayPayLoad = rayPayload;
 
-                    UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, refractedRayPayLoad, Ft);
-
-                    //L += float3(0, 0.3f, 0);
-                }
+                L += Ft * TraceRefractedGBufferRay(hitPosition, wt, N, objectNormal, refractedRayPayLoad);
+                UpdateAOGBufferOnLargerDiffuseComponent(rayPayload, refractedRayPayLoad, Ft);
             }
         }
     }
+
     return L;
 }
 
 //***************************************************************************
 //********************------ Ray gen shader.. -------************************
 //***************************************************************************
-
-
-#if TEST_EARLY_EXIT
-[shader("raygeneration")]
-void MyRayGenShader_Visibility()
-{
-    uint2 DTid = DispatchRaysIndex().xy;
-
-    if (g_texInputAOFrameAge[DTid] > 0)
-    {
-        g_rtVisibilityCoefficient[DTid] = 1;
-    }
-}
-#else
-[shader("raygeneration")]
-void MyRayGenShader_Visibility()
-{
-    uint2 DTid = DispatchRaysIndex().xy;
-	bool hit = g_texGBufferPositionHits[DTid] > 0;
-	uint shadowRayHits = 0;
-	bool inShadow = false;
-	if (hit)
-	{
-		float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
-        float3 surfaceNormal;
-        float dummyDepth;
-        DecodeNormalDepth(g_texGBufferNormalDepth[DTid], surfaceNormal, dummyDepth);
-        Ray visibilityRay = { hitPosition + 0.001f * surfaceNormal, normalize(CB.lightPosition.xyz - hitPosition) };
-
-        float tHit;
-		inShadow = TraceShadowRayAndReportIfHit(tHit, visibilityRay, 0, CB.useShadowRayHitTime);
-	}
-
-	// ToDo add option to be true distance and do contact hardening
-	g_rtVisibilityCoefficient[DTid] = inShadow ? 0 : 1;
-}
-#endif
-
-// ToDo remove
-inline Ray GenerateCameraRayViaInterpolation(uint2 index, in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin, float2 jitter = float2(0, 0))
-{
-#if 1
-    float2 xy = index + 0.5f; // center in the middle of the pixel.
-    xy += jitter;
-    float2 screenPos = xy / DispatchRaysDimensions().xy * 2.0 - 1.0;
-
-    // Invert Y for DirectX-style coordinates.
-    screenPos.y = -screenPos.y;
-
-    // ToDo remove CB ref
-    Ray ray;
-    ray.origin = cameraPosition;
-    ray.direction = normalize(CB.cameraAt.xyz - cameraPosition) + screenPos.x * CB.cameraRight.xyz + screenPos.y * CB.cameraUp.xyz;
-
-#else
-    float3 pos00 = ScreenPosToWorldPos(uint2(0, 0), projectionToWorldWithCameraEyeAtOrigin);
-    float3 pos10 = ScreenPosToWorldPos(uint2(1, 0), projectionToWorldWithCameraEyeAtOrigin);
-    float3 pos01 = ScreenPosToWorldPos(uint2(0, 1), projectionToWorldWithCameraEyeAtOrigin);
-
-    Ray ray;
-    ray.origin = cameraPosition;
-    ray.direction = normalize(pos00 + index.x * (pos10 - pos00) + index.y * (pos01 - pos00));
-#endif
-    return ray;
-}
-
 
 [shader("raygeneration")]
 void MyRayGenShader_GBuffer()
@@ -800,12 +624,11 @@ void MyRayGenShader_GBuffer()
     // ToDo make sure all pixels get written to or clear buffers beforehand. 
 
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
-	Ray ray = GenerateCameraRay(DTid, CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin, CB.cameraJitter);
-    //Ray ray = GenerateCameraRayViaInterpolation(DTid, CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin, cameraJitter);
+	Ray ray = GenerateCameraRay(DTid, CB.cameraPosition, CB.projectionToWorldWithCameraEyeAtOrigin);
 
 #if USE_UV_DERIVATIVES
     Ray rx, ry;
-    GetAuxilaryCameraRays(CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin, rx, ry);
+    GetAuxilaryCameraRays(CB.cameraPosition, CB.projectionToWorldWithCameraEyeAtOrigin, rx, ry);
 #endif
 
 	// Cast a ray into the scene and retrieve GBuffer information.
@@ -839,19 +662,14 @@ void MyRayGenShader_GBuffer()
 #if  REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // CB value is incorrect on rayPayload.AOGBuffer.hit boundaries causing blocky artifacts when within if (hit) block
     if (rayPayload.AOGBuffer.hit)
     {
-        float3 raySegment = rayPayload.hitPosition - CB.cameraPosition.xyz;
+        float3 raySegment = rayPayload.hitPosition - CB.cameraPosition;
 #else
     
     // 
     // ToDo dedupe
-    //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - CB.cameraPosition.xyz, 1);
+    //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - CB.cameraPosition, 1);
     if (hasCameraRayHitGeometry)
     {
-        // Calculate depth value.
-        //float4 homogeneousScreenSpaceHitPosition = mul(viewSpaceHitPosition, CB.viewProjection);
-        //float4 screenSpaceHitPosition = homogeneousScreenSpaceHitPosition / homogeneousScreenSpaceHitPosition.w;
-
-
 #endif
        // float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
        // obliqueness = -forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
@@ -905,12 +723,7 @@ void MyRayGenShader_GBuffer()
 
         g_rtGBufferDistance[DTid] = linearDepth;
 
-        // ToDo revise + check https://stackoverflow.com/questions/6652253/getting-the-true-z-value-from-the-depth-buffer
-        // Convert distance to nonLinearDepth.
-        {
-
-            g_rtGBufferDepth[DTid] = linearDepth;// nonLinearDepth;
-        }
+        g_rtGBufferDepth[DTid] = linearDepth;
 
         g_rtAOSurfaceAlbedo[DTid] = float4(Byte3ToNormalizedFloat3(rayPayload.AOGBuffer.diffuseByte3), 0);
     }
@@ -930,24 +743,6 @@ void MyRayGenShader_GBuffer()
     }
 
     g_rtColor[DTid] = float4(rayPayload.radiance, 1);
-}
-
-[shader("raygeneration")]
-void MyRayGenShader_ShadowMap()
-{
-    uint2 DTid = DispatchRaysIndex().xy;
-
-    // Generate a ray for a light view pixel corresponding to an index from the dispatched 2D grid.
-    Ray ray = GenerateCameraRay(DTid, CB.lightPosition.xyz, CB.lightProjectionToWorldWithCameraEyeAtOrigin);
-
-    float tHit;
-    bool hit = TraceShadowRayAndReportIfHit(tHit, ray, 0);
-
-    float3 centerLightViewRay = GenerateForwardCameraRayDirection(CB.lightProjectionToWorldWithCameraEyeAtOrigin);
-    float linearDepth = tHit * dot(ray.direction, centerLightViewRay);
-
-    float tMax = 10000; // ToDo use a global constant
-    g_rtShadowMap[DTid] = hit ? linearDepth : 1;
 }
 
 //***************************************************************************
@@ -1031,7 +826,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
 
     if (material.hasDiffuseTexture ||
-        (CB.RTAO_UseNormalMaps && material.hasNormalTexture) ||
+        (CB.useNormalMaps && material.hasNormalTexture) ||
         (material.type == MaterialType::AnalyticalCheckerboardTexture))
     {
         float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
@@ -1044,7 +839,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         //ddy *= 0.5;
     }
 #endif
-    if (CB.RTAO_UseNormalMaps && material.hasNormalTexture)
+    if (CB.useNormalMaps && material.hasNormalTexture)
     {
         normal = NormalMap(normal, texCoord, ddx, ddy, vertices, material, attr);
     }
@@ -1061,7 +856,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         float2 ddy_uv;
         float2 uv = TexCoords(hitPosition);
 
-        CalculateRayDifferentials(ddx_uv, ddy_uv, uv, hitPosition, normal, CB.cameraPosition.xyz, CB.projectionToWorldWithCameraEyeAtOrigin);
+        CalculateRayDifferentials(ddx_uv, ddy_uv, uv, hitPosition, normal, CB.cameraPosition, CB.projectionToWorldWithCameraEyeAtOrigin);
         material.Kd = CheckersTextureBoxFilter(uv, ddx_uv, ddy_uv, 25);
 #else // ToDo fix derivatives
         float2 uv = hitPosition.xz / 2;

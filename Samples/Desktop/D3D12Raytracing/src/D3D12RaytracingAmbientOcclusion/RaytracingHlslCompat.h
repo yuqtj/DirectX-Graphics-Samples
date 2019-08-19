@@ -16,6 +16,7 @@
 
 /*
 //ToDo
+// ToDo switch to default column major in hlsl and do a transpose before passing matrices to HLSL.
 - todo finetune clamping/remove ghosting (test gliding spaceship)
 - Adaptive kernel size - overblur under roof edge
 - Full res - adaptive kernel size visible horizontal lines
@@ -365,7 +366,6 @@ struct Ray
     XMFLOAT3 direction;
 };
 
-#define LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION 0
 struct AmbientOcclusionGBuffer
 {
     float tHit;
@@ -382,16 +382,11 @@ struct AmbientOcclusionGBuffer
 };
 
 
-
+// ToDo rename To Pathtracer
 struct GBufferRayPayload
 {
 #if ALLOW_MIRRORS
     UINT rayRecursionDepth;
-#endif
-#if LIMIT_RAYS_BASED_ON_MAX_CONTRIBUTION
-    // Contribution scaling factor of the traced ray. 
-    // Used to avoid tracing rays with very small contributions.
-    float bounceContribution;  
 #endif
     XMFLOAT3 radiance;
 	//XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
@@ -570,45 +565,23 @@ struct PathtracerConstantBuffer
 {
     // ToDo rename to world to view matrix and drop (0,0,0) note.
     XMMATRIX projectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
-    XMMATRIX viewProjection;    // ToDo remove // world to projection matrix with Camera at (0,0,0).
-    XMVECTOR cameraPosition;
-
-    XMMATRIX lightProjectionToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
-    XMMATRIX lightViewProj;
-    XMVECTOR lightPosition;     // ToDo use float3
-
+    XMFLOAT3 cameraPosition;
+    BOOL     useDiffuseFromMaterial;
+    XMFLOAT3 lightPosition;     // ToDo use float3
+    BOOL     useNormalMaps;
     XMFLOAT3 lightColor;
-    float defaultAmbientIntensity;
+    float    defaultAmbientIntensity;
 
     XMMATRIX prevViewProj;    // ToDo standardzie proj vs projection
     XMMATRIX prevProjToWorldWithCameraEyeAtOrigin;	// projection to world matrix with Camera at (0,0,0).
-    XMVECTOR prevCameraPosition;
+    XMFLOAT3 prevCameraPosition;
+    float    padding;
 
-    // ToDo remove
-    XMVECTOR cameraAt;
-    XMVECTOR cameraUp;
-    XMVECTOR cameraRight;
-
-    float reflectance;
-    float padding1;                 // Elapsed application time.
 	float Znear;     // ToDo rename to zNear
 	float Zfar;
-
-    XMFLOAT2 cameraJitter;
-    float padding2[2];
-
     UINT  maxRadianceRayRecursionDepth;
     UINT  maxShadowRayRecursionDepth;
-    BOOL useDiffuseFromMaterial;
-    BOOL doShading;                         // Do shading during path tracing. If false, collects only information needed for AO pass.
-   
-    BOOL useShadowMap;                      // Use shadow map (true). Trace visibility rays (false).
-    float RTAO_minimumFrBounceCoefficient;  // Minimum bounce coefficient for reflection ray to consider executing a TraceRay for it.
-    float RTAO_minimumFtBounceCoefficient;  // Minimum bounce coefficient for transmission ray to consider executing a TraceRay for it.
-    BOOL RTAO_UseNormalMaps;
 
-    BOOL useShadowRayHitTime;           // ToDo Rename "use"
-    float padding[3];
 };
 
 // ToDo split CB?

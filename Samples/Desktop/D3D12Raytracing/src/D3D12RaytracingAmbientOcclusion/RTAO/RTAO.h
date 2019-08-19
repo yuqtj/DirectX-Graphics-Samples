@@ -18,7 +18,7 @@
 #include "PerformanceTimers.h"
 #include "Sampler.h"
 #include "GpuKernels.h"
-
+#include "EngineTuning.h"
 
 
 // ToDo move to cpp
@@ -29,111 +29,119 @@ namespace RTAORayGenShaderType {
         Count
     };
 }
-
-class RTAO
+namespace RTAO
 {
-public:
-    // Ctors.
-    RTAO();
+    namespace Args
+    {
+        extern BoolVar QuarterResAO;
+    }
 
-    // Public methods.
-    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
-    void OnUpdate();
-    void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource, D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource);
-    void ReleaseDeviceDependentResources();
-    void ReleaseWindowSizeDependentResources() {}; // ToDo
 
-    // Getters & Setters.
-    void SetResolution(UINT width, UINT height);
-    DXGI_FORMAT GetAOCoefficientFormat();
-    float GetMaxRayHitTime();
-    void SetMaxRayHitTime(float maxRayHitTime);
-    float GetSpp();
-    void GetRayGenParameters(bool *isCheckerboardSamplingEnabled, bool *checkerboardLoadEvenPixels);
-    // ToDo return only a subset
-    GpuResource (&AOResources())[AOResource::Count]{ return m_AOResources; }
-    GpuResource* GetAOResources(){ return m_AOResources; }
+    class RTAO
+    {
+    public:
+        // Ctors.
+        RTAO();
 
-    void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
-    void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
+        // Public methods.
+        void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
+        void OnUpdate();
+        void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource, D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource);
+        void ReleaseDeviceDependentResources();
+        void ReleaseWindowSizeDependentResources() {}; // ToDo
 
-private:
-    void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
-    void CreateConstantBuffers();
-    void CreateAuxilaryDeviceResources();
-    void CreateRootSignatures();    
-    void CreateRaytracingPipelineStateObject();
-    void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
-    void CreateTextureResources();
-    void CalculateAdaptiveSamplingCounts();
-    
-    void CreateSamplesRNG();
-    void CreateResolutionDependentResources();
-    void BuildShaderTables(UINT maxInstanceContributionToHitGroupIndex);
-    void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
-    void CalculateRayHitCount();
+        // Getters & Setters.
+        void SetResolution(UINT width, UINT height);
+        DXGI_FORMAT GetAOCoefficientFormat();
+        float GetMaxRayHitTime();
+        void SetMaxRayHitTime(float maxRayHitTime);
+        float GetSpp();
+        void GetRayGenParameters(bool* isCheckerboardSamplingEnabled, bool* checkerboardLoadEvenPixels);
+        // ToDo return only a subset
+        GpuResource(&AOResources())[AOResource::Count]{ return m_AOResources; }
+        GpuResource* GetAOResources() { return m_AOResources; }
 
-    UINT m_raytracingWidth;
-    UINT m_raytracingHeight;
+        void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
+        void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
-    std::shared_ptr<DX::DeviceResources> m_deviceResources;
-    std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
-    std::mt19937 m_generatorURNG;
+    private:
+        void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
+        void CreateConstantBuffers();
+        void CreateAuxilaryDeviceResources();
+        void CreateRootSignatures();
+        void CreateRaytracingPipelineStateObject();
+        void CreateDxilLibrarySubobject(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+        void CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+        void CreateTextureResources();
+        void CalculateAdaptiveSamplingCounts();
 
-    // ToDo fix artifacts at 4 spp. Looks like selfshadowing on some AOrays in SquidScene
+        void CreateSamplesRNG();
+        void CreateResolutionDependentResources();
+        void BuildShaderTables(UINT maxInstanceContributionToHitGroupIndex);
+        void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
+        void CalculateRayHitCount();
 
-    // Raytracing shaders.
-    static const wchar_t* c_hitGroupName;
-    static const wchar_t* c_rayGenShaderNames[RTAORayGenShaderType::Count];
-    static const wchar_t* c_closestHitShaderName;
-    static const wchar_t* c_missShaderName;
+        UINT m_raytracingWidth;
+        UINT m_raytracingHeight;
 
-    // Raytracing shader resources.
-    GpuResource   m_AOResources[AOResource::Count];
-    GpuResource   m_AORayDirectionOriginDepth;
-    GpuResource   m_sortedToSourceRayIndexOffset;   // Index of a ray in the source array given a sorted index.
-    GpuResource   m_sourceToSortedRayIndexOffset;   // Index of a ray in the sorted array given a source index.
-    GpuResource   m_sortedRayGroupDebug;            // ToDo remove
-    ConstantBuffer<RTAOConstantBuffer> m_CB;
-    Samplers::MultiJittered m_randomSampler;
-    StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;
-    StructuredBuffer<AlignedHemisphereSample3D> m_hemisphereSamplesGPUBuffer;
+        std::shared_ptr<DX::DeviceResources> m_deviceResources;
+        std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
+        std::mt19937 m_generatorURNG;
 
-    UINT		    m_numAORayGeometryHits;
-    bool            m_checkerboardGenerateRaysForEvenPixels = false;
+        // ToDo fix artifacts at 4 spp. Looks like selfshadowing on some AOrays in SquidScene
+
+        // Raytracing shaders.
+        static const wchar_t* c_hitGroupName;
+        static const wchar_t* c_rayGenShaderNames[RTAORayGenShaderType::Count];
+        static const wchar_t* c_closestHitShaderName;
+        static const wchar_t* c_missShaderName;
+
+        // Raytracing shader resources.
+        GpuResource   m_AOResources[AOResource::Count];
+        GpuResource   m_AORayDirectionOriginDepth;
+        GpuResource   m_sortedToSourceRayIndexOffset;   // Index of a ray in the source array given a sorted index.
+        GpuResource   m_sourceToSortedRayIndexOffset;   // Index of a ray in the sorted array given a source index.
+        GpuResource   m_sortedRayGroupDebug;            // ToDo remove
+        ConstantBuffer<RTAOConstantBuffer> m_CB;
+        Samplers::MultiJittered m_randomSampler;
+        StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;
+        StructuredBuffer<AlignedHemisphereSample3D> m_hemisphereSamplesGPUBuffer;
+
+        UINT		    m_numAORayGeometryHits;
+        bool            m_checkerboardGenerateRaysForEvenPixels = false;
 
 #if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
-    DX::GPUTimer dispatchRayTime;
+        DX::GPUTimer dispatchRayTime;
 #endif
 
-    // DirectX Raytracing (DXR) attributes
-    ComPtr<ID3D12StateObject>   m_dxrStateObject;
+        // DirectX Raytracing (DXR) attributes
+        ComPtr<ID3D12StateObject>   m_dxrStateObject;
 
-    // Shader tables
-    ComPtr<ID3D12Resource> m_rayGenShaderTables[RTAORayGenShaderType::Count];
-    UINT m_rayGenShaderTableRecordSizeInBytes[RTAORayGenShaderType::Count];
-    ComPtr<ID3D12Resource> m_hitGroupShaderTable;
-    UINT m_hitGroupShaderTableStrideInBytes = UINT_MAX;
-    ComPtr<ID3D12Resource> m_missShaderTable;
-    UINT m_missShaderTableStrideInBytes = UINT_MAX;
+        // Shader tables
+        ComPtr<ID3D12Resource> m_rayGenShaderTables[RTAORayGenShaderType::Count];
+        UINT m_rayGenShaderTableRecordSizeInBytes[RTAORayGenShaderType::Count];
+        ComPtr<ID3D12Resource> m_hitGroupShaderTable;
+        UINT m_hitGroupShaderTableStrideInBytes = UINT_MAX;
+        ComPtr<ID3D12Resource> m_missShaderTable;
+        UINT m_missShaderTableStrideInBytes = UINT_MAX;
 
-    // Root signatures
-    ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
-    ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
+        // Root signatures
+        ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
+        ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
 
-    // Compute shader & resources.
-    GpuKernels::ReduceSum		m_reduceSumKernel;
-    GpuKernels::AdaptiveRayGenerator m_rayGen;
-    GpuKernels::SortRays        m_raySorter;
-
-
-    bool m_isRecreateAOSamplesRequested = false;
-    bool m_isRecreateRaytracingResourcesRequested = false;
-
-    // Parameters
-    bool m_calculateRayHitCounts = false;
+        // Compute shader & resources.
+        GpuKernels::ReduceSum		m_reduceSumKernel;
+        GpuKernels::AdaptiveRayGenerator m_rayGen;
+        GpuKernels::SortRays        m_raySorter;
 
 
-    static UINT             s_numInstances;
-};
+        bool m_isRecreateAOSamplesRequested = false;
+        bool m_isRecreateRaytracingResourcesRequested = false;
+
+        // Parameters
+        bool m_calculateRayHitCounts = false;
+
+
+        static UINT             s_numInstances;
+    };
+}

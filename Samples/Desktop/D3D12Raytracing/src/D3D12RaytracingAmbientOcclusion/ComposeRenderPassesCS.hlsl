@@ -34,13 +34,6 @@ Texture2D<float4> g_texAOSurfaceAlbedo : register(t12);
 Texture2D<float4> g_texVariance : register(t13);
 Texture2D<float4> g_texLocalMeanVariance : register(t14);
 
-SamplerState LinearWrapSampler : register(s0);
-
-float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 toLightRay, in float3 normal);
-float3 CalculateSpecularCoefficient(in float3 hitPosition, in float3 toEyeRay, in float3 toLightRay, in float3 normal, in float specularPower);
-float3 CalculatePhongLighting(in float3 normal, in float3 hitPosition, in float3 toEyeRay, in float visibilityCoefficient, in float ambientCoef, in float3 diffuse, in float3 specular, in float specularPower = 50);
-
-
 // ToDo Cleanup SRGB here and elsewhere dfealing with in/out colors
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID )
@@ -231,48 +224,3 @@ void main(uint2 DTid : SV_DispatchThreadID )
     g_renderTarget[DTid] = float4(ApplySRGB(color.rgb), color.a);
 }
 
-
-
-//***************************************************************************
-//****************------ Utility functions -------***************************
-//***************************************************************************
-
-
-// Diffuse lighting calculation.
-float CalculateDiffuseCoefficient(in float3 hitPosition, in float3 toLightRay, in float3 normal)
-{
-	float fNDotL = saturate(dot(toLightRay, normal));
-	return fNDotL;
-}
-
-// Phong lighting specular component
-float3 CalculateSpecularCoefficient(in float3 hitPosition, in float3 toEyeRay, in float3 toLightRay, in float3 normal, in float specularPower)
-{
-	float3 reflectedToLightRay = reflect(toLightRay, normal);
-    return pow(saturate(dot(reflectedToLightRay, toEyeRay)), specularPower);
-}
-
-// Phong lighting model = ambient + diffuse + specular components.
-float3 CalculatePhongLighting(in float3 normal, in float3 hitPosition, in float3 toEyeRay,  in float visibilityCoefficient, in float ambientCoef, in float3 diffuse, in float3 specular, in float specularPower)
-{
-	float3 toLightRay = normalize(g_CB.lightPosition - hitPosition);
-
-	// Diffuse component.
-	float Kd = CalculateDiffuseCoefficient(hitPosition, toLightRay, normal);
-	float3 diffuseColor = visibilityCoefficient * diffuse * Kd * g_CB.lightDiffuseColor;
-
-	// Specular component.
-	float3 specularColor = float3(0, 0, 0);
-	if (visibilityCoefficient > 0.99f)
-	{
-		float3 lightSpecularColor = float3(1, 1, 1);
-		float3 Ks = CalculateSpecularCoefficient(hitPosition, toEyeRay, toLightRay, normal, specularPower);
-		specularColor = specular * Ks * lightSpecularColor;
-	}
-
-	// Ambient component.
-	float3 ambientColor = ambientCoef * diffuse;
-
-	// ToDo
-	return ambientColor + diffuseColor;//  +specularColor;
-}

@@ -24,10 +24,10 @@ using namespace DX;
 using namespace DirectX;
 using namespace SceneEnums;
 
-namespace Pathracer
+namespace Pathtracer
 {
     // Shader entry points.
-    const wchar_t* Pathtracer::c_rayGenShaderNames[] = { L"MyRayGenShader_GBuffer", L"MyRayGenShader_Visibility", L"MyRayGenShader_ShadowMap" };
+    const wchar_t* Pathtracer::c_rayGenShaderNames[] = { L"MyRayGenShader_GBuffer" };
     const wchar_t* Pathtracer::c_closestHitShaderNames[] = { L"MyClosestHitShader_GBuffer", L"MyClosestHitShader_ShadowRay" };
     const wchar_t* Pathtracer::c_missShaderNames[] = { L"MyMissShader_GBuffer", L"MyMissShader_ShadowRay" };
 
@@ -46,7 +46,7 @@ namespace Pathracer
 
     void OnRecreateSampleRaytracingResources(void*)
     {
-        g_pSample->RequestRecreateRaytracingResources();
+        Sample::g_pSample->RequestRecreateRaytracingResources();
     }
 
     namespace Args
@@ -62,13 +62,13 @@ namespace Pathracer
         IntVar MaxRadianceRayRecursionDepth(L"Render/PathTracing/Max Radiance Ray recursion depth", 3, 1, MAX_RAY_RECURSION_DEPTH, 1);   // ToDo Replace with 3/4 depth as it adds visible differences on spaceship/car
         IntVar MaxShadowRayRecursionDepth(L"Render/PathTracing/Max Shadow Ray recursion depth", 4, 1, MAX_RAY_RECURSION_DEPTH, 1);
 
-        BoolVar UseShadowMap(L"Render/PathTracing/Use shadow map", false);        // ToDO use enumeration
-
        // Avoid tracing rays where they have close to zero visual impact.
         // todo test perf gain or remove.
         // ToDo remove RTAO from name
         NumVar RTAO_minimumFrBounceCoefficient(L"Render/PathTracing/Minimum BRDF bounce contribution coefficient", 0.03f, 0, 1.01f, 0.01f);        // Minimum BRDF coefficient to cast a ray for.
         NumVar RTAO_minimumFtBounceCoefficient(L"Render/PathTracing/Minimum BTDF bounce contribution coefficient", 0.00f, 0, 1.01f, 0.01f);        // Minimum BTDF coefficient to cast a ray for.
+   
+        BoolVar RTAOUseNormalMaps(L"Render/PathTracing/Normal maps", false);
     }
 Pathtracer::Pathtracer()
 {
@@ -106,8 +106,6 @@ void Pathtracer::ReleaseDeviceDependentResources()
 // Create resources that depend on the device.
 void Pathtracer::CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex)
 {
-    auto device = m_deviceResources->GetD3DDevice();
-    
     CreateAuxilaryDeviceResources();
 
     // Initialize raytracing pipeline.
@@ -133,6 +131,8 @@ void Pathtracer::CreateAuxilaryDeviceResources()
     auto commandQueue = m_deviceResources->GetCommandQueue();
     auto commandList = m_deviceResources->GetCommandList();
     auto FrameCount = m_deviceResources->GetBackBufferCount();
+
+    m_calculatePartialDerivativesKernel.Initialize(device, FrameCount);
 }
 
 // Create constant buffers.
@@ -141,7 +141,7 @@ void Pathtracer::CreateConstantBuffers()
     auto device = m_deviceResources->GetD3DDevice();
     auto FrameCount = m_deviceResources->GetBackBufferCount();
 
-    m_sceneCB.Create(device, FrameCount, L"Pathtracer Constant Buffer");
+    m_CB.Create(device, FrameCount, L"Pathtracer Constant Buffer");
 }
 
 
@@ -583,7 +583,7 @@ void Pathtracer::BuildShaderTables(UINT maxInstanceContributionToHitGroupIndex)
 
                     memcpy(&rootArgs.indexBufferGPUHandle, &geometryInstance.ib.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
                     memcpy(&rootArgs.vertexBufferGPUHandle, &geometryInstance.vb.gpuDescriptorHandle, sizeof(geometryInstance.ib.gpuDescriptorHandle));
-                    memcpy(&rootArgs.previousFrameVertexBufferGPUHandle, &m_nullVertexBufferGPUhandle, sizeof(m_nullVertexBufferGPUhandle));
+                    memcpy(&rootArgs.previousFrameVertexBufferGPUHandle, &Sample::g_nullVertexBufferGPUhandle, sizeof(Sample::g_nullVertexBufferGPUhandle));
                     memcpy(&rootArgs.diffuseTextureGPUHandle, &geometryInstance.diffuseTexture, sizeof(geometryInstance.diffuseTexture));
                     memcpy(&rootArgs.normalTextureGPUHandle, &geometryInstance.normalTexture, sizeof(geometryInstance.normalTexture));
 
@@ -629,10 +629,6 @@ void Pathtracer::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UIN
 
 void Pathtracer::SetCamera(const GameCore::Camera& camera)
 {
-    // Main scene.
-    {
-        m_sceneCB->cameraPosition = camera.Eye();
-
         XMMATRIX view, proj;
         camera.GetProj(&proj, m_raytracingWidth, m_raytracingHeight);
 
@@ -641,24 +637,21 @@ void Pathtracer::SetCamera(const GameCore::Camera& camera)
         // GenerateCameraRay takes this into consideration in the raytracing shader.
         view = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(camera.At() - camera.Eye(), 1), camera.Up());
         XMMATRIX viewProj = view * proj;
-        m_sceneCB->projectionToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj);
-        // ToDo switch to default column major in hlsl and do a transpose before passing matrices to HLSL.
-        m_sceneCB->viewProjection = viewProj;
-        m_sceneCB->Znear = camera.ZMin;
-        m_sceneCB->Zfar = camera.ZMax;
-
-        m_sceneCB->cameraAt = camera.At();
-        m_sceneCB->cameraUp = camera.Up();
-        m_sceneCB->cameraRight = XMVector3Normalize(XMVector3Cross(camera.Up(), camera.At() - camera.Eye()));
-    }
+        m_CB->projectionToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj);
+        m_CB->Znear = camera.ZMin;
+        m_CB->Zfar = camera.ZMax;
 }
 
-void Pathtracer::SetLight(const XMVECTOR& position, const XMFLOAT3& color)
+void Pathtracer::SetLight(const XMFLOAT3& position, const XMFLOAT3& color)
 {
-    m_sceneCB->lightPosition = position;
-    m_sceneCB->lightColor = color;
+    m_CB->lightPosition = position;
+    m_CB->lightColor = color;
 }
 
+void Pathtracer::SetLight(const XMFLOAT3& position)
+{
+    m_CB->lightPosition = position;
+}
 
 GpuResource(&Pathtracer::GBufferResources(bool retrieveLowResResources))[GBufferResource::Count]
 { 
@@ -686,11 +679,10 @@ void Pathtracer::OnUpdate()
 
 
     // ToDo move
-    m_sceneCB->maxRadianceRayRecursionDepth = Args::MaxRadianceRayRecursionDepth;
-    m_sceneCB->maxShadowRayRecursionDepth = Args::MaxShadowRayRecursionDepth;
-    m_sceneCB->useShadowMap = Args::UseShadowMap;
-    m_sceneCB->RTAO_UseNormalMaps = Args::RTAOUseNormalMaps;
-    m_sceneCB->defaultAmbientIntensity = Args::DefaultAmbientIntensity;
+    m_CB->maxRadianceRayRecursionDepth = Args::MaxRadianceRayRecursionDepth;
+    m_CB->maxShadowRayRecursionDepth = Args::MaxShadowRayRecursionDepth;
+    m_CB->useNormalMaps = Args::RTAOUseNormalMaps;
+    m_CB->defaultAmbientIntensity = Args::DefaultAmbientIntensity;
 }
 
 void Pathtracer::OnRender(
@@ -710,26 +702,25 @@ void Pathtracer::OnRender(
 
     m_normalDepthCurrentFrameResourceIndex = (m_normalDepthCurrentFrameResourceIndex + 1) % 2;
 #if USE_NORMALIZED_Z
-    m_sceneCB->Znear = Args::PathTracing_Znear;
-    m_sceneCB->Zfar = Args::PathTracing_Zfar;
+    m_CB->Znear = Args::PathTracing_Znear;
+    m_CB->Zfar = Args::PathTracing_Zfar;
 #endif
-    m_sceneCB->useDiffuseFromMaterial = Args::CompositionMode == CompositionType::Diffuse;
-    m_sceneCB->doShading = Args::CompositionMode == CompositionType::PhongLighting;
+    m_CB->useDiffuseFromMaterial = Sample::Args::CompositionMode == CompositionType::Diffuse;
 #if CAMERA_JITTER
 
 #if 1
     uniform_real_distribution<float> jitterDistribution(-0.5f, 0.5f);
-    m_sceneCB->cameraJitter = XMFLOAT2(jitterDistribution(m_generatorURNG), jitterDistribution(m_generatorURNG));
+    m_CB->cameraJitter = XMFLOAT2(jitterDistribution(m_generatorURNG), jitterDistribution(m_generatorURNG));
 #else
     // ToDo remove?
     static UINT seed = 0;
     static UINT counter = 0;
     switch (counter++ % 4)
     {
-    case 0: m_sceneCB->cameraJitter = XMFLOAT2(-0.25f, -0.25f); break;
-    case 1: m_sceneCB->cameraJitter = XMFLOAT2(0.25f, -0.25f); break;
-    case 2: m_sceneCB->cameraJitter = XMFLOAT2(-0.25f, 0.25f); break;
-    case 3: m_sceneCB->cameraJitter = XMFLOAT2(0.25f, 0.25f); break;
+    case 0: m_CB->cameraJitter = XMFLOAT2(-0.25f, -0.25f); break;
+    case 1: m_CB->cameraJitter = XMFLOAT2(0.25f, -0.25f); break;
+    case 2: m_CB->cameraJitter = XMFLOAT2(-0.25f, 0.25f); break;
+    case 3: m_CB->cameraJitter = XMFLOAT2(0.25f, 0.25f); break;
     };
 #endif
 #endif
@@ -739,23 +730,21 @@ void Pathtracer::OnRender(
     // ToDo should we use cameraAtPosition0 too and offset the world space pos vector in the shader?
     XMMATRIX prevView, prevProj;
     m_prevFrameCamera.GetViewProj(&prevView, &prevProj, m_GBufferWidth, m_GBufferHeight);
-    m_sceneCB->prevViewProj = prevView * prevProj;
-    m_sceneCB->prevCameraPosition = m_prevFrameCamera.Eye();
+    m_CB->prevViewProj = prevView * prevProj;
+    m_CB->prevCameraPosition = m_prevFrameCamera.Eye();
 
     // ToDo cleanup
     XMMATRIX prevView0 = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(m_prevFrameCamera.At() - m_prevFrameCamera.Eye(), 1), m_prevFrameCamera.Up());
     XMMATRIX viewProj0 = prevView0 * prevProj;
-    m_sceneCB->prevProjToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj0);
+    m_CB->prevProjToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj0);
 
-
-    m_sceneCB->raytracingDim = XMUINT2(m_raytracingWidth, m_raytracingHeight);
     commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
     commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
 
     // Copy dynamic buffers to GPU.
     {
         // ToDo copy on change
-        m_sceneCB.CopyStagingToGpu(frameIndex);
+        m_CB.CopyStagingToGpu(frameIndex);
     }
 
     // ToDo move this/part(AO,..) of transitions out?
@@ -779,7 +768,7 @@ void Pathtracer::OnRender(
 
     // Bind inputs.
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, Sample::g_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
-    commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_sceneCB.GpuVirtualAddress(frameIndex));
+    commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_CB.GpuVirtualAddress(frameIndex));
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, m_environmentMap.gpuDescriptorHandle);
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::PrevFrameBottomLevelASIstanceTransforms, m_prevFrameBottomLevelASInstanceTransforms.GpuVirtualAddress(frameIndex));
@@ -845,7 +834,7 @@ void Pathtracer::OnRender(
         resourceStateTracker->TransitionResource(&g_GBufferResources[GBufferResource::PartialDepthDerivatives], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
 #endif
-    if (Args::QuarterResAO)
+    if (RTAO::Args::QuarterResAO)
     {
         DownsampleGBuffer();
     }

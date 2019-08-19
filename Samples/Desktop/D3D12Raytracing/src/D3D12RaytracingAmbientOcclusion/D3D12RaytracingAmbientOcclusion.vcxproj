@@ -259,6 +259,7 @@
     </PreLinkEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Denoiser\Denoiser.h" />
     <ClInclude Include="DirectXRaytracingHelper.h" />
     <ClInclude Include="Pathtracer\Pathtracer.h" />
     <ClInclude Include="RaytracingAccelerationStructure.h" />
@@ -268,6 +269,7 @@
     <ClInclude Include="D3D12RaytracingAmbientOcclusion.h" />
     <ClInclude Include="RTAO\RTAO.h" />
     <ClInclude Include="Sampler.h" />
+    <ClInclude Include="Scene.h" />
     <ClInclude Include="SceneParameters.h" />
     <ClInclude Include="SSAO\GeneralHelper.h" />
     <ClInclude Include="SSAO\GlobalSharedHlslCompat.h" />
@@ -302,6 +304,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="D3D12RaytracingAmbientOcclusion.cpp" />
+    <ClCompile Include="Denoiser\Denoiser.cpp" />
     <ClCompile Include="DirectXRaytracingHelper.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Pathtracer\Pathtracer.cpp" />
@@ -309,6 +312,7 @@
     <ClCompile Include="RaytracingSceneDefines.cpp" />
     <ClCompile Include="RTAO\RTAO.cpp" />
     <ClCompile Include="Sampler.cpp" />
+    <ClCompile Include="Scene.cpp" />
     <ClCompile Include="SSAO\Menus.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>

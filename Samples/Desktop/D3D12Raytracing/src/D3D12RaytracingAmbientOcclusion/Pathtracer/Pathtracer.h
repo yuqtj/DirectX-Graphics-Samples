@@ -18,10 +18,16 @@
 #include "PerformanceTimers.h"
 #include "Sampler.h"
 #include "GpuKernels.h"
+#include "EngineTuning.h"
 
 
-namespace Pathracer
+namespace Pathtracer
 {
+    namespace Args
+    {
+        extern NumVar DefaultAmbientIntensity;
+    }
+
     extern GpuResource g_GBufferResources[GBufferResource::Count];
     extern GpuResource g_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
 
@@ -38,7 +44,8 @@ namespace Pathracer
         void ReleaseDeviceDependentResources();
         void ReleaseWindowSizeDependentResources() {}; // ToDo
         void SetCamera(const GameCore::Camera& camera);
-        void SetLight(const XMVECTOR& position, const XMFLOAT3& color);
+        void SetLight(const XMFLOAT3& position, const XMFLOAT3& color);
+        void SetLight(const XMFLOAT3& position);
 
         // Getters & Setters.
         GpuResource(&GBufferResources(bool retrieveLowResResources = false))[GBufferResource::Count];
@@ -92,9 +99,9 @@ namespace Pathracer
         ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature[LocalRootSignature::Type::Count];
 
         // Raytracing resources.
-        GpuResource m_prevFrameGBufferNormalDepth;
+        ConstantBuffer<PathtracerConstantBuffer> m_CB;
 
-        ConstantBuffer<PathtracerConstantBuffer> m_sceneCB;
+        GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
 
         bool m_isRecreateRaytracingResourcesRequested = false;
 

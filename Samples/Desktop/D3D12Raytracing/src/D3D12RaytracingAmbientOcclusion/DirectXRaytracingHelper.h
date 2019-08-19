@@ -23,9 +23,6 @@ inline T Clamp(T value, T minValue, T maxValue)
 	return std::max(minValue, std::min(maxValue, value));
 }
 
-class D3D12RaytracingAmbientOcclusion;
-extern D3D12RaytracingAmbientOcclusion* g_pSample;
-
 // Shader record = {{Shader ID}, {RootArguments}}
 class ShaderRecord
 {

@@ -50,7 +50,7 @@ public:
     UINT64 ResourceSize() { return GetResource()->GetDesc().Width; }
 
 protected:
-    ComPtr<ID3D12Resource> m_accelerationStructure;
+    ComPtr<ID3D12Resource> g_accelerationStructure;
     ComPtr<ID3D12Resource> m_compactedAccelerationStructure;
     ComPtr<ID3D12Resource> m_compactionQueryDesc;
     ComPtr<ID3D12Resource> m_compactionQueryReadBack;

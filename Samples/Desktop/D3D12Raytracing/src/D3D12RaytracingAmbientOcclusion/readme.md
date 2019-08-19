@@ -45,7 +45,7 @@ The title bar of the sample provides runtime information:
 See the sideloaded License.txt next to each asset for further license information.
 
 
-# Pathracer
+# Pathtracer
 
 
 # Raytraced Ambient Occlusion (RTAO)

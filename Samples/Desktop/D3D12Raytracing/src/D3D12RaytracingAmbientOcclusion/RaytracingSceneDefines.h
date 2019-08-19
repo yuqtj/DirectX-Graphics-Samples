@@ -90,8 +90,6 @@ namespace CSRootSignature = ComputeShader::RootSignature;
 namespace RayGenShaderType {
     enum Enum {
         GBuffer = 0,
-        Visibility,
-        ShadowMap,
         Count
     };
 }

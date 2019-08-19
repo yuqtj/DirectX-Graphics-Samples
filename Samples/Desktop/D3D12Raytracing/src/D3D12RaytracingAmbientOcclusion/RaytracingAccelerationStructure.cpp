@@ -27,7 +27,7 @@ AccelerationStructure::AccelerationStructure() :
 void AccelerationStructure::ReleaseD3DResources()
 {
     // ToDo
-	m_accelerationStructure.Reset();
+	g_accelerationStructure.Reset();
 }
 
 ID3D12Resource* AccelerationStructure::GetResource()
@@ -38,7 +38,7 @@ ID3D12Resource* AccelerationStructure::GetResource()
     }
     else
     {
-        return m_accelerationStructure.Get();
+        return g_accelerationStructure.Get();
     }
 }
 
@@ -53,7 +53,7 @@ void AccelerationStructure::AllocateResource(ID3D12Device5* device)
 	//  - from the app point of view, synchronization of writes/reads to acceleration structures is accomplished using UAV barriers.
     // Buffer resources must have 64KB alignment which satisfies the AS resource requirement to have alignment of 256 (D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT).
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-	AllocateUAVBuffer(device, m_prebuildInfo.ResultDataMaxSizeInBytes, &m_accelerationStructure, initialResourceState, m_name.c_str());
+	AllocateUAVBuffer(device, m_prebuildInfo.ResultDataMaxSizeInBytes, &g_accelerationStructure, initialResourceState, m_name.c_str());
 
     // ToDo create the compacted AS once we know the compacted size. This will require to update the TLAS's instance descs with compacted resource GPU virtual address.
     // Create the resource for compacted AS.
@@ -183,13 +183,13 @@ void BottomLevelAccelerationStructure::Build(
 		if (m_isBuilt && m_allowUpdate && m_updateOnBuild)
 		{
             bottomLevelInputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
-            bottomLevelBuildDesc.SourceAccelerationStructureData = m_accelerationStructure->GetGPUVirtualAddress();
+            bottomLevelBuildDesc.SourceAccelerationStructureData = g_accelerationStructure->GetGPUVirtualAddress();
 		}
         bottomLevelInputs.NumDescs = static_cast<UINT>(m_cacheGeometryDescs[currentID].size());
         bottomLevelInputs.pGeometryDescs = m_cacheGeometryDescs[currentID].data();
 
 		bottomLevelBuildDesc.ScratchAccelerationStructureData = scratch->GetGPUVirtualAddress();
-		bottomLevelBuildDesc.DestAccelerationStructureData = m_accelerationStructure->GetGPUVirtualAddress();
+		bottomLevelBuildDesc.DestAccelerationStructureData = g_accelerationStructure->GetGPUVirtualAddress();
 	}
 
 	commandList->SetDescriptorHeaps(1, &descriptorHeap);
@@ -205,7 +205,7 @@ void BottomLevelAccelerationStructure::Build(
 
         // Copy the compaction desc result to the readback buffer.      
         D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::UAV(m_accelerationStructure.Get()),
+            CD3DX12_RESOURCE_BARRIER::UAV(g_accelerationStructure.Get()),
             CD3DX12_RESOURCE_BARRIER::Transition(m_compactionQueryDesc.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
         };
         commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
@@ -263,7 +263,7 @@ void BottomLevelAccelerationStructure::PostBuild(
         //AllocateUAVBuffer(device, compactedSizeDesc.CompactedSizeInBytes, &m_compactedAccelerationStructure, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, resourceName.c_str());
 #endif
         // Compact the AS.
-        commandList->CopyRaytracingAccelerationStructure(m_compactedAccelerationStructure->GetGPUVirtualAddress(), m_accelerationStructure->GetGPUVirtualAddress(), D3D12_RAYTRACING_ACCELERATION_STRUCTURE_COPY_MODE_COMPACT);
+        commandList->CopyRaytracingAccelerationStructure(m_compactedAccelerationStructure->GetGPUVirtualAddress(), g_accelerationStructure->GetGPUVirtualAddress(), D3D12_RAYTRACING_ACCELERATION_STRUCTURE_COPY_MODE_COMPACT);
 
         // ToDo remove the UAV barrier.
         commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(m_compactedAccelerationStructure.Get()));
@@ -327,7 +327,7 @@ void TopLevelAccelerationStructure::Build(ID3D12GraphicsCommandList4* commandLis
         topLevelInputs.NumDescs = numBottomLevelASInstanceDescs;
 
         topLevelBuildDesc.ScratchAccelerationStructureData = scratch->GetGPUVirtualAddress();
-        topLevelBuildDesc.DestAccelerationStructureData = m_accelerationStructure->GetGPUVirtualAddress();
+        topLevelBuildDesc.DestAccelerationStructureData = g_accelerationStructure->GetGPUVirtualAddress();
     }
     topLevelInputs.InstanceDescs = bottomLevelASnstanceDescs;
 

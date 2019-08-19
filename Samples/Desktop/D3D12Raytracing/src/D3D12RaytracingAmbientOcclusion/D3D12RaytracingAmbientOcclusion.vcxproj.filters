@@ -70,6 +70,9 @@
     <Filter Include="Assets\Shaders\Pathtracer">
       <UniqueIdentifier>{737496f1-4345-4088-ba6d-023e35584733}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Scene">
+      <UniqueIdentifier>{4aecb4d5-56c6-41dd-93cc-1ce654ddd752}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -195,6 +198,12 @@
     <ClInclude Include="Pathtracer\Pathtracer.h">
       <Filter>Source Files\Pathtracer</Filter>
     </ClInclude>
+    <ClInclude Include="Denoiser\Denoiser.h">
+      <Filter>Source Files\Denoiser</Filter>
+    </ClInclude>
+    <ClInclude Include="Scene.h">
+      <Filter>Source Files\Scene</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -280,6 +289,12 @@
     </ClCompile>
     <ClCompile Include="Pathtracer\Pathtracer.cpp">
       <Filter>Source Files\Pathtracer</Filter>
+    </ClCompile>
+    <ClCompile Include="Denoiser\Denoiser.cpp">
+      <Filter>Source Files\Denoiser</Filter>
+    </ClCompile>
+    <ClCompile Include="Scene.cpp">
+      <Filter>Source Files\Scene</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

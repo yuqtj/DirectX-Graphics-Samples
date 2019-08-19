@@ -28,14 +28,19 @@
 #include "SceneParameters.h"
 #include "RTAO\RTAO.h"
 #include "Pathtracer\Pathtracer.h"
+#include "Scene.h"
+#include "EngineTuning.h"
 
 
 namespace Sample
 {
+    namespace Args
+    {
+        extern EnumVar CompositionMode;
+    }
+
+    class D3D12RaytracingAmbientOcclusion;
     extern D3D12RaytracingAmbientOcclusion* g_pSample;
-    extern std::map<std::wstring, BottomLevelAccelerationStructureGeometry>	g_bottomLevelASGeometries;
-    extern std::unique_ptr<RaytracingAccelerationStructureManager> g_accelerationStructure;
-    extern GpuResource g_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
 
     class D3D12RaytracingAmbientOcclusion : public DXSample
     {
@@ -130,10 +135,8 @@ namespace Sample
 
         GpuKernels::WriteValueToTexture     m_writeValueToTexture;
         GpuKernels::GenerateGrassPatch      m_grassGeometryGenerator;
+        GpuResource m_prevFrameGBufferNormalDepth;
 
-
-        D3D12_GPU_DESCRIPTOR_HANDLE m_nullVertexBufferGPUhandle;
-        GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
 
         UINT                                m_animatedCarInstanceIndex;
         UINT                                m_grassInstanceIndices[NumGrassPatchesX * NumGrassPatchesZ];
@@ -196,8 +199,9 @@ namespace Sample
 
         GpuResource m_debugOutput[2];
 
-        Pathtracer m_pathtracer;
-        RTAO m_RTAO;
+        Pathtracer::Pathtracer m_pathtracer;
+        RTAO::RTAO m_RTAO;
+        Scene::Scene m_scene;
 
         // Raytracing output
         // ToDo use the struct
@@ -275,32 +279,14 @@ namespace Sample
 
         // Render passes
         void RenderPass_GenerateGBuffers();
-        void RenderPass_CalculateVisibility();
         void RenderPass_CalculateAmbientOcclusion();
         void RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV);
-        void RenderPass_TemporalSupersamplingReverseProjection();
-        void RenderPass_TemporalSupersamplingBlendWithCurrentFrame();
 
         // ToDo cleanup
         // Utility functions
-        void GenerateGrassGeometry();
         void CreateComposeRenderPassesCSResources();
-        void CreateAoBlurCSResources();
         void ParseCommandLineArgs(WCHAR* argv[], int argc);
         void RecreateD3D();
-        void LoadSquidRoom();
-        void CreateIndexAndVertexBuffers(const GeometryDescriptor& desc, D3DGeometry* geometry);
-        void LoadPBRTScene();
-        void LoadSceneGeometry();
-        void UpdateCameraMatrices();
-        void UpdateBottomLevelASTransforms();
-        void UpdateSphereGeometryTransforms();
-        void UpdateGridGeometryTransforms();
-        void InitializeScene();
-        void UpdateAccelerationStructure();
-        void ApplyAtrousWaveletTransformFilter(bool isFirstPass);
-        void ApplyAtrousWaveletTransformFilter(const  GpuResource& inValueResource, const  GpuResource& inNormalDepthResource, const  GpuResource& inDepthResource, const  GpuResource& inRayHitDistanceResource, const  GpuResource& inPartialDistanceDerivativesResource, GpuResource* outSmoothedValueResource, GpuResource* varianceResource, GpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
-        void ApplyMultiScaleAtrousWaveletTransformFilter(bool filterFirstLevel);
         void DownsampleRaytracingOutput();
 
         void UpsampleResourcesForRenderComposePass();
@@ -324,21 +310,12 @@ namespace Sample
         void ReleaseWindowSizeDependentResources();
         void RenderRNGVisualizations();
         void CreateSamplesRNGVisualization();
-        void CreateRaytracingPipelineStateObject();
         void CreateDescriptorHeaps();
         void CreateRaytracingOutputResource();
         void CreateGBufferResources();
         void CreateAuxilaryDeviceResources();
-        void InitializeGrassGeometry();
-        void InitializeGeometry();
-        void BuildPlaneGeometry();
-        void BuildTesselatedGeometry();
-        void GenerateBottomLevelASInstanceTransforms();
-        void InitializeAllBottomLevelAccelerationStructures();
-        void InitializeAccelerationStructures();
         void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
         void CalculateFrameStats();
-        void MultiPassBlur();
         void WriteProfilingResultsToFile();
         //float NumCameraRaysPerSecondNumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimeManager.GetAverageMS(GpuTimers::Raytracing_GBuffer), m_raytracingWidth, m_raytracingHeight); }
     };
