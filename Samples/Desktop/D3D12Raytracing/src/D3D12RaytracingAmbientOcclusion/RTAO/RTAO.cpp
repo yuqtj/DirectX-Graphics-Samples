@@ -55,7 +55,7 @@ namespace RTAO
     {
         global_pRTAO->RequestRecreateAOSamples();
     }
-
+       
     namespace Args
     {
 
@@ -114,6 +114,21 @@ namespace RTAO
 
     }
 
+
+
+    DXGI_FORMAT AOCoefficientFormat()
+    {
+        return TextureResourceFormatR::ToDXGIFormat(Args::RTAO_AmbientCoefficientResourceFormat);
+    }
+
+    float MaxRayHitTime()
+    {
+        return Args::RTAOMaxRayHitTime;
+    }
+    void SetMaxRayHitTime(float maxRayHitTime)
+    {
+        return Args::RTAOMaxRayHitTime.SetValue(maxRayHitTime);
+    }
 
 
     RTAO::RTAO()
@@ -537,7 +552,7 @@ namespace RTAO
             auto commandList = m_deviceResources->GetCommandList();
 
         GpuResource* m_AOResources = Args::QuarterResAO ? m_AOLowResResources : m_AOResources;
-        GpuResource* GBufferResources = Args::QuarterResAO ? g_GBufferLowResResources : g_GBufferResources;
+        GpuResource* GBufferResources = Args::QuarterResAO ? g_GBufferQuarterResResources : g_GBufferResources;
         GpuResource& NormalDeptLowPrecisionResource = Args::QuarterResAO ?
             m_normalDepthLowResLowPrecision[m_normalDepthCurrentFrameResourceIndex]
             : m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
@@ -590,21 +605,6 @@ namespace RTAO
         }
 #endif
     }
-
-    DXGI_FORMAT RTAO::GetAOCoefficientFormat()
-    {
-        return TextureResourceFormatR::ToDXGIFormat(Args::RTAO_AmbientCoefficientResourceFormat);
-    }
-
-    float RTAO::GetMaxRayHitTime()
-    {
-        return Args::RTAOMaxRayHitTime;
-    }
-    void RTAO::SetMaxRayHitTime(float maxRayHitTime)
-    {
-        return Args::RTAOMaxRayHitTime.SetValue(maxRayHitTime);
-    }
-
 
     float RTAO::GetSpp()
     {

@@ -28,6 +28,8 @@
 #include "SceneParameters.h"
 #include "RTAO\RTAO.h"
 #include "Pathtracer\Pathtracer.h"
+#include "Denoiser\Denoiser.h"
+#include "Composition.h"
 #include "Scene.h"
 #include "EngineTuning.h"
 
@@ -41,6 +43,9 @@ namespace Sample
 
     class D3D12RaytracingAmbientOcclusion;
     extern D3D12RaytracingAmbientOcclusion* g_pSample;
+    static const UINT FrameCount = 3;
+
+    GpuResource g_debugOutput[2];
 
     class D3D12RaytracingAmbientOcclusion : public DXSample
     {
@@ -66,7 +71,6 @@ namespace Sample
         void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
         void RequestSceneInitialization() { m_isSceneInitializationRequested = true; }
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
-        GpuResource* GetDebugResources() { return m_debugOutput; }
 
 
         static const UINT NumGrassPatchesX = 30;
@@ -74,7 +78,6 @@ namespace Sample
         static const UINT MaxBLAS = 10 + NumGrassPatchesX * NumGrassPatchesZ;   // ToDo enumerate all instances in the comment
 
     private:
-        static const UINT FrameCount = 3;
 
         // ToDo change ID3D12Resourcs with views to GpuResource
 
@@ -96,30 +99,18 @@ namespace Sample
 
 
         ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
-        ConstantBuffer<AoBlurConstantBuffer> m_csAoBlurCB;
-        ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
+        
         // ToDo cleanup - ReduceSum objects are in m_reduceSumKernel.
         ComPtr<ID3D12PipelineState>         m_computePSOs[ComputeShader::Type::Count];
         ComPtr<ID3D12RootSignature>         m_computeRootSigs[ComputeShader::Type::Count];
 
         GpuKernels::ReduceSum				m_reduceSumKernel;
 
-        GpuKernels::AtrousWaveletTransformCrossBilateralFilter m_atrousWaveletTransformFilter;
-        const UINT                          MaxAtrousWaveletTransformFilterInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for calculating ImportanceMap
-
-        GpuKernels::CalculateVariance       m_calculateVarianceKernel;
-        GpuKernels::CalculateMeanVariance   m_calculateMeanVarianceKernel;
-        const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame =
-            MaxAtrousWaveletTransformFilterInvocationsPerFrame
-            + 1; // Temporal Super-Sampling.
-
         GpuKernels::FillInCheckerboard      m_fillInCheckerboardKernel;
         GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
         const UINT                          MaxGaussianSmoothingKernelInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for TAO 
 
         // ToDo combine kernels to an array
-        GpuKernels::RTAO_TemporalSupersampling_ReverseReproject m_temporalCacheReverseReprojectKernel;
-        GpuKernels::RTAO_TemporalSupersampling_BlendWithCurrentFrame m_temporalCacheBlendWithCurrentFrameKernel;
         GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
         GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
         GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
@@ -135,7 +126,6 @@ namespace Sample
 
         GpuKernels::WriteValueToTexture     m_writeValueToTexture;
         GpuKernels::GenerateGrassPatch      m_grassGeometryGenerator;
-        GpuResource m_prevFrameGBufferNormalDepth;
 
 
         UINT                                m_animatedCarInstanceIndex;
@@ -196,11 +186,10 @@ namespace Sample
 
         StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
 
-
-        GpuResource m_debugOutput[2];
-
         Pathtracer::Pathtracer m_pathtracer;
         RTAO::RTAO m_RTAO;
+        Denoiser::Denoiser m_denoiser;
+        Composition::Composition m_composition;
         Scene::Scene m_scene;
 
         // Raytracing output
@@ -208,34 +197,9 @@ namespace Sample
         GpuResource m_raytracingOutput;
         GpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
 
-        GpuResource m_multiPassDenoisingBlurStrength;
 
         GpuResource m_AOResources[AOResource::Count];
 
-
-        GpuResource m_TSSAOCoefficient[2];    // ToDo why is this not part of m_temporalCache?
-        GpuResource m_lowResTSSAOCoefficient[2];
-        GpuResource m_temporalSupersampling_blendedAOCoefficient[2];
-        GpuResource m_VisibilityResource;
-        GpuResource m_cachedFrameAgeValueSquaredValueRayHitDistance;
-
-        XMUINT2 c_shadowMapDim = XMUINT2(1024, 1024);
-        GpuResource m_ShadowMapResource;
-        bool m_updateShadowMap = true;
-
-        // ToDo dedupe resources. Does dpeth need to have 2 instances?   
-        GpuResource m_temporalCache[2][TemporalSupersampling::Count]; // ~array[Read/Write ping pong resource][Resources].
-
-        // ToDo use a common ping-pong index? 
-        // ToDo cleanup readId should be for input to TAO, confusing.
-        UINT          m_temporalCacheCurrentFrameResourceIndex = 0;
-        UINT          m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex = 0;
-        UINT          m_normalDepthCurrentFrameResourceIndex = 0;
-
-        GpuResource m_varianceResource[AOVarianceResource::Count];
-        GpuResource m_lowResVarianceResource[AOVarianceResource::Count];
-        GpuResource m_localMeanVarianceResource[AOVarianceResource::Count];
-        GpuResource m_lowResLocalMeanVarianceResource[AOVarianceResource::Count];
 
         // Multi-scale
         // ToDo Cleanup

@@ -34,6 +34,8 @@ void GpuResourceStateTracker::TransitionResource(GpuResource* Resource, D3D12_RE
         BarrierDesc.Transition.StateBefore = OldState;
         BarrierDesc.Transition.StateAfter = NewState;
 
+        // ToDo add a UAV on SRV<->UAV transitions and remove transitions after use.
+
         // Check to see if we already started the transition
         if (NewState == Resource->m_TransitioningState)
         {

@@ -1,9 +1,13 @@
-//--------------------------------------------------------------------------------------
-// D3D12RaytracingAO.h
+//*********************************************************
 //
-// Advanced Technology Group (ATG)
-// Copyright (C) Microsoft Corporation. All rights reserved.
-//--------------------------------------------------------------------------------------
+// Copyright (c) Microsoft. All rights reserved.
+// This code is licensed under the MIT License (MIT).
+// THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF
+// ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY
+// IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR
+// PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
+//
+//*********************************************************
 
 #pragma once
 
@@ -127,154 +131,158 @@ namespace SSAODSVDesc
     };
 }
 
-class SSAO : public Lighting
+namespace SSAO
 {
-public:
-    SSAO();
 
-    void Setup(std::shared_ptr<DX::DeviceResources> pDeviceResources);
-    void Run(ComPtr<ID3D12Resource> pSceneConstantResource);
-#if SSAO_DISABLED_CODE
-    void SetMesh(std::shared_ptr<Mesh> pMesh);
-#endif
-    void OnSizeChanged(UINT width, UINT height);
-#if SSAO_DISABLED_CODE
-    void OnOptionUpdate(std::shared_ptr<Menus> pMenu);
-#endif
-    void OnCameraChanged(XMMATRIX& projection);
-    void OnCameraChanged(XMMATRIX& world, XMMATRIX& view, XMMATRIX& projection);
-
-    void SetParameters(float noiseFilterTolerance, float blurTolerance, float upsampleTolerance, float normalMultiply);
-    void BindGBufferResources(ID3D12Resource* normal, ID3D12Resource* depth);
-    ID3D12Resource* GetSSAOOutputResource() { return m_ssaoResources.Get(); }
-
-private:
-    void BindResources();
-    void CreateDescriptorHeaps();
-    void CreateResources();
-    void CreateRootSignatures();
-    void SetupPipelines();
-    void BindSRVGraphics(D3D12_GPU_DESCRIPTOR_HANDLE* srvs, unsigned int count);
-    void BindUAVGraphics(D3D12_GPU_DESCRIPTOR_HANDLE* uavs, unsigned int count);
-    void BindSRVCompute(D3D12_GPU_DESCRIPTOR_HANDLE* srvs, unsigned int count);
-    void BindUAVCompute(D3D12_GPU_DESCRIPTOR_HANDLE* uavs, unsigned int count);
-    void UpdateSSAOConstant(
-        void* pConstData,
-        const unsigned int width,
-        const unsigned int height,
-        const unsigned int depth,
-        const float tanHalfFovH);
-    void DispatchSSAO(
-        D3D12_GPU_VIRTUAL_ADDRESS pConstantBuffer,
-        D3D12_GPU_DESCRIPTOR_HANDLE pDestination,
-        D3D12_GPU_DESCRIPTOR_HANDLE pDepthBuffer,
-        D3D12_GPU_DESCRIPTOR_HANDLE pNormalBuffer,
-        const unsigned int width,
-        const unsigned int height,
-        const unsigned int depth);
-    void UpdateBlurAndUpsampleConstant(
-        void* pConstData,
-        const unsigned int lowWidth,
-        const unsigned int lowHeight,
-        const unsigned int highWidth,
-        const unsigned int highHeight);
-    void DispatchBlurAndUpsample(
-        D3D12_GPU_VIRTUAL_ADDRESS pConstantBuffer,
-        D3D12_GPU_DESCRIPTOR_HANDLE pDestination,
-        D3D12_GPU_DESCRIPTOR_HANDLE pLowResDepthBuffer,
-        D3D12_GPU_DESCRIPTOR_HANDLE pHighResDepthBuffer,
-        D3D12_GPU_DESCRIPTOR_HANDLE pinterleavedBuffer,
-        D3D12_GPU_DESCRIPTOR_HANDLE pHighResBuffer,
-        D3D12_GPU_DESCRIPTOR_HANDLE pHighQualityBuffer,
-        const unsigned int highWidth,
-        const unsigned int highHeight);
-    void UpdateConstants();
-
-    // Heaps.
-    std::unique_ptr<DirectX::DescriptorHeap> m_csuDescriptors;
-    std::unique_ptr<DirectX::DescriptorHeap> m_samplerDescriptors;
-    std::unique_ptr<DirectX::DescriptorHeap> m_rtvDescriptors;
-    std::unique_ptr<DirectX::DescriptorHeap> m_dsvDescriptors;
-
-#if SSAO_DISABLED_CODE
-    // Mesh.
-    std::shared_ptr<Mesh> m_mesh;
-#endif
-
-    // Input/Output dimensions.
-    UINT m_width = 0;
-    UINT m_height = 0;
-
-    // Root signature.
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-
-    // Pipeline states.
-    ComPtr<ID3D12PipelineState> m_gBufferResourcePipelineState;
-    ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePipelineState;
-    ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePreMinPipelineState;
-    ComPtr<ID3D12PipelineState> m_SSAOBlurUpsampleBlendOutPipelineState;
-    ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePreMinBlendOutPipelineState;
-    ComPtr<ID3D12PipelineState> m_SSAOGBufferRenderPipelineState;
-    ComPtr<ID3D12PipelineState> m_SSAOPrepareDepthBuffers1PipelineState;
-    ComPtr<ID3D12PipelineState> m_SSAOPrepareDepthBuffers2PipelineState;
-    ComPtr<ID3D12PipelineState> m_SSAOPRender1PipelineState;
-    ComPtr<ID3D12PipelineState> m_SSAOPRender2PipelineState;
-
-    // Resources.
-    ComPtr<ID3D12Resource> m_depthDownsizeResource[NUM_BUFFERS];
-    ComPtr<ID3D12Resource> m_depthTiledResource[NUM_BUFFERS];
-    ComPtr<ID3D12Resource> m_normalDownsizeResource[NUM_BUFFERS];
-    ComPtr<ID3D12Resource> m_normalTiledResource[NUM_BUFFERS];
-    ComPtr<ID3D12Resource> m_mergedResource[NUM_BUFFERS];
-    ComPtr<ID3D12Resource> m_smoothResource[NUM_BUFFERS - 1];
-    ComPtr<ID3D12Resource> m_highQualityResource[NUM_BUFFERS];
-    ComPtr<ID3D12Resource> m_linearDepthResource;
-    ComPtr<ID3D12Resource> m_gBufferResource;
-    ComPtr<ID3D12Resource> m_dBufferResource;
-    ComPtr<ID3D12Resource> m_samplerResources[2];
-    ComPtr<ID3D12Resource> m_ssaoResources;
-    ComPtr<ID3D12Resource> m_outFrameResources;
-
-    // Constant Buffers.
-    union AlignedMaterialConstantBuffer
+    class SSAO : public Lighting
     {
-        SSAOMaterialConstantBuffer constants;
-        uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(SSAOMaterialConstantBuffer))];
+    public:
+        SSAO();
+
+        void Setup(std::shared_ptr<DX::DeviceResources> pDeviceResources);
+        void Run(ComPtr<ID3D12Resource> pSceneConstantResource);
+#if SSAO_DISABLED_CODE
+        void SetMesh(std::shared_ptr<Mesh> pMesh);
+#endif
+        void OnSizeChanged(UINT width, UINT height);
+#if SSAO_DISABLED_CODE
+        void OnOptionUpdate(std::shared_ptr<Menus> pMenu);
+#endif
+        void OnCameraChanged(XMMATRIX& projection);
+        void OnCameraChanged(XMMATRIX& world, XMMATRIX& view, XMMATRIX& projection);
+
+        void SetParameters(float noiseFilterTolerance, float blurTolerance, float upsampleTolerance, float normalMultiply);
+        void BindGBufferResources(ID3D12Resource* normal, ID3D12Resource* depth);
+        ID3D12Resource* GetSSAOOutputResource() { return m_ssaoResources.Get(); }
+
+    private:
+        void BindResources();
+        void CreateDescriptorHeaps();
+        void CreateResources();
+        void CreateRootSignatures();
+        void SetupPipelines();
+        void BindSRVGraphics(D3D12_GPU_DESCRIPTOR_HANDLE* srvs, unsigned int count);
+        void BindUAVGraphics(D3D12_GPU_DESCRIPTOR_HANDLE* uavs, unsigned int count);
+        void BindSRVCompute(D3D12_GPU_DESCRIPTOR_HANDLE* srvs, unsigned int count);
+        void BindUAVCompute(D3D12_GPU_DESCRIPTOR_HANDLE* uavs, unsigned int count);
+        void UpdateSSAOConstant(
+            void* pConstData,
+            const unsigned int width,
+            const unsigned int height,
+            const unsigned int depth,
+            const float tanHalfFovH);
+        void DispatchSSAO(
+            D3D12_GPU_VIRTUAL_ADDRESS pConstantBuffer,
+            D3D12_GPU_DESCRIPTOR_HANDLE pDestination,
+            D3D12_GPU_DESCRIPTOR_HANDLE pDepthBuffer,
+            D3D12_GPU_DESCRIPTOR_HANDLE pNormalBuffer,
+            const unsigned int width,
+            const unsigned int height,
+            const unsigned int depth);
+        void UpdateBlurAndUpsampleConstant(
+            void* pConstData,
+            const unsigned int lowWidth,
+            const unsigned int lowHeight,
+            const unsigned int highWidth,
+            const unsigned int highHeight);
+        void DispatchBlurAndUpsample(
+            D3D12_GPU_VIRTUAL_ADDRESS pConstantBuffer,
+            D3D12_GPU_DESCRIPTOR_HANDLE pDestination,
+            D3D12_GPU_DESCRIPTOR_HANDLE pLowResDepthBuffer,
+            D3D12_GPU_DESCRIPTOR_HANDLE pHighResDepthBuffer,
+            D3D12_GPU_DESCRIPTOR_HANDLE pinterleavedBuffer,
+            D3D12_GPU_DESCRIPTOR_HANDLE pHighResBuffer,
+            D3D12_GPU_DESCRIPTOR_HANDLE pHighQualityBuffer,
+            const unsigned int highWidth,
+            const unsigned int highHeight);
+        void UpdateConstants();
+
+        // Heaps.
+        std::unique_ptr<DirectX::DescriptorHeap> m_csuDescriptors;
+        std::unique_ptr<DirectX::DescriptorHeap> m_samplerDescriptors;
+        std::unique_ptr<DirectX::DescriptorHeap> m_rtvDescriptors;
+        std::unique_ptr<DirectX::DescriptorHeap> m_dsvDescriptors;
+
+#if SSAO_DISABLED_CODE
+        // Mesh.
+        std::shared_ptr<Mesh> m_mesh;
+#endif
+
+        // Input/Output dimensions.
+        UINT m_width = 0;
+        UINT m_height = 0;
+
+        // Root signature.
+        ComPtr<ID3D12RootSignature> m_rootSignature;
+
+        // Pipeline states.
+        ComPtr<ID3D12PipelineState> m_gBufferResourcePipelineState;
+        ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePipelineState;
+        ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePreMinPipelineState;
+        ComPtr<ID3D12PipelineState> m_SSAOBlurUpsampleBlendOutPipelineState;
+        ComPtr<ID3D12PipelineState> m_SSAOBlurUpsamplePreMinBlendOutPipelineState;
+        ComPtr<ID3D12PipelineState> m_SSAOGBufferRenderPipelineState;
+        ComPtr<ID3D12PipelineState> m_SSAOPrepareDepthBuffers1PipelineState;
+        ComPtr<ID3D12PipelineState> m_SSAOPrepareDepthBuffers2PipelineState;
+        ComPtr<ID3D12PipelineState> m_SSAOPRender1PipelineState;
+        ComPtr<ID3D12PipelineState> m_SSAOPRender2PipelineState;
+
+        // Resources.
+        ComPtr<ID3D12Resource> m_depthDownsizeResource[NUM_BUFFERS];
+        ComPtr<ID3D12Resource> m_depthTiledResource[NUM_BUFFERS];
+        ComPtr<ID3D12Resource> m_normalDownsizeResource[NUM_BUFFERS];
+        ComPtr<ID3D12Resource> m_normalTiledResource[NUM_BUFFERS];
+        ComPtr<ID3D12Resource> m_mergedResource[NUM_BUFFERS];
+        ComPtr<ID3D12Resource> m_smoothResource[NUM_BUFFERS - 1];
+        ComPtr<ID3D12Resource> m_highQualityResource[NUM_BUFFERS];
+        ComPtr<ID3D12Resource> m_linearDepthResource;
+        ComPtr<ID3D12Resource> m_gBufferResource;
+        ComPtr<ID3D12Resource> m_dBufferResource;
+        ComPtr<ID3D12Resource> m_samplerResources[2];
+        ComPtr<ID3D12Resource> m_ssaoResources;
+        ComPtr<ID3D12Resource> m_outFrameResources;
+
+        // Constant Buffers.
+        union AlignedMaterialConstantBuffer
+        {
+            SSAOMaterialConstantBuffer constants;
+            uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(SSAOMaterialConstantBuffer))];
+        };
+        std::vector<ComPtr<ID3D12Resource>> m_materialListCB;
+
+        // Buffer sizes.
+        UINT bufferWidth[NUM_BUFFERS + 2];
+        UINT bufferHeight[NUM_BUFFERS + 2];
+
+        // Cached vars.
+        float m_sampleThickness[12];
+
+        // This is necessary to filter out pixel shimmer due to bilateral upsampling with too much lost resolution.  High
+        // frequency detail can sometimes not be reconstructed, and the noise filter fills in the missing pixels with the
+        // result of the higher resolution SSAO.
+        float m_noiseFilterTolerance = -3.f;
+        float m_blurTolerance = -5.f;
+        float m_upsampleTolerance = -7.f;
+
+        float m_normalMultiply = 1.f;
+
+        union AlignedSSAORenderConstantBuffer
+        {
+            SSAORenderConstantBuffer constants;
+            uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(SSAORenderConstantBuffer))];
+        };
+        ComPtr<ID3D12Resource> m_mappedDepthTiledSSAORenderConstantResource[NUM_BUFFERS];
+        void* m_mappedDepthTiledSSAORenderConstantData[NUM_BUFFERS];
+
+        ComPtr<ID3D12Resource> m_mappedHighQualitySSAORenderConstantResource[NUM_BUFFERS];
+        void* m_mappedHighQualitySSAORenderConstantData[NUM_BUFFERS];
+
+        union AlignedBlurAndUpscaleConstantBuffer
+        {
+            BlurAndUpscaleConstantBuffer constants;
+            uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(BlurAndUpscaleConstantBuffer))];
+        };
+        ComPtr<ID3D12Resource> m_mappedBlurAndUpscaleConstantResource[NUM_BUFFERS];
+        void* m_mappedBlurAndUpscaleConstantData[NUM_BUFFERS];
     };
-    std::vector<ComPtr<ID3D12Resource>> m_materialListCB;
-
-    // Buffer sizes.
-    UINT bufferWidth[NUM_BUFFERS + 2];
-    UINT bufferHeight[NUM_BUFFERS + 2];
-
-    // Cached vars.
-    float m_sampleThickness[12];
-
-    // This is necessary to filter out pixel shimmer due to bilateral upsampling with too much lost resolution.  High
-    // frequency detail can sometimes not be reconstructed, and the noise filter fills in the missing pixels with the
-    // result of the higher resolution SSAO.
-    float m_noiseFilterTolerance = -3.f;
-    float m_blurTolerance = -5.f;
-    float m_upsampleTolerance = -7.f;
-
-    float m_normalMultiply = 1.f;
-
-    union AlignedSSAORenderConstantBuffer
-    {
-        SSAORenderConstantBuffer constants;
-        uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(SSAORenderConstantBuffer))];
-    };
-    ComPtr<ID3D12Resource> m_mappedDepthTiledSSAORenderConstantResource[NUM_BUFFERS];
-    void* m_mappedDepthTiledSSAORenderConstantData[NUM_BUFFERS];
-
-    ComPtr<ID3D12Resource> m_mappedHighQualitySSAORenderConstantResource[NUM_BUFFERS];
-    void* m_mappedHighQualitySSAORenderConstantData[NUM_BUFFERS];
-
-    union AlignedBlurAndUpscaleConstantBuffer
-    {
-        BlurAndUpscaleConstantBuffer constants;
-        uint8_t alignmentPadding[CalculateConstantBufferByteSize(sizeof(BlurAndUpscaleConstantBuffer))];
-    };
-    ComPtr<ID3D12Resource> m_mappedBlurAndUpscaleConstantResource[NUM_BUFFERS];
-    void* m_mappedBlurAndUpscaleConstantData[NUM_BUFFERS];
-};
+}

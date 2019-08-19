@@ -21,21 +21,23 @@
 #include "EngineTuning.h"
 
 
-namespace Scene
+namespace Composition
 {
     namespace Args
     {
+        extern EnumVar AntialiasingMode;
     }
 
     extern std::map<std::wstring, BottomLevelAccelerationStructureGeometry>	g_bottomLevelASGeometries;
     extern std::unique_ptr<RaytracingAccelerationStructureManager> g_accelerationStructure;
     extern GpuResource g_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
+    extern D3D12_GPU_DESCRIPTOR_HANDLE g_nullVertexBufferGPUhandle;
 
-    class Scene
+    class Composition
     {
     public:
         // Ctors.
-        Scene();
+        Composition();
 
         // Public methods.
         void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
@@ -51,24 +53,10 @@ namespace Scene
         void CreateTextureResources();
         void CreateResolutionDependentResources();
 
-        void GenerateGrassGeometry();
-        void LoadSquidRoom();
-        void CreateIndexAndVertexBuffers(const GeometryDescriptor& desc, D3DGeometry* geometry);
-        void LoadPBRTScene();
-        void LoadSceneGeometry();
-        void UpdateCameraMatrices();
-        void UpdateGridGeometryTransforms();
-        void InitializeScene();
-        void UpdateAccelerationStructure();
-        void InitializeGrassGeometry();
-        void InitializeGeometry();
-        void BuildPlaneGeometry();
-        void BuildTesselatedGeometry();
-        void InitializeAllBottomLevelAccelerationStructures();
-        void InitializeAccelerationStructures();
-
         static UINT s_numInstances;
         std::shared_ptr<DX::DeviceResources> m_deviceResources;
         std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
+
+        ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
     };
 }

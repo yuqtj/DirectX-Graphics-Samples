@@ -29,7 +29,9 @@ namespace Pathtracer
     }
 
     extern GpuResource g_GBufferResources[GBufferResource::Count];
-    extern GpuResource g_GBufferLowResResources[GBufferResource::Count]; // ToDo remove unused
+    extern GpuResource g_GBufferQuarterResResources[GBufferResource::Count]; // ToDo remove unused
+    GpuResource(&GBufferResources(bool getQuarterResResources = false))[GBufferResource::Count];
+    GpuResource* GetGBufferResources(bool getQuarterResResources = false);
 
     class Pathtracer
     {
@@ -46,10 +48,9 @@ namespace Pathtracer
         void SetCamera(const GameCore::Camera& camera);
         void SetLight(const XMFLOAT3& position, const XMFLOAT3& color);
         void SetLight(const XMFLOAT3& position);
+        void SetResolution(UINT GBufferWidth, UINT GBufferHeight, UINT RTAOWidth, UINT RTAOHeight);
 
         // Getters & Setters.
-        GpuResource(&GBufferResources(bool retrieveLowResResources = false))[GBufferResource::Count];
-        GpuResource* GetGBufferResources(bool retrieveLowResResources = false);
 
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
     private:
@@ -69,13 +70,14 @@ namespace Pathtracer
         void CalculateRayHitCount();
         void DownsampleGBuffer();
 
-        UINT m_GBufferWidth;        // ToDo rename
-        UINT m_GBufferHeight;
-        UINT m_raytracingWidth;
-        UINT m_raytracingHeight;
-
+        static UINT s_numInstances;
         std::shared_ptr<DX::DeviceResources> m_deviceResources;
         std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
+
+        UINT m_GBufferWidth;        // ToDo rename
+        UINT m_GBufferHeight;
+        UINT m_GBufferQuarterResWidth;
+        UINT m_GBufferQuarterResHeight;
 
         // Raytracing shaders.
         static const wchar_t* c_rayGenShaderNames[RayGenShaderType::Count];
@@ -101,10 +103,11 @@ namespace Pathtracer
         // Raytracing resources.
         ConstantBuffer<PathtracerConstantBuffer> m_CB;
 
+        GpuResource m_prevFrameGBufferNormalDepth;
+        D3D12_GPU_DESCRIPTOR_HANDLE m_nullVertexBufferGPUhandle;
+
         GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
 
         bool m_isRecreateRaytracingResourcesRequested = false;
-
-        static UINT             s_numInstances;
     };
 }

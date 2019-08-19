@@ -32,10 +32,41 @@ namespace Scene
     std::map<std::wstring, BottomLevelAccelerationStructureGeometry> g_bottomLevelASGeometries;
     std::unique_ptr<RaytracingAccelerationStructureManager> g_accelerationStructure;
     GpuResource g_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
-    D3D12_GPU_DESCRIPTOR_HANDLE g_nullVertexBufferGPUhandle;
 
     namespace Args
     {
+
+
+        // ToDo test tessFactor 16
+        // ToDo fix alias on TessFactor 2
+        IntVar GeometryTesselationFactor(L"Render/Geometry/Tesselation factor", 0/*14*/, 0, 80, 1, OnGeometryChange, nullptr);
+        IntVar NumGeometriesPerBLAS(L"Render/Geometry/# geometries per BLAS", // ToDo
+            NUM_GEOMETRIES, 1, 1000000, 1, OnGeometryChange, nullptr);
+        IntVar NumSphereBLAS(L"Render/Geometry/# Sphere BLAS", 1, 1, D3D12RaytracingAmbientOcclusion::MaxBLAS, 1, OnASChange, nullptr);
+
+
+
+        BoolVar EnableGeometryAndASBuildsAndUpdates(L"Render/Acceleration structure/Enable geometry & AS builds and updates", true);
+
+#if ONLY_SQUID_SCENE_BLAS
+        EnumVar SceneType(L"Scene", Scene::Type::SquidRoom, Scene::Type::Count, Scene::Type::Names, OnSceneChange, nullptr);
+#else
+        EnumVar SceneType(L"Scene", Scene::Type::SingleObject, Scene::Type::Count, Scene::Type::Names, OnSceneChange, nullptr);
+#endif
+
+        // ToDo add an interface so that new UI values get applied on start of the frame, not in mid-flight
+        enum UpdateMode { Build = 0, Update, Update_BuildEveryXFrames, Count };
+        const WCHAR* UpdateModes[UpdateMode::Count] = { L"Build only", L"Update only", L"Update + build every X frames" };
+        EnumVar ASUpdateMode(L"Render/Acceleration structure/Update mode", Build, UpdateMode::Count, UpdateModes);
+        IntVar ASBuildFrequency(L"Render/Acceleration structure/Rebuild frame frequency", 1, 1, 1200, 1);
+        BoolVar ASMinimizeMemory(L"Render/Acceleration structure/Minimize memory", false, OnASChange, nullptr);
+        BoolVar ASAllowUpdate(L"Render/Acceleration structure/Allow update", true, OnASChange, nullptr);
+
+
+        NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
+        BoolVar AnimateGrass(L"Scene2/Animate grass", true);
+
+        NumVar DebugVar(L"Render/Debug var", -20, -90, 90, 0.5f);
     }
     Scene::Scene()
     {
@@ -795,13 +826,6 @@ namespace Scene
 #if USE_GRASS_GEOMETRY
         InitializeGrassGeometry();
 #endif
-
-        auto device = m_deviceResources->GetD3DDevice();
-
-        // Create null resource descriptor for the unused second VB in non-animated geometry.
-        D3D12_CPU_DESCRIPTOR_HANDLE nullCPUhandle;
-        UINT nullHeapIndex = UINT_MAX;
-        CreateBufferSRV(nullptr, device, 0, sizeof(VertexPositionNormalTextureTangent), m_cbvSrvUavHeap.get(), &nullCPUhandle, &g_nullVertexBufferGPUhandle, &nullHeapIndex);
     }
 
     // Build geometry used in the sample.
@@ -1283,5 +1307,29 @@ namespace Scene
         }
     }
 
+    void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructure()
+    {
+        auto commandList = m_deviceResources->GetCommandList();
+        auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
+        auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
+
+        if (Args::EnableGeometryAndASBuildsAndUpdates)
+        {
+            bool forceBuild = false;    // ToDo
+
+            resourceStateTracker->FlushResourceBarriers();
+            g_accelerationStructure->Build(commandList, m_cbvSrvUavHeap->GetHeap(), frameIndex, forceBuild);
+        }
+
+        // Copy previous frame Bottom Level AS instance transforms to GPU. 
+        m_prevFrameBottomLevelASInstanceTransforms.CopyStagingToGpu(frameIndex);
+
+        // Update the CPU staging copy with the current frame transforms.
+        const auto& bottomLevelASInstanceDescs = g_accelerationStructure->GetBottomLevelASInstancesBuffer();
+        for (UINT i = 0; i < bottomLevelASInstanceDescs.NumElements(); i++)
+        {
+            m_prevFrameBottomLevelASInstanceTransforms[i] = *reinterpret_cast<const XMFLOAT3X4*>(bottomLevelASInstanceDescs[i].Transform);
+        }
+    }
 
 }

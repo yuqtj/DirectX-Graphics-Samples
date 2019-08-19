@@ -259,6 +259,7 @@
     </PreLinkEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Composition.h" />
     <ClInclude Include="Denoiser\Denoiser.h" />
     <ClInclude Include="DirectXRaytracingHelper.h" />
     <ClInclude Include="Pathtracer\Pathtracer.h" />
@@ -303,6 +304,7 @@
     <ClInclude Include="util\Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Composition.cpp" />
     <ClCompile Include="D3D12RaytracingAmbientOcclusion.cpp" />
     <ClCompile Include="Denoiser\Denoiser.cpp" />
     <ClCompile Include="DirectXRaytracingHelper.cpp" />
