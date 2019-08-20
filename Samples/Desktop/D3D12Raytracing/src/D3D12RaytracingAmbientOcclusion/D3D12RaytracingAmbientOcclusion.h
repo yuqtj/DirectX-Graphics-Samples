@@ -42,7 +42,8 @@ namespace Sample
     }
 
     class D3D12RaytracingAmbientOcclusion;
-    extern D3D12RaytracingAmbientOcclusion* g_pSample;
+    D3D12RaytracingAmbientOcclusion& instance();
+
     static const UINT FrameCount = 3;
 
     GpuResource g_debugOutput[2];
@@ -53,6 +54,8 @@ namespace Sample
     public:
         D3D12RaytracingAmbientOcclusion(UINT width, UINT height, std::wstring name);
         ~D3D12RaytracingAmbientOcclusion();
+
+
         // IDeviceNotify
         virtual void OnReleaseWindowSizeDependentResources() override { ReleaseWindowSizeDependentResources(); };
         virtual void OnCreateWindowSizeDependentResources() override { CreateWindowSizeDependentResources(); };
@@ -72,27 +75,18 @@ namespace Sample
         void RequestSceneInitialization() { m_isSceneInitializationRequested = true; }
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
-
-
+        // Module access.
+        Scene::Scene& Scene() { return m_scene; }
+        Pathtracer::Pathtracer& Pathtracer() { return m_pathtracer; }
+        RTAO::RTAO& RTAO() { return m_RTAO; }
+        Denoiser::Denoiser& Denoiser() { return m_denoiser; }
+        
     private:
 
         // ToDo change ID3D12Resourcs with views to GpuResource
 
         std::mt19937 m_generatorURNG;
 
-        int m_numFramesSinceASBuild;
-#if TESSELATED_GEOMETRY_BOX
-#if TESSELATED_GEOMETRY_THIN
-        const XMFLOAT3 m_boxSize = XMFLOAT3(0.01f, 0.1f, 0.01f);
-#else
-        const XMFLOAT3 m_boxSize = XMFLOAT3(1, 1, 1);
-#endif
-        const float m_geometryRadius = 2.0f;
-#else
-        const float m_geometryRadius = 3.0f;
-#endif
-
-        const UINT MaxGeometryTransforms = 10000;       // ToDo lower / remove?
 
 
         ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
@@ -104,24 +98,11 @@ namespace Sample
         GpuKernels::ReduceSum				m_reduceSumKernel; 
 
         // ToDo combine kernels to an array
-        GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
-        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
-        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
-        GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter m_downsampleGBufferBilateralFilterKernel; //ToDo rename?
-        GpuKernels::DownsampleValueNormalDepthBilateralFilter m_downsampleValueNormalDepthBilateralFilterKernel;
         GpuKernels::UpsampleBilateralFilter	    m_upsampleBilateralFilterKernel;
-        GpuKernels::MultiScale_UpsampleBilateralFilterAndCombine	    m_multiScale_upsampleBilateralFilterAndCombineKernel;
-        GpuKernels::FillInMissingValuesFilter m_fillInMissingValuesFilterKernel;
-        GpuKernels::BilateralFilter m_bilateralFilterKernel;
 
         const UINT c_SupersamplingScale = 2;
         UINT								m_numCameraRayGeometryHits;
-
-        GpuKernels::WriteValueToTexture     m_writeValueToTexture;
-
-        ComPtr<ID3D12RootSignature>         m_rootSignature;
-        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-
+                
         ComPtr<ID3D12Fence>                 m_fence;
         UINT64                              m_fenceValues[FrameCount];
         Microsoft::WRL::Wrappers::Event     m_fenceEvent;
@@ -136,8 +117,8 @@ namespace Sample
 
         D3DTexture m_nullTexture;
 
+        // ToDo move to SSAO
         // SSAO
-        SSAO::SSAO        m_SSAO;
         ConstantBuffer<SSAOSceneConstantBuffer> m_SSAOCB;
         UINT m_SSAOsrvDescriptorHeapIndex = UINT_MAX;
         D3D12_GPU_DESCRIPTOR_HANDLE SSAOgpuDescriptorReadAccess = { UINT64_MAX };
@@ -146,42 +127,19 @@ namespace Sample
         UINT m_numRemainingFramesToProfile = 0;
         std::map<std::wstring, std::list<std::wstring>> m_profilingResults;
 
-        // ToDo clean up buffer management
-        // SquidRoom buffers
-        ComPtr<ID3D12Resource> m_vertexBuffer;
-        ComPtr<ID3D12Resource> m_vertexBufferUpload;
-        D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-        ComPtr<ID3D12Resource> m_indexBuffer;
-        ComPtr<ID3D12Resource> m_indexBufferUpload;
-        D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
 
-        struct PBRTScene
-        {
-            std::wstring name;
-            std::string path;    // ToDo switch to wstring 
-        };
-
-        D3DTexture m_environmentMap;
-
-        StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.
-        UINT m_maxInstanceContributionToHitGroupIndex;
-
-        const UINT MaxNumBottomLevelInstances = 10100;           // ToDo tighten this to only what needed or add support a copy of whats used from StructuredBuffers to GPU.
-
-        StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
 
         Pathtracer::Pathtracer m_pathtracer;
         RTAO::RTAO m_RTAO;
         Denoiser::Denoiser m_denoiser;
         Composition::Composition m_composition;
         Scene::Scene m_scene;
+        SSAO::SSAO        m_SSAO;
 
         // Raytracing output
         // ToDo use the struct
         GpuResource m_raytracingOutput;
         GpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
-
-
         GpuResource m_AOResources[AOResource::Count];
 
     private:
@@ -205,9 +163,6 @@ namespace Sample
         bool m_isASinitializationRequested;
         bool m_isSceneInitializationRequested;
         bool m_isRecreateRaytracingResourcesRequested;
-
-
-        static UINT             s_numInstances;
 
         // Render passes
         void RenderPass_GenerateGBuffers();

@@ -20,6 +20,7 @@
 #include "GpuKernels.h"
 #include "EngineTuning.h"
 #include "SceneParameters.h"
+#include "StepTimer.h"
 
 
 // ToDo remove namespce?
@@ -28,9 +29,6 @@ namespace Scene
     namespace Args
     {
     }
-
-    class Scene;
-    Scene* instance();
 
     class Scene
     {
@@ -47,7 +45,7 @@ namespace Scene
 
         const GameCore::Camera& Camera() { return m_camera; }
         const GameCore::Camera& PrevFrameCamera() { return m_prevFrameCamera; }
-        const StepTimer Timer() { return m_timer; }
+        const StepTimer& Timer() { return m_timer; }
         const std::map<std::wstring, BottomLevelAccelerationStructureGeometry>& BottomLevelASGeometries() { return m_bottomLevelASGeometries; }
         const std::unique_ptr<RaytracingAccelerationStructureManager>& AccelerationStructure() { return m_accelerationStructure; }
 
@@ -78,7 +76,6 @@ namespace Scene
         void InitializeAllBottomLevelAccelerationStructures();
         void InitializeAccelerationStructures();
 
-        static UINT s_numInstances;
         std::shared_ptr<DX::DeviceResources> m_deviceResources;
         std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 
@@ -115,5 +112,46 @@ namespace Scene
         std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
         GpuResource m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
 
+        // ToDo remove?
+        // ToDo clean up buffer management
+        // SquidRoom buffers
+        ComPtr<ID3D12Resource> m_vertexBuffer;
+        ComPtr<ID3D12Resource> m_vertexBufferUpload;
+        D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+        ComPtr<ID3D12Resource> m_indexBuffer;
+        ComPtr<ID3D12Resource> m_indexBufferUpload;
+        D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
+
+
+        struct PBRTScene
+        {
+            std::wstring name;
+            std::string path;    // ToDo switch to wstring 
+        };
+
+        D3DTexture m_environmentMap;
+
+        StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.
+        UINT m_maxInstanceContributionToHitGroupIndex;
+
+        const UINT MaxNumBottomLevelInstances = 10100;           // ToDo tighten this to only what needed or add support a copy of whats used from StructuredBuffers to GPU.
+
+
+
+        // ToDo cleanup
+        int m_numFramesSinceASBuild;
+#if TESSELATED_GEOMETRY_BOX
+#if TESSELATED_GEOMETRY_THIN
+        const XMFLOAT3 m_boxSize = XMFLOAT3(0.01f, 0.1f, 0.01f);
+#else
+        const XMFLOAT3 m_boxSize = XMFLOAT3(1, 1, 1);
+#endif
+        const float m_geometryRadius = 2.0f;
+#else
+        const float m_geometryRadius = 3.0f;
+#endif
+
+        const UINT MaxGeometryTransforms = 10000;       // ToDo lower / remove?
     };
+    StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
 }

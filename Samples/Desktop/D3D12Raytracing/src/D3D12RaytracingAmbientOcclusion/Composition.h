@@ -59,5 +59,10 @@ namespace Composition
         std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 
         ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
+        GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
+        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
+        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
+        GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter m_downsampleGBufferBilateralFilterKernel; //ToDo rename?
+        GpuKernels::DownsampleValueNormalDepthBilateralFilter m_downsampleValueNormalDepthBilateralFilterKernel;
     };
 }

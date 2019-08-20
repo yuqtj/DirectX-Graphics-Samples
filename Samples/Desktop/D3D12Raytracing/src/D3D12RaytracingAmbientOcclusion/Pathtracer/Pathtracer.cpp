@@ -35,9 +35,12 @@ namespace Pathtracer
     const wchar_t* Pathtracer::c_hitGroupNames[] = { L"MyHitGroup_Triangle_GBuffer", L"MyHitGroup_Triangle_ShadowRay" };
 
     // Singleton instance.
-    Pathtracer* g_pPathracer;
-    UINT Pathtracer::s_numInstances = 0;
+    Pathtracer* g_pPathracer = nullptr;
 
+    Pathtracer* instance()
+    {
+        return g_pPathracer;
+    }
 
     void OnRecreateRTAORaytracingResources(void*)
     {
@@ -46,7 +49,7 @@ namespace Pathtracer
 
     void OnRecreateSampleRaytracingResources(void*)
     {
-        Sample::g_pSample->RequestRecreateRaytracingResources();
+        Sample::instance().RequestRecreateRaytracingResources();
     }
 
     namespace Args
@@ -95,7 +98,7 @@ namespace Pathtracer
     
     Pathtracer::Pathtracer()
     {
-        ThrowIfFalse(++s_numInstances == 1, L"There can be only one Pathtracer instance.");
+        ThrowIfFalse(g_pPathracer == nullptr, L"There can be only one Pathtracer instance.");
         g_pPathracer = this;
 
         for (auto& rayGenShaderTableRecordSizeInBytes : m_rayGenShaderTableRecordSizeInBytes)
@@ -506,7 +509,7 @@ namespace Pathtracer
         // Hit group shader table.
         {
             UINT numShaderRecords = 0;
-            for (auto& bottomLevelASGeometryPair : Scene::instance()->BottomLevelASGeometries())
+            for (auto& bottomLevelASGeometryPair : Scene::instance().BottomLevelASGeometries())
             {
                 auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
                 numShaderRecords += static_cast<UINT>(bottomLevelASGeometry.m_geometryInstances.size()) * RayType::Count;
@@ -518,7 +521,7 @@ namespace Pathtracer
             ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
 
             // Triangle geometry hit groups.
-            for (auto& bottomLevelASGeometryPair : Scene::instance()->BottomLevelASGeometries())
+            for (auto& bottomLevelASGeometryPair : Scene::instance().BottomLevelASGeometries())
             {
                 auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
                 auto& name = bottomLevelASGeometry.GetName();
@@ -576,18 +579,18 @@ namespace Pathtracer
                    
 
                         // Transitioning from lower LOD.
-                        vbHandles[frameID][0].vertexBuffer = Scene::instance()->GrassPatchVB()[LOD][frameID].gpuDescriptorReadAccess;
-                        vbHandles[frameID][0].prevFrameVertexBuffer = LOD > 0 ? Scene::instance()->GrassPatchVB()[LOD - 1][prevFrameID].gpuDescriptorReadAccess
-                            : Scene::instance()->GrassPatchVB()[LOD][prevFrameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][0].vertexBuffer = Scene::instance().GrassPatchVB()[LOD][frameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][0].prevFrameVertexBuffer = LOD > 0 ? Scene::instance().GrassPatchVB()[LOD - 1][prevFrameID].gpuDescriptorReadAccess
+                            : Scene::instance().GrassPatchVB()[LOD][prevFrameID].gpuDescriptorReadAccess;
 
                         // Same LOD as previous frame.
-                        vbHandles[frameID][1].vertexBuffer = Scene::instance()->GrassPatchVB()[LOD][frameID].gpuDescriptorReadAccess;
-                        vbHandles[frameID][1].prevFrameVertexBuffer = Scene::instance()->GrassPatchVB()[LOD][prevFrameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][1].vertexBuffer = Scene::instance().GrassPatchVB()[LOD][frameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][1].prevFrameVertexBuffer = Scene::instance().GrassPatchVB()[LOD][prevFrameID].gpuDescriptorReadAccess;
 
                         // Transitioning from higher LOD.
-                        vbHandles[frameID][2].vertexBuffer = Scene::instance()->GrassPatchVB()[LOD][frameID].gpuDescriptorReadAccess;
-                        vbHandles[frameID][2].prevFrameVertexBuffer = LOD < UIParameters::NumGrassGeometryLODs - 1 ? Scene::instance()->GrassPatchVB()[LOD + 1][prevFrameID].gpuDescriptorReadAccess
-                            : Scene::instance()->GrassPatchVB()[LOD][prevFrameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][2].vertexBuffer = Scene::instance().GrassPatchVB()[LOD][frameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][2].prevFrameVertexBuffer = LOD < UIParameters::NumGrassGeometryLODs - 1 ? Scene::instance().GrassPatchVB()[LOD + 1][prevFrameID].gpuDescriptorReadAccess
+                            : Scene::instance().GrassPatchVB()[LOD][prevFrameID].gpuDescriptorReadAccess;
                     }
 
                     for (UINT frameID = 0; frameID < 2; frameID++)
@@ -748,7 +751,7 @@ namespace Pathtracer
 
 
         // ToDo should we use cameraAtPosition0 too and offset the world space pos vector in the shader?
-        auto& prevFrameCamera = Scene::instance()->PrevFrameCamera();
+        auto& prevFrameCamera = Scene::instance().PrevFrameCamera();
         XMMATRIX prevView, prevProj;
         prevFrameCamera.GetViewProj(&prevView, &prevProj, m_GBufferWidth, m_GBufferHeight);
         m_CB->prevViewProj = prevView * prevProj;

@@ -25,14 +25,8 @@ using namespace DX;
 using namespace DirectX;
 using namespace SceneEnums;
 
-
-
 namespace RTAO
-{
-    // Singleton instance.
-    RTAO* global_pRTAO;
-    UINT RTAO::s_numInstances = 0;
-    
+{    
     // Shader entry points.
     const wchar_t* RTAO::c_rayGenShaderNames[] = { L"RayGenShader", L"RayGenShader_sortedRays" };
     const wchar_t* RTAO::c_closestHitShaderName = L"ClosestHitShader";
@@ -43,17 +37,17 @@ namespace RTAO
 
     void OnRecreateRTAORaytracingResources(void*)
     {
-        global_pRTAO->RequestRecreateRaytracingResources();
+        g_pRTAO->RequestRecreateRaytracingResources();
     }
 
     void OnRecreateSampleRaytracingResources(void*)
     {
-        Sample::g_pSample->RequestRecreateRaytracingResources();
+        Sample::instance().->RequestRecreateRaytracingResources();
     }
 
     void OnRecreateSamples(void*)
     {
-        global_pRTAO->RequestRecreateAOSamples();
+        g_pRTAO->RequestRecreateAOSamples();
     }
        
     namespace Args
@@ -111,10 +105,7 @@ namespace RTAO
         NumVar RTAO_ExponentialFalloffMinOcclusionCutoff(L"Render/AO/RTAO/Exponential Falloff Min Occlusion Cutoff", 0.4f, 0.0f, 1.f, 0.05f);       // ToDo Finetune document perf.
     
         BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, OnRecreateRaytracingResources, nullptr);
-
     }
-
-
 
     DXGI_FORMAT AOCoefficientFormat()
     {
@@ -133,9 +124,6 @@ namespace RTAO
 
     RTAO::RTAO()
     {
-        ThrowIfFalse(++s_numInstances == 1, L"There can be only one RTAO instance.");
-        global_pRTAO = this;
-
         for (auto& rayGenShaderTableRecordSizeInBytes : m_rayGenShaderTableRecordSizeInBytes)
         {
             rayGenShaderTableRecordSizeInBytes = UINT_MAX;

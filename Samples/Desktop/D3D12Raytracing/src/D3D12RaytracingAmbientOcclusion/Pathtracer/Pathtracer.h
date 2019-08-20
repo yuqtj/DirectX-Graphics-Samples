@@ -31,6 +31,9 @@ namespace Pathtracer
     GpuResource (&GBufferResources(bool getQuarterResResources = false))[GBufferResource::Count];
     GpuResource* GetGBufferResources(bool getQuarterResResources = false);
 
+    class Pathtracer;
+    Pathtracer* instance();
+
     class Pathtracer
     {
     public:
@@ -69,7 +72,6 @@ namespace Pathtracer
         void CalculateRayHitCount();
         void DownsampleGBuffer();
 
-        static UINT s_numInstances;
         std::shared_ptr<DX::DeviceResources> m_deviceResources;
         std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 

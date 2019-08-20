@@ -30,13 +30,18 @@ namespace Denoiser
     class Denoiser
     {
     public:
+        enum DenoiseStage {
+            DenoiseStage_1_ReverseReproject = 0b1,
+            DenoiseStage_2_BlendWithCurrentFrameAndDenoise = 0b10,
+            DenoiseStage_All = DenoiseStage_1_ReverseReproject | DenoiseStage_2_BlendWithCurrentFrameAndDenoise
+        };
         // Ctors.
         Denoiser();
 
         // Public methods.
         void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
-        void OnUpdate();
-        void Execute(GameCore::Camera camera);
+        void Execute(DenoiseStage stage = DenoiseStage_All);
+
         void ReleaseDeviceDependentResources();
         void ReleaseWindowSizeDependentResources() {}; // ToDo
         
@@ -44,8 +49,8 @@ namespace Denoiser
         void SetResolution(UINT width, UINT height);
 
     private:
-        void TemporalSupersamplingReverseProjection(GameCore::Camera camera);
-        void RenderPass_TemporalSupersamplingBlendWithCurrentFrame();
+        void TemporalSupersamplingReverseProjection();
+        void TemporalSupersamplingBlendWithCurrentFrame();
         void MultiPassBlur();
 
         void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
@@ -59,7 +64,6 @@ namespace Denoiser
 
         void CreateResolutionDependentResources();
 
-        static UINT s_numInstances;
         std::shared_ptr<DX::DeviceResources> m_deviceResources;
         std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 
@@ -95,6 +99,8 @@ namespace Denoiser
         const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame =
             1
             + 1; // Temporal Super-Sampling.
+        GpuKernels::FillInMissingValuesFilter m_fillInMissingValuesFilterKernel;
+        GpuKernels::BilateralFilter m_bilateralFilterKernel;
 
 
     };

@@ -16,6 +16,7 @@
 #include "EngineProfiling.h"
 #include "GpuTimeManager.h"
 #include "Scene.h"
+#include "D3D12RaytracingAmbientOcclusion.h"
 
 // ToDo prune unused
 using namespace std;
@@ -25,15 +26,6 @@ using namespace SceneEnums;
 
 namespace Scene
 {
-    // Singleton instance.
-    Scene* g_pScene = nullptr;
-    UINT Scene::s_numInstances = 0;
-     
-    Scene* instance() 
-    {
-        return g_pScene;
-    }
-
     namespace Args
     {
         BoolVar EnableGeometryAndASBuildsAndUpdates(L"Render/Acceleration structure/Enable geometry & AS builds and updates", true);
@@ -58,21 +50,9 @@ namespace Scene
 
         NumVar DebugVar(L"Render/Debug var", -20, -90, 90, 0.5f);
     }
-
-    const GameCore::Camera& Scene::Camera()
-    {
-        return g_pScene->m_camera;
-    }
-    const GameCore::Camera& Scene::PrevFrameCamera()
-    {
-        
-    }
-
-
+       
     Scene::Scene()
     {
-        ThrowIfFalse(++s_numInstances == 1, L"There can be only one Scene instance.");
-        g_pScene = this;
     }
 
     void Scene::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex)
@@ -90,14 +70,42 @@ namespace Scene
     // Create resources that depend on the device.
     void Scene::CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex)
     {
+        auto device = m_deviceResources->GetD3DDevice();
+
         CreateAuxilaryDeviceResources();
 
+        // ToDo move
+        m_geometryTransforms.Create(device, MaxGeometryTransforms, Sample::FrameCount, L"Structured buffer: Geometry desc transforms");
+
+        // Build geometry to be used in the sample.
+        InitializeGeometry();
+
+        // Build raytracing acceleration structures from the generated geometry.
+        m_isASinitializationRequested = true;
+
+        InitializeAccelerationStructures();
+
+        m_prevFrameBottomLevelASInstanceTransforms.Create(device, MaxNumBottomLevelInstances, Sample::FrameCount, L"GPU buffer: Bottom Level AS Instance transforms for previous frame");
     }
 
 
     // ToDo rename
     void Scene::CreateAuxilaryDeviceResources()
     {
+        auto device = m_deviceResources->GetD3DDevice();
+
+        // ToDo pass this from sample?
+        ResourceUploadBatch resourceUpload(device);
+        resourceUpload.Begin();
+
+        m_grassGeometryGenerator.Initialize(device, L"Assets\\wind\\wind2.jpg", m_cbvSrvUavHeap.get(), &resourceUpload, FrameCount, UIParameters::NumGrassGeometryLODs);
+   
+
+        // Upload the resources to the GPU.
+        auto finish = resourceUpload.End(commandQueue);
+
+        // Wait for the upload thread to terminate
+        finish.wait();
     }
 
 

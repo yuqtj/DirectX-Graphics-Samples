@@ -25,10 +25,6 @@ using namespace SceneEnums;
 
 namespace Composition
 {
-    // Singleton instance.
-    Composition* g_pPathracer;
-    UINT Composition::s_numInstances = 0;
-
     namespace Args
     {
         // ToDo don't render redundant passes?
@@ -61,15 +57,9 @@ namespace Composition
         EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
 #endif
     }
+
     Composition::Composition()
     {
-        ThrowIfFalse(++s_numInstances == 1, L"There can be only one Composition instance.");
-        g_pPathracer = this;
-
-        for (auto& rayGenShaderTableRecordSizeInBytes : m_rayGenShaderTableRecordSizeInBytes)
-        {
-            rayGenShaderTableRecordSizeInBytes = UINT_MAX;
-        }
     }
 
     void Composition::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex)
@@ -89,6 +79,9 @@ namespace Composition
     void Composition::CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex)
     {
         CreateAuxilaryDeviceResources();
+
+        // ToDo move/rename
+        CreateComposeRenderPassesCSResources();
 
     }
 
