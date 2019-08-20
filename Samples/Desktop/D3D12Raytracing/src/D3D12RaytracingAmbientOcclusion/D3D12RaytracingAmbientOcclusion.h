@@ -73,9 +73,6 @@ namespace Sample
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
 
-        static const UINT NumGrassPatchesX = 30;
-        static const UINT NumGrassPatchesZ = 30;
-        static const UINT MaxBLAS = 10 + NumGrassPatchesX * NumGrassPatchesZ;   // ToDo enumerate all instances in the comment
 
     private:
 
@@ -104,11 +101,7 @@ namespace Sample
         ComPtr<ID3D12PipelineState>         m_computePSOs[ComputeShader::Type::Count];
         ComPtr<ID3D12RootSignature>         m_computeRootSigs[ComputeShader::Type::Count];
 
-        GpuKernels::ReduceSum				m_reduceSumKernel;
-
-        GpuKernels::FillInCheckerboard      m_fillInCheckerboardKernel;
-        GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
-        const UINT                          MaxGaussianSmoothingKernelInvocationsPerFrame = c_MaxDenoisingScaleLevels + 1; // +1 for TAO 
+        GpuKernels::ReduceSum				m_reduceSumKernel; 
 
         // ToDo combine kernels to an array
         GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
@@ -121,19 +114,10 @@ namespace Sample
         GpuKernels::FillInMissingValuesFilter m_fillInMissingValuesFilterKernel;
         GpuKernels::BilateralFilter m_bilateralFilterKernel;
 
-        const UINT c_SupersamplingScale = 2;    // ToDo UI parameter
+        const UINT c_SupersamplingScale = 2;
         UINT								m_numCameraRayGeometryHits;
 
         GpuKernels::WriteValueToTexture     m_writeValueToTexture;
-        GpuKernels::GenerateGrassPatch      m_grassGeometryGenerator;
-
-
-        UINT                                m_animatedCarInstanceIndex;
-        UINT                                m_grassInstanceIndices[NumGrassPatchesX * NumGrassPatchesZ];
-        UINT                                m_currentGrassPatchVBIndex = 0;
-        D3DBuffer                           m_nullVB;               // Null vertex Buffer - used for geometries that don't animate and don't need double buffering for motion vector calculation.
-        UINT                                m_grassInstanceShaderRecordOffsets[2];
-        UINT                                m_prevFrameLODs[NumGrassPatchesX * NumGrassPatchesZ];
 
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
@@ -153,7 +137,7 @@ namespace Sample
         D3DTexture m_nullTexture;
 
         // SSAO
-        SSAO        m_SSAO;
+        SSAO::SSAO        m_SSAO;
         ConstantBuffer<SSAOSceneConstantBuffer> m_SSAOCB;
         UINT m_SSAOsrvDescriptorHeapIndex = UINT_MAX;
         D3D12_GPU_DESCRIPTOR_HANDLE SSAOgpuDescriptorReadAccess = { UINT64_MAX };
@@ -200,11 +184,6 @@ namespace Sample
 
         GpuResource m_AOResources[AOResource::Count];
 
-
-        // Multi-scale
-        // ToDo Cleanup
-    public:
-        static const UINT c_MaxDenoisingScaleLevels = 8;
     private:
 
         UINT m_GBufferWidth;
@@ -214,17 +193,6 @@ namespace Sample
         UINT m_raytracingHeight;
 
         // Application state
-        StepTimer m_timer;
-        bool m_animateCamera;
-        bool m_animateLight;
-        bool m_animateScene;
-        bool m_isCameraFrozen;
-        int m_cameraChangedIndex = 0;
-        bool m_hasCameraChanged = true;
-        GameCore::Camera m_camera;
-        float m_manualCameraRotationAngle = 0; // ToDo remove
-        GameCore::Camera m_prevFrameCamera;
-        std::unique_ptr<GameCore::CameraController> m_cameraController;
 
         // UI
         std::unique_ptr<UILayer> m_uiLayer;

@@ -646,7 +646,6 @@ void DecodeNormalDepth_N16D16(in uint packedEncodedNormalAndDepth, out float3 no
     depth = encodedNormalDepth.z;
 }
 
-#if NORMAL_DEPTH_R8G8B16_ENCODING
 uint EncodeNormalDepth(in float3 normal, in float depth)
 {
     return EncodeNormalDepth_N16D16(normal, depth);
@@ -663,14 +662,6 @@ void UnpackEncodedNormalDepth(in uint packedEncodedNormalDepth, out float2 encod
     encodedNormal = encodedNormalDepth.xy;
     depth = encodedNormalDepth.z;
 }
-
-#else
-void DecodeNormalDepth(in float4 encodedNormalDepth, out float3 normal, out float depth)
-{
-    normal = DecodeNormal(encodedNormalAndDepth.xy);
-    depth = encodedNormalAndDepth.z;
-}
-#endif
 
 /***************************************************************/
 // ToDo

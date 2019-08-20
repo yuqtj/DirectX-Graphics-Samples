@@ -26,11 +26,12 @@ namespace Composition
     namespace Args
     {
         extern EnumVar AntialiasingMode;
+        extern EnumVar CompositionMode;
     }
 
-    extern std::map<std::wstring, BottomLevelAccelerationStructureGeometry>	g_bottomLevelASGeometries;
-    extern std::unique_ptr<RaytracingAccelerationStructureManager> g_accelerationStructure;
-    extern GpuResource g_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
+    extern std::map<std::wstring, BottomLevelAccelerationStructureGeometry>	m_bottomLevelASGeometries;
+    extern std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
+    extern GpuResource m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
     extern D3D12_GPU_DESCRIPTOR_HANDLE g_nullVertexBufferGPUhandle;
 
     class Composition

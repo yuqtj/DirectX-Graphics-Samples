@@ -139,7 +139,6 @@ namespace GpuKernels
 				width = max(1u, CeilDivide(width, ReduceSumCS::ThreadGroup::Width));
 				height = max(1u, CeilDivide(height, ReduceSumCS::ThreadGroup::Height));
 
-				m_csReduceSumOutputs[i].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
 				CreateRenderTargetResource(device, format, width, height, descriptorHeap,
 					&m_csReduceSumOutputs[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: ReduceSum intermediate output");
 			}
@@ -1288,7 +1287,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResource->gpuDescriptorWriteAccess);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
 
-            GpuResource* debugResources = g_pSample->GetDebugResources();
+            GpuResource* debugResources = Sample::g_debugOutput;
             commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
 
@@ -1358,7 +1357,6 @@ namespace GpuKernels
     {
         // Create shader resources
         {
-            m_perPixelMeanSquareError.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, width, height, descriptorHeap,
                 &m_perPixelMeanSquareError, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: PerPixelMeanSquareError output");
         }
@@ -1528,21 +1526,17 @@ namespace GpuKernels
     {
         // Create shader resources
         {
-            m_intermediateValueOutput.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             // ToDo pass in the format
             CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_intermediateValueOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate value output");
 
-            m_intermediateVarianceOutputs[0].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_intermediateVarianceOutputs[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate variance output 0");
 
-            m_intermediateVarianceOutputs[1].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_intermediateVarianceOutputs[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter intermediate variance output 1");
 
             // ToDo remove
-            m_filterWeightOutput.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, format, width, height, descriptorHeap,
                 &m_filterWeightOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"UAV texture: AtrousWaveletTransformCrossBilateralFilter filter weight sum output");
         }
@@ -1570,9 +1564,6 @@ namespace GpuKernels
         float depthSigma,
         float normalSigma,
         float weightScale,
-#if !NORMAL_DEPTH_R8G8B16_ENCODING
-        TextureResourceFormatRGB::Type normalDepthResourceFormat,
-#endif
         UINT kernelStepShifts[5],
         UINT passNumberToOutputToIntermediateResource,
         UINT numFilterPasses,
@@ -1675,19 +1666,8 @@ namespace GpuKernels
             CB->useProjectedDepthTest = useProjectedDepthTest;
             CB->forceDenoisePass = forceDenoisePass;
 
-
-#if NORMAL_DEPTH_R8G8B16_ENCODING
-            m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16);
-#else
-            switch (normalDepthResourceFormat)
-            {
-            case TextureResourceFormatRGB::R32G32B32A32_FLOAT: CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(32); break;
-            case TextureResourceFormatRGB::R16G16B16A16_FLOAT: CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16); break;
-            case TextureResourceFormatRGB::R11G11B10_FLOAT: CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(10); break;
-            default: ThrowIfFalse(false, L"Invalid resource format specified.");
-            }
-#endif
-            
+            // ToDo pass precision
+            m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16);            
             CB.CopyStagingToGpu(m_CBinstanceID + i);
         }
 
@@ -2132,7 +2112,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputMeanVariance, outputMeanVarianceResourceHandle);
 
-            GpuResource* debugResources = g_pSample->GetDebugResources();
+            GpuResource* debugResources = Sample::g_debugOutput;
             commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
         }
@@ -2246,7 +2226,7 @@ namespace GpuKernels
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
 
-            GpuResource* debugResources = g_pSample->GetDebugResources();
+            GpuResource* debugResources = Sample::g_debugOutput;
             commandList->SetComputeRootDescriptorTable(Slot::Debug1, debugResources[0].gpuDescriptorWriteAccess);
             commandList->SetComputeRootDescriptorTable(Slot::Debug2, debugResources[1].gpuDescriptorWriteAccess);
         }
@@ -2271,7 +2251,7 @@ namespace GpuKernels
 
 
     namespace RootSignature {
-        namespace RTAO_TemporalSupersampling_ReverseReproject {
+        namespace TemporalSupersampling_ReverseReproject {
             namespace Slot {
                 enum Enum {
                     OutputCacheFrameAge = 0,
@@ -2294,11 +2274,11 @@ namespace GpuKernels
         }
     }
 
-    void RTAO_TemporalSupersampling_ReverseReproject::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
+    void TemporalSupersampling_ReverseReproject::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
-            using namespace RootSignature::RTAO_TemporalSupersampling_ReverseReproject;
+            using namespace RootSignature::TemporalSupersampling_ReverseReproject;
 
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
             ranges[Slot::InputCurrentFrameNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
@@ -2337,7 +2317,7 @@ namespace GpuKernels
                 CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP) };
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, ARRAYSIZE(staticSamplers), staticSamplers);
-            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: RTAO_TemporalSupersampling_ReverseReproject");
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: TemporalSupersampling_ReverseReproject");
         }
 
         // Create compute pipeline state.
@@ -2348,17 +2328,17 @@ namespace GpuKernels
             descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pTemporalSupersampling_ReverseReprojectCS), ARRAYSIZE(g_pTemporalSupersampling_ReverseReprojectCS));
 
             ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-            m_pipelineStateObject->SetName(L"Pipeline state object: RTAO_TemporalSupersampling_ReverseReproject");
+            m_pipelineStateObject->SetName(L"Pipeline state object: TemporalSupersampling_ReverseReproject");
         }
 
         // Create shader resources
         {
-            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: RTAO_TemporalSupersampling_ReverseReproject");
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: TemporalSupersampling_ReverseReproject");
         }
     }
 
     // ToDo desc
-    void RTAO_TemporalSupersampling_ReverseReproject::Execute(
+    void TemporalSupersampling_ReverseReproject::Execute(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -2384,9 +2364,6 @@ namespace GpuKernels
         bool useWorldSpaceDistance,
         bool usingBilateralDownsampledBuffers,
         bool perspectiveCorrectDepthInterpolation,
-#if !NORMAL_DEPTH_R8G8B16_ENCODING
-        TextureResourceFormatRGB::Type normalDepthResourceFormat,
-#endif
         GpuResource debugResources[2],
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin,
@@ -2394,10 +2371,10 @@ namespace GpuKernels
         UINT numRaysToTraceSinceTSSMovement,
         bool testFlag)
     {
-        using namespace RootSignature::RTAO_TemporalSupersampling_ReverseReproject;
+        using namespace RootSignature::TemporalSupersampling_ReverseReproject;
         using namespace DefaultComputeShaderParams;
 
-        ScopedTimer _prof(L"RTAO_TemporalSupersampling_ReverseReproject", commandList);
+        ScopedTimer _prof(L"TemporalSupersampling_ReverseReproject", commandList);
 
         m_CB->useDepthWeights = useDepthWeights;
         m_CB->useNormalWeights = useNormalWeights;
@@ -2415,17 +2392,7 @@ namespace GpuKernels
         m_CB->numRaysToTraceAfterTSSAtMaxFrameAge = numRaysToTraceSinceTSSMovement;
         m_CB->maxFrameAge = maxFrameAge;
         m_CB->testFlag = testFlag;
-#if NORMAL_DEPTH_R8G8B16_ENCODING
         m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16);
-#else
-        switch (normalDepthResourceFormat)
-        {
-        case TextureResourceFormatRGB::R32G32B32A32_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(32); break;
-        case TextureResourceFormatRGB::R16G16B16A16_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16); break;
-        case TextureResourceFormatRGB::R11G11B10_FLOAT: m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(10); break;
-        default: ThrowIfFalse(false, L"Invalid resource format specified.");
-        }
-#endif
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
 
@@ -2459,7 +2426,7 @@ namespace GpuKernels
 
 
     namespace RootSignature {
-        namespace RTAO_TemporalSupersampling_BlendWithCurrentFrame {
+        namespace TemporalSupersampling_BlendWithCurrentFrame {
             namespace Slot {
                 enum Enum {
                     InputOutputValue = 0,
@@ -2481,11 +2448,11 @@ namespace GpuKernels
         }
     }
 
-    void RTAO_TemporalSupersampling_BlendWithCurrentFrame::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
+    void TemporalSupersampling_BlendWithCurrentFrame::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
-            using namespace RootSignature::RTAO_TemporalSupersampling_BlendWithCurrentFrame;
+            using namespace RootSignature::TemporalSupersampling_BlendWithCurrentFrame;
 
             // ToDo remove comments from here and move descriptions to enum definition.
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count];
@@ -2518,7 +2485,7 @@ namespace GpuKernels
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
-            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: RTAO_TemporalSupersampling_BlendWithCurrentFrame");
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: TemporalSupersampling_BlendWithCurrentFrame");
         }
 
         // Create compute pipeline state.
@@ -2529,17 +2496,17 @@ namespace GpuKernels
             descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pTemporalSupersampling_BlendWithCurrentFrameCS), ARRAYSIZE(g_pTemporalSupersampling_BlendWithCurrentFrameCS));
 
             ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-            m_pipelineStateObject->SetName(L"Pipeline state object: RTAO_TemporalSupersampling_BlendWithCurrentFrame");
+            m_pipelineStateObject->SetName(L"Pipeline state object: TemporalSupersampling_BlendWithCurrentFrame");
         }
 
         // Create shader resources
         {
-            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: RTAO_TemporalSupersampling_BlendWithCurrentFrame");
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: TemporalSupersampling_BlendWithCurrentFrame");
         }
     }
 
     // ToDo desc
-    void RTAO_TemporalSupersampling_BlendWithCurrentFrame::Execute(
+    void TemporalSupersampling_BlendWithCurrentFrame::Execute(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -2568,10 +2535,10 @@ namespace GpuKernels
         bool doCheckerboardSampling,
         bool checkerboardLoadEvenPixels)
     {
-        using namespace RootSignature::RTAO_TemporalSupersampling_BlendWithCurrentFrame;
+        using namespace RootSignature::TemporalSupersampling_BlendWithCurrentFrame;
         using namespace DefaultComputeShaderParams;
 
-        ScopedTimer _prof(L"RTAO_TemporalSupersampling_BlendWithCurrentFrame", commandList);
+        ScopedTimer _prof(L"TemporalSupersampling_BlendWithCurrentFrame", commandList);
 
         m_CB->minSmoothingFactor = minSmoothingFactor;
         m_CB->forceUseMinSmoothingFactor = forceUseMinSmoothingFactor;
@@ -2662,7 +2629,6 @@ namespace GpuKernels
 
         // Create shader resources
         {
-            m_output.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_width, m_height, descriptorHeap,
                 &m_output, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"UAV texture: WriteValueToTexture intermediate value output");
 

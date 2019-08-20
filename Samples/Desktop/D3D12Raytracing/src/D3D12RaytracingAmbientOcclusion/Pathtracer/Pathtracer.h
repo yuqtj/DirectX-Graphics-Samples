@@ -27,10 +27,8 @@ namespace Pathtracer
     {
         extern NumVar DefaultAmbientIntensity;
     }
-
-    extern GpuResource g_GBufferResources[GBufferResource::Count];
-    extern GpuResource g_GBufferQuarterResResources[GBufferResource::Count]; // ToDo remove unused
-    GpuResource(&GBufferResources(bool getQuarterResResources = false))[GBufferResource::Count];
+    // Todo route via instance
+    GpuResource (&GBufferResources(bool getQuarterResResources = false))[GBufferResource::Count];
     GpuResource* GetGBufferResources(bool getQuarterResResources = false);
 
     class Pathtracer
@@ -51,6 +49,7 @@ namespace Pathtracer
         void SetResolution(UINT GBufferWidth, UINT GBufferHeight, UINT RTAOWidth, UINT RTAOHeight);
 
         // Getters & Setters.
+        GpuResource(&GBufferResources(bool getQuarterResResources = false))[GBufferResource::Count];
 
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
     private:
@@ -102,8 +101,9 @@ namespace Pathtracer
 
         // Raytracing resources.
         ConstantBuffer<PathtracerConstantBuffer> m_CB;
+        GpuResource m_GBufferResources[GBufferResource::Count];
+        GpuResource m_GBufferQuarterResResources[GBufferResource::Count]; // ToDo remove unused
 
-        GpuResource m_prevFrameGBufferNormalDepth;
         D3D12_GPU_DESCRIPTOR_HANDLE m_nullVertexBufferGPUhandle;
 
         GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;

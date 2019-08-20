@@ -50,7 +50,7 @@ public:
     UINT64 ResourceSize() { return GetResource()->GetDesc().Width; }
 
 protected:
-    ComPtr<ID3D12Resource> g_accelerationStructure;
+    ComPtr<ID3D12Resource> m_accelerationStructure;
     ComPtr<ID3D12Resource> m_compactedAccelerationStructure;
     ComPtr<ID3D12Resource> m_compactionQueryDesc;
     ComPtr<ID3D12Resource> m_compactionQueryReadBack;
@@ -85,7 +85,7 @@ public:
     BottomLevelAccelerationStructureGeometry(const std::wstring& name) : m_name(name) {}
 
     void SetName(const std::wstring& name) { m_name = name; }
-    const std::wstring& GetName() { return m_name; }
+    const std::wstring& GetName() const { return m_name; }
 };
 
 class BottomLevelAccelerationStructure : public AccelerationStructure

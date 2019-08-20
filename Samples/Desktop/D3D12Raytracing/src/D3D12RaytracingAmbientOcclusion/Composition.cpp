@@ -532,7 +532,7 @@ namespace Composition
             commandList->SetComputeRootDescriptorTable(Slot::Output, m_raytracingOutputIntermediate.gpuDescriptorWriteAccess);
 
             // Bind inputs.
-            commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, Pathtracer::g_GBufferResources[0].gpuDescriptorReadAccess);
+            commandList->SetComputeRootDescriptorTable(Slot::GBufferResources, Pathtracer::m_GBufferResources[0].gpuDescriptorReadAccess);
 #if TWO_STAGE_AO_BLUR && !ATROUS_DENOISER
             commandList->SetComputeRootDescriptorTable(Slot::AO, m_AOResources[AOResource::Coefficient].gpuDescriptorReadAccess);
 #else
@@ -546,8 +546,8 @@ namespace Composition
 
             commandList->SetComputeRootDescriptorTable(Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
             commandList->SetComputeRootDescriptorTable(Slot::AORayHitDistance, RayHitDistance->gpuDescriptorReadAccess);
-            commandList->SetComputeRootDescriptorTable(Slot::Color, Pathtracer::g_GBufferResources[GBufferResource::Color].gpuDescriptorReadAccess);
-            commandList->SetComputeRootDescriptorTable(Slot::AOSurfaceAlbedo, Pathtracer::g_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
+            commandList->SetComputeRootDescriptorTable(Slot::Color, Pathtracer::m_GBufferResources[GBufferResource::Color].gpuDescriptorReadAccess);
+            commandList->SetComputeRootDescriptorTable(Slot::AOSurfaceAlbedo, Pathtracer::m_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
 
 
             commandList->SetComputeRootDescriptorTable(Slot::FrameAge, m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].gpuDescriptorReadAccess);

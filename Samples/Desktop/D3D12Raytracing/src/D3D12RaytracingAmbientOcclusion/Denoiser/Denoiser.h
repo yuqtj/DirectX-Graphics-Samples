@@ -36,12 +36,15 @@ namespace Denoiser
         // Public methods.
         void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
         void OnUpdate();
-        void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource, D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource);
+        void Execute(GameCore::Camera camera);
         void ReleaseDeviceDependentResources();
         void ReleaseWindowSizeDependentResources() {}; // ToDo
+        
+        // Getters/Setters.
+        void SetResolution(UINT width, UINT height);
 
     private:
-        void RenderPass_TemporalSupersamplingReverseProjection();
+        void TemporalSupersamplingReverseProjection(GameCore::Camera camera);
         void RenderPass_TemporalSupersamplingBlendWithCurrentFrame();
         void MultiPassBlur();
 
@@ -78,16 +81,15 @@ namespace Denoiser
 
         GpuResource m_varianceResources[AOVarianceResource::Count];
         GpuResource m_localMeanVarianceResources[AOVarianceResource::Count];
-
-
         GpuResource m_multiPassDenoisingBlurStrength;
+        GpuResource m_prevFrameGBufferNormalDepth;
 
         // GpuKernels
-        GpuKernels::RTAO_TemporalSupersampling_ReverseReproject m_temporalCacheReverseReprojectKernel;
-        GpuKernels::RTAO_TemporalSupersampling_BlendWithCurrentFrame m_temporalCacheBlendWithCurrentFrameKernel;
-
+        GpuKernels::FillInCheckerboard      m_fillInCheckerboardKernel;
+        GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
+        GpuKernels::TemporalSupersampling_ReverseReproject m_temporalCacheReverseReprojectKernel;
+        GpuKernels::TemporalSupersampling_BlendWithCurrentFrame m_temporalCacheBlendWithCurrentFrameKernel;
         GpuKernels::AtrousWaveletTransformCrossBilateralFilter m_atrousWaveletTransformFilter;
- 
         GpuKernels::CalculateVariance       m_calculateVarianceKernel;
         GpuKernels::CalculateMeanVariance   m_calculateMeanVarianceKernel;
         const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame =

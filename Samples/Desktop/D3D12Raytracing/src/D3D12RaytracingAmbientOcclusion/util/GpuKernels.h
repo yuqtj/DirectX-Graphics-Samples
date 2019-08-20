@@ -441,9 +441,6 @@ namespace GpuKernels
             float depthSigma,
             float normalSigma,
             float weightScale,
-#if !NORMAL_DEPTH_R8G8B16_ENCODING
-            TextureResourceFormatRGB::Type normalDepthResourceFormat,
-#endif
             UINT kernelStepShifts[5],
             UINT passNumberToOutputToIntermediateResource = 1,
             UINT numFilterPasses = 5,
@@ -639,7 +636,7 @@ namespace GpuKernels
 
 
     
-    class RTAO_TemporalSupersampling_ReverseReproject
+    class TemporalSupersampling_ReverseReproject
     {
     public:
         void Release()
@@ -675,9 +672,6 @@ namespace GpuKernels
         bool useWorldSpaceDistance,
         bool usingBilateralDownsampledBuffers,
         bool perspectiveCorrectDepthInterpolation,
-#if !NORMAL_DEPTH_R8G8B16_ENCODING
-        TextureResourceFormatRGB::Type normalDepthResourceFormat,
-#endif
         GpuResource debugResources[2],
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin,
@@ -688,12 +682,12 @@ namespace GpuKernels
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-        ConstantBuffer<RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer> m_CB;
+        ConstantBuffer<TemporalSupersampling_ReverseReprojectConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
     };
 
 
-    class RTAO_TemporalSupersampling_BlendWithCurrentFrame
+    class TemporalSupersampling_BlendWithCurrentFrame
     {
     public:
         void Release()
@@ -735,7 +729,7 @@ namespace GpuKernels
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-        ConstantBuffer<RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer> m_CB;
+        ConstantBuffer<TemporalSupersampling_BlendWithCurrentFrameConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
     };
        

@@ -180,21 +180,12 @@ Incompatible macros
 
 #define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
 
-#define NORMAL_DEPTH_R8G8B16_ENCODING 1
 
 #ifdef HLSL
-#if NORMAL_DEPTH_R8G8B16_ENCODING 
 // ToDo append lowres
 typedef uint NormalDepthTexFormat;
 #else
-typedef float4 NormalDepthTexFormat;
-#endif
-#else
-#if NORMAL_DEPTH_R8G8B16_ENCODING 
 #define COMPACT_NORMAL_DEPTH_DXGI_FORMAT DXGI_FORMAT_R32_UINT
-#else
-#define COMPACT_NORMAL_DEPTH_DXGI_FORMAT TextureResourceFormatRGB::ToDXGIFormat(SceneArgs::RTAO_TemporalSupersampling_NormalDepthResourceFormat)
-#endif
 #endif
 // ToDo 16bit per component normals?
 #define FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT 0    // ToDo
@@ -783,7 +774,7 @@ struct BilateralFilterConstantBuffer
     float padding[2];
 };
 
-struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer
+struct TemporalSupersampling_ReverseReprojectConstantBuffer
 {
     // ToDo pix missinterprets the format
     XMUINT2 textureDim;
@@ -811,7 +802,7 @@ struct RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer
     BOOL testFlag;
 };
 
-struct RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer
+struct TemporalSupersampling_BlendWithCurrentFrameConstantBuffer
 {
     // ToDo pix missinterprets the format
     XMUINT2 textureDim;

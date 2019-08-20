@@ -20,7 +20,7 @@ public:
         AllowWrite = 0x2,
     };
 
-    UINT rwFlags = RWFlags::None;
+    UINT rwFlags = RWFlags::AllowRead | RWFlags::AllowWrite;
     Microsoft::WRL::ComPtr<ID3D12Resource> resource;
     // ToDo rename these to GetUAV,... like in MiniEngine
     D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorReadAccess = { UINT64_MAX };

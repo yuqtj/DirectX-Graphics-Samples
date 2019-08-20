@@ -37,7 +37,7 @@ RWTexture2D<float> g_texOutputBlurStrength: register(u5);
 RWTexture2D<float4> g_texOutputDebug1 : register(u10);
 RWTexture2D<float4> g_texOutputDebug2 : register(u11);
 
-ConstantBuffer<RTAO_TemporalSupersampling_BlendWithCurrentFrameConstantBuffer> cb : register(b0);
+ConstantBuffer<TemporalSupersampling_BlendWithCurrentFrameConstantBuffer> cb : register(b0);
 
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)

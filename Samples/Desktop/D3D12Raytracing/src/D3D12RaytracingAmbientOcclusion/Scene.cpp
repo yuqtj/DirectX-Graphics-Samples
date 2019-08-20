@@ -26,26 +26,16 @@ using namespace SceneEnums;
 namespace Scene
 {
     // Singleton instance.
-    Scene* g_pPathracer;
+    Scene* g_pScene = nullptr;
     UINT Scene::s_numInstances = 0;
-
-    std::map<std::wstring, BottomLevelAccelerationStructureGeometry> g_bottomLevelASGeometries;
-    std::unique_ptr<RaytracingAccelerationStructureManager> g_accelerationStructure;
-    GpuResource g_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
+     
+    Scene* instance() 
+    {
+        return g_pScene;
+    }
 
     namespace Args
     {
-
-
-        // ToDo test tessFactor 16
-        // ToDo fix alias on TessFactor 2
-        IntVar GeometryTesselationFactor(L"Render/Geometry/Tesselation factor", 0/*14*/, 0, 80, 1, OnGeometryChange, nullptr);
-        IntVar NumGeometriesPerBLAS(L"Render/Geometry/# geometries per BLAS", // ToDo
-            NUM_GEOMETRIES, 1, 1000000, 1, OnGeometryChange, nullptr);
-        IntVar NumSphereBLAS(L"Render/Geometry/# Sphere BLAS", 1, 1, D3D12RaytracingAmbientOcclusion::MaxBLAS, 1, OnASChange, nullptr);
-
-
-
         BoolVar EnableGeometryAndASBuildsAndUpdates(L"Render/Acceleration structure/Enable geometry & AS builds and updates", true);
 
 #if ONLY_SQUID_SCENE_BLAS
@@ -68,15 +58,21 @@ namespace Scene
 
         NumVar DebugVar(L"Render/Debug var", -20, -90, 90, 0.5f);
     }
+
+    const GameCore::Camera& Scene::Camera()
+    {
+        return g_pScene->m_camera;
+    }
+    const GameCore::Camera& Scene::PrevFrameCamera()
+    {
+        
+    }
+
+
     Scene::Scene()
     {
         ThrowIfFalse(++s_numInstances == 1, L"There can be only one Scene instance.");
-        g_pPathracer = this;
-
-        for (auto& rayGenShaderTableRecordSizeInBytes : m_rayGenShaderTableRecordSizeInBytes)
-        {
-            rayGenShaderTableRecordSizeInBytes = UINT_MAX;
-        }
+        g_pScene = this;
     }
 
     void Scene::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex)
@@ -107,6 +103,7 @@ namespace Scene
 
     void Scene::OnUpdate()
     {
+        m_timer.Tick();
 
         if (GameInput::IsFirstPressed(GameInput::kKey_f))
         {
@@ -118,7 +115,7 @@ namespace Scene
         m_hasCameraChanged = false;
         if (!m_isCameraFrozen)
         {
-            m_hasCameraChanged = m_cameraController->Update(elapsedTime);
+            m_hasCameraChanged = m_cameraController->Update(m_timer.GetElapsedSeconds());
             // ToDo
             // if (CameraChanged)
             //m_bClearTemporalSupersampling = true;
@@ -132,16 +129,16 @@ namespace Scene
             float rotAngle1 = XMConvertToRadians(t * 360.0f / animationDuration);
             float rotAngle2 = XMConvertToRadians((t + 12) * 360.0f / animationDuration);
             float rotAngle3 = XMConvertToRadians((t + 24) * 360.0f / animationDuration);
-            //g_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle1)
+            //m_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle1)
             //    * XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
-            //g_accelerationStructure->GetBottomLevelASInstance(6).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle2)
+            //m_accelerationStructure->GetBottomLevelASInstance(6).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle2)
             //    * XMMatrixTranslationFromVector(XMVectorSet(-15, 4, -10, 0)));
-            //g_accelerationStructure->GetBottomLevelASInstance(7).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle3)
+            //m_accelerationStructure->GetBottomLevelASInstance(7).SetTransform(XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 0), rotAngle3)
             //    * XMMatrixTranslationFromVector(XMVectorSet(-5, 4, -10, 0)));
 
-            //g_accelerationStructure->GetBottomLevelASInstance(3).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-5 + 10 * t, 0, 0, 0)));
-            //g_accelerationStructure->GetBottomLevelASInstance(0).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 10 * t, 0, 0)));
-            //g_accelerationStructure->GetBottomLevelASInstance(1).SetTransform(XMMatrixRotationX(XMConvertToRadians((t-0.5f) * 20)));
+            //m_accelerationStructure->GetBottomLevelASInstance(3).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-5 + 10 * t, 0, 0, 0)));
+            //m_accelerationStructure->GetBottomLevelASInstance(0).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 10 * t, 0, 0)));
+            //m_accelerationStructure->GetBottomLevelASInstance(1).SetTransform(XMMatrixRotationX(XMConvertToRadians((t-0.5f) * 20)));
 
 
             // Animated car.
@@ -158,7 +155,7 @@ namespace Scene
                 XMMATRIX mScale = XMMatrixScaling(scale, scale, scale);
                 XMMATRIX mTransform = mScale * mRotateSceneCenter * mTranslation * mRotate * mTranslationSceneCenter;
 
-                g_accelerationStructure->GetBottomLevelASInstance(m_animatedCarInstanceIndex).SetTransform(mTransform);
+                m_accelerationStructure->GetBottomLevelASInstance(m_animatedCarInstanceIndex).SetTransform(mTransform);
             }
         }
 
@@ -296,7 +293,7 @@ namespace Scene
             SceneParser::Scene pbrtScene;
             PBRTParser::PBRTParser().Parse(pbrtSceneDefinition.path, pbrtScene);
 
-            auto& bottomLevelASGeometry = g_bottomLevelASGeometries[pbrtSceneDefinition.name];
+            auto& bottomLevelASGeometry = m_bottomLevelASGeometries[pbrtSceneDefinition.name];
             bottomLevelASGeometry.SetName(pbrtSceneDefinition.name);
 
             // ToDo switch to a common namespace rather than 't reference SquidRoomAssets?
@@ -567,7 +564,7 @@ namespace Scene
     {
         auto device = m_deviceResources->GetD3DDevice();
 
-        auto& bottomLevelASGeometry = g_bottomLevelASGeometries[L"Plane"];
+        auto& bottomLevelASGeometry = m_bottomLevelASGeometries[L"Plane"];
         bottomLevelASGeometry.SetName(L"Plane");
         bottomLevelASGeometry.m_indexFormat = DXGI_FORMAT_R16_UINT; // ToDo use common or add support to shaders 
         bottomLevelASGeometry.m_ibStrideInBytes = sizeof(Index);
@@ -635,7 +632,7 @@ namespace Scene
 
         const bool RhCoords = false;    // ToDo use a global constant
 
-        auto& bottomLevelASGeometry = g_bottomLevelASGeometries[L"Tesselated Geometry"];
+        auto& bottomLevelASGeometry = m_bottomLevelASGeometries[L"Tesselated Geometry"];
         bottomLevelASGeometry.SetName(L"Tesselated Geometry");
         bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat;
         bottomLevelASGeometry.m_ibStrideInBytes = sizeof(Index);
@@ -783,7 +780,7 @@ namespace Scene
         auto device = m_deviceResources->GetD3DDevice();
         auto commandList = m_deviceResources->GetCommandList();
 
-        auto& bottomLevelASGeometry = g_bottomLevelASGeometries[L"Squid Room"];
+        auto& bottomLevelASGeometry = m_bottomLevelASGeometries[L"Squid Room"];
         bottomLevelASGeometry.SetName(L"Squid Room");
         bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat; // ToDo use common or add support to shaders 
         bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
@@ -845,7 +842,7 @@ namespace Scene
         for (UINT i = 0; i < UIParameters::NumGrassGeometryLODs; i++)
         {
             wstring name = L"Grass Patch LOD " + to_wstring(i);
-            auto& bottomLevelASGeometry = g_bottomLevelASGeometries[name];
+            auto& bottomLevelASGeometry = m_bottomLevelASGeometries[name];
             bottomLevelASGeometry.SetName(name);
             bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat; // ToDo use common or add support to shaders 
             bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
@@ -882,26 +879,25 @@ namespace Scene
                 // Preallocate subsequent descriptor indices for both SRV and UAV groups.
                 UINT baseSRVHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(3);      // 1 IB + 2 VB
                 geometry.ib.buffer.heapIndex = baseSRVHeapIndex;
-                g_grassPatchVB[i][0].srvDescriptorHeapIndex = baseSRVHeapIndex + 1;
-                g_grassPatchVB[i][1].srvDescriptorHeapIndex = baseSRVHeapIndex + 2;
+                m_grassPatchVB[i][0].srvDescriptorHeapIndex = baseSRVHeapIndex + 1;
+                m_grassPatchVB[i][1].srvDescriptorHeapIndex = baseSRVHeapIndex + 2;
 
                 UINT baseUAVHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(2);      // 2 VB
-                g_grassPatchVB[i][0].uavDescriptorHeapIndex = baseUAVHeapIndex;
-                g_grassPatchVB[i][1].uavDescriptorHeapIndex = baseUAVHeapIndex + 1;
+                m_grassPatchVB[i][0].uavDescriptorHeapIndex = baseUAVHeapIndex;
+                m_grassPatchVB[i][1].uavDescriptorHeapIndex = baseUAVHeapIndex + 1;
 
                 AllocateIndexBuffer(device, NumIndices, sizeof(Index), m_cbvSrvUavHeap.get(), &geometry.ib.buffer, D3D12_RESOURCE_STATE_COPY_DEST);
                 UploadDataToBuffer(device, commandList, &indices[0], NumIndices, sizeof(Index), geometry.ib.buffer.resource.Get(), &geometry.ib.upload, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 
-                for (auto& vb : g_grassPatchVB[i])
+                for (auto& vb : m_grassPatchVB[i])
                 {
-                    vb.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
                     AllocateUAVBuffer(device, NumVertices, sizeof(VertexPositionNormalTextureTangent), &vb, DXGI_FORMAT_UNKNOWN, m_cbvSrvUavHeap.get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"Vertex Buffer: Grass geometry");
                 }
 
                 // ToDo add comment
-                geometry.vb.buffer.resource = g_grassPatchVB[i][0].resource;
-                geometry.vb.buffer.gpuDescriptorHandle = g_grassPatchVB[i][0].gpuDescriptorReadAccess;
-                geometry.vb.buffer.heapIndex = g_grassPatchVB[i][0].srvDescriptorHeapIndex;
+                geometry.vb.buffer.resource = m_grassPatchVB[i][0].resource;
+                geometry.vb.buffer.gpuDescriptorHandle = m_grassPatchVB[i][0].gpuDescriptorReadAccess;
+                geometry.vb.buffer.heapIndex = m_grassPatchVB[i][0].srvDescriptorHeapIndex;
             }
 
             // Load textures during initialization of the first LOD.
@@ -1017,10 +1013,10 @@ namespace Scene
     {
         auto device = m_deviceResources->GetD3DDevice();
 
-        g_accelerationStructure = make_unique<RaytracingAccelerationStructureManager>(device, MaxNumBottomLevelInstances, FrameCount);
+        m_accelerationStructure = make_unique<RaytracingAccelerationStructureManager>(device, MaxNumBottomLevelInstances, FrameCount);
 
         D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;    // ToDo specify via Args
-        for (auto& bottomLevelASGeometryPair : g_bottomLevelASGeometries)
+        for (auto& bottomLevelASGeometryPair : m_bottomLevelASGeometries)
         {
             auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
             bool updateOnBuild = false;
@@ -1037,7 +1033,7 @@ namespace Scene
             {
                 compactAS = false;
             }
-            g_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, updateOnBuild, updateOnBuild, compactAS);
+            m_accelerationStructure->AddBottomLevelAS(device, buildFlags, bottomLevelASGeometry, updateOnBuild, updateOnBuild, compactAS);
         }
     }
 
@@ -1070,7 +1066,7 @@ namespace Scene
         // Initialize the bottom-level AS instances.
         for (auto& bottomLevelASname : bottomLevelASnames)
         {
-            g_accelerationStructure->AddBottomLevelASInstance(bottomLevelASname);
+            m_accelerationStructure->AddBottomLevelASInstance(bottomLevelASname);
         }
 
 
@@ -1085,7 +1081,7 @@ namespace Scene
             float angleToRotateBy = 360.0f * (2.f * i / (2.f * NumMirrorQuads));
             XMMATRIX mRotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
             XMMATRIX mTransform = mScale * mTranslation * mRotate * mTranslationSceneCenter;
-            g_accelerationStructure->AddBottomLevelASInstance(L"Quad", UINT_MAX, mTransform);
+            m_accelerationStructure->AddBottomLevelASInstance(L"Quad", UINT_MAX, mTransform);
         }
 
         for (int i = 0; i < NumMirrorQuads; i++)
@@ -1093,14 +1089,14 @@ namespace Scene
             float angleToRotateBy = 360.0f * ((2.f * i + 1) / (2.f * NumMirrorQuads));
             XMMATRIX mRotate = XMMatrixRotationY(XMConvertToRadians(angleToRotateBy));
             XMMATRIX mTransform = mScale * mTranslation * mRotate * mTranslationSceneCenter;
-            g_accelerationStructure->AddBottomLevelASInstance(L"MirrorQuad", UINT_MAX, mTransform);
+            m_accelerationStructure->AddBottomLevelASInstance(L"MirrorQuad", UINT_MAX, mTransform);
         }
 
-        m_animatedCarInstanceIndex = g_accelerationStructure->AddBottomLevelASInstance(L"Car", UINT_MAX, XMMatrixIdentity());
+        m_animatedCarInstanceIndex = m_accelerationStructure->AddBottomLevelASInstance(L"Car", UINT_MAX, XMMatrixIdentity());
 #endif
 
 
-        //g_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
+        //m_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
 
 #if GENERATE_GRASS
 #if GRASS_NO_DEGENERATE_INSTANCES
@@ -1115,7 +1111,7 @@ namespace Scene
                     (IsInRange(x, -2, 3) && IsInRange(z, -3, 2)))
 
                 {
-                    m_grassInstanceIndices[grassInstanceIndex] = g_accelerationStructure->AddBottomLevelASInstance(L"Grass Patch LOD 0", UINT_MAX, XMMatrixIdentity());
+                    m_grassInstanceIndices[grassInstanceIndex] = m_accelerationStructure->AddBottomLevelASInstance(L"Grass Patch LOD 0", UINT_MAX, XMMatrixIdentity());
                     grassInstanceIndex++;
                 }
             }
@@ -1130,7 +1126,7 @@ namespace Scene
                 0.f, 0.f, 0.f, 0.f,
                 0.f, 0.f, 0.f, 0.f,
                 0.f, 0.f, 0.f, 0.f);
-            m_grassInstanceIndices[i] = g_accelerationStructure->AddBottomLevelASInstance(L"Grass Patch LOD 0", UINT_MAX, degenerateTransform);
+            m_grassInstanceIndices[i] = m_accelerationStructure->AddBottomLevelASInstance(L"Grass Patch LOD 0", UINT_MAX, degenerateTransform);
         }
 #endif
 #endif
@@ -1139,7 +1135,7 @@ namespace Scene
         D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;    // ToDo specify via Args
         bool allowUpdate = false;
         bool performUpdateOnBuild = false;
-        g_accelerationStructure->InitializeTopLevelAS(device, buildFlags, allowUpdate, performUpdateOnBuild, L"Top-Level Acceleration Structure");
+        m_accelerationStructure->InitializeTopLevelAS(device, buildFlags, allowUpdate, performUpdateOnBuild, L"Top-Level Acceleration Structure");
     }
 
 
@@ -1188,7 +1184,7 @@ namespace Scene
             GetGrassParameters(&params, i, totalTime);
 
             UINT vbID = m_currentGrassPatchVBIndex & 1;
-            auto& grassPatchVB = g_grassPatchVB[i][vbID];
+            auto& grassPatchVB = m_grassPatchVB[i][vbID];
 
             // Transition output vertex buffer to UAV state and make sure the resource is done being read from.      
             {
@@ -1206,7 +1202,7 @@ namespace Scene
             }
 
             // Point bottom-levelAS VB pointer to the updated VB.
-            auto& bottomLevelAS = g_accelerationStructure->GetBottomLevelAS(L"Grass Patch LOD " + to_wstring(i));
+            auto& bottomLevelAS = m_accelerationStructure->GetBottomLevelAS(L"Grass Patch LOD " + to_wstring(i));
             auto& geometryDesc = bottomLevelAS.GetGeometryDescs()[0];
             geometryDesc.Triangles.VertexBuffer.StartAddress = grassPatchVB.resource->GetGPUVirtualAddress();
             bottomLevelAS.SetDirty(true);
@@ -1219,7 +1215,7 @@ namespace Scene
 
             for (UINT i = 0; i < UIParameters::NumGrassGeometryLODs; i++)
             {
-                grassBottomLevelAS[i] = &g_accelerationStructure->GetBottomLevelAS(L"Grass Patch LOD " + to_wstring(i));
+                grassBottomLevelAS[i] = &m_accelerationStructure->GetBottomLevelAS(L"Grass Patch LOD " + to_wstring(i));
             }
 
 
@@ -1249,7 +1245,7 @@ namespace Scene
                         UINT grassInstanceIndex = i * NumGrassPatchesX + j;
 #endif
 
-                        auto& BLASinstance = g_accelerationStructure->GetBottomLevelASInstance(m_grassInstanceIndices[grassInstanceIndex]);
+                        auto& BLASinstance = m_accelerationStructure->GetBottomLevelASInstance(m_grassInstanceIndices[grassInstanceIndex]);
 
                         float jitterX = 2 * GetRandomFloat01inclusive() - 1;
                         float jitterZ = 2 * GetRandomFloat01inclusive() - 1;
@@ -1318,14 +1314,14 @@ namespace Scene
             bool forceBuild = false;    // ToDo
 
             resourceStateTracker->FlushResourceBarriers();
-            g_accelerationStructure->Build(commandList, m_cbvSrvUavHeap->GetHeap(), frameIndex, forceBuild);
+            m_accelerationStructure->Build(commandList, m_cbvSrvUavHeap->GetHeap(), frameIndex, forceBuild);
         }
 
         // Copy previous frame Bottom Level AS instance transforms to GPU. 
         m_prevFrameBottomLevelASInstanceTransforms.CopyStagingToGpu(frameIndex);
 
         // Update the CPU staging copy with the current frame transforms.
-        const auto& bottomLevelASInstanceDescs = g_accelerationStructure->GetBottomLevelASInstancesBuffer();
+        const auto& bottomLevelASInstanceDescs = m_accelerationStructure->GetBottomLevelASInstancesBuffer();
         for (UINT i = 0; i < bottomLevelASInstanceDescs.NumElements(); i++)
         {
             m_prevFrameBottomLevelASInstanceTransforms[i] = *reinterpret_cast<const XMFLOAT3X4*>(bottomLevelASInstanceDescs[i].Transform);

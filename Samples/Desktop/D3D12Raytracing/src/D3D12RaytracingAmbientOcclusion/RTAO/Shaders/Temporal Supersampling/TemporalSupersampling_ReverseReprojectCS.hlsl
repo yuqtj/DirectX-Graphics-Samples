@@ -46,7 +46,7 @@ RWTexture2D<uint4> g_texOutputReprojectedCachedValues : register(u1);
 RWTexture2D<float4> g_texOutputDebug1 : register(u10);
 RWTexture2D<float4> g_texOutputDebug2 : register(u11);
 
-ConstantBuffer<RTAO_TemporalSupersampling_ReverseReprojectConstantBuffer> cb : register(b0);
+ConstantBuffer<TemporalSupersampling_ReverseReprojectConstantBuffer> cb : register(b0);
 
 SamplerState ClampSampler : register(s0);
 
@@ -189,7 +189,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // ToDo conditional loads if really needed?
     float3 cacheNormals[4];
     float4 vCacheDepths;
-#if NORMAL_DEPTH_R8G8B16_ENCODING
     {
         uint4 packedEncodedNormalDepths = g_texInputCachedNormalDepth.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
         [unroll]
@@ -198,19 +197,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
             DecodeNormalDepth(packedEncodedNormalDepths[i], cacheNormals[i], vCacheDepths[i]);
         }
     }
-#else
-    {
-        float4 encodedNormalX = g_texInputCachedNormalDepth.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-        float4 encodedNormalY = g_texInputCachedNormalDepth.GatherGreen(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-        [unroll]
-        for (int i = 0; i < 4; i++)
-        {
-            cacheNormals[i] = DecodeNormal(float2(encodedNormalX[i], encodedNormalY[i]));
-        }
-
-        vCacheDepths = g_texInputCachedNormalDepth.GatherBlue(ClampSampler, adjustedCacheFrameTexturePos).wzxy;
-    }
-#endif
 
     float2 dxdy = g_texInputCurrentFrameLinearDepthDerivative[DTid];
 
@@ -228,10 +214,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     */
 
     float4 weights;
-    if (cb.testFlag)
-        weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, dxdy);
-    else
-        weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, dxdy);
+    weights = BilateralResampleWeights(_depth, _normal, vCacheDepths, cacheNormals, cachePixelOffset, DTid, cacheIndices, dxdy);
     
     // Invalidate weights for invalid values in the cache.
     float4 vCacheValues = g_texInputCachedValue.GatherRed(ClampSampler, adjustedCacheFrameTexturePos).wzxy;

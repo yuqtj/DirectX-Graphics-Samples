@@ -36,6 +36,7 @@ namespace RTAO
         extern BoolVar QuarterResAO;
     }
 
+    GpuResource(&AOResources())[AOResource::Count]{ return m_AOResources; }
     DXGI_FORMAT AOCoefficientFormat();
     float MaxRayHitTime();
     void SetMaxRayHitTime(float maxRayHitTime);
@@ -57,9 +58,6 @@ namespace RTAO
         void SetResolution(UINT width, UINT height);
         float GetSpp();
         void GetRayGenParameters(bool* isCheckerboardSamplingEnabled, bool* checkerboardLoadEvenPixels);
-        // ToDo return only a subset
-        GpuResource(&AOResources())[AOResource::Count]{ return m_AOResources; }
-        GpuResource* GetAOResources() { return m_AOResources; }
 
         void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }

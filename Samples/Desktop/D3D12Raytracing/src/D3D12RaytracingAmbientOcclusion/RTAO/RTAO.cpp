@@ -359,7 +359,6 @@ namespace RTAO
             m_AOResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count);
             for (UINT i = 0; i < AOResource::Count; i++)
             {
-                m_AOResources[i].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
                 m_AOResources[i].uavDescriptorHeapIndex = m_AOResources[0].uavDescriptorHeapIndex + i;
                 m_AOResources[i].srvDescriptorHeapIndex = m_AOResources[0].srvDescriptorHeapIndex + i;
             }
@@ -381,17 +380,9 @@ namespace RTAO
         }
 
 
-        m_sourceToSortedRayIndexOffset.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
         CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sourceToSortedRayIndexOffset, initialResourceState, L"Source To Sorted Ray Index");
-
-        m_sortedToSourceRayIndexOffset.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedToSourceRayIndexOffset, initialResourceState, L"Sorted To Source Ray Index");
-
-        m_sortedRayGroupDebug.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
+        CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedToSourceRayIndexOffset, initialResourceState, L"Sorted To Source Ray Index"); // ToDo remove
         CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupDebug, initialResourceState, L"Sorted Ray Group Debug");
-
-        m_AORayDirectionOriginDepth.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
-        // ToDo test precision
         CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AORayDirectionOriginDepth, initialResourceState, L"AO Rays Direction, Origin Depth and Hit");
     }
 
@@ -552,7 +543,7 @@ namespace RTAO
             auto commandList = m_deviceResources->GetCommandList();
 
         GpuResource* m_AOResources = Args::QuarterResAO ? m_AOLowResResources : m_AOResources;
-        GpuResource* GBufferResources = Args::QuarterResAO ? g_GBufferQuarterResResources : g_GBufferResources;
+        GpuResource* GBufferResources = Args::QuarterResAO ? m_GBufferQuarterResResources : m_GBufferResources;
         GpuResource& NormalDeptLowPrecisionResource = Args::QuarterResAO ?
             m_normalDepthLowResLowPrecision[m_normalDepthCurrentFrameResourceIndex]
             : m_normalDepthLowPrecision[m_normalDepthCurrentFrameResourceIndex];
@@ -582,7 +573,7 @@ namespace RTAO
                 Args::AODenoiseValueSigma,
                 Args::AODenoiseDepthSigma,
                 Args::AODenoiseNormalSigma,
-                static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(Args::RTAO_TemporalSupersampling_NormalDepthResourceFormat)),
+                static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(Args::TemporalSupersampling_NormalDepthResourceFormat)),
                 offsets,
                 1,
                 GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputPerPixelFilterWeightSum,

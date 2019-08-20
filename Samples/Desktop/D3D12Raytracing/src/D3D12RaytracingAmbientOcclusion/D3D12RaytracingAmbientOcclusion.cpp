@@ -43,9 +43,9 @@ namespace Sample
     D3D12RaytracingAmbientOcclusion* g_pSample = nullptr;
     UINT D3D12RaytracingAmbientOcclusion::s_numInstances = 0;
 
-    std::map<std::wstring, BottomLevelAccelerationStructureGeometry> g_bottomLevelASGeometries;
-    std::unique_ptr<RaytracingAccelerationStructureManager> g_accelerationStructure;
-    GpuResource g_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
+    std::map<std::wstring, BottomLevelAccelerationStructureGeometry> m_bottomLevelASGeometries;
+    std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
+    GpuResource m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
 
     void OnGeometryReinitializationNeeded(void* args)
     {
@@ -87,11 +87,6 @@ namespace Sample
 #endif
         BoolVar AOEnabled(L"Render/AO/Enabled", true);
 
-
-#if !NORMAL_DEPTH_R8G8B16_ENCODING
-        const WCHAR* FloatingPointFormatsRGB[TextureResourceFormatRGB::Count] = { L"R32G32B32A32_FLOAT", L"R16G16B16A16_FLOAT", L"R11G11B10_FLOAT" };
-        EnumVar RTAO_TemporalSupersampling_NormalDepthResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Cache/Encoded Normal (RG) Depth (B) resource", TextureResourceFormatRGB::R16G16B16A16_FLOAT, TextureResourceFormatRGB::Count, FloatingPointFormatsRGB, OnRecreateRaytracingResources);
-#endif
 
         BoolVar TAO_LazyRender(L"TAO/Lazy render", false);
         IntVar RTAO_LazyRenderNumFrames(L"TAO/Lazy render frames", 1, 0, 20, 1);
@@ -317,9 +312,8 @@ void D3D12RaytracingAmbientOcclusion::CreateRaytracingOutputResource()
 {
     auto device = m_deviceResources->GetD3DDevice();
     auto backbufferFormat = m_deviceResources->GetBackBufferFormat();
-	m_raytracingOutput.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
+
 	CreateRenderTargetResource(device, backbufferFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_raytracingOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	m_raytracingOutputIntermediate.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
 	CreateRenderTargetResource(device, backbufferFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
@@ -351,12 +345,11 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
 	D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
     // ToDo remove obsolete resources, QuarterResAO event triggers this so we may not need all low/gbuffer width AO resources.
-    m_multiPassDenoisingBlurStrength.rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
     CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_multiPassDenoisingBlurStrength, initialResourceState, L"Multi Pass Denoising Blur Strength");
     
   
     // ToDo
-    m_SSAO.BindGBufferResources(Pathtracer::g_GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource(), Pathtracer::g_GBufferResources[GBufferResource::Depth].GetResource());
+    m_SSAO.BindGBufferResources(Pathtracer::m_GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource(), Pathtracer::m_GBufferResources[GBufferResource::Depth].GetResource());
 
     // ToDo remove unneeded ones
     // Full-res AO resources.
@@ -366,7 +359,6 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         m_AOResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count);
         for (UINT i = 0; i < AOResource::Count; i++)
         {
-            m_AOResources[i].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             m_AOResources[i].uavDescriptorHeapIndex = m_AOResources[0].uavDescriptorHeapIndex + i;
             m_AOResources[i].srvDescriptorHeapIndex = m_AOResources[0].srvDescriptorHeapIndex + i;
         }
@@ -400,7 +392,6 @@ void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
         g_debugOutput[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(ARRAYSIZE(g_debugOutput));
         for (UINT i = 0; i < ARRAYSIZE(g_debugOutput); i++)
         {
-            g_debugOutput[i].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             g_debugOutput[i].uavDescriptorHeapIndex = g_debugOutput[0].uavDescriptorHeapIndex + i;
             g_debugOutput[i].srvDescriptorHeapIndex = g_debugOutput[0].srvDescriptorHeapIndex + i;
             CreateRenderTargetResource(device, debugFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &g_debugOutput[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Debug");
@@ -421,8 +412,6 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
 
 	// ToDo move?
 	m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
-    m_fillInCheckerboardKernel.Initialize(device, FrameCount);
-    m_gaussianSmoothingKernel.Initialize(device, FrameCount, MaxGaussianSmoothingKernelInvocationsPerFrame);
 	m_downsampleBoxFilter2x2Kernel.Initialize(device, FrameCount);
 	m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9, FrameCount);
 	m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25, FrameCount); // ToDo Dedupe 9 and 25
@@ -491,19 +480,19 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
         Args::TAO_LazyRender.Bang();// TODo remove
         break;
     case 'J':
-        g_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 5, 0, 0)));
+        m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 5, 0, 0)));
         m_cameraChangedIndex = 2;
         break;
     case 'M':
-        g_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, -5, 0, 0)));
+        m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, -5, 0, 0)));
         m_cameraChangedIndex = 2;
         break;
     case 'U':
-        g_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(5, 0, 0, 0)));
+        m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(5, 0, 0, 0)));
         m_cameraChangedIndex = 2;
         break;
     case 'Y':
-        g_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-5, 0, 0, 0)));
+        m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-5, 0, 0, 0)));
         m_cameraChangedIndex = 2;
         break;
     case 'O':
@@ -552,7 +541,6 @@ void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
 // Update frame-based values.
 void D3D12RaytracingAmbientOcclusion::OnUpdate()
 {
-    m_timer.Tick();
 
     if (m_isProfiling)
     {
@@ -569,7 +557,6 @@ void D3D12RaytracingAmbientOcclusion::OnUpdate()
         }
     }
 
-    float elapsedTime = static_cast<float>(m_timer.GetElapsedSeconds());
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
     auto prevFrameIndex = m_deviceResources->GetPreviousFrameIndex();
 
@@ -748,7 +735,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
             set<wstring> profileMarkers = {
                    L"DownsampleGBuffer",
                    L"RTAO_Root",
-                   L"RenderPass_TemporalSupersamplingReverseProjection",
+                   L"TemporalSupersamplingReverseProjection",
                    L"[Sorted]CalculateAmbientOcclusion",
                    L"CalculateAmbientOcclusion_Root",
                    L"Adaptive Ray Gen",
@@ -821,8 +808,8 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
 		break;
 	case DownsampleFilter::GaussianFilter9Tap:
 	case DownsampleFilter::GaussianFilter25Tap:
-        GBufferWidth = c_SupersamplingScale * m_width;// +1;        // ToDo remove +1
-        GBufferHeight = c_SupersamplingScale * m_height;// +1;
+        GBufferWidth = c_SupersamplingScale * m_width;
+        GBufferHeight = c_SupersamplingScale * m_height;
 		break;
 	}
     
@@ -838,14 +825,14 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
         m_raytracingHeight = GBufferHeight;
     }
 
-    m_pathtracer.SetResolution(GBufferWidth, GBufferHeight);
+    m_pathtracer.SetResolution(GBufferWidth, GBufferHeight, m_raytracingWidth, m_raytracingHeight);
+    m_RTAO.SetResolution(m_raytracingWidth, m_raytracingHeight);
+    m_denoiser.SetResolution(m_raytracingWidth, m_raytracingHeight);
 
     // Create an output 2D texture to store the raytracing result to.
     CreateRaytracingOutputResource();
 
 	CreateGBufferResources();
-
-    m_RTAO.SetResolution(m_raytracingWidth, m_raytracingHeight);
 
 	m_reduceSumKernel.CreateInputResourceSizeDependentResources(
 		device,
@@ -956,7 +943,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                 UpdateAccelerationStructure();
 
                 // Render.
-                m_pathtracer.OnRender(g_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
+                m_pathtracer.OnRender(m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
 
                 // AO. 
                 if (Args::AOMode == Args::AOType::RTAO)
@@ -965,9 +952,9 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
                     GpuResource* GBufferResources = m_pathtracer.GetGBufferResources(RTAO::Args::QuarterResAO);
 
-                    RenderPass_TemporalSupersamplingReverseProjection();
+                    TemporalSupersamplingReverseProjection();
                     m_RTAO.OnRender(
-                        g_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
+                        m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
                         GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
                         GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
                         GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess,
@@ -989,7 +976,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                     {
 
 #if 0
-                        if (Args::RTAO_TemporalSupersampling_CacheDenoisedOutput)
+                        if (Args::TemporalSupersampling_CacheDenoisedOutput)
                         {
 
                             // Cache current frame's normal depth buffer.
@@ -1008,7 +995,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-                            if (Args::RTAO_TemporalSupersampling_CacheSquaredMean)
+                            if (Args::TemporalSupersampling_CacheSquaredMean)
                             {
                                 resourceStateTracker->FlushResourceBarriers();
                                 CopyTextureRegion(
