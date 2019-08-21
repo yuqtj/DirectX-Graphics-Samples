@@ -16,6 +16,8 @@
 #include "EngineProfiling.h"
 #include "GpuTimeManager.h"
 #include "Composition.h"
+#include "CompiledShaders\RNGVisualizerCS.hlsl.h"
+#include "CompiledShaders\ComposeRenderPassesCS.hlsl.h"
 
 // ToDo prune unused
 using namespace std;
@@ -113,6 +115,7 @@ namespace Composition
     }
 
 
+    // ToDo rename
     void Composition::DownsampleRaytracingOutput()
     {
         auto commandList = m_deviceResources->GetCommandList();

@@ -159,6 +159,7 @@ namespace Pathtracer
         auto FrameCount = m_deviceResources->GetBackBufferCount();
 
         m_calculatePartialDerivativesKernel.Initialize(device, FrameCount);
+        m_downsampleGBufferBilateralFilterKernel.Initialize(device, GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::FilterDepthAware2x2, FrameCount);
 
         // Create null resource descriptor for the unused second VB in non-animated geometry.
         D3D12_CPU_DESCRIPTOR_HANDLE nullCPUhandle;
@@ -508,8 +509,12 @@ namespace Pathtracer
         m_maxInstanceContributionToHitGroupIndex = 0;
         // Hit group shader table.
         {
+
+            auto& bottomLevelASGeometries = grassPatchVB;
+            auto& accelerationStructure = *Sample::instance().Scene().AccelerationStructure();
+
             UINT numShaderRecords = 0;
-            for (auto& bottomLevelASGeometryPair : Scene::instance().BottomLevelASGeometries())
+            for (auto& bottomLevelASGeometryPair : bottomLevelASGeometries)
             {
                 auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
                 numShaderRecords += static_cast<UINT>(bottomLevelASGeometry.m_geometryInstances.size()) * RayType::Count;
@@ -521,13 +526,14 @@ namespace Pathtracer
             ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
 
             // Triangle geometry hit groups.
-            for (auto& bottomLevelASGeometryPair : Scene::instance().BottomLevelASGeometries())
+            for (auto& bottomLevelASGeometryPair : bottomLevelASGeometries)
             {
                 auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
                 auto& name = bottomLevelASGeometry.GetName();
+                auto& grassPatchVB = Sample::instance().Scene().GrassPatchVB();
 
                 UINT shaderRecordOffset = hitGroupShaderTable.GeNumShaderRecords();
-                Scene::m_accelerationStructure->GetBottomLevelAS(bottomLevelASGeometryPair.first).SetInstanceContributionToHitGroupIndex(shaderRecordOffset);
+                accelerationStructure.GetBottomLevelAS(bottomLevelASGeometryPair.first).SetInstanceContributionToHitGroupIndex(shaderRecordOffset);
                 m_maxInstanceContributionToHitGroupIndex = shaderRecordOffset;
 
                 // ToDo cleaner?
@@ -579,18 +585,18 @@ namespace Pathtracer
                    
 
                         // Transitioning from lower LOD.
-                        vbHandles[frameID][0].vertexBuffer = Scene::instance().GrassPatchVB()[LOD][frameID].gpuDescriptorReadAccess;
-                        vbHandles[frameID][0].prevFrameVertexBuffer = LOD > 0 ? Scene::instance().GrassPatchVB()[LOD - 1][prevFrameID].gpuDescriptorReadAccess
-                            : Scene::instance().GrassPatchVB()[LOD][prevFrameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][0].vertexBuffer = grassPatchVB[LOD][frameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][0].prevFrameVertexBuffer = LOD > 0 ? grassPatchVB[LOD - 1][prevFrameID].gpuDescriptorReadAccess
+                            : grassPatchVB[LOD][prevFrameID].gpuDescriptorReadAccess;
 
                         // Same LOD as previous frame.
-                        vbHandles[frameID][1].vertexBuffer = Scene::instance().GrassPatchVB()[LOD][frameID].gpuDescriptorReadAccess;
-                        vbHandles[frameID][1].prevFrameVertexBuffer = Scene::instance().GrassPatchVB()[LOD][prevFrameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][1].vertexBuffer = grassPatchVB[LOD][frameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][1].prevFrameVertexBuffer = grassPatchVB[LOD][prevFrameID].gpuDescriptorReadAccess;
 
                         // Transitioning from higher LOD.
-                        vbHandles[frameID][2].vertexBuffer = Scene::instance().GrassPatchVB()[LOD][frameID].gpuDescriptorReadAccess;
-                        vbHandles[frameID][2].prevFrameVertexBuffer = LOD < UIParameters::NumGrassGeometryLODs - 1 ? Scene::instance().GrassPatchVB()[LOD + 1][prevFrameID].gpuDescriptorReadAccess
-                            : Scene::instance().GrassPatchVB()[LOD][prevFrameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][2].vertexBuffer = grassPatchVB[LOD][frameID].gpuDescriptorReadAccess;
+                        vbHandles[frameID][2].prevFrameVertexBuffer = LOD < UIParameters::NumGrassGeometryLODs - 1 ? grassPatchVB[LOD + 1][prevFrameID].gpuDescriptorReadAccess
+                            : grassPatchVB[LOD][prevFrameID].gpuDescriptorReadAccess;
                     }
 
                     for (UINT frameID = 0; frameID < 2; frameID++)
@@ -650,8 +656,8 @@ namespace Pathtracer
         dispatchDesc.MissShaderTable.StrideInBytes = m_missShaderTableStrideInBytes;
         dispatchDesc.RayGenerationShaderRecord.StartAddress = rayGenShaderTable->GetGPUVirtualAddress();
         dispatchDesc.RayGenerationShaderRecord.SizeInBytes = rayGenShaderTable->GetDesc().Width;
-        dispatchDesc.Width = width != 0 ? width : m_GBufferWidth;
-        dispatchDesc.Height = height != 0 ? height : m_GBufferHeight;
+        dispatchDesc.Width = width != 0 ? width : m_width;
+        dispatchDesc.Height = height != 0 ? height : m_height;
         dispatchDesc.Depth = 1;
         commandList->SetPipelineState1(m_dxrStateObject.Get());
 
@@ -662,7 +668,7 @@ namespace Pathtracer
     void Pathtracer::SetCamera(const GameCore::Camera& camera)
     {
         XMMATRIX view, proj;
-        camera.GetProj(&proj, m_GBufferQuarterResWidth, m_GBufferQuarterResHeight);
+        camera.GetProj(&proj, m_quarterResWidth, m_quarterResHeight);
 
         // Calculate view matrix as if the camera was at (0,0,0) to avoid 
         // precision issues when camera position is too far from (0,0,0).
@@ -708,12 +714,7 @@ namespace Pathtracer
         m_CB->defaultAmbientIntensity = Args::DefaultAmbientIntensity;
     }
 
-    void Pathtracer::OnRender(
-        D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure,
-        D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource,
-        D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource,
-        D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource,
-        D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource)
+    void Pathtracer::OnRender()
     {
         auto device = m_deviceResources->GetD3DDevice();
         auto commandList = m_deviceResources->GetCommandList();
@@ -751,9 +752,9 @@ namespace Pathtracer
 
 
         // ToDo should we use cameraAtPosition0 too and offset the world space pos vector in the shader?
-        auto& prevFrameCamera = Scene::instance().PrevFrameCamera();
+        auto& prevFrameCamera = Sample::instance().Scene().PrevFrameCamera();
         XMMATRIX prevView, prevProj;
-        prevFrameCamera.GetViewProj(&prevView, &prevProj, m_GBufferWidth, m_GBufferHeight);
+        prevFrameCamera.GetViewProj(&prevView, &prevProj, m_width, m_height);
         m_CB->prevViewProj = prevView * prevProj;
         XMStoreFloat3(&m_CB->prevCameraPosition, prevFrameCamera.Eye());
 
@@ -791,7 +792,7 @@ namespace Pathtracer
 
 
         // Bind inputs.
-        commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, Sample::m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
+        commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, Sample::instance().Scene().AccelerationStructure()->GetTopLevelASResource()->GetGPUVirtualAddress());
         commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_CB.GpuVirtualAddress(frameIndex));
         commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
         commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, m_environmentMap.gpuDescriptorHandle);
@@ -850,8 +851,8 @@ namespace Pathtracer
             m_calculatePartialDerivativesKernel.Execute(
                 commandList,
                 m_cbvSrvUavHeap->GetHeap(),
-                m_GBufferWidth,
-                m_GBufferHeight,
+                m_width,
+                m_height,
                 m_GBufferResources[GBufferResource::Distance].gpuDescriptorReadAccess,
                 m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
 
@@ -864,13 +865,14 @@ namespace Pathtracer
         }
     }
 
+    // ToDo remove
+#if 0
     void Pathtracer::CalculateRayHitCount()
     {
         auto device = m_deviceResources->GetD3DDevice();
         auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
         auto commandList = m_deviceResources->GetCommandList();
         auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-        GpuResource* inputResource = ;
 
         // ToDo make this disabled by default/
 
@@ -894,17 +896,21 @@ namespace Pathtracer
             device,
             m_cbvSrvUavHeap.get(),
             FrameCount,
-            m_GBufferQuarterResWidth,
-            m_GBufferQuarterResHeight);
+            m_width,
+            m_height);
     }
+#endif
 
+    void Pathtracer::CreateResolutionDependentResources()
+    {
+    }
 
     void Pathtracer::SetResolution(UINT GBufferWidth, UINT GBufferHeight, UINT RTAOWidth, UINT RTAOHeight)
     {
-        m_GBufferWidth = GBufferWidth;
-        m_GBufferHeight = GBufferHeight;
-        m_GBufferQuarterResWidth = RTAOWidth;
-        m_GBufferQuarterResHeight = RTAOHeight;
+        m_width = GBufferWidth;
+        m_height = GBufferHeight;
+        m_quarterResWidth = RTAOWidth;
+        m_quarterResHeight = RTAOHeight;
 
         CreateResolutionDependentResources();
     }
@@ -934,28 +940,28 @@ namespace Pathtracer
                 m_GBufferResources[i].uavDescriptorHeapIndex = m_GBufferResources[0].uavDescriptorHeapIndex + i;
                 m_GBufferResources[i].srvDescriptorHeapIndex = m_GBufferResources[0].srvDescriptorHeapIndex + i;
             }
-            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Hit], initialResourceState, L"GBuffer Hit");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Material], initialResourceState, L"GBuffer Material");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Hit], initialResourceState, L"GBuffer Hit");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Material], initialResourceState, L"GBuffer Material");
 
 
-            CreateRenderTargetResource(device, hitPositionFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer HitPosition");
+            CreateRenderTargetResource(device, hitPositionFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer HitPosition");
 
-            CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormalDepth], initialResourceState, L"GBuffer Normal Depth");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Distance], initialResourceState, L"GBuffer Distance");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Depth], initialResourceState, L"GBuffer Depth");
+            CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::SurfaceNormalDepth], initialResourceState, L"GBuffer Normal Depth");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Distance], initialResourceState, L"GBuffer Distance");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Depth], initialResourceState, L"GBuffer Depth");
 
-            CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(Args::RTAO_PartialDepthDerivativesResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::PartialDepthDerivatives], initialResourceState, L"GBuffer Partial Depth Derivatives");
+            CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(Args::RTAO_PartialDepthDerivativesResourceFormat), m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::PartialDepthDerivatives], initialResourceState, L"GBuffer Partial Depth Derivatives");
 
-            CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(Args::RTAO_MotionVectorResourceFormat), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::MotionVector], initialResourceState, L"GBuffer Texture Space Motion Vector");
+            CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(Args::RTAO_MotionVectorResourceFormat), m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::MotionVector], initialResourceState, L"GBuffer Texture Space Motion Vector");
 
-            CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::ReprojectedNormalDepth], initialResourceState, L"GBuffer Reprojected Hit Position");
+            CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::ReprojectedNormalDepth], initialResourceState, L"GBuffer Reprojected Hit Position");
 
-            CreateRenderTargetResource(device, backbufferFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Color], initialResourceState, L"GBuffer Color");
+            CreateRenderTargetResource(device, backbufferFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Color], initialResourceState, L"GBuffer Color");
 
-            CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer AO Surface Albedo");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer AO Surface Albedo");
 
-            CreateRenderTargetResource(device, debugFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug], initialResourceState, L"GBuffer Debug");
-            CreateRenderTargetResource(device, debugFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug2], initialResourceState, L"GBuffer Debug2");
+            CreateRenderTargetResource(device, debugFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug], initialResourceState, L"GBuffer Debug");
+            CreateRenderTargetResource(device, debugFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug2], initialResourceState, L"GBuffer Debug2");
 
         }
 
@@ -970,23 +976,23 @@ namespace Pathtracer
                 m_GBufferQuarterResResources[i].srvDescriptorHeapIndex = m_GBufferQuarterResResources[0].srvDescriptorHeapIndex + i;
             }
 
-            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::Hit], initialResourceState, L"GBuffer LowRes Hit");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_UINT, m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::Material], initialResourceState, L"GBuffer LowRes Material");
-            CreateRenderTargetResource(device, hitPositionFormat, m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer LowRes HitPosition");
-            CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::SurfaceNormalDepth], initialResourceState, L"GBuffer LowRes Normal");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::Distance], initialResourceState, L"GBuffer LowRes Distance");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::Hit], initialResourceState, L"GBuffer LowRes Hit");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R32G32_UINT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::Material], initialResourceState, L"GBuffer LowRes Material");
+            CreateRenderTargetResource(device, hitPositionFormat, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::HitPosition], initialResourceState, L"GBuffer LowRes HitPosition");
+            CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::SurfaceNormalDepth], initialResourceState, L"GBuffer LowRes Normal");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::Distance], initialResourceState, L"GBuffer LowRes Distance");
             // ToDo are below two used?
-            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::Depth], initialResourceState, L"GBuffer LowRes Depth");
-            CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(Args::RTAO_PartialDepthDerivativesResourceFormat), m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::PartialDepthDerivatives], initialResourceState, L"GBuffer LowRes Partial Depth Derivatives");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::Depth], initialResourceState, L"GBuffer LowRes Depth");
+            CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(Args::RTAO_PartialDepthDerivativesResourceFormat), m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::PartialDepthDerivatives], initialResourceState, L"GBuffer LowRes Partial Depth Derivatives");
 
-            CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(Args::RTAO_MotionVectorResourceFormat), m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::MotionVector], initialResourceState, L"GBuffer LowRes Texture Space Motion Vector");
+            CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(Args::RTAO_MotionVectorResourceFormat), m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::MotionVector], initialResourceState, L"GBuffer LowRes Texture Space Motion Vector");
 
-            CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::ReprojectedNormalDepth], initialResourceState, L"GBuffer LowRes Reprojected Normal Depth");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer LowRes AO Surface Albedo");
+            CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::ReprojectedNormalDepth], initialResourceState, L"GBuffer LowRes Reprojected Normal Depth");
+            CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer LowRes AO Surface Albedo");
 
         }
 
-        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_GBufferQuarterResWidth, m_GBufferQuarterResHeight, m_cbvSrvUavHeap.get(), &m_prevFrameGBufferNormalDepth, initialResourceState, L"Previous Frame GBuffer Normal Depth");
+        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_prevFrameGBufferNormalDepth, initialResourceState, L"Previous Frame GBuffer Normal Depth");
     }
 
     void Pathtracer::DownsampleGBuffer()
@@ -1010,10 +1016,11 @@ namespace Pathtracer
 
         ScopedTimer _prof(L"DownsampleGBuffer", commandList);
         resourceStateTracker->FlushResourceBarriers();
+        // ToDo split into per resource downsamples?
         m_downsampleGBufferBilateralFilterKernel.Execute(
             commandList,
-            m_GBufferWidth,
-            m_GBufferHeight,
+            m_width,
+            m_height,
             m_cbvSrvUavHeap->GetHeap(),
             m_GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
             m_GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,

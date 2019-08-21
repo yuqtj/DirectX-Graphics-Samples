@@ -219,6 +219,9 @@ namespace Denoiser
 
     void Denoiser::CreateResolutionDependentResources()
     {
+        auto device = m_deviceResources->GetD3DDevice();
+
+        m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_width, m_height, Sample::instance().RTAO().AOCoefficientFormat());
     }
 
 

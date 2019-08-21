@@ -53,16 +53,22 @@ namespace Composition
         void CreateAuxilaryDeviceResources();
         void CreateTextureResources();
         void CreateResolutionDependentResources();
+        void DownsampleRaytracingOutput();
 
         static UINT s_numInstances;
         std::shared_ptr<DX::DeviceResources> m_deviceResources;
         std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 
+        // ToDo cleanup - ReduceSum objects are in m_reduceSumKernel.
+        ComPtr<ID3D12PipelineState>         m_computePSOs[ComputeShader::Type::Count];
+        ComPtr<ID3D12RootSignature>         m_computeRootSigs[ComputeShader::Type::Count];
+
+        ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
         ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
+
         GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
         GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
         GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
-        GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter m_downsampleGBufferBilateralFilterKernel; //ToDo rename?
         GpuKernels::DownsampleValueNormalDepthBilateralFilter m_downsampleValueNormalDepthBilateralFilterKernel;
     };
 }

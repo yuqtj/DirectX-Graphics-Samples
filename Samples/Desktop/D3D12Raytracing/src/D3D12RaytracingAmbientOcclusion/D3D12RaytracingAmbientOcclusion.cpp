@@ -16,11 +16,6 @@
 #include "GameInput.h"
 #include "EngineTuning.h"
 #include "EngineProfiling.h"
-#include "CompiledShaders\Raytracing.hlsl.h"
-#include "CompiledShaders\RNGVisualizerCS.hlsl.h"
-#include "CompiledShaders\ComposeRenderPassesCS.hlsl.h"
-#include "CompiledShaders\AoBlurCS.hlsl.h"
-#include "CompiledShaders\AoBlurAndUpsampleCS.hlsl.h"
 #include "SquidRoom.h"
 #include "RTAO\RTAO.h"
 
@@ -107,15 +102,11 @@ RTAO - Titan XP 1440p Quarter Res
 
 D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UINT height, wstring name) :
     DXSample(width, height, name),
-    m_animateCamera(false),
-    m_animateLight(false),
-    m_animateScene(true),
     m_isGeometryInitializationRequested(true),
     m_isASinitializationRequested(true),
 	m_isSceneInitializationRequested(false),
 	m_isRecreateRaytracingResourcesRequested(false),
-    m_numFramesSinceASBuild(0),
-	m_isCameraFrozen(false)
+    m_numFramesSinceASBuild(0)
 {
     ThrowIfFalse(g_pSample == nullptr, L"There can be only one D3D12RaytracingAmbientOcclusion instance.");
     g_pSample = this;
@@ -384,11 +375,9 @@ void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
     EngineProfiling::RestoreDevice(device, commandQueue, FrameCount);
 
 	// ToDo move?
-	m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
 	m_downsampleBoxFilter2x2Kernel.Initialize(device, FrameCount);
 	m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9, FrameCount);
 	m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25, FrameCount); // ToDo Dedupe 9 and 25
-    m_downsampleGBufferBilateralFilterKernel.Initialize(device, GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::FilterDepthAware2x2, FrameCount);
     m_downsampleValueNormalDepthBilateralFilterKernel.Initialize(device, static_cast<GpuKernels::DownsampleValueNormalDepthBilateralFilter::Type>(static_cast<UINT>(Args::DownsamplingBilateralFilter)));
     m_upsampleBilateralFilterKernel.Initialize(device, FrameCount);
 }
@@ -797,13 +786,6 @@ void D3D12RaytracingAmbientOcclusion::CreateWindowSizeDependentResources()
 
 	CreateGBufferResources();
 
-	m_reduceSumKernel.CreateInputResourceSizeDependentResources(
-		device,
-		m_cbvSrvUavHeap.get(), 
-		FrameCount, 
-		GBufferWidth,
-		GBufferHeight);
-    m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_raytracingWidth, m_raytracingHeight, m_RTAO.AOCoefficientFormat());
     
     // SSAO
     {
@@ -900,22 +882,17 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
             if (!(Args::TAO_LazyRender && m_cameraChangedIndex <= 0))
             {
 
-#if USE_GRASS_GEOMETRY
-                GenerateGrassGeometry();
-#endif
-                UpdateAccelerationStructure();
+                m_scene.OnRender();
 
-                // Render.
-                m_pathtracer.OnRender(m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress());
+                m_pathtracer.OnRender();
 
-                // AO. 
                 if (Args::AOMode == Args::AOType::RTAO)
                 {
                     ScopedTimer _prof(L"RTAO_Root", commandList);
 
-                    GpuResource* GBufferResources = m_pathtracer.GetGBufferResources(RTAO::Args::QuarterResAO);
+                    GpuResource* GBufferResources = m_pathtracer.GBufferResources();
 
-                    TemporalSupersamplingReverseProjection();
+                    m_denoiser.Execute();
                     m_RTAO.OnRender(
                         m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
                         GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,

@@ -35,19 +35,20 @@ namespace RTAO
     // Hit groups.
     const wchar_t* RTAO::c_hitGroupName = L"HitGroup_Triangle";
 
+    // ToDo dedupe with below
     void OnRecreateRTAORaytracingResources(void*)
     {
-        g_pRTAO->RequestRecreateRaytracingResources();
+        Sample::instance().RTAO().RequestRecreateRaytracingResources();
     }
 
     void OnRecreateSampleRaytracingResources(void*)
     {
-        Sample::instance().->RequestRecreateRaytracingResources();
+        Sample::instance().RTAO().RequestRecreateRaytracingResources();
     }
 
     void OnRecreateSamples(void*)
     {
-        g_pRTAO->RequestRecreateAOSamples();
+        Sample::instance().RTAO().RequestRecreateAOSamples();
     }
        
     namespace Args

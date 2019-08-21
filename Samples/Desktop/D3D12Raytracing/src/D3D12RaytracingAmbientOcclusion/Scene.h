@@ -39,7 +39,7 @@ namespace Scene
         // Public methods.
         void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
         void OnUpdate();
-        void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource, D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource);
+        void OnRender();
         void ReleaseDeviceDependentResources();
         void ReleaseWindowSizeDependentResources() {}; // ToDo
 
@@ -83,10 +83,10 @@ namespace Scene
 
         // Application state.
         StepTimer m_timer;
-        bool m_animateCamera;
-        bool m_animateLight;
-        bool m_animateScene;
-        bool m_isCameraFrozen;
+        bool m_animateCamera = false;
+        bool m_animateLight = false;
+        bool m_animateScene = false;
+        bool m_isCameraFrozen = false;
         int m_cameraChangedIndex = 0;
         bool m_hasCameraChanged = true;
         GameCore::Camera m_camera;

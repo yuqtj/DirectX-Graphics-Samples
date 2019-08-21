@@ -108,6 +108,13 @@ namespace Scene
         finish.wait();
     }
 
+    void Scene::OnRender()
+    {
+#if USE_GRASS_GEOMETRY
+        GenerateGrassGeometry();
+#endif
+        UpdateAccelerationStructure();
+    }
 
     void Scene::OnUpdate()
     {

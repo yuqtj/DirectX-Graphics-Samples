@@ -89,13 +89,8 @@ namespace Sample
 
 
 
-        ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
         
-        // ToDo cleanup - ReduceSum objects are in m_reduceSumKernel.
-        ComPtr<ID3D12PipelineState>         m_computePSOs[ComputeShader::Type::Count];
-        ComPtr<ID3D12RootSignature>         m_computeRootSigs[ComputeShader::Type::Count];
 
-        GpuKernels::ReduceSum				m_reduceSumKernel; 
 
         // ToDo combine kernels to an array
         GpuKernels::UpsampleBilateralFilter	    m_upsampleBilateralFilterKernel;

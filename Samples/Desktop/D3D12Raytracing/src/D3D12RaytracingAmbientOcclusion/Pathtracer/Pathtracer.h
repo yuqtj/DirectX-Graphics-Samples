@@ -43,7 +43,7 @@ namespace Pathtracer
         // Public methods.
         void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
         void OnUpdate();
-        void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource, D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource);
+        void OnRender();
         void ReleaseDeviceDependentResources();
         void ReleaseWindowSizeDependentResources() {}; // ToDo
         void SetCamera(const GameCore::Camera& camera);
@@ -75,10 +75,10 @@ namespace Pathtracer
         std::shared_ptr<DX::DeviceResources> m_deviceResources;
         std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 
-        UINT m_GBufferWidth;        // ToDo rename
-        UINT m_GBufferHeight;
-        UINT m_GBufferQuarterResWidth;
-        UINT m_GBufferQuarterResHeight;
+        UINT m_width;        // ToDo rename
+        UINT m_height;
+        UINT m_quarterResWidth;
+        UINT m_quarterResHeight;
 
         // Raytracing shaders.
         static const wchar_t* c_rayGenShaderNames[RayGenShaderType::Count];
@@ -109,6 +109,8 @@ namespace Pathtracer
         D3D12_GPU_DESCRIPTOR_HANDLE m_nullVertexBufferGPUhandle;
 
         GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
+        GpuKernels::ReduceSum				m_reduceSumKernel;
+        GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter m_downsampleGBufferBilateralFilterKernel; //ToDo rename?
 
         bool m_isRecreateRaytracingResourcesRequested = false;
     };
