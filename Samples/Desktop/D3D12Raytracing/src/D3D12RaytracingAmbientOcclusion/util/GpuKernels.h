@@ -40,7 +40,7 @@ namespace GpuKernels
 			UINT width,
 			UINT height,
 			UINT numInvocationsPerFrame = 1);
-		void Execute(
+		void Run(
 			ID3D12GraphicsCommandList4* commandList,
 			ID3D12DescriptorHeap* descriptorHeap,
 			UINT frameIndex,
@@ -66,7 +66,7 @@ namespace GpuKernels
 		}
 
 		void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-		void Execute(
+		void Run(
 			ID3D12GraphicsCommandList4* commandList,
 			UINT width,
 			UINT height,
@@ -99,7 +99,7 @@ namespace GpuKernels
 		}
 
 		void Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
-		void Execute(
+		void Run(
 			ID3D12GraphicsCommandList4* commandList,
 			UINT width,
 			UINT height,
@@ -128,7 +128,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
@@ -173,7 +173,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, Type type);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
@@ -205,7 +205,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
@@ -242,7 +242,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, Type type);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
@@ -275,7 +275,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
@@ -307,7 +307,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
@@ -341,7 +341,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             FilterType type,
             UINT filterStep,
@@ -378,7 +378,7 @@ namespace GpuKernels
             UINT width,
             UINT height,
             UINT numInvocationsPerFrame);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT frameIndex,
@@ -422,7 +422,7 @@ namespace GpuKernels
             UINT width,
             UINT height,
             DXGI_FORMAT format);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             FilterType type,
@@ -487,7 +487,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, DX::DescriptorHeap* descriptorHeap);
-        void Execute(ID3D12GraphicsCommandList4* commandList, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_DESCRIPTOR_HANDLE* outputResourceHandle);
+        void Run(ID3D12GraphicsCommandList4* commandList, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_DESCRIPTOR_HANDLE* outputResourceHandle);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
@@ -508,7 +508,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
@@ -539,7 +539,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
@@ -579,7 +579,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
@@ -615,7 +615,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             ID3D12DescriptorHeap* descriptorHeap,
             UINT width,
@@ -646,7 +646,7 @@ namespace GpuKernels
 
         // ToDo set default parameters
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -697,7 +697,7 @@ namespace GpuKernels
 
         // ToDo set default parameters
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
@@ -742,7 +742,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, const wchar_t* windTexturePath, DX::DescriptorHeap* descriptorHeap, ResourceUploadBatch* resourceUpload, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             const GenerateGrassStrawsConstantBuffer_AppParams& appParams,
             ID3D12DescriptorHeap* descriptorHeap,
@@ -777,7 +777,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             float binDepthSize,
             UINT width,
@@ -817,7 +817,7 @@ namespace GpuKernels
         }
 
         void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-        void Execute(
+        void Run(
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,

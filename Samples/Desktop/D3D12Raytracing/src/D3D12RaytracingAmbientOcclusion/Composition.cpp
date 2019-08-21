@@ -38,7 +38,6 @@ namespace Composition
             L"Denoised Ambient Occlusion",
             L"Temporally Supersampled Ambient Occlusion",
             L"Raw one-frame Ambient Occlusion",
-            L"Render/AO Sampling Importance Map",
             L"AO and Disocclusion Map",
             L"AO Variance",
             L"AO Local Variance",
@@ -115,53 +114,6 @@ namespace Composition
     }
 
 
-    // ToDo rename
-    void Composition::DownsampleRaytracingOutput()
-    {
-        auto commandList = m_deviceResources->GetCommandList();
-        auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-
-        ScopedTimer _prof(L"DownsampleToBackbuffer", commandList);
-
-        resourceStateTracker->TransitionResource(&m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
-        // ToDo pass the filter to the kernel instead of using 3 different instances
-        resourceStateTracker->FlushResourceBarriers();
-        switch (Args::AntialiasingMode)
-        {
-        case DownsampleFilter::BoxFilter2x2:
-            m_downsampleBoxFilter2x2Kernel.Execute(
-                commandList,
-                m_GBufferWidth,
-                m_GBufferHeight,
-                m_cbvSrvUavHeap->GetHeap(),
-                m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
-                m_raytracingOutput.gpuDescriptorWriteAccess);
-            break;
-        case DownsampleFilter::GaussianFilter9Tap:
-            m_downsampleGaussian9TapFilterKernel.Execute(
-                commandList,
-                m_GBufferWidth,
-                m_GBufferHeight,
-                m_cbvSrvUavHeap->GetHeap(),
-                m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
-                m_raytracingOutput.gpuDescriptorWriteAccess);
-            break;
-        case DownsampleFilter::GaussianFilter25Tap:
-            m_downsampleGaussian25TapFilterKernel.Execute(
-                commandList,
-                m_GBufferWidth,
-                m_GBufferHeight,
-                m_cbvSrvUavHeap->GetHeap(),
-                m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
-                m_raytracingOutput.gpuDescriptorWriteAccess);
-            break;
-        }
-
-        resourceStateTracker->TransitionResource(&m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    }
-
-
 
     void Composition::CreateComposeRenderPassesCSResources()
     {
@@ -176,7 +128,6 @@ namespace Composition
             ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
             ranges[Slot::GBufferResources].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);  // 5 input GBuffer textures
             ranges[Slot::AO].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input AO texture
-            ranges[Slot::Visibility].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // 1 input Visibility texture
             ranges[Slot::FilterWeightSum].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // 1 input filterWeightSum texture
             ranges[Slot::AORayHitDistance].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // 1 input AO ray hit distance texture
             ranges[Slot::FrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // 1 input disocclusion map texture
@@ -189,7 +140,6 @@ namespace Composition
             rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[Slot::Output]);
             rootParameters[Slot::GBufferResources].InitAsDescriptorTable(1, &ranges[Slot::GBufferResources]);
             rootParameters[Slot::AO].InitAsDescriptorTable(1, &ranges[Slot::AO]);
-            rootParameters[Slot::Visibility].InitAsDescriptorTable(1, &ranges[Slot::Visibility]);
             rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[Slot::FilterWeightSum]);
             rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::AORayHitDistance]);
             rootParameters[Slot::FrameAge].InitAsDescriptorTable(1, &ranges[Slot::FrameAge]);
@@ -268,14 +218,6 @@ namespace Composition
             //}
             break;
         }
-        case CompositionType::AmbientOcclusionHighResSamplingPixels:
-        {
-            // ToDo rename all to importance map
-            passName = L"Upsample AO sampling importance map";
-            inputLowResValueResource = &m_RTAO.AOResources()[AOResource::FilterWeightSum];
-            outputHiResValueResource = &m_AOResources[AOResource::FilterWeightSum];
-            break;
-        }
         case CompositionType::RTAOHitDistance:
         {
             passName = L"Upsample AO ray hit distance";
@@ -343,7 +285,7 @@ namespace Composition
         resourceStateTracker->TransitionResource(outputHiResValueResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
         resourceStateTracker->FlushResourceBarriers();
-        m_upsampleBilateralFilterKernel.Execute(
+        m_upsampleBilateralFilterKernel.Run(
             commandList,
             hiResWidth,
             hiResHeight,
@@ -475,7 +417,7 @@ namespace Composition
 
 
     // Composite results from multiple passed into a final image.
-    void D3D12RaytracingAmbientOcclusion::RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV)
+    void Composition::Render()
     {
         auto commandList = m_deviceResources->GetCommandList();
         auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
@@ -483,28 +425,30 @@ namespace Composition
 
         ScopedTimer _prof(L"ComposeRenderPassesCS", commandList);
 
+
+        // ToDo
+        GpuResource* AOResources = RTAO::Args::QuarterResAO ? m_AOResources : m_RTAO.GetAOResources();
+        D3D12_GPU_DESCRIPTOR_HANDLE AOSRV = Args::AOMode == Args::AOType::RTAO ? AOResources[AOResource::Smoothed].gpuDescriptorReadAccess : SSAOgpuDescriptorReadAccess;
+
+        if (Args::CompositionMode == CompositionType::AmbientOcclusionOnly_RawOneFrame)
+        {
+            AOSRV = AOResources[AOResource::Coefficient].gpuDescriptorReadAccess;
+        }
+        else //if (Args::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
+        {
+            AOSRV = m_TSSAOCoefficient[m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex].gpuDescriptorReadAccess;
+        }
+
         // Update constant buffer.
         {
             m_csComposeRenderPassesCB->rtDimensions = XMUINT2(m_GBufferWidth, m_GBufferHeight);
-            m_csComposeRenderPassesCB->enableAO = Args::AOEnabled;
+            m_csComposeRenderPassesCB->isAOEnabled = Args::AOEnabled;
             m_csComposeRenderPassesCB->compositionType = static_cast<CompositionType>(static_cast<UINT>(Args::CompositionMode));
             m_csComposeRenderPassesCB->defaultAmbientIntensity = Pathtracer::Args::DefaultAmbientIntensity;
 
             m_csComposeRenderPassesCB->variance_visualizeStdDeviation = Args::Compose_VarianceVisualizeStdDeviation;
             m_csComposeRenderPassesCB->variance_scale = Args::Compose_VarianceScale;
             m_csComposeRenderPassesCB->RTAO_MaxRayHitDistance = m_RTAO.GetMaxRayHitTime();
-
-
-
-#if 0 // ToDo
-            // ToDo use a unique CB for compose passes?
-            m_csComposeRenderPassesCB->RTAO_UseAdaptiveSampling = Args::RTAOAdaptiveSampling;
-            m_csComposeRenderPassesCB->RTAO_AdaptiveSamplingMaxWeightSum = Args::RTAOAdaptiveSamplingMaxFilterWeight;
-            m_csComposeRenderPassesCB->RTAO_AdaptiveSamplingMinMaxSampling = Args::RTAOAdaptiveSamplingMinMaxSampling;
-            m_csComposeRenderPassesCB->RTAO_AdaptiveSamplingScaleExponent = Args::RTAOAdaptiveSamplingScaleExponent;
-            m_csComposeRenderPassesCB->RTAO_AdaptiveSamplingMinSamples = Args::RTAOAdaptiveSamplingMinSamples;
-            m_csComposeRenderPassesCB->RTAO_MaxSPP = Args::AOSampleCountPerDimension * Args::AOSampleCountPerDimension;
-#endif
             m_csComposeRenderPassesCB.CopyStagingToGpu(frameIndex);
         }
 
@@ -534,7 +478,6 @@ namespace Composition
 #else
             commandList->SetComputeRootDescriptorTable(Slot::AO, AOSRV);
 #endif
-            commandList->SetComputeRootDescriptorTable(Slot::Visibility, m_VisibilityResource.gpuDescriptorReadAccess);
             commandList->SetComputeRootShaderResourceView(Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_csComposeRenderPassesCB.GpuVirtualAddress(frameIndex));
             commandList->SetComputeRootDescriptorTable(Slot::Variance, VarianceResource->gpuDescriptorReadAccess);

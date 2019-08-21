@@ -31,9 +31,9 @@ namespace Scene
         BoolVar EnableGeometryAndASBuildsAndUpdates(L"Render/Acceleration structure/Enable geometry & AS builds and updates", true);
 
 #if ONLY_SQUID_SCENE_BLAS
-        EnumVar SceneType(L"Scene", Scene::Type::SquidRoom, Scene::Type::Count, Scene::Type::Names, OnSceneChange, nullptr);
+        EnumVar SceneType(L"Scene", Type::SquidRoom, Type::Count, Type::Names, OnSceneChange, nullptr);
 #else
-        EnumVar SceneType(L"Scene", Scene::Type::SingleObject, Scene::Type::Count, Scene::Type::Names, OnSceneChange, nullptr);
+        EnumVar SceneType(L"Scene", Type::SingleObject, Type::Count, Type::Names, OnSceneChange, nullptr);
 #endif
 
         // ToDo add an interface so that new UI values get applied on start of the frame, not in mid-flight
@@ -93,12 +93,13 @@ namespace Scene
     void Scene::CreateAuxilaryDeviceResources()
     {
         auto device = m_deviceResources->GetD3DDevice();
+        auto commandQueue = m_deviceResources->GetCommandQueue();
 
         // ToDo pass this from sample?
         ResourceUploadBatch resourceUpload(device);
         resourceUpload.Begin();
 
-        m_grassGeometryGenerator.Initialize(device, L"Assets\\wind\\wind2.jpg", m_cbvSrvUavHeap.get(), &resourceUpload, FrameCount, UIParameters::NumGrassGeometryLODs);
+        m_grassGeometryGenerator.Initialize(device, L"Assets\\wind\\wind2.jpg", m_cbvSrvUavHeap.get(), &resourceUpload, Sample::FrameCount, UIParameters::NumGrassGeometryLODs);
    
 
         // Upload the resources to the GPU.
@@ -119,6 +120,7 @@ namespace Scene
     void Scene::OnUpdate()
     {
         m_timer.Tick();
+        float elapsedTime = m_timer.GetElapsedSeconds();
 
         if (GameInput::IsFirstPressed(GameInput::kKey_f))
         {
@@ -228,12 +230,7 @@ namespace Scene
     void Scene::CreateResolutionDependentResources()
     {
     }
-
-
-    void Scene::SetResolution(UINT width, UINT height)
-    {
-    }
-
+    
 
 
     void Scene::CreateTextureResources()
@@ -1208,7 +1205,7 @@ namespace Scene
             }
 
             resourceStateTracker->FlushResourceBarriers();
-            m_grassGeometryGenerator.Execute(commandList, params, m_cbvSrvUavHeap->GetHeap(), grassPatchVB.gpuDescriptorWriteAccess);
+            m_grassGeometryGenerator.Run(commandList, params, m_cbvSrvUavHeap->GetHeap(), grassPatchVB.gpuDescriptorWriteAccess);
 
             // Transition the output vertex buffer to VB state and make sure the CS is done writing.        
             {
@@ -1318,7 +1315,7 @@ namespace Scene
         }
     }
 
-    void D3D12RaytracingAmbientOcclusion::UpdateAccelerationStructure()
+    void Scene::UpdateAccelerationStructure()
     {
         auto commandList = m_deviceResources->GetCommandList();
         auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
@@ -1332,6 +1329,7 @@ namespace Scene
             m_accelerationStructure->Build(commandList, m_cbvSrvUavHeap->GetHeap(), frameIndex, forceBuild);
         }
 
+        // ToDo we could use single structured buffer and use previous frame copy?
         // Copy previous frame Bottom Level AS instance transforms to GPU. 
         m_prevFrameBottomLevelASInstanceTransforms.CopyStagingToGpu(frameIndex);
 

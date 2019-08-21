@@ -109,10 +109,6 @@ Optimization
 // A header with shared definitions for C++ and HLSL source files. 
 //
 //**********************************************************************************************
-#define ENABLE_RAYTRACING 1
-#define RUNTIME_AS_UPDATES 1
-#define USE_GPU_TRANSFORM 1
-
 #define MARK_PERFECT_MIRRORS_AS_NOT_OPAQUE 1
 
 #define WORKAROUND_ATROUS_VARYING_OUTPUTS 1
@@ -129,9 +125,6 @@ Optimization
 #define MOVE_ONCE_ON_STRAFE 1
 #define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
 
-#define ALLOW_MIRRORS 1
-
-#define TEST_EARLY_EXIT 0
 
 #define RTAO_MARK_CACHED_VALUES_NEGATIVE 1
 #define RTAO_GAUSSIAN_BLUR_AFTER_TSS 0
@@ -140,20 +133,10 @@ Incompatible macros
 #endif
 #define STOP_TRACING_AND_DENOISING_AFTER_FEW_FRAMES 0
 
-// ToDo set max recursion
-// Give opacity to mirrors and shade. Some mirrors are tesselated in the kitchen and its not clear from pure reflections.
 // ToDo TAO is swimming in reflections
-#if ALLOW_MIRRORS
-// Use anyhit instead??
-#define TURN_MIRRORS_SEETHROUGH 0
-#endif
+
 
 #define CAMERA_PRESERVE_UP_ORIENTATION 1
-
-#define DISABLE_DENOISING 0
-#define DOUBLE_ALL_FACES 0
-#define ADD_INVERTED_FACE 0
-#define CORRECT_NORMALS 0
 
 #define PACK_CACHE_VALUE_FRAME_AGE 0
 #define CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN 0
@@ -177,9 +160,6 @@ Incompatible macros
 #define PRINT_OUT_CAMERA_CONFIG 0
 #define DEBUG_PRINT_OUT_SEED_VALUE 0
 #define DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME 0
-
-#define USE_NORMALIZED_Z 0  // Whether to normalize z to [0, 1] within [near, far] plane range. // ToDo
-
 
 #ifdef HLSL
 // ToDo append lowres
@@ -217,7 +197,6 @@ typedef uint NormalDepthTexFormat;
 // ToDo Fix missing DirectXTK12.lib in Profile config - as the nuget doesnt provide profile
 // ToDo remove PROFILE preprocesser macro from Release
 
-#define BLUR_AO 1
 #define ATROUS_DENOISER 1
 #define ATROUS_DENOISER_MAX_PASSES 10
 #define RENDER_RNG_SAMPLE_VISUALIZATION 0   // ToDo doesn't render for all AA settings
@@ -225,9 +204,8 @@ typedef uint NormalDepthTexFormat;
 
 #define DEBUG_MULTI_BLAS_BUILD 0
 
-#define CAMERA_JITTER 0
 #define APPLY_SRGB_CORRECTION 0
-#define AO_ONLY 0
+
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0 // ToDo spec requires it but it works without it?
 
@@ -269,7 +247,6 @@ typedef uint NormalDepthTexFormat;
 
 #endif
 
-#define AO_OVERDOSE_BEND_NORMALS_DOWN 0
 #define TESSELATED_GEOMETRY_BOX 1
 #define TESSELATED_GEOMETRY_TEAPOT 1
 #define TESSELATED_GEOMETRY_BOX_TETRAHEDRON 1
@@ -376,9 +353,7 @@ struct AmbientOcclusionGBuffer
 // ToDo rename To Pathtracer
 struct GBufferRayPayload
 {
-#if ALLOW_MIRRORS
     UINT rayRecursionDepth;
-#endif
     XMFLOAT3 radiance;
 	//XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
     AmbientOcclusionGBuffer AOGBuffer;
@@ -594,21 +569,11 @@ struct RTAOConstantBuffer
     // toDo rename shadow to AO
     float RTAO_maxTheoreticalShadowRayHitTime;  // Max shadow ray hit time used in falloff computation accounting for
                                                 // RTAO_ExponentialFalloffMinOcclusionCutoff and RTAO_maxShadowRayHitTime.    
-    BOOL useShadowRayHitTime;           // ToDo Rename "use"
+    BOOL RTAO_UseSortedRays;
     XMUINT2 raytracingDim;
 
     BOOL RTAO_IsExponentialFalloffEnabled;               // Apply exponential falloff to AO coefficient based on ray hit distance.    
     float RTAO_exponentialFalloffDecayConstant;
-    BOOL RTAO_UseAdaptiveSampling;
-    float RTAO_AdaptiveSamplingMaxWeightSum;
-
-    float RTAO_AdaptiveSamplingScaleExponent;   // ToDo weight exponent instead?
-    BOOL RTAO_AdaptiveSamplingMinMaxSampling;
-    UINT RTAO_AdaptiveSamplingMinSamples;
-    float RTAO_TraceRayOffsetAlongNormal;
-
-    float RTAO_TraceRayOffsetAlongRayDirection;
-    BOOL RTAO_UseSortedRays;
     BOOL doCheckerboardSampling;
     BOOL areEvenPixelsActive;
 };
@@ -621,7 +586,6 @@ enum CompositionType {
     AmbientOcclusionOnly_Denoised,
     AmbientOcclusionOnly_TemporallySupersampled,
     AmbientOcclusionOnly_RawOneFrame,
-    AmbientOcclusionHighResSamplingPixels,
     AmbientOcclusionAndDisocclusionMap, // ToDo quarter res support
     AmbientOcclusionVariance,
     AmbientOcclusionLocalVariance,  // ToDo rename spatial to local variance references
@@ -704,39 +668,17 @@ namespace TextureResourceFormatRG
 // ToDo explain padding
 struct ComposeRenderPassesConstantBuffer
 {
-	XMUINT2 rtDimensions;
+	XMUINT2 rtDimensions;   // ToDo rename
 	XMFLOAT2 padding1;
 
-	XMFLOAT3 cameraPosition;
-    float padding2;
-
-	XMFLOAT3 lightPosition;     // ToDo cb doesn't match if XMFLOAT starts at offset 1. Can this be caught?
-    UINT enableAO;
-
-	XMFLOAT3 lightAmbientColor;
     CompositionType compositionType;
-
-	XMFLOAT3 lightDiffuseColor;		
-    float RTAO_AdaptiveSamplingMaxWeightSum;
-
-    BOOL RTAO_UseAdaptiveSampling;
-    float RTAO_AdaptiveSamplingScaleExponent;   // ToDo weight exponent instead?
-    BOOL RTAO_AdaptiveSamplingMinMaxSampling;
-    UINT RTAO_AdaptiveSamplingMinSamples;
-
-    UINT RTAO_MaxSPP;
+    UINT isAOEnabled;
     float RTAO_MaxRayHitDistance;   // ToDo standardize ray hit time vs distance
     float defaultAmbientIntensity;
+    
     BOOL variance_visualizeStdDeviation;
-
     float variance_scale;
-    float padding3[3];
-};
-
-struct AoBlurConstantBuffer
-{
-	XMFLOAT2 kRcpBufferDim;
-	float kDistanceTolerance;
+    float padding3[2];
 };
 
 // ToDo standardize Texture vs Tex, Dim ...
@@ -974,16 +916,6 @@ struct VertexPositionNormalTextureTangent
 	XMFLOAT2 textureCoordinate;
 	XMFLOAT3 tangent;
 };
-
-/* TODO remove
- 
- float3 position;
- float3 normal;
- float2 textureCoordinate;
- float3 tangent;
-
- */
-
 
 
 // Ray types traced in this sample.

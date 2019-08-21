@@ -41,7 +41,7 @@ namespace Pathtracer
         Pathtracer();
 
         // Public methods.
-        void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
+        void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
         void OnUpdate();
         void OnRender();
         void ReleaseDeviceDependentResources();
@@ -56,7 +56,7 @@ namespace Pathtracer
 
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
     private:
-        void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
+        void CreateDeviceDependentResources();
         void CreateConstantBuffers();
         void CreateAuxilaryDeviceResources();
         void CreateRootSignatures();
@@ -67,7 +67,7 @@ namespace Pathtracer
         void CreateTextureResources();
 
         void CreateResolutionDependentResources();
-        void BuildShaderTables(UINT maxInstanceContributionToHitGroupIndex);
+        void BuildShaderTables();
         void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
         void CalculateRayHitCount();
         void DownsampleGBuffer();

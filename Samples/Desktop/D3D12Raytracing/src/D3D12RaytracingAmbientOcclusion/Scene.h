@@ -50,7 +50,11 @@ namespace Scene
         const std::unique_ptr<RaytracingAccelerationStructureManager>& AccelerationStructure() { return m_accelerationStructure; }
 
 
-        const GpuResource(&GrassPatchVB())[UIParameters::NumGrassGeometryLODs][2] { return m_grassPatchVB; }
+        // Getters & setters.
+        GpuResource(&GrassPatchVB())[UIParameters::NumGrassGeometryLODs][2] { return m_grassPatchVB; }
+        D3DTexture& EnvironmentMap() { return m_environmentMap; }
+        StructuredBuffer<PrimitiveMaterialBuffer>& MaterialBuffer() { return m_materialBuffer; }
+        StructuredBuffer<XMFLOAT3X4>& PrevFrameBottomLevelASInstanceTransforms() { return m_prevFrameBottomLevelASInstanceTransforms; }
         
 
     private:
@@ -94,6 +98,13 @@ namespace Scene
         float m_manualCameraRotationAngle = 0; // ToDo remove
         std::unique_ptr<GameCore::CameraController> m_cameraController;
 
+        bool m_isGeometryInitializationRequested;
+        bool m_isASinitializationRequested;
+
+        // Geometry.
+        UINT m_numTriangles;
+        UINT m_numInstancedTriangles;
+
         // Grass geometry.
         static const UINT NumGrassPatchesX = 30;
         static const UINT NumGrassPatchesZ = 30;
@@ -112,6 +123,10 @@ namespace Scene
         std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
         GpuResource m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
 
+        StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.
+        const UINT MaxNumBottomLevelInstances = 10100;           // ToDo tighten this to only what needed or add support a copy of whats used from StructuredBuffers to GPU.
+
+
         // ToDo remove?
         // ToDo clean up buffer management
         // SquidRoom buffers
@@ -129,14 +144,12 @@ namespace Scene
             std::string path;    // ToDo switch to wstring 
         };
 
+        // Materials & textures.
+        std::vector<PrimitiveMaterialBuffer> m_materials;	// ToDO dedupe mats - hash materials
+        StructuredBuffer<PrimitiveMaterialBuffer> m_materialBuffer;
         D3DTexture m_environmentMap;
 
-        StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.
-        UINT m_maxInstanceContributionToHitGroupIndex;
-
-        const UINT MaxNumBottomLevelInstances = 10100;           // ToDo tighten this to only what needed or add support a copy of whats used from StructuredBuffers to GPU.
-
-
+     
 
         // ToDo cleanup
         int m_numFramesSinceASBuild;

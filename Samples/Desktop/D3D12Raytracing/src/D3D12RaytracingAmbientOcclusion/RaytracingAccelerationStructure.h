@@ -169,12 +169,13 @@ public:
     ID3D12Resource* GetTopLevelASResource() { return m_topLevelAS.GetResource(); }
     UINT64 GetASMemoryFootprint() { return m_ASmemoryFootprint; }
     UINT GetNumberOfBottomLevelASInstances() { return static_cast<UINT>(m_bottomLevelASInstanceDescs.NumElements()); }
+    UINT GetMaxInstanceContributionToHitGroupIndes();
 
 private:
     TopLevelAccelerationStructure m_topLevelAS;
     std::map<std::wstring, BottomLevelAccelerationStructure> m_vBottomLevelAS;
     StructuredBuffer<BottomLevelAccelerationStructureInstanceDesc> m_bottomLevelASInstanceDescs;
-    UINT numBottomLevelASInstances = 0;
+    UINT m_numBottomLevelASInstances = 0;
 
     ComPtr<ID3D12Resource>	m_accelerationStructureScratch;
     UINT64 m_scratchResourceSize = 0;

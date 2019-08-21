@@ -75,7 +75,7 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float TMax, in floa
     // Nudge the origin along the surface normal a bit to avoid 
     // starting from behind the surface
     // due to float calculations imprecision.
-    rayDesc.Origin = ray.origin + CB.RTAO_TraceRayOffsetAlongNormal * surfaceNormal;
+    rayDesc.Origin = ray.origin + 0.001 * surfaceNormal;
     rayDesc.Direction = ray.direction;
 
     // Set the ray's extents.
@@ -101,7 +101,7 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float TMax, in floa
     // ToDo test visual impact
     // ToDo test perf impact 1.7 -> 1.55 ms
     bool acceptFirstHit = true;
-    if (acceptFirstHit || !CB.useShadowRayHitTime)
+    if (acceptFirstHit)
     {
         // ToDo test perf impact
         // Performance TIP: Accept first hit if true hit is not neeeded,
@@ -269,29 +269,7 @@ void RayGenShader()
     float ambientCoef = RTAO::InvalidAOValue;
 	if (hit)
 	{
-		float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;
-            
-        
-        //if (CB.RTAO_UseAdaptiveSampling)
-        //{
-        //    float filterWeightSum = g_filterWeightSum[srcRayIndex].x;
-        //    float clampedFilterWeightSum = min(filterWeightSum, CB.RTAO_AdaptiveSamplingMaxWeightSum);
-        //    float sampleScale = 1 - (clampedFilterWeightSum / CB.RTAO_AdaptiveSamplingMaxWeightSum);
-        //    
-        //    UINT minSamples = CB.RTAO_AdaptiveSamplingMinSamples;
-        //    UINT extraSamples = CB.numSamplesToUse - minSamples;
-
-        //    if (CB.RTAO_AdaptiveSamplingMinMaxSampling)
-        //    {
-        //        numSamples = minSamples + (sampleScale >= 0.001 ? extraSamples : 0);
-        //    }
-        //    else
-        //    {
-        //        float scaleExponent = CB.RTAO_AdaptiveSamplingScaleExponent;
-        //        numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
-        //    }
-        //}
-        
+		float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;      
 #if 1
         Ray AORay = GenerateRandomAORay(srcRayIndex, hitPosition, surfaceNormal);
 #else

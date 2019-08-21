@@ -72,11 +72,6 @@ namespace Pathtracer
         NumVar RTAO_minimumFtBounceCoefficient(L"Render/PathTracing/Minimum BTDF bounce contribution coefficient", 0.00f, 0, 1.01f, 0.01f);        // Minimum BTDF coefficient to cast a ray for.
    
         BoolVar RTAOUseNormalMaps(L"Render/PathTracing/Normal maps", false);
-#if USE_NORMALIZED_Z
-        NumVar PathTracing_Znear(L"Render/PathTracing/Znear", 0.0f, 0, 1000.0f, 1.0f);
-        NumVar PathTracing_Zfar(L"Render/PathTracing/Zfar", 100.0f, 0, 1000.0f, 1.0f);
-#endif
-
         const WCHAR* FloatingPointFormatsRG[TextureResourceFormatRG::Count] = { L"R32G32_FLOAT", L"R16G16_FLOAT", L"R8G8_SNORM" };
         // ToDo  ddx needs to be in normalized to use UNORM.
         EnumVar RTAO_PartialDepthDerivativesResourceFormat(L"Render/Texture Formats/PartialDepthDerivatives", TextureResourceFormatRG::R16G16_FLOAT, TextureResourceFormatRG::Count, FloatingPointFormatsRG, OnRecreateRaytracingResources);
@@ -107,12 +102,12 @@ namespace Pathtracer
         }
     }
 
-    void Pathtracer::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex)
+    void Pathtracer::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap)
     {
         m_deviceResources = deviceResources;
         m_cbvSrvUavHeap = descriptorHeap;
 
-        CreateDeviceDependentResources(maxInstanceContributionToHitGroupIndex);
+        CreateDeviceDependentResources();
     }
 
     void Pathtracer::ReleaseDeviceDependentResources()
@@ -130,7 +125,7 @@ namespace Pathtracer
     }
 
     // Create resources that depend on the device.
-    void Pathtracer::CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex)
+    void Pathtracer::CreateDeviceDependentResources()
     {
         CreateAuxilaryDeviceResources();
 
@@ -146,7 +141,7 @@ namespace Pathtracer
         CreateConstantBuffers();
 
         // Build shader tables, which define shaders and their local root arguments.
-        BuildShaderTables(maxInstanceContributionToHitGroupIndex);
+        BuildShaderTables();
     }
 
 
@@ -201,7 +196,6 @@ namespace Pathtracer
             ranges[Slot::ReprojectedNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 18);  // 1 output texture reprojected hit position
             ranges[Slot::Color].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 19);  // 1 output texture shaded color
             ranges[Slot::AOSurfaceAlbedo].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 20);  // 1 output texture AO diffuse
-            ranges[Slot::ShadowMapUAV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 21);  // 1 output ShadowMap texture
             ranges[Slot::Debug].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 22);
             ranges[Slot::Debug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 24);
 
@@ -214,7 +208,6 @@ namespace Pathtracer
             ranges[Slot::FilterWeightSum].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 13);  // 1 input filter weight sum texture
             ranges[Slot::AOFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 14);  // 1 input AO frame age
 
-            ranges[Slot::ShadowMapSRV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 21);  // 1 ShadowMap texture
             ranges[Slot::AORayDirectionOriginDepthHitSRV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 22);  // 1 AO ray direction and origin depth texture
             ranges[Slot::AOSourceToSortedRayIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 23);  // 1 input AO ray group thread offsets
 
@@ -239,8 +232,6 @@ namespace Pathtracer
             rootParameters[Slot::ReprojectedNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::ReprojectedNormalDepth]);
             rootParameters[Slot::Color].InitAsDescriptorTable(1, &ranges[Slot::Color]);
             rootParameters[Slot::AOSurfaceAlbedo].InitAsDescriptorTable(1, &ranges[Slot::AOSurfaceAlbedo]);
-            rootParameters[Slot::ShadowMapSRV].InitAsDescriptorTable(1, &ranges[Slot::ShadowMapSRV]);
-            rootParameters[Slot::ShadowMapUAV].InitAsDescriptorTable(1, &ranges[Slot::ShadowMapUAV]);
             rootParameters[Slot::Debug].InitAsDescriptorTable(1, &ranges[Slot::Debug]);
             rootParameters[Slot::Debug2].InitAsDescriptorTable(1, &ranges[Slot::Debug2]);
 
@@ -407,10 +398,7 @@ namespace Pathtracer
 
     // Build shader tables.
     // This encapsulates all shader records - shaders and the arguments for their local root signatures.
-    // For AO, the shaders are simple with only one shader type per shader table.
-    // maxInstanceContributionToHitGroupIndex - since BLAS instances in this sample specify non-zero InstanceContributionToHitGroupIndex, 
-    //  the sample needs to add as many shader records to all hit group shader tables so that DXR shader addressing lands on a valid shader record for all BLASes.
-    void Pathtracer::BuildShaderTables(UINT maxInstanceContributionToHitGroupIndex)
+    void Pathtracer::BuildShaderTables()
     {
         auto device = m_deviceResources->GetD3DDevice();
 
@@ -505,13 +493,12 @@ namespace Pathtracer
         vector<vector<GeometryInstance>*> geometryInstancesArray;
 
         // ToDo split shader table per unique pass?
-
-        m_maxInstanceContributionToHitGroupIndex = 0;
         // Hit group shader table.
         {
-
-            auto& bottomLevelASGeometries = grassPatchVB;
-            auto& accelerationStructure = *Sample::instance().Scene().AccelerationStructure();
+            auto& Scene = Sample::instance().Scene();
+            auto& bottomLevelASGeometries = Scene.BottomLevelASGeometries();
+            auto& accelerationStructure = *Scene.AccelerationStructure();
+            auto& grassPatchVB = Scene.GrassPatchVB();
 
             UINT numShaderRecords = 0;
             for (auto& bottomLevelASGeometryPair : bottomLevelASGeometries)
@@ -530,11 +517,9 @@ namespace Pathtracer
             {
                 auto& bottomLevelASGeometry = bottomLevelASGeometryPair.second;
                 auto& name = bottomLevelASGeometry.GetName();
-                auto& grassPatchVB = Sample::instance().Scene().GrassPatchVB();
 
                 UINT shaderRecordOffset = hitGroupShaderTable.GeNumShaderRecords();
                 accelerationStructure.GetBottomLevelAS(bottomLevelASGeometryPair.first).SetInstanceContributionToHitGroupIndex(shaderRecordOffset);
-                m_maxInstanceContributionToHitGroupIndex = shaderRecordOffset;
 
                 // ToDo cleaner?
                 // Grass Patch LOD shader recods
@@ -723,33 +708,12 @@ namespace Pathtracer
 
         ScopedTimer _prof(L"GenerateGbuffer", commandList);
 
+        auto& Scene = Sample::instance().Scene();
+        auto& MaterialBuffer = Scene.MaterialBuffer();
+        auto& EnvironmentMap = Scene.EnvironmentMap();
+        auto& PrevFrameBottomLevelASInstanceTransforms = Scene.PrevFrameBottomLevelASInstanceTransforms();
 
-        m_normalDepthCurrentFrameResourceIndex = (m_normalDepthCurrentFrameResourceIndex + 1) % 2;
-    #if USE_NORMALIZED_Z
-        m_CB->Znear = Args::PathTracing_Znear;
-        m_CB->Zfar = Args::PathTracing_Zfar;
-    #endif
         m_CB->useDiffuseFromMaterial = Sample::Args::CompositionMode == CompositionType::Diffuse;
-    #if CAMERA_JITTER
-
-    #if 1
-        uniform_real_distribution<float> jitterDistribution(-0.5f, 0.5f);
-        m_CB->cameraJitter = XMFLOAT2(jitterDistribution(m_generatorURNG), jitterDistribution(m_generatorURNG));
-    #else
-        // ToDo remove?
-        static UINT seed = 0;
-        static UINT counter = 0;
-        switch (counter++ % 4)
-        {
-        case 0: m_CB->cameraJitter = XMFLOAT2(-0.25f, -0.25f); break;
-        case 1: m_CB->cameraJitter = XMFLOAT2(0.25f, -0.25f); break;
-        case 2: m_CB->cameraJitter = XMFLOAT2(-0.25f, 0.25f); break;
-        case 3: m_CB->cameraJitter = XMFLOAT2(0.25f, 0.25f); break;
-        };
-    #endif
-    #endif
-
-
 
         // ToDo should we use cameraAtPosition0 too and offset the world space pos vector in the shader?
         auto& prevFrameCamera = Sample::instance().Scene().PrevFrameCamera();
@@ -794,10 +758,9 @@ namespace Pathtracer
         // Bind inputs.
         commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, Sample::instance().Scene().AccelerationStructure()->GetTopLevelASResource()->GetGPUVirtualAddress());
         commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_CB.GpuVirtualAddress(frameIndex));
-        commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, m_materialBuffer.GpuVirtualAddress());
-        commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, m_environmentMap.gpuDescriptorHandle);
-        commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::PrevFrameBottomLevelASIstanceTransforms, m_prevFrameBottomLevelASInstanceTransforms.GpuVirtualAddress(frameIndex));
-        commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ShadowMapSRV, m_ShadowMapResource.gpuDescriptorReadAccess);
+        commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, Scene.MaterialBuffer.GpuVirtualAddress());
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, EnvironmentMap.gpuDescriptorHandle);
+        commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::PrevFrameBottomLevelASIstanceTransforms, PrevFrameBottomLevelASInstanceTransforms.GpuVirtualAddress(frameIndex));
 
 
         // Bind output RTs.
@@ -848,7 +811,7 @@ namespace Pathtracer
         {
             ScopedTimer _prof(L"Calculate Partial Depth Derivatives", commandList);
             resourceStateTracker->FlushResourceBarriers();
-            m_calculatePartialDerivativesKernel.Execute(
+            m_calculatePartialDerivativesKernel.Run(
                 commandList,
                 m_cbvSrvUavHeap->GetHeap(),
                 m_width,
@@ -877,7 +840,7 @@ namespace Pathtracer
         // ToDo make this disabled by default/
 
         resourceStateTracker->FlushResourceBarriers();
-        m_reduceSumKernel.Execute(
+        m_reduceSumKernel.Run(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
             frameIndex,
@@ -991,8 +954,6 @@ namespace Pathtracer
             CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer LowRes AO Surface Albedo");
 
         }
-
-        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_prevFrameGBufferNormalDepth, initialResourceState, L"Previous Frame GBuffer Normal Depth");
     }
 
     void Pathtracer::DownsampleGBuffer()
@@ -1017,7 +978,7 @@ namespace Pathtracer
         ScopedTimer _prof(L"DownsampleGBuffer", commandList);
         resourceStateTracker->FlushResourceBarriers();
         // ToDo split into per resource downsamples?
-        m_downsampleGBufferBilateralFilterKernel.Execute(
+        m_downsampleGBufferBilateralFilterKernel.Run(
             commandList,
             m_width,
             m_height,

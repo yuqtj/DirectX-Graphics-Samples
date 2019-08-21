@@ -122,16 +122,12 @@ namespace Denoiser
 
         const WCHAR* Denoising_Modes[GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count] = { L"EdgeStoppingBox3x3", L"EdgeStoppingGaussian3x3", L"EdgeStoppingGaussian5x5" };
         EnumVar Denoising_Mode(L"Render/AO/RTAO/Denoising_/Mode", GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::EdgeStoppingGaussian3x3, GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType::Count, Denoising_Modes);
-#if    DISABLE_DENOISING
-        IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising_/Num passes", 1, 1, 8, 1);
-        NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising_/Value Sigma", 0.011f, 0.0f, 30.0f, 0.1f);
-#else
         IntVar AtrousFilterPasses(L"Render/AO/RTAO/Denoising_/Num passes", 1, 1, 8, 1);
         NumVar AODenoiseValueSigma(L"Render/AO/RTAO/Denoising_/Value Sigma", 0.3f, 0.0f, 30.0f, 0.1f);
         BoolVar Denoising_2ndPass_UseVariance(L"Render/AO/RTAO/Denoising_/2nd+ pass/Use variance", false);
         NumVar Denoising_2ndPass_NormalSigma(L"Render/AO/RTAO/Denoising_/2nd+ pass/Normal Sigma", 2, 1, 256, 2);
         NumVar Denoising_2ndPass_DepthSigma(L"Render/AO/RTAO/Denoising_/2nd+ pass/Depth Sigma", 1.0f, 0.0f, 10.0f, 0.02f);
-#endif
+
         // ToDo remove
         IntVar Denoising_MaxFrameAgeToDenoiseAfter1stPass(L"Render/AO/RTAO/Denoising_/Max Frame Age To Denoise 2nd+ pass", 33, 1, 34, 1);
         IntVar Denoising_MaxFrameAgeToDenoiseOn1stPass(L"Render/AO/RTAO/Denoising_/1st pass/Max Frame Age To Denoise", 16, 1, 64, 1);
@@ -198,7 +194,7 @@ namespace Denoiser
     // be beneficial to drive any raytracing in current frame based on 
     // reprojected cached values (such as have rpp vary on average ray hit distance or trpp).
     // Otherwise all denoiser steps can be run via a single execute call.
-    void Denoiser::Execute(DenoiseStage stage)
+    void Denoiser::Run(DenoiseStage stage)
     {
         if (stage & DenoiseStage_1_ReverseReproject)
         {
@@ -285,7 +281,8 @@ namespace Denoiser
 
         // ToDo remove obsolete resources, QuarterResAO event triggers this so we may not need all low/gbuffer width AO resources.
         CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_width, m_height, m_cbvSrvUavHeap.get(), &m_multiPassDenoisingBlurStrength, initialResourceState, L"Multi Pass Denoising Blur Strength");
-
+       
+        CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_prevFrameGBufferNormalDepth, initialResourceState, L"Previous Frame GBuffer Normal Depth");
     }
 
 
@@ -299,8 +296,6 @@ namespace Denoiser
 
         ScopedTimer _prof(L"Temporal Supersampling p1 (Reverse Reprojection)", commandList);
         
-        UINT prevFrameNormalDepthResourceIndex = (m_normalDepthCurrentFrameResourceIndex + 1) % 2;
-
         // Ping-pong input output indices across frames.
         UINT temporalCachePreviousFrameResourceIndex = m_temporalCacheCurrentFrameResourceIndex;
         m_temporalCacheCurrentFrameResourceIndex = (m_temporalCacheCurrentFrameResourceIndex + 1) % 2;
@@ -346,7 +341,7 @@ namespace Denoiser
 
         UINT maxFrameAge = static_cast<UINT>(1 / Args::TemporalSupersampling_MinSmoothingFactor);
         resourceStateTracker->FlushResourceBarriers();
-        m_temporalCacheReverseReprojectKernel.Execute(
+        m_temporalCacheReverseReprojectKernel.Run(
             commandList,
             m_width,
             m_height,
@@ -438,7 +433,7 @@ namespace Denoiser
             // ToDo checkerboard is same perf ?
             ScopedTimer _prof(L"Calculate Mean and Variance", commandList);
             resourceStateTracker->FlushResourceBarriers();
-            m_calculateMeanVarianceKernel.Execute(
+            m_calculateMeanVarianceKernel.Run(
                 commandList,
                 m_cbvSrvUavHeap->GetHeap(),
                 m_width,
@@ -456,7 +451,7 @@ namespace Denoiser
             {
                 bool fillEvenPixels = !checkerboardLoadEvenPixels;
                 resourceStateTracker->FlushResourceBarriers();
-                m_fillInCheckerboardKernel.Execute(
+                m_fillInCheckerboardKernel.Run(
                     commandList,
                     m_cbvSrvUavHeap->GetHeap(),
                     m_width,
@@ -478,7 +473,7 @@ namespace Denoiser
             {
                 ScopedTimer _prof(L"Mean Variance Smoothing", commandList);
                 resourceStateTracker->FlushResourceBarriers();
-                m_gaussianSmoothingKernel.Execute(
+                m_gaussianSmoothingKernel.Run(
                     commandList,
                     m_width,
                     m_height,
@@ -515,7 +510,7 @@ namespace Denoiser
         }
 
         resourceStateTracker->FlushResourceBarriers();
-        m_temporalCacheBlendWithCurrentFrameKernel.Execute(
+        m_temporalCacheBlendWithCurrentFrameKernel.Run(
             commandList,
             m_width,
             m_height,
@@ -571,7 +566,7 @@ namespace Denoiser
                 {
                     ScopedTimer _prof(L"Mean Variance Smoothing", commandList);
                     resourceStateTracker->FlushResourceBarriers();
-                    m_gaussianSmoothingKernel.Execute(
+                    m_gaussianSmoothingKernel.Run(
                         commandList,
                         m_width,
                         m_height,
@@ -596,7 +591,7 @@ namespace Denoiser
                 {
                     bool fillEvenPixels = !checkerboardLoadEvenPixels;
                     resourceStateTracker->FlushResourceBarriers();
-                    m_fillInCheckerboardKernel.Execute(
+                    m_fillInCheckerboardKernel.Run(
                         commandList,
                         m_cbvSrvUavHeap->GetHeap(),
                         m_width,
@@ -615,7 +610,7 @@ namespace Denoiser
                 }
 
                 resourceStateTracker->FlushResourceBarriers();
-                m_fillInMissingValuesFilterKernel.Execute(
+                m_fillInMissingValuesFilterKernel.Run(
                     commandList,
                     m_width,
                     m_height,
@@ -697,7 +692,7 @@ namespace Denoiser
                 resourceStateTracker->InsertUAVBarrier(OutResource);
 
                 resourceStateTracker->FlushResourceBarriers();
-                m_bilateralFilterKernel.Execute(
+                m_bilateralFilterKernel.Run(
                     commandList,
                     filter,
                     filterStep,
@@ -721,7 +716,7 @@ namespace Denoiser
                 }
 
                 resourceStateTracker->FlushResourceBarriers();
-                m_bilateralFilterKernel.Execute(
+                m_bilateralFilterKernel.Run(
                     commandList,
                     filter,
                     filterStep,
@@ -852,7 +847,7 @@ namespace Denoiser
         {
             ScopedTimer _prof(L"AtrousWaveletTransformFilter", commandList);
             resourceStateTracker->FlushResourceBarriers();
-            m_atrousWaveletTransformFilter.Execute(
+            m_atrousWaveletTransformFilter.Run(
                 commandList,
                 m_cbvSrvUavHeap->GetHeap(),
                 static_cast<GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType>(static_cast<UINT>(Args::Denoising_Mode)),
@@ -927,7 +922,7 @@ namespace Denoiser
         {
             ScopedTimer _prof(L"CalculateVariance", commandList);
             resourceStateTracker->FlushResourceBarriers();
-            m_calculateVarianceKernel.Execute(
+            m_calculateVarianceKernel.Run(
                 commandList,
                 m_cbvSrvUavHeap->GetHeap(),
                 width,
@@ -955,7 +950,7 @@ namespace Denoiser
         {
             ScopedTimer _prof(L"VarianceSmoothing", commandList);
             resourceStateTracker->FlushResourceBarriers();
-            m_gaussianSmoothingKernel.Execute(
+            m_gaussianSmoothingKernel.Run(
                 commandList,
                 width,
                 height,
@@ -997,7 +992,7 @@ namespace Denoiser
         {
             ScopedTimer _prof(L"AtrousWaveletTransformFilter", commandList);
             resourceStateTracker->FlushResourceBarriers();
-            m_atrousWaveletTransformFilter.Execute(
+            m_atrousWaveletTransformFilter.Run(
                 commandList,
                 m_cbvSrvUavHeap->GetHeap(),
                 static_cast<GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType>(static_cast<UINT>(Args::Denoising_Mode)),

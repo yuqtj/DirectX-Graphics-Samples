@@ -24,7 +24,6 @@ Texture2D<uint2> g_texGBufferMaterial : register(t1);    // 16b {1x Material Id,
 Texture2D<float4> g_texGBufferPositionRT : register(t2);
 Texture2D<NormalDepthTexFormat> g_texGBufferNormalDepth : register(t3);	// ToDo merge some GBuffers resources ?
 Texture2D<float> g_texAO : register(t5);
-Texture2D<float> g_texVisibility : register(t6);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t7);
 Texture2D<float> g_texFilterWeightSum : register(t8);
 Texture2D<float> g_texRayHitDistance : register(t9);
@@ -59,17 +58,17 @@ void main(uint2 DTid : SV_DispatchThreadID )
         float depthDummy;
         float3 surfaceNormal;
         DecodeNormalDepth(g_texGBufferNormalDepth[DTid], surfaceNormal, depthDummy);
-		float visibilityCoefficient = g_texVisibility[DTid];
 
         // ToDo rename to enable dynamic AO?
         float ambientCoef = g_CB.defaultAmbientIntensity;
         
         if (hit)
         {
-            ambientCoef  = g_CB.enableAO ? g_texAO[DTid] : g_CB.defaultAmbientIntensity;
+            ambientCoef  = g_CB.isAOEnabled ? g_texAO[DTid] : g_CB.defaultAmbientIntensity;
         }
 
         // ToDo use switch?
+        // ToDo rename phong
         // Calculate final color.
         if (g_CB.compositionType == CompositionType::PhongLighting)
         {
@@ -79,9 +78,7 @@ void main(uint2 DTid : SV_DispatchThreadID )
             DecodeMaterial16b(materialInfo, materialID, diffuse);
 
             PrimitiveMaterialBuffer material = g_materials[materialID];
-            float3 toEyeRay = normalize(g_CB.cameraPosition.xyz - hitPosition);
-            diffuse = diffuse; 
-            float3 specular = RemoveSRGB(material.Ks);
+            float3 specular = RemoveSRGB(material.Ks);      // ToDo review SRGB calls
             float3 phongColor = g_texColor[DTid].xyz;
          
             // Subtract the default ambient illuminatation that has already been added to the color in raytrace pass.
@@ -93,7 +90,8 @@ void main(uint2 DTid : SV_DispatchThreadID )
 
             // Apply visibility falloff.
             // ToDo incorrect when subtracting camera
-            distance = length(hitPosition);// -g_CB.cameraPosition.xyz);
+            
+            distance = length(hitPosition);
             float t = distance;
             
             // ToDo
@@ -119,37 +117,6 @@ void main(uint2 DTid : SV_DispatchThreadID )
                 float3 maxFrameAgeColor = float3(170, 220, 200) / 255;
                 color = float4(lerp(minFrameAgeColor, maxFrameAgeColor, normalizedFrameAge), 1);
             }
-        }
-        else if (g_CB.compositionType == CompositionType::AmbientOcclusionHighResSamplingPixels)
-        {
-            // ToDo
-            color = float4(1,1,0, 1);
-#if 0
-            UINT numSamples = g_CB.RTAO_MaxSPP;
-            if (g_CB.RTAO_UseAdaptiveSampling)
-            {
-                float filterWeightSum = g_texFilterWeightSum[DTid].x;
-                float clampedFilterWeightSum = min(filterWeightSum, g_CB.RTAO_AdaptiveSamplingMaxWeightSum);
-                float sampleScale = 1 - (clampedFilterWeightSum / g_CB.RTAO_AdaptiveSamplingMaxWeightSum);
-
-                UINT minSamples = g_CB.RTAO_AdaptiveSamplingMinSamples;
-                UINT extraSamples = g_CB.RTAO_MaxSPP - minSamples;
-
-                if (g_CB.RTAO_AdaptiveSamplingMinMaxSampling)
-                {
-                    numSamples = minSamples + (sampleScale >= 0.001 ? extraSamples : 0);
-                }
-                else
-                {
-                    float scaleExponent = g_CB.RTAO_AdaptiveSamplingScaleExponent;
-                    numSamples = minSamples + UINT(pow(sampleScale, scaleExponent) * extraSamples);
-                }
-            }
-            float3 minSampleColor = float3(170, 220, 200) / 255;
-            float3 maxSampleColor = float3(153, 18, 15) / 255;
-            float sppScale = float(numSamples) / g_CB.RTAO_MaxSPP;
-            color = float4(lerp(minSampleColor, maxSampleColor, sppScale), 1);
-#endif
         }
         else if (g_CB.compositionType == CompositionType::AmbientOcclusionVariance ||
             g_CB.compositionType == CompositionType::AmbientOcclusionLocalVariance)

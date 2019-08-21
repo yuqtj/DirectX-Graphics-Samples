@@ -142,10 +142,10 @@ void D3D12RaytracingAmbientOcclusion::OnInit()
     EngineTuning::Initialize();
 
     m_deviceResources->InitializeDXGIAdapter();
-#if ENABLE_RAYTRACING
+
 	ThrowIfFalse(IsDirectXRaytracingSupported(m_deviceResources->GetAdapter()),
 		L"ERROR: DirectX Raytracing is not supported by your GPU and driver.\n\n");
-#endif
+
     // ToDo cleanup
     m_deviceResources->CreateDeviceResources();
 
@@ -257,21 +257,17 @@ void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
 {
 	auto device = m_deviceResources->GetD3DDevice();
 
-    // ToDo remove
-    //GpuTimeManager::instance().SetAvgRefreshPeriodMS(3000);
-
     // Create a heap for descriptors.
     CreateDescriptorHeaps();
 
     CreateAuxilaryDeviceResources();
 
-
     // Create constant buffers for the geometry and the scene.
     CreateConstantBuffers(); 
 
-
-    m_pathtracer.Setup(m_deviceResources, m_cbvSrvUavHeap, m_maxInstanceContributionToHitGroupIndex);
-    m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_maxInstanceContributionToHitGroupIndex);
+    m_pathtracer.Setup(m_deviceResources, m_cbvSrvUavHeap);
+    // ToDo add a note the RTAO setup has to be called after pathtracer built its shader tables and updated instanceContributionToHitGroupIndices.
+    m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap);
     m_SSAO.Setup(m_deviceResources);
 }
 
@@ -892,15 +888,15 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
                     GpuResource* GBufferResources = m_pathtracer.GBufferResources();
 
-                    m_denoiser.Execute();
-                    m_RTAO.OnRender(
+                    m_denoiser.Run();
+                    m_RTAO.Run(
                         m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
                         GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
                         GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
                         GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess,
                         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].gpuDescriptorReadAccess);
                     
-                    m_denoiser.Execute();
+                    m_denoiser.Run();
 
                     if (RTAO::Args::QuarterResAO)
                     {
@@ -925,19 +921,7 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
                     m_SSAO.Run(m_SSAOCB.GetResource());
                 }
             }
-            
-            GpuResource* AOResources = RTAO::Args::QuarterResAO ? m_AOResources : m_RTAO.GetAOResources();
-            D3D12_GPU_DESCRIPTOR_HANDLE AOSRV = Args::AOMode == Args::AOType::RTAO ? AOResources[AOResource::Smoothed].gpuDescriptorReadAccess : SSAOgpuDescriptorReadAccess;
-            
-            if (Args::CompositionMode == CompositionType::AmbientOcclusionOnly_RawOneFrame)
-            {
-                AOSRV = AOResources[AOResource::Coefficient].gpuDescriptorReadAccess;
-            }
-            else //if (Args::CompositionMode == CompositionType::AmbientOcclusionOnly_TemporallySupersampled)
-            {
-                AOSRV = m_TSSAOCoefficient[m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex].gpuDescriptorReadAccess;
-            }
-            RenderPass_ComposeRenderPassesCS(AOSRV);
+            m_composition.Render();
 
             if (m_GBufferWidth != m_width || m_GBufferHeight != m_height)
             {
@@ -971,6 +955,84 @@ void D3D12RaytracingAmbientOcclusion::OnRender()
 
    // Args::TAO_LazyRender.Bang();
     //m_cameraChangedIndex = 0;
+}
+
+
+// ToDo rename
+void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
+{
+    auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
+
+    ScopedTimer _prof(L"DownsampleToBackbuffer", commandList);
+
+    resourceStateTracker->TransitionResource(&m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+    // ToDo pass the filter to the kernel instead of using 3 different instances
+    resourceStateTracker->FlushResourceBarriers();
+    switch (Args::AntialiasingMode)
+    {
+    case DownsampleFilter::BoxFilter2x2:
+        m_downsampleBoxFilter2x2Kernel.Run(
+            commandList,
+            m_GBufferWidth,
+            m_GBufferHeight,
+            m_cbvSrvUavHeap->GetHeap(),
+            m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
+            m_raytracingOutput.gpuDescriptorWriteAccess);
+        break;
+    case DownsampleFilter::GaussianFilter9Tap:
+        m_downsampleGaussian9TapFilterKernel.Run(
+            commandList,
+            m_GBufferWidth,
+            m_GBufferHeight,
+            m_cbvSrvUavHeap->GetHeap(),
+            m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
+            m_raytracingOutput.gpuDescriptorWriteAccess);
+        break;
+    case DownsampleFilter::GaussianFilter25Tap:
+        m_downsampleGaussian25TapFilterKernel.Run(
+            commandList,
+            m_GBufferWidth,
+            m_GBufferHeight,
+            m_cbvSrvUavHeap->GetHeap(),
+            m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
+            m_raytracingOutput.gpuDescriptorWriteAccess);
+        break;
+    }
+
+    resourceStateTracker->TransitionResource(&m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+}
+
+
+
+
+// Copy the raytracing output to the backbuffer.
+void D3D12RaytracingAmbientOcclusion::CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState)
+{
+    auto commandList = m_deviceResources->GetCommandList();
+    auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
+    auto renderTarget = m_deviceResources->GetRenderTarget();
+
+    ID3D12Resource* raytracingOutput = nullptr;
+    if (m_GBufferWidth == m_width && m_GBufferHeight == m_height)
+    {
+        raytracingOutput = m_raytracingOutputIntermediate.GetResource();
+    }
+    else
+    {
+        raytracingOutput = m_raytracingOutput.GetResource();
+    }
+
+    resourceStateTracker->FlushResourceBarriers();
+    CopyResource(
+        commandList,
+        raytracingOutput,
+        renderTarget,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        outRenderTargetState);
 }
 
 // Compute the average frames per second and million rays per second.

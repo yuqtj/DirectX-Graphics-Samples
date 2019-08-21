@@ -43,17 +43,33 @@ namespace Composition
         // Public methods.
         void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
         void OnUpdate();
-        void OnRender(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource, D3D12_GPU_DESCRIPTOR_HANDLE frameAgeResource);
+        void Render();
         void ReleaseDeviceDependentResources();
         void ReleaseWindowSizeDependentResources() {}; // ToDo
+        void SetResolution(UINT width, UINT height);
 
     private:
+        void CreateComposeRenderPassesCSResources();
         void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
         void CreateConstantBuffers();
         void CreateAuxilaryDeviceResources();
+        void RenderRNGVisualizations();
+        void CreateSamplesRNGVisualization();
         void CreateTextureResources();
         void CreateResolutionDependentResources();
-        void DownsampleRaytracingOutput();
+        void BilateralUpsample(
+            UINT hiResWidth,
+            UINT hiResHeight,
+            GpuKernels::UpsampleBilateralFilter::FilterType filterType,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValueResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalDepthResourceHandle,
+            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDepthDerivativesResourceHandle,
+            GpuResource* outputHiResValueResource,
+            LPCWCHAR passName);
+
+        void UpsampleResourcesForRenderComposePass();
+
 
         static UINT s_numInstances;
         std::shared_ptr<DX::DeviceResources> m_deviceResources;
@@ -66,9 +82,6 @@ namespace Composition
         ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
         ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
 
-        GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
-        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
-        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
         GpuKernels::DownsampleValueNormalDepthBilateralFilter m_downsampleValueNormalDepthBilateralFilterKernel;
     };
 }

@@ -107,8 +107,6 @@ namespace Sample
         std::unique_ptr<DX::DescriptorHeap> m_samplerHeap;
 
         // Raytracing scene
-        std::vector<PrimitiveMaterialBuffer> m_materials;	// ToDO dedupe mats - hash materials
-        StructuredBuffer<PrimitiveMaterialBuffer> m_materialBuffer;
 
         D3DTexture m_nullTexture;
 
@@ -137,6 +135,9 @@ namespace Sample
         GpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
         GpuResource m_AOResources[AOResource::Count];
 
+        GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
+        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
+        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
     private:
 
         UINT m_GBufferWidth;
@@ -151,47 +152,21 @@ namespace Sample
         std::unique_ptr<UILayer> m_uiLayer;
 
         float m_fps;
-        UINT m_numTriangles;
-        UINT m_numInstancedTriangles;
 
-        bool m_isGeometryInitializationRequested;
-        bool m_isASinitializationRequested;
         bool m_isSceneInitializationRequested;
         bool m_isRecreateRaytracingResourcesRequested;
 
-        // Render passes
-        void RenderPass_GenerateGBuffers();
-        void RenderPass_CalculateAmbientOcclusion();
-        void RenderPass_ComposeRenderPassesCS(D3D12_GPU_DESCRIPTOR_HANDLE AOSRV);
-
         // ToDo cleanup
         // Utility functions
-        void CreateComposeRenderPassesCSResources();
+        void DownsampleRaytracingOutput();        // ToDo standardize const& vs *
         void ParseCommandLineArgs(WCHAR* argv[], int argc);
         void RecreateD3D();
-        void DownsampleRaytracingOutput();
-
-        void UpsampleResourcesForRenderComposePass();
-        // ToDo standardize const& vs *
-        void BilateralUpsample(
-            UINT hiResWidth,
-            UINT hiResHeight,
-            GpuKernels::UpsampleBilateralFilter::FilterType filterType,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalDepthResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalDepthResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDepthDerivativesResourceHandle,
-            GpuResource* outputHiResValueResource,
-            LPCWCHAR passName);
-
         void CreateConstantBuffers();
         void UpdateUI();
         void CreateDeviceDependentResources();
         void CreateWindowSizeDependentResources();
         void ReleaseDeviceDependentResources();
         void ReleaseWindowSizeDependentResources();
-        void RenderRNGVisualizations();
-        void CreateSamplesRNGVisualization();
         void CreateDescriptorHeaps();
         void CreateRaytracingOutputResource();
         void CreateGBufferResources();

@@ -40,7 +40,7 @@ namespace Denoiser
 
         // Public methods.
         void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
-        void Execute(DenoiseStage stage = DenoiseStage_All);
+        void Run(DenoiseStage stage = DenoiseStage_All);
 
         void ReleaseDeviceDependentResources();
         void ReleaseWindowSizeDependentResources() {}; // ToDo
@@ -81,7 +81,6 @@ namespace Denoiser
         // ToDo cleanup readId should be for input to TAO, confusing.
         UINT          m_temporalCacheCurrentFrameResourceIndex = 0;
         UINT          m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex = 0;
-        UINT          m_normalDepthCurrentFrameResourceIndex = 0;
 
         GpuResource m_varianceResources[AOVarianceResource::Count];
         GpuResource m_localMeanVarianceResources[AOVarianceResource::Count];

@@ -161,7 +161,7 @@ namespace GpuKernels
 		}
 	}
 
-	void ReduceSum::Execute(
+	void ReduceSum::Run(
 		ID3D12GraphicsCommandList4* commandList,
 		ID3D12DescriptorHeap* descriptorHeap, 
 		UINT frameIndex,
@@ -308,7 +308,7 @@ namespace GpuKernels
 
 	// Downsamples input resource.
 	// width, height - dimensions of the input resource.
-	void DownsampleBoxFilter2x2::Execute(
+	void DownsampleBoxFilter2x2::Run(
 		ID3D12GraphicsCommandList4* commandList,
 		UINT width,
 		UINT height,
@@ -403,7 +403,7 @@ namespace GpuKernels
 
 	// Downsamples input resource.
 	// width, height - dimensions of the input resource.
-	void DownsampleGaussianFilter::Execute(
+	void DownsampleGaussianFilter::Run(
 		ID3D12GraphicsCommandList4* commandList,
 		UINT width,
 		UINT height,
@@ -472,7 +472,7 @@ namespace GpuKernels
         }
     }
 
-    // ToDo move the Type parameter to Execute?
+    // ToDo move the Type parameter to Run?
     void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
@@ -551,7 +551,7 @@ namespace GpuKernels
 
     // Downsamples input resource.
     // width, height - dimensions of the input resource.
-    void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Execute(
+    void DownsampleNormalDepthHitPositionGeometryHitBilateralFilter::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -682,7 +682,7 @@ namespace GpuKernels
 
     // Downsamples input resource.
     // width, height - dimensions of the input resource.
-    void DownsampleValueNormalDepthBilateralFilter::Execute(
+    void DownsampleValueNormalDepthBilateralFilter::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -796,7 +796,7 @@ namespace GpuKernels
     // Resamples input resource.
     // width, height - dimensions of the output resource.
     // ToDo should the input width/height be of output or input?
-    void UpsampleBilateralFilter::Execute(
+    void UpsampleBilateralFilter::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width, // Todo remove and deduce from outputResourceInstead?
         UINT height,
@@ -918,7 +918,7 @@ namespace GpuKernels
 
     // Resamples input resource.
     // width, height - dimensions of the input resource.
-    void MultiScale_UpsampleBilateralFilterAndCombine::Execute(
+    void MultiScale_UpsampleBilateralFilterAndCombine::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -1029,7 +1029,7 @@ namespace GpuKernels
 
     // Blurs input resource with a Gaussian filter.
     // width, height - dimensions of the input resource.
-    void GaussianFilter::Execute(
+    void GaussianFilter::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -1131,7 +1131,7 @@ namespace GpuKernels
 
     // Blurs input resource with a Gaussian filter.
     // width, height - dimensions of the input resource.
-    void FillInMissingValuesFilter::Execute(
+    void FillInMissingValuesFilter::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -1248,7 +1248,7 @@ namespace GpuKernels
 
     // Blurs input resource with a Gaussian filter.
     // width, height - dimensions of the input resource.
-    void BilateralFilter::Execute(
+    void BilateralFilter::Run(
         ID3D12GraphicsCommandList4* commandList,
         FilterType type,
         UINT filterStep,
@@ -1369,7 +1369,7 @@ namespace GpuKernels
     //  2) Executes a Reduce Sum CS aggregating mean square error
     //  3) Takes a root square on the CPU of the readback result
     // width, height - dimensions of the input resource.
-    void RootMeanSquareError::Execute(
+    void RootMeanSquareError::Run(
         ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT frameIndex,
@@ -1404,7 +1404,7 @@ namespace GpuKernels
         float sumPerPixelMeanSquareError;
         {
             // ToDo index the result to a frame its from or wait on the GPU to finish
-            m_reduceSumKernel.Execute(commandList, descriptorHeap, frameIndex, m_perPixelMeanSquareError.gpuDescriptorReadAccess, &sumPerPixelMeanSquareError, invocationIndex);
+            m_reduceSumKernel.Run(commandList, descriptorHeap, frameIndex, m_perPixelMeanSquareError.gpuDescriptorReadAccess, &sumPerPixelMeanSquareError, invocationIndex);
         }
 
         // Calculate root mean square error.
@@ -1545,7 +1545,7 @@ namespace GpuKernels
     // ToDo add option to allow input, output being the same
     // Expects, and returns outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
     // Expects, and returns outputIntermediateResource in D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE state.
-    void AtrousWaveletTransformCrossBilateralFilter::Execute(
+    void AtrousWaveletTransformCrossBilateralFilter::Run(
         ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         FilterType filterType,
@@ -1826,7 +1826,7 @@ namespace GpuKernels
 
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
-    void CalculatePartialDerivatives::Execute(
+    void CalculatePartialDerivatives::Run(
         ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
@@ -1946,7 +1946,7 @@ namespace GpuKernels
 
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
-    void CalculateVariance::Execute(
+    void CalculateVariance::Run(
         ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
@@ -2081,7 +2081,7 @@ namespace GpuKernels
 
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
-    void CalculateMeanVariance::Execute(
+    void CalculateMeanVariance::Run(
         ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
@@ -2201,7 +2201,7 @@ namespace GpuKernels
 
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
-    void FillInCheckerboard::Execute(
+    void FillInCheckerboard::Run(
         ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         UINT width,
@@ -2338,7 +2338,7 @@ namespace GpuKernels
     }
 
     // ToDo desc
-    void TemporalSupersampling_ReverseReproject::Execute(
+    void TemporalSupersampling_ReverseReproject::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -2506,7 +2506,7 @@ namespace GpuKernels
     }
 
     // ToDo desc
-    void TemporalSupersampling_BlendWithCurrentFrame::Execute(
+    void TemporalSupersampling_BlendWithCurrentFrame::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -2635,7 +2635,7 @@ namespace GpuKernels
         }
     }
 
-    void WriteValueToTexture::Execute(
+    void WriteValueToTexture::Run(
         ID3D12GraphicsCommandList4* commandList,
         ID3D12DescriptorHeap* descriptorHeap,
         D3D12_GPU_DESCRIPTOR_HANDLE* outputResourceHandle)
@@ -2732,7 +2732,7 @@ namespace GpuKernels
 
     // ToDo add option to allow input, output being the same
     // Expects, and returns, outputResource in D3D12_RESOURCE_STATE_UNORDERED_ACCESS state.
-    void GenerateGrassPatch::Execute(
+    void GenerateGrassPatch::Run(
         ID3D12GraphicsCommandList4* commandList,
         const GenerateGrassStrawsConstantBuffer_AppParams& appParams,
         ID3D12DescriptorHeap* descriptorHeap,
@@ -2837,7 +2837,7 @@ namespace GpuKernels
 
     // Blurs input resource with a Gaussian filter.
     // width, height - dimensions of the input resource.
-    void SortRays::Execute(
+    void SortRays::Run(
         ID3D12GraphicsCommandList4* commandList,
         float binDepthSize,
         UINT width,
@@ -2936,7 +2936,7 @@ namespace GpuKernels
     }
 
     // width, height - dimensions of the input resource.
-    void AdaptiveRayGenerator::Execute(
+    void AdaptiveRayGenerator::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,

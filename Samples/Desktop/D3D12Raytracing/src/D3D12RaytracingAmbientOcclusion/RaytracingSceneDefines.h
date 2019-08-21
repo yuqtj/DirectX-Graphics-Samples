@@ -52,7 +52,6 @@ namespace ComputeShader {
 					Output = 0,
 					GBufferResources,
 					AO,
-					Visibility,
 					MaterialBuffer,
 					ConstantBuffer,
                     FilterWeightSum,
@@ -134,8 +133,6 @@ namespace GlobalRootSignature {
             ReprojectedNormalDepth,
             Color,
             AOSurfaceAlbedo,
-            ShadowMapUAV,   // ToDo Standardize nmaming
-            ShadowMapSRV,
             Count
         };
     }
@@ -273,8 +270,6 @@ namespace TemporalSupersampling {
 namespace Scene {
 	namespace Type {
 		enum Enum {
-			SingleObject = 0,
-			GeometricForest,
 			SquidRoom,
 			PBRT,	// Rename
 			Count

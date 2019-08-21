@@ -374,9 +374,9 @@ UINT RaytracingAccelerationStructureManager::AddBottomLevelASInstance(
     XMMATRIX transform,
     BYTE instanceMask)
 {
-    ThrowIfFalse(numBottomLevelASInstances < m_bottomLevelASInstanceDescs.NumElements(), L"Not enough instance desc buffer size.");
+    ThrowIfFalse(m_numBottomLevelASInstances < m_bottomLevelASInstanceDescs.NumElements(), L"Not enough instance desc buffer size.");
 
-    UINT instanceIndex = numBottomLevelASInstances++;
+    UINT instanceIndex = m_numBottomLevelASInstances++;
     auto& bottomLevelAS = m_vBottomLevelAS[bottomLevelASname];
     
     auto& instanceDesc = m_bottomLevelASInstanceDescs[instanceIndex];
@@ -387,6 +387,19 @@ UINT RaytracingAccelerationStructureManager::AddBottomLevelASInstance(
 
     return instanceIndex;
 };
+
+UINT RaytracingAccelerationStructureManager::GetMaxInstanceContributionToHitGroupIndes()
+{
+    UINT maxInstanceContributionToHitGroupIndex = 0;
+    for (UINT i = 0; i < m_numBottomLevelASInstances; i++)
+    {
+        auto& instanceDesc = m_bottomLevelASInstanceDescs[i];
+        maxInstanceContributionToHitGroupIndex = max(maxInstanceContributionToHitGroupIndex, instanceDesc.InstanceContributionToHitGroupIndex;
+    }
+    return maxInstanceContributionToHitGroupIndex;
+};
+
+
 
 // Initializes the top-level Acceleration Structure.
 void RaytracingAccelerationStructureManager::InitializeTopLevelAS(
