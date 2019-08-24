@@ -683,7 +683,7 @@ void D3D12RaytracingAmbientOcclusion::UpdateUI()
             set<wstring> profileMarkers = {
                    L"DownsampleGBuffer",
                    L"RTAO_Root",
-                   L"TemporalSupersamplingReverseProjection",
+                   L"TemporalReverseReproject",
                    L"[Sorted]CalculateAmbientOcclusion",
                    L"CalculateAmbientOcclusion_Root",
                    L"Adaptive Ray Gen",

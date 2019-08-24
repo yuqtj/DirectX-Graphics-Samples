@@ -31,16 +31,16 @@ namespace Denoiser
     {
     public:
         enum DenoiseStage {
-            DenoiseStage_1_ReverseReproject = 0b1,
-            DenoiseStage_2_BlendWithCurrentFrameAndDenoise = 0b10,
-            DenoiseStage_All = DenoiseStage_1_ReverseReproject | DenoiseStage_2_BlendWithCurrentFrameAndDenoise
+            Denoise_Stage1_TemporalReverseReproject = 0b1,
+            Denoise_Stage2_Denoise = 0b10,
+            Denoise_StageAll = Denoise_Stage1_TemporalReverseReproject | Denoise_Stage2_Denoise
         };
         // Ctors.
         Denoiser();
 
         // Public methods.
         void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
-        void Run(DenoiseStage stage = DenoiseStage_All);
+        void Run(DenoiseStage stage = Denoise_StageAll);
 
         void ReleaseDeviceDependentResources();
         void ReleaseWindowSizeDependentResources() {}; // ToDo
@@ -49,7 +49,7 @@ namespace Denoiser
         void SetResolution(UINT width, UINT height);
 
     private:
-        void TemporalSupersamplingReverseProjection();
+        void TemporalReverseReproject();
         void TemporalSupersamplingBlendWithCurrentFrame();
         void MultiPassBlur();
 

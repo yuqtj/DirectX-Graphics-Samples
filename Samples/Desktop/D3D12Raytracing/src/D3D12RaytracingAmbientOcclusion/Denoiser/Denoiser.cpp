@@ -196,12 +196,12 @@ namespace Denoiser
     // Otherwise all denoiser steps can be run via a single execute call.
     void Denoiser::Run(DenoiseStage stage)
     {
-        if (stage & DenoiseStage_1_ReverseReproject)
+        if (stage & DenoiseAO_Stage1_TemporalReverseReproject)
         {
-            TemporalSupersamplingReverseProjection();
+            TemporalReverseReproject();
         }
 
-        if (stage & DenoiseStage_2_BlendWithCurrentFrameAndDenoise)
+        if (stage & Denoise_Stage2_Denoise)
         {
             TemporalSupersamplingBlendWithCurrentFrame();
             ApplyAtrousWaveletTransformFilter(true);
@@ -286,10 +286,8 @@ namespace Denoiser
     }
 
 
-    // Reverse reprojects cached values from previous frame.
-    // This call needs to be called once per frame as the camera gets 
-    // buffered and used in next frame as previous frame camera.
-    void Denoiser::TemporalSupersamplingReverseProjection()
+    // Retrieves values from previous frame via reverse reprojection.
+    void Denoiser::TemporalReverseReproject()
     {
         auto commandList = m_deviceResources->GetCommandList();
         auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
