@@ -676,7 +676,7 @@ namespace GpuKernels
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin,
         UINT maxFrameAge,
-        UINT numRaysToTraceSinceTSSMovement,
+        UINT numRaysToTraceSinceTemporalMovement,
         bool testFlag);
 
     private:
@@ -836,7 +836,6 @@ namespace GpuKernels
             // ToDo remove const&?
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginSurfaceNormalDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginPositionResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
             const D3D12_GPU_VIRTUAL_ADDRESS& inputAlignedHemisphereSamplesBufferAddress,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputRayDirectionOriginDepthResourceHandle);
 

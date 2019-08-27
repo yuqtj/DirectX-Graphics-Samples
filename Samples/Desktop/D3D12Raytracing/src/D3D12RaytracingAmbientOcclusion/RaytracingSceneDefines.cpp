@@ -13,11 +13,12 @@
 
 #include "RayTracingSceneDefines.h"
 
+// ToDo
 
-namespace Scene
+namespace SampleScene
 {
-	const WCHAR* Type::Names[] = { L"Single object", L" Geometric forest", L"Squid room" };
-	Params args[Scene::Type::Count];
+	const WCHAR* Type::Names[] = { L"Squid room", L"PBRT scene" };
+	Params args[SampleScene::Type::Count];
 
 	// Initialize scene parameters
 	Initialize initializeObject;
@@ -25,7 +26,7 @@ namespace Scene
 	{
 		// Camera Position
 		{
-			auto& camera = args[Scene::Type::SingleObject].camera;
+			auto& camera = args[SampleScene::Type::PBRT].camera;
 #if TESSELATED_GEOMETRY_BOX
 #if NUM_GEOMETRIES_1000
 			camera.position.eye = { 0, (TESSELATED_GEOMETRY_TILES*TESSELATED_GEOMETRY_TILES_WIDTH + CAMERA_Y_SCALE) * 0.43f, 0, 1 };
@@ -50,18 +51,10 @@ namespace Scene
 			camera.boundaries.min = -XMVectorSplatInfinity();
 			camera.boundaries.max = XMVectorSplatInfinity();
 		}
-		{
-			// ToDo
-			auto& camera = args[Scene::Type::GeometricForest].camera;
-			camera.position.eye = { 0, 80, 268.555980f, 1 };
-			camera.position.at = { 0, 80, 0, 1 };
-			camera.position.up = { 0, 1, 0, 0 };
-			camera.boundaries.min = -XMVectorSplatInfinity();
-			camera.boundaries.max = XMVectorSplatInfinity();
-		}
-		{
+        
+        {
 
-			auto& camera = args[Scene::Type::SquidRoom].camera;
+			auto& camera = args[SampleScene::Type::SquidRoom].camera;
 			camera.position.eye = { 0, 80, 268.555980f, 1 };
 			camera.position.at = { 0, 80, 0, 1 };
 			camera.position.up = { 0, 1, 0, 0 };
@@ -95,7 +88,7 @@ namespace Scene
             camera.position.at = { -47.2277f, 27.3063f, -30.9273f, 1 };
             camera.position.up = { 0.483884f, 0.740712f, 0.466033f, 0 };
             camera.position.eye = { -47.8157f, 27.891f, -31.4868f, 1 };
-#elif 1 // TSS DEPTH TEST
+#elif 1 // Temporal DEPTH TEST
             camera.position.eye = { -36.2138f, 5.92939f, -9.22302f, 1 };
             camera.position.at = { -35.3667f, 5.80036f, -8.70685f, 1 };
             camera.position.up = { 0.202548f, 0.970933f, 0.127482f, 0 };
@@ -109,7 +102,7 @@ namespace Scene
             camera.position.eye = { -36.0544f, 4.83189f, 2.97074f, 1 };
             camera.position.at = { -35.193f, 4.57227f, 3.40804f, 1 };
             camera.position.up = { 0.324859f, 0.930551f, 0.168907f, 0 };
-#elif 0   // test TSS split
+#elif 0   // test Temporal split
             camera.position.eye = { -23.7877f, 7.73889f, -14.802f, 1 };
             camera.position.at = { -23.4918f, 7.24975f, -13.9812f, 1 };
             camera.position.up = { 0.194256f, 0.811976f, 0.550408f, 0 };

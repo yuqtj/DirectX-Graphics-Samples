@@ -25,6 +25,7 @@ namespace ComputeShader {
 			Count
 		};
 	}
+
 	namespace RootSignature {
 		namespace HemisphereSampleSetVisualization {
 			namespace Slot {
@@ -36,6 +37,7 @@ namespace ComputeShader {
 				};
 			}
 		}		
+
 		namespace ReduceSum {
 			namespace Slot {
 				enum Enum {
@@ -54,7 +56,6 @@ namespace ComputeShader {
 					AO,
 					MaterialBuffer,
 					ConstantBuffer,
-                    FilterWeightSum,
                     Variance,
                     LocalMeanVariance,
                     AORayHitDistance,
@@ -267,16 +268,15 @@ namespace TemporalSupersampling {
 }
 
 
-namespace Scene {
+namespace SampleScene {
 	namespace Type {
 		enum Enum {
 			SquidRoom,
 			PBRT,	// Rename
 			Count
 		};
-		extern const WCHAR* Names[Count];
+		extern const WCHAR* Names[Count - 1];
 	}
-
 
 	struct Camera
 	{
@@ -303,7 +303,7 @@ namespace Scene {
 	public:
 		Initialize();
 	};
-	extern Params args[Scene::Type::Count];
+	extern Params args[SampleScene::Type::Count];
 }
 
 namespace SceneEnums

@@ -22,7 +22,6 @@
 
 Texture2D<NormalDepthTexFormat> g_texRayOriginSurfaceNormalDepth : register(t0);
 Texture2D<float4> g_texRayOriginPosition : register(t1);
-Texture2D<uint2> g_texFrameAge : register(t2);
 
 // ToDo use higher bit format?
 RWTexture2D<NormalDepthTexFormat> g_rtRaysDirectionOriginDepth : register(u0);
@@ -118,86 +117,11 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
     float rayOriginDepth;
     DecodeNormalDepth(g_texRayOriginSurfaceNormalDepth[DTidFullRes], surfaceNormal, rayOriginDepth);
 
-#if 1
     float3 rayDirection = 0;
     if (rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH)
     {
         rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
     }
 
-#else
-    // ToDo support CB
-    // Load the frame age for the whole quad into shared memory.
-    uint2 frameAgeAndNumRaysToGenerate = g_texFrameAge[DTid & 0xFFFE];
-    uint frameAge = frameAgeAndNumRaysToGenerate.x;
-    uint numRaysToGenerateOrDenoisePasses = frameAgeAndNumRaysToGenerate.y;
-
-    bool isRayCountValue = !(numRaysToGenerateOrDenoisePasses & 0x80);
-    uint numRaysToGenerate = isRayCountValue ? numRaysToGenerateOrDenoisePasses : 0;
-
-    FrameAgeCache[GTid.y][GTid.x] = rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH ? frameAge : CB.MaxFrameAge;
-    GroupMemoryBarrierWithGroupSync();
-
-    uint2 quadIndex = GTid / CB.QuadDim;
-    uint2 quadThreadIndex = GTid % CB.QuadDim;
-    uint quadThreadIndex1D = quadThreadIndex.y * CB.QuadDim.x + quadThreadIndex.x;
-    uint2 quadStartGTid = quadIndex * CB.QuadDim;
-    
-    // Find the minimum frameAge per quad.
-    uint minQuadFrameAge = CB.MaxFrameAge;
-    for (uint r = 0; r < CB.QuadDim.y; r++)
-        for (uint c = 0; c < CB.QuadDim.x; c++)
-        {
-            minQuadFrameAge = min(minQuadFrameAge, FrameAgeCache[quadStartGTid.y + r][quadStartGTid.x + c]);
-        }
-
-    // Calculate number of rays to generate per quad.
-    uint MaxNumRaysPerQuad = CB.QuadDim.x * CB.QuadDim.y;
-    uint numRaysToGeneratePerQuad = min(MaxNumRaysPerQuad, CB.MaxRaysPerQuad);
-#if 0
-    if (minQuadFrameAge >= CB.MinFrameAgeForAdaptiveSampling)
-    {
-        float t = (minQuadFrameAge - CB.MinFrameAgeForAdaptiveSampling) / float(CB.MaxFrameAge - CB.MinFrameAgeForAdaptiveSampling);
-        numRaysToGeneratePerQuad = lerp(MaxNumRaysPerQuad, 1, t);
-    }
-    numRaysToGeneratePerQuad = min(numRaysToGeneratePerQuad, CB.MaxRaysPerQuad);
-#endif
-    uint StartID = (CB.FrameID * numRaysToGeneratePerQuad) % MaxNumRaysPerQuad;
-
-    // Generate the rays.
-    float3 rayDirection = 0;
-    if (rayOriginDepth != INVALID_RAY_ORIGIN_DEPTH)
-    {
-        // Check whether this pixel is due to generate a ray.
-#if 0
-        // ToDo make sure to generate no more than one ray per pixel.
-
-#else
-        if (numRaysToGenerate == 0)
-        {
-
-            rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;
-        }
-#if 0
-        else if (quadThreadIndex1D == CB.FrameID)
-        {
-            rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
-        }
-#else
-        else if ((quadThreadIndex1D >= StartID && quadThreadIndex1D < StartID + numRaysToGeneratePerQuad) ||
-            // Check for when a valid quad thread index range wraps around.
-            (StartID + numRaysToGeneratePerQuad >= MaxNumRaysPerQuad && quadThreadIndex1D < ((StartID + numRaysToGeneratePerQuad) % MaxNumRaysPerQuad)))
-        {
-            rayDirection = GetRandomRayDirection(DTid, surfaceNormal);
-        }
-#endif
-#endif
-        else
-        {
-            // Invalidate this ray entry.
-            rayOriginDepth = INVALID_RAY_ORIGIN_DEPTH;
-        }
-    }
-#endif
     g_rtRaysDirectionOriginDepth[DTid] = EncodeNormalDepth(rayDirection, rayOriginDepth);
 }

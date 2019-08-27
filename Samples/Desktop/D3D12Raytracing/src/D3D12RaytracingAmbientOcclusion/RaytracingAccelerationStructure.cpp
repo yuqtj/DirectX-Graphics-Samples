@@ -388,13 +388,13 @@ UINT RaytracingAccelerationStructureManager::AddBottomLevelASInstance(
     return instanceIndex;
 };
 
-UINT RaytracingAccelerationStructureManager::GetMaxInstanceContributionToHitGroupIndes()
+UINT RaytracingAccelerationStructureManager::GetMaxInstanceContributionToHitGroupIndex()
 {
     UINT maxInstanceContributionToHitGroupIndex = 0;
     for (UINT i = 0; i < m_numBottomLevelASInstances; i++)
     {
         auto& instanceDesc = m_bottomLevelASInstanceDescs[i];
-        maxInstanceContributionToHitGroupIndex = max(maxInstanceContributionToHitGroupIndex, instanceDesc.InstanceContributionToHitGroupIndex;
+        maxInstanceContributionToHitGroupIndex = max(maxInstanceContributionToHitGroupIndex, instanceDesc.InstanceContributionToHitGroupIndex);
     }
     return maxInstanceContributionToHitGroupIndex;
 };

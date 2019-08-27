@@ -55,7 +55,7 @@ Optimization
 
 - set max bounce to 2/3 - support windows in reflections.
 - match denoised  AO at fidelity closer to that of temporal variance sharpness image
-- improve matching on TSS. Dragon surface hits lots of likely unnecessary disocclusions on camero movement/zoom.
+- improve matching on Temporal. Dragon surface hits lots of likely unnecessary disocclusions on camero movement/zoom.
 - fix the temporal variance shimmer on boundaries with skybox.
 - map local variance to only valid AO values
 - retain per window frame seed on static geometry
@@ -73,7 +73,7 @@ Optimization
 - split temporal pass to Reprojection and Clamping. 
     -Use reprojection to drive AO spp. 
     - Cache kernel weight sum, min hit distance, frame age, variance and reproject to drive ao sampling.
-- TSS:
+- Temporal:
    - Fine tune min std dev tolerance in clamping
    - Try lower mip level on disocclusion.
  - option to disable variance smoothing
@@ -127,8 +127,8 @@ Optimization
 
 
 #define RTAO_MARK_CACHED_VALUES_NEGATIVE 1
-#define RTAO_GAUSSIAN_BLUR_AFTER_TSS 0
-#if RTAO_GAUSSIAN_BLUR_AFTER_TSS && RTAO_MARK_CACHED_VALUES_NEGATIVE
+#define RTAO_GAUSSIAN_BLUR_AFTER_Temporal 0
+#if RTAO_GAUSSIAN_BLUR_AFTER_Temporal && RTAO_MARK_CACHED_VALUES_NEGATIVE
 Incompatible macros
 #endif
 #define STOP_TRACING_AND_DENOISING_AFTER_FEW_FRAMES 0
@@ -147,7 +147,13 @@ Incompatible macros
 #define SAMPLER_FILTER D3D12_FILTER_ANISOTROPIC  // TODo blurry at various angles
 
 // ToDo
+#define ENABLE_PROFILING 0
+#define ENABLE_LAZY_RENDER 0
+#define ENABLE_SSAA 0
+
+// ToDo
 // SSAO
+#define ENABLE_SSAO 0
 #define SSAO_NOISE_W 100
 #define SSAO_MAX_SAMPLES 15
 #define SSAO_MAX_OCCLUSION_RAYS (SSAO_MAX_SAMPLES * SSAO_MAX_SAMPLES)
@@ -212,8 +218,6 @@ typedef uint NormalDepthTexFormat;
 #define USE_GRASS_GEOMETRY 1
 #define GRASS_NO_DEGENERATE_INSTANCES 1 // Degenerate instances cause long trace ray times
 
-#define ONLY_SQUID_SCENE_BLAS 1
-#if ONLY_SQUID_SCENE_BLAS
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
 #ifdef _DEBUG
 #define LOAD_ONLY_ONE_PBRT_MESH 1  // for LOAD_PBRT_SCENE == 1 only
@@ -237,15 +241,7 @@ typedef uint NormalDepthTexFormat;
 #define FLAT_FACE_NORMALS 0
 #define INDEX_FORMAT_UINT 1
 #define NUM_GEOMETRIES 1
-#else
-#define AO_RAY_T_MAX 0.06
-#define FACE_CULLING 1
-#define INDEX_FORMAT_UINT 0
-#define FLAT_FACE_NORMALS 1
-#define CAMERA_Y_SCALE 1.3f
-#define NUM_GEOMETRIES 100000
 
-#endif
 
 #define TESSELATED_GEOMETRY_BOX 1
 #define TESSELATED_GEOMETRY_TEAPOT 1
@@ -582,7 +578,7 @@ struct RTAOConstantBuffer
 // ToDo use namespace?
 // Final render output composition modes.
 enum CompositionType {
-    PhongLighting = 0,  // ToDo rename
+    PBRShading = 0,  // ToDo rename
     AmbientOcclusionOnly_Denoised,
     AmbientOcclusionOnly_TemporallySupersampled,
     AmbientOcclusionOnly_RawOneFrame,
@@ -668,9 +664,6 @@ namespace TextureResourceFormatRG
 // ToDo explain padding
 struct ComposeRenderPassesConstantBuffer
 {
-	XMUINT2 rtDimensions;   // ToDo rename
-	XMFLOAT2 padding1;
-
     CompositionType compositionType;
     UINT isAOEnabled;
     float RTAO_MaxRayHitDistance;   // ToDo standardize ray hit time vs distance
@@ -738,7 +731,7 @@ struct TemporalSupersampling_ReverseReprojectConstantBuffer
 
     float floatEpsilonDepthTolerance;
     float depthDistanceBasedDepthTolerance;
-    UINT numRaysToTraceAfterTSSAtMaxFrameAge;
+    UINT numRaysToTraceAfterTemporalAtMaxFrameAge;
     UINT maxFrameAge;       // ToDo rename maxFrameAge to tspp
 
     BOOL testFlag;

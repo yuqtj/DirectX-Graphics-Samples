@@ -829,13 +829,8 @@ public:
 		ib.indexBuffer = geometry.ib.buffer.resource->GetGPUVirtualAddress();
 		ib.gpuDescriptorHandle = geometry.ib.buffer.gpuDescriptorHandle;
 		vb.startIndex = 0;
-#if ONLY_SQUID_SCENE_BLAS  // ToDo Unify
 		vb.count = static_cast<UINT>(geometry.vb.buffer.resource->GetDesc().Width / sizeof(VertexPositionNormalTextureTangent));
 		vb.vertexBuffer.StrideInBytes = sizeof(VertexPositionNormalTextureTangent);
-#else
-		vb.count = static_cast<UINT>(geometry.vb.buffer.resource->GetDesc().Width / sizeof(DirectX::VertexPositionNormalTexture));
-		vb.vertexBuffer.StrideInBytes = sizeof(DirectX::VertexPositionNormalTexture);
-#endif
 		vb.vertexBuffer.StartAddress = geometry.vb.buffer.resource->GetGPUVirtualAddress();
 		vb.gpuDescriptorHandle = geometry.vb.buffer.gpuDescriptorHandle;
 	}

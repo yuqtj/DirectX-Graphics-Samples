@@ -169,7 +169,7 @@ public:
     ID3D12Resource* GetTopLevelASResource() { return m_topLevelAS.GetResource(); }
     UINT64 GetASMemoryFootprint() { return m_ASmemoryFootprint; }
     UINT GetNumberOfBottomLevelASInstances() { return static_cast<UINT>(m_bottomLevelASInstanceDescs.NumElements()); }
-    UINT GetMaxInstanceContributionToHitGroupIndes();
+    UINT GetMaxInstanceContributionToHitGroupIndex();
 
 private:
     TopLevelAccelerationStructure m_topLevelAS;

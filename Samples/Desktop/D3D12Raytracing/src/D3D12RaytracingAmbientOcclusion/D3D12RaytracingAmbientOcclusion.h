@@ -14,10 +14,8 @@
 // ToDo move some to cpp or stdafx?
 #include "DXSample.h"
 #include "StepTimer.h"  // ToDo remove
-#include "RaytracingSceneDefines.h"
 #include "DirectXRaytracingHelper.h"
 #include "RaytracingAccelerationStructure.h"
-#include "CameraController.h"
 #include "PerformanceTimers.h"
 #include "GpuTimeManager.h"
 #include "Sampler.h"
@@ -76,10 +74,10 @@ namespace Sample
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
         // Module access.
-        Scene::Scene& Scene() { return m_scene; }
-        Pathtracer::Pathtracer& Pathtracer() { return m_pathtracer; }
-        RTAO::RTAO& RTAO() { return m_RTAO; }
-        Denoiser::Denoiser& Denoiser() { return m_denoiser; }
+        Scene& Scene() { return m_scene; }
+        Pathtracer& Pathtracer() { return m_pathtracer; }
+        RTAO& RTAO() { return m_RTAO; }
+        Denoiser& Denoiser() { return m_denoiser; }
         
     private:
 
@@ -87,13 +85,7 @@ namespace Sample
 
         std::mt19937 m_generatorURNG;
 
-
-
-        
-
-
         // ToDo combine kernels to an array
-        GpuKernels::UpsampleBilateralFilter	    m_upsampleBilateralFilterKernel;
 
         const UINT c_SupersamplingScale = 2;
         UINT								m_numCameraRayGeometryHits;
@@ -108,7 +100,6 @@ namespace Sample
 
         // Raytracing scene
 
-        D3DTexture m_nullTexture;
 
         // ToDo move to SSAO
         // SSAO
@@ -122,13 +113,14 @@ namespace Sample
 
 
 
-        Pathtracer::Pathtracer m_pathtracer;
-        RTAO::RTAO m_RTAO;
-        Denoiser::Denoiser m_denoiser;
-        Composition::Composition m_composition;
-        Scene::Scene m_scene;
+        Pathtracer m_pathtracer;
+        RTAO m_RTAO;
+        Denoiser m_denoiser;
+        Composition m_composition;
+        Scene m_scene;
+#if ENABLE_SSAO
         SSAO::SSAO        m_SSAO;
-
+#endif
         // Raytracing output
         // ToDo use the struct
         GpuResource m_raytracingOutput;
@@ -161,7 +153,10 @@ namespace Sample
         void DownsampleRaytracingOutput();        // ToDo standardize const& vs *
         void ParseCommandLineArgs(WCHAR* argv[], int argc);
         void RecreateD3D();
+#if ENABLE_SSAO
+        void UpdateCameraMatrices();
         void CreateConstantBuffers();
+#endif
         void UpdateUI();
         void CreateDeviceDependentResources();
         void CreateWindowSizeDependentResources();

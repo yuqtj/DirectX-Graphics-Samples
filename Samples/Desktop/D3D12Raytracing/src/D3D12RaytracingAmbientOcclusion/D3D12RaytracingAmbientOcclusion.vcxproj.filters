@@ -73,6 +73,12 @@
     <Filter Include="Source Files\Scene">
       <UniqueIdentifier>{4aecb4d5-56c6-41dd-93cc-1ce654ddd752}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Assets\Shaders\Composition">
+      <UniqueIdentifier>{4e50888f-acbf-4a89-a32b-7621571be81b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Composition">
+      <UniqueIdentifier>{323f4871-a1ec-473d-a6e2-9ca487fec29c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -99,9 +105,6 @@
     <ClInclude Include="util\Win32Application.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
-    <ClInclude Include="RaytracingSceneDefines.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="util\HlslCompat.h">
       <Filter>Assets\Shaders\Util</Filter>
     </ClInclude>
@@ -119,9 +122,6 @@
     </ClInclude>
     <ClInclude Include="util\GameInput.h">
       <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Sampler.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="RandomNumberGenerator.hlsli">
       <Filter>Assets\Shaders</Filter>
@@ -180,9 +180,6 @@
     <ClInclude Include="RaytracingAccelerationStructure.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="SceneParameters.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="RTAO\RTAO.h">
       <Filter>Source Files\RTAO</Filter>
     </ClInclude>
@@ -204,8 +201,17 @@
     <ClInclude Include="Scene.h">
       <Filter>Source Files\Scene</Filter>
     </ClInclude>
-    <ClInclude Include="Composition.h">
+    <ClInclude Include="Composition\Composition.h">
+      <Filter>Source Files\Composition</Filter>
+    </ClInclude>
+    <ClInclude Include="SceneParameters.h">
       <Filter>Source Files\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="RaytracingSceneDefines.h">
+      <Filter>Source Files\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Sampler.h">
+      <Filter>Source Files\RTAO</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -242,17 +248,11 @@
     <ClCompile Include="util\GameInput.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
-    <ClCompile Include="Sampler.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="util\Camera.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
     <ClCompile Include="util\CameraController.cpp">
       <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="RaytracingSceneDefines.cpp">
-      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="util\SquidRoom.cpp">
       <Filter>Assets\Scene</Filter>
@@ -299,8 +299,14 @@
     <ClCompile Include="Scene.cpp">
       <Filter>Source Files\Scene</Filter>
     </ClCompile>
-    <ClCompile Include="Composition.cpp">
+    <ClCompile Include="Composition\Composition.cpp">
+      <Filter>Source Files\Composition</Filter>
+    </ClCompile>
+    <ClCompile Include="RaytracingSceneDefines.cpp">
       <Filter>Source Files\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Sampler.cpp">
+      <Filter>Source Files\RTAO</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -347,9 +353,6 @@
   <ItemGroup>
     <FxCompile Include="RNGVisualizerCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
-    <FxCompile Include="ComposeRenderPassesCS.hlsl">
-      <Filter>Assets\Shaders</Filter>
     </FxCompile>
     <FxCompile Include="AoBlurCS.hlsl">
       <Filter>Assets\Shaders</Filter>
@@ -507,6 +510,12 @@
     </FxCompile>
     <FxCompile Include="Pathtracer\Shaders\Pathtracer.hlsl">
       <Filter>Assets\Shaders\Pathtracer</Filter>
+    </FxCompile>
+    <FxCompile Include="ComposeRenderPassesCS.hlsl">
+      <Filter>Assets\Shaders\Composition</Filter>
+    </FxCompile>
+    <FxCompile Include="Composition\Shaders\CompositionCS.hlsl">
+      <Filter>Assets\Shaders\Composition</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

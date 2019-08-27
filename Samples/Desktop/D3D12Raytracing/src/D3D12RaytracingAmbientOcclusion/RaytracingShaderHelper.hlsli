@@ -9,6 +9,7 @@
 //
 //*********************************************************
 
+// ToDo remove unused/or not cleaned up funcs
 #ifndef RAYTRACINGSHADERHELPER_H
 #define RAYTRACINGSHADERHELPER_H
 
@@ -65,6 +66,7 @@ bool IsWithinBounds(in int2 index, in int2 dimensions)
     return index.x >= 0 && index.y >= 0 && index.x < dimensions.x && index.y < dimensions.y;
 }
 
+// ToDo rename to albedo
 void DecodeMaterial16b(in uint2 material, out uint materialID, out float3 diffuse)
 {
     materialID = material.x & 0xffff;
@@ -569,6 +571,12 @@ uint EncodeNormalDepth(in float3 normal, in float depth)
 void DecodeNormalDepth(in uint encodedNormalDepth, out float3 normal, out float depth)
 {
     DecodeNormalDepth_N16D16(encodedNormalDepth, normal, depth);
+}
+
+void DecodeNormal(in uint encodedNormalDepth, out float3 normal)
+{
+    float depthDummy;
+    DecodeNormalDepth_N16D16(encodedNormalDepth, normal, depthDummy);
 }
 
 void UnpackEncodedNormalDepth(in uint packedEncodedNormalDepth, out float2 encodedNormal, out float depth)

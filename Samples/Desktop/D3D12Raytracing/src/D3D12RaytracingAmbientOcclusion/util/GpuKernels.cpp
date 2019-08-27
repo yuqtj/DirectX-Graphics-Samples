@@ -2368,7 +2368,7 @@ namespace GpuKernels
         const XMMATRIX& projectionToWorldWithCameraEyeAtOrigin,
         const XMMATRIX& prevProjectionToWorldWithCameraEyeAtOrigin,
         UINT maxFrameAge,
-        UINT numRaysToTraceSinceTSSMovement,
+        UINT numRaysToTraceSinceTemporalMovement,
         bool testFlag)
     {
         using namespace RootSignature::TemporalSupersampling_ReverseReproject;
@@ -2389,7 +2389,7 @@ namespace GpuKernels
         m_CB->useWorldSpaceDistance = useWorldSpaceDistance;
         m_CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
         m_CB->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
-        m_CB->numRaysToTraceAfterTSSAtMaxFrameAge = numRaysToTraceSinceTSSMovement;
+        m_CB->numRaysToTraceAfterTemporalAtMaxFrameAge = numRaysToTraceSinceTemporalMovement;
         m_CB->maxFrameAge = maxFrameAge;
         m_CB->testFlag = testFlag;
         m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16);
@@ -2886,7 +2886,6 @@ namespace GpuKernels
                     OutputRayDirectionOriginDepth = 0,
                     InputRayOriginSurfaceNormalDepth,
                     InputRayOriginPosition,
-                    InputFrameAge,
                     InputAlignedHemisphereSamples,
                     ConstantBuffer,
                     Count
@@ -2904,13 +2903,11 @@ namespace GpuKernels
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; 
             ranges[Slot::InputRayOriginSurfaceNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
             ranges[Slot::InputRayOriginPosition].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
-            ranges[Slot::InputFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
             ranges[Slot::OutputRayDirectionOriginDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::InputRayOriginSurfaceNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::InputRayOriginSurfaceNormalDepth]);
             rootParameters[Slot::InputRayOriginPosition].InitAsDescriptorTable(1, &ranges[Slot::InputRayOriginPosition]);
-            rootParameters[Slot::InputFrameAge].InitAsDescriptorTable(1, &ranges[Slot::InputFrameAge]);
             rootParameters[Slot::OutputRayDirectionOriginDepth].InitAsDescriptorTable(1, &ranges[Slot::OutputRayDirectionOriginDepth]);
            rootParameters[Slot::InputAlignedHemisphereSamples].InitAsShaderResourceView(3);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
@@ -2954,7 +2951,6 @@ namespace GpuKernels
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginSurfaceNormalDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayOriginPositionResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputFrameAgeResourceHandle,
         const D3D12_GPU_VIRTUAL_ADDRESS& inputAlignedHemisphereSamplesBufferAddress,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputRayDirectionOriginDepthResourceHandle)
     {
@@ -2990,7 +2986,6 @@ namespace GpuKernels
             commandList->SetComputeRootSignature(m_rootSignature.Get());
             commandList->SetComputeRootDescriptorTable(Slot::InputRayOriginSurfaceNormalDepth, inputRayOriginSurfaceNormalDepthResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::InputRayOriginPosition, inputRayOriginPositionResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::InputFrameAge, inputFrameAgeResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputRayDirectionOriginDepth, outputRayDirectionOriginDepthResourceHandle);
             commandList->SetComputeRootShaderResourceView(Slot::InputAlignedHemisphereSamples, inputAlignedHemisphereSamplesBufferAddress);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));

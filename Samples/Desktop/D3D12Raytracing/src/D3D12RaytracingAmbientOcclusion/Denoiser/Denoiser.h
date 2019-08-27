@@ -21,86 +21,85 @@
 #include "EngineTuning.h"
 
 
-namespace Denoiser
+// ToDo rename to AO denoiser?
+namespace Denoiser_Args
 {
-    namespace Args
-    {
-    }
-
-    class Denoiser
-    {
-    public:
-        enum DenoiseStage {
-            Denoise_Stage1_TemporalReverseReproject = 0b1,
-            Denoise_Stage2_Denoise = 0b10,
-            Denoise_StageAll = Denoise_Stage1_TemporalReverseReproject | Denoise_Stage2_Denoise
-        };
-        // Ctors.
-        Denoiser();
-
-        // Public methods.
-        void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
-        void Run(DenoiseStage stage = Denoise_StageAll);
-
-        void ReleaseDeviceDependentResources();
-        void ReleaseWindowSizeDependentResources() {}; // ToDo
-        
-        // Getters/Setters.
-        void SetResolution(UINT width, UINT height);
-
-    private:
-        void TemporalReverseReproject();
-        void TemporalSupersamplingBlendWithCurrentFrame();
-        void MultiPassBlur();
-
-        void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
-        void CreateConstantBuffers();
-        void CreateAuxilaryDeviceResources();
-        void CreateTextureResources();
-        void ApplyAtrousWaveletTransformFilter(bool isFirstPass);
-        void ApplyAtrousWaveletTransformFilter(const  GpuResource& inValueResource, const  GpuResource& inNormalDepthResource, const  GpuResource& inDepthResource, const  GpuResource& inRayHitDistanceResource, const  GpuResource& inPartialDistanceDerivativesResource, GpuResource* outSmoothedValueResource, GpuResource* varianceResource, GpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
-
-        GpuResource(&GBufferResources())[GBufferResource::Count];
-
-        void CreateResolutionDependentResources();
-
-        std::shared_ptr<DX::DeviceResources> m_deviceResources;
-        std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
-
-        UINT m_width;
-        UINT m_height;
-
-        // ToDo dedupe resources. Does dpeth need to have 2 instances?   
-        GpuResource m_temporalCache[2][TemporalSupersampling::Count]; // ~array[Read/Write ping pong resource][Resources].
-
-        GpuResource m_TSSAOCoefficient[2];    // ToDo why is this not part of m_temporalCache?
-        GpuResource m_temporalSupersampling_blendedAOCoefficient[2];
-        GpuResource m_cachedFrameAgeValueSquaredValueRayHitDistance;
-
-        // ToDo use a common ping-pong index? 
-        // ToDo cleanup readId should be for input to TAO, confusing.
-        UINT          m_temporalCacheCurrentFrameResourceIndex = 0;
-        UINT          m_temporalCacheCurrentFrameTSSAOCoefficientResourceIndex = 0;
-
-        GpuResource m_varianceResources[AOVarianceResource::Count];
-        GpuResource m_localMeanVarianceResources[AOVarianceResource::Count];
-        GpuResource m_multiPassDenoisingBlurStrength;
-        GpuResource m_prevFrameGBufferNormalDepth;
-
-        // GpuKernels
-        GpuKernels::FillInCheckerboard      m_fillInCheckerboardKernel;
-        GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
-        GpuKernels::TemporalSupersampling_ReverseReproject m_temporalCacheReverseReprojectKernel;
-        GpuKernels::TemporalSupersampling_BlendWithCurrentFrame m_temporalCacheBlendWithCurrentFrameKernel;
-        GpuKernels::AtrousWaveletTransformCrossBilateralFilter m_atrousWaveletTransformFilter;
-        GpuKernels::CalculateVariance       m_calculateVarianceKernel;
-        GpuKernels::CalculateMeanVariance   m_calculateMeanVarianceKernel;
-        const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame =
-            1
-            + 1; // Temporal Super-Sampling.
-        GpuKernels::FillInMissingValuesFilter m_fillInMissingValuesFilterKernel;
-        GpuKernels::BilateralFilter m_bilateralFilterKernel;
-
-
-    };
+    extern BoolVar Denoising_UseSmoothedVariance;
 }
+
+class Denoiser
+{
+public:
+    enum DenoiseStage {
+        Denoise_Stage1_TemporalReverseReproject = 0x1 << 0,
+        Denoise_Stage2_Denoise = 0x1 << 1,
+        Denoise_StageAll = Denoise_Stage1_TemporalReverseReproject | Denoise_Stage2_Denoise
+    };
+    // Ctors.
+    Denoiser();
+
+    // Public methods.
+    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
+    void Run(DenoiseStage stage = Denoise_StageAll);
+
+    void ReleaseDeviceDependentResources();
+    void ReleaseWindowSizeDependentResources() {}; // ToDo
+        
+    // Getters/Setters.
+    void SetResolution(UINT width, UINT height);
+
+private:
+    void TemporalReverseReproject();
+    void TemporalSupersamplingBlendWithCurrentFrame();
+    void MultiPassBlur();
+
+    void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
+    void CreateConstantBuffers();
+    void CreateAuxilaryDeviceResources();
+    void CreateTextureResources();
+    void ApplyAtrousWaveletTransformFilter(bool isFirstPass);
+    void ApplyAtrousWaveletTransformFilter(const  GpuResource& inValueResource, const  GpuResource& inNormalDepthResource, const  GpuResource& inDepthResource, const  GpuResource& inRayHitDistanceResource, const  GpuResource& inPartialDistanceDerivativesResource, GpuResource* outSmoothedValueResource, GpuResource* varianceResource, GpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
+
+    GpuResource(&GBufferResources())[GBufferResource::Count];
+
+    void CreateResolutionDependentResources();
+
+    std::shared_ptr<DX::DeviceResources> m_deviceResources;
+    std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
+
+    UINT m_width;
+    UINT m_height;
+
+    // ToDo dedupe resources. Does dpeth need to have 2 instances?   
+    GpuResource m_temporalCache[2][TemporalSupersampling::Count]; // ~array[Read/Write ping pong resource][Resources].
+
+    GpuResource m_temporalAOCoefficient[2];    // ToDo why is this not part of m_temporalCache?
+    GpuResource m_temporalSupersampling_blendedAOCoefficient[2];
+    GpuResource m_cachedFrameAgeValueSquaredValueRayHitDistance;
+
+    // ToDo use a common ping-pong index? 
+    // ToDo cleanup readId should be for input to TAO, confusing.
+    UINT          m_temporalCacheCurrentFrameResourceIndex = 0;
+    UINT          m_temporalCacheCurrentFrameTemporalAOCoefficientResourceIndex = 0;
+
+    GpuResource m_varianceResources[AOVarianceResource::Count];
+    GpuResource m_localMeanVarianceResources[AOVarianceResource::Count];
+    GpuResource m_multiPassDenoisingBlurStrength;
+    GpuResource m_prevFrameGBufferNormalDepth;
+
+    // GpuKernels
+    GpuKernels::FillInCheckerboard      m_fillInCheckerboardKernel;
+    GpuKernels::GaussianFilter          m_gaussianSmoothingKernel;
+    GpuKernels::TemporalSupersampling_ReverseReproject m_temporalCacheReverseReprojectKernel;
+    GpuKernels::TemporalSupersampling_BlendWithCurrentFrame m_temporalCacheBlendWithCurrentFrameKernel;
+    GpuKernels::AtrousWaveletTransformCrossBilateralFilter m_atrousWaveletTransformFilter;
+    GpuKernels::CalculateVariance       m_calculateVarianceKernel;
+    GpuKernels::CalculateMeanVariance   m_calculateMeanVarianceKernel;
+    const UINT                          MaxCalculateVarianceKernelInvocationsPerFrame =
+        1
+        + 1; // Temporal Super-Sampling.
+    GpuKernels::FillInMissingValuesFilter m_fillInMissingValuesFilterKernel;
+    GpuKernels::BilateralFilter m_bilateralFilterKernel;
+
+    friend class Composition;
+};

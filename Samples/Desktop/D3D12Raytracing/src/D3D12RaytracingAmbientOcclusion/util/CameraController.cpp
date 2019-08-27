@@ -17,14 +17,13 @@ using namespace GameCore;
 
 CameraController::CameraController(Camera& camera) : m_camera(camera)
 {
+    // ToDo
     m_HorizontalLookSensitivity = 2.0f;
     m_VerticalLookSensitivity = 2.0f;
 	m_MoveSpeed = 5.0f;
 	m_StrafeSpeed = 5.0f;
-#if ONLY_SQUID_SCENE_BLAS
-	m_MoveSpeed *= 20;
+    m_MoveSpeed *= 20;
 	m_StrafeSpeed *= 50;
-#endif
 	m_MouseSensitivityX = 1.0f;
     m_MouseSensitivityY = -1.0f;
 

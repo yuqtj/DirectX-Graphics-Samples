@@ -276,7 +276,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
         {
             if (dot(1, abs(textureSpaceMotionVector * cb.textureDim)) > 0.001)
             {
-                numRaysToGenerate = cb.numRaysToTraceAfterTSSAtMaxFrameAge;
+                numRaysToGenerate = cb.numRaysToTraceAfterTemporalAtMaxFrameAge;
             }
             else // pass-through the value in the cache
             {

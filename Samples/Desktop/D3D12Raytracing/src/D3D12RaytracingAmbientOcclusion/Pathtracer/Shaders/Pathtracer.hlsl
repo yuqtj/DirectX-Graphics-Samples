@@ -96,15 +96,10 @@ SamplerState ShadowMapSampler : register(s2);
 // Per-object resources
 ConstantBuffer<PrimitiveConstantBuffer> l_materialCB : register(b0, space1);
 
-#if ONLY_SQUID_SCENE_BLAS
 StructuredBuffer<Index> l_indices : register(t0, space1);
 StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices : register(t1, space1); // Current frame vertex buffer.
 StructuredBuffer<VertexPositionNormalTextureTangent> l_verticesPrevFrame : register(t2, space1); 
-#else
-ByteAddressBuffer l_indices : register(t0, space1);
-StructuredBuffer<VertexPositionNormalTexture> l_vertices : register(t1, space1); // Current frame vertex buffer.
-StructuredBuffer<VertexPositionNormalTexture> l_verticesPrevFrame : register(t2, space1);
-#endif
+
 Texture2D<float3> l_texDiffuse : register(t3, space1);
 Texture2D<float3> l_texNormalMap : register(t4, space1);
 /*******************************************************************************************************/
