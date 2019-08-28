@@ -17,7 +17,8 @@
 #include "GpuTimeManager.h"
 #include "Composition.h"
 #include "CompiledShaders\RNGVisualizerCS.hlsl.h"
-#include "CompiledShaders\ComposeRenderPassesCS.hlsl.h"
+#include "CompiledShaders\CompositionCS.hlsl.h"
+#include "D3D12RaytracingAmbientOcclusion.h"
 
 // ToDo prune unused
 using namespace std;
@@ -52,9 +53,9 @@ namespace Composition_Args
 
     const WCHAR* AntialiasingModes[DownsampleFilter::Count] = { L"OFF", L"SSAA 4x (BoxFilter2x2)", L"SSAA 4x (GaussianFilter9Tap)", L"SSAA 4x (GaussianFilter25Tap)" };
 #if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // Disable SSAA as the blockiness gets smaller with higher resoltuion 
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, Sample::OnRecreateRaytracingResources, nullptr);
 #else
-    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, OnRecreateRaytracingResources, nullptr);
+    EnumVar AntialiasingMode(L"Render/Antialiasing", DownsampleFilter::None, DownsampleFilter::Count, AntialiasingModes, Sample::OnRecreateRaytracingResources, nullptr);
 #endif
 
 
@@ -174,7 +175,7 @@ void Composition::CreateComposeRenderPassesCSResources()
     {
         D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
         descComputePSO.pRootSignature = m_computeRootSigs[CSType::ComposeRenderPassesCS].Get();
-        descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void*)g_pComposeRenderPassesCS, ARRAYSIZE(g_pComposeRenderPassesCS));
+        descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void*)g_pCompositionCS, ARRAYSIZE(g_pCompositionCS));
 
         ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[CSType::ComposeRenderPassesCS])));
         m_computePSOs[CSType::ComposeRenderPassesCS]->SetName(L"PSO: ComposeRenderPassesCS");

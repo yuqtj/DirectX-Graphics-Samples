@@ -52,7 +52,10 @@ public:
     D3DTexture& EnvironmentMap() { return m_environmentMap; }
     StructuredBuffer<PrimitiveMaterialBuffer>& MaterialBuffer() { return m_materialBuffer; }
     StructuredBuffer<XMFLOAT3X4>& PrevFrameBottomLevelASInstanceTransforms() { return m_prevFrameBottomLevelASInstanceTransforms; }
-        
+
+    void RequestGeometryInitialization(bool bRequest) { m_isGeometryInitializationRequested = bRequest; }
+    void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
+
     void ToggleAnimateLight() { m_animateLight = !m_animateLight; }
     void ToggleAnimateCamera() { m_animateCamera = !m_animateCamera; }
 private:
@@ -91,6 +94,7 @@ private:
     float m_manualCameraRotationAngle = 0; // ToDo remove
     std::unique_ptr<GameCore::CameraController> m_cameraController;
 
+    // ToDo remove?
     bool m_isGeometryInitializationRequested = false;
     bool m_isASinitializationRequested = false;
 

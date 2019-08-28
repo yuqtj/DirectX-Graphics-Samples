@@ -231,9 +231,7 @@ namespace GBufferResource {
         MotionVector,
         ReprojectedNormalDepth,
         Color,
-        AOSurfaceAlbedo, 
-        Debug,
-        Debug2,
+        AOSurfaceAlbedo,
 		Count
 	};
 }

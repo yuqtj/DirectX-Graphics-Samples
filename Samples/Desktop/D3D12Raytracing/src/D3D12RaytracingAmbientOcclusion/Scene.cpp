@@ -29,19 +29,15 @@ using namespace GameCore;
 
 namespace Scene_Args
 {
+    void OnSceneChange(void*)
+    {
+        Sample::instance().RequestSceneInitialization();
+    }
+
     BoolVar EnableGeometryAndASBuildsAndUpdates(L"Render/Acceleration structure/Enable geometry & AS builds and updates", true);
 
     EnumVar SceneType(L"Scene", SampleScene::Type::SquidRoom, SampleScene::Type::Count, SampleScene::Type::Names, OnSceneChange, nullptr);
-
-    // ToDo add an interface so that new UI values get applied on start of the frame, not in mid-flight
-    enum UpdateMode { Build = 0, Update, Update_BuildEveryXFrames, Count };
-    const WCHAR* UpdateModes[UpdateMode::Count] = { L"Build only", L"Update only", L"Update + build every X frames" };
-    EnumVar ASUpdateMode(L"Render/Acceleration structure/Update mode", Build, UpdateMode::Count, UpdateModes);
-    IntVar ASBuildFrequency(L"Render/Acceleration structure/Rebuild frame frequency", 1, 1, 1200, 1);
-    BoolVar ASMinimizeMemory(L"Render/Acceleration structure/Minimize memory", false, OnASChange, nullptr);
-    BoolVar ASAllowUpdate(L"Render/Acceleration structure/Allow update", true, OnASChange, nullptr);
-
-
+       
     NumVar CameraRotationDuration(L"Scene2/Camera rotation time", 48.f, 1.f, 120.f, 1.f);
     BoolVar AnimateGrass(L"Scene2/Animate grass", true);
 

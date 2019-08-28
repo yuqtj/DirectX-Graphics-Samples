@@ -28,6 +28,23 @@ using namespace GameCore;
 
 #define TWO_PASS_DENOISE 0
 
+namespace Sample_Args
+{
+
+    //**********************************************************************************************************************************
+    // Ambient Occlusion
+    // TODo standardize naming in options
+    namespace AOType {
+        enum Enum { RTAO = 0, SSAO, Count };
+    }
+    const WCHAR* AOTypes[AOType::Count] = { L"Raytraced (RTAO)", L"Screen-space (MiniEngine SSAO)" };
+#if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO
+    EnumVar AOMode(L"Render/AO/Mode", AOType::SSAO, AOType::Count, AOTypes);
+#else
+    EnumVar AOMode(L"Render/AO/Mode", AOType::RTAO, AOType::Count, AOTypes);
+#endif
+}
+
 namespace Sample
 {
     HWND g_hWnd = 0;
@@ -42,45 +59,12 @@ namespace Sample
     std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
     GpuResource m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
 
-    void OnGeometryReinitializationNeeded(void* args)
-    {
-        g_pSample->RequestGeometryInitialization(true);
-        g_pSample->RequestASInitialization(true);
-    }
-
-    void OnASReinitializationNeeded(void* args)
-    {
-        g_pSample->RequestASInitialization(true);
-    }
-    function<void(void*)> OnGeometryChange = OnGeometryReinitializationNeeded;
-    function<void(void*)> OnASChange = OnASReinitializationNeeded;
-
-    void OnSceneChange(void*)
-    {
-        g_pSample->RequestSceneInitialization();
-    }
 
     void OnRecreateRaytracingResources(void*)
     {
         g_pSample->RequestRecreateRaytracingResources();
     }
 
-    namespace Args
-    {
-
-        //**********************************************************************************************************************************
-        // Ambient Occlusion
-        // TODo standardize naming in options
-        namespace AOType {
-            enum Enum { RTAO = 0, SSAO, Count };
-        }
-        const WCHAR* AOTypes[AOType::Count] = { L"Raytraced (RTAO)", L"Screen-space (MiniEngine SSAO)" };
-#if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO
-        EnumVar AOMode(L"Render/AO/Mode", AOType::SSAO, AOType::Count, AOTypes);
-#else
-        EnumVar AOMode(L"Render/AO/Mode", AOType::RTAO, AOType::Count, AOTypes);
-#endif
-    }
     /*
 RTAO - Titan XP 1440p Quarter Res
 - Min kernel width 20
@@ -522,7 +506,7 @@ RTAO - Titan XP 1440p Quarter Res
 
         CalculateFrameStats();
 
-        float elapsedTime = m_scene.Timer().GetElapsedSeconds();
+        float elapsedTime = static_cast<float>(m_scene.Timer().GetElapsedSeconds());
         GameInput::Update(elapsedTime);
         EngineTuning::Update(elapsedTime);
         EngineProfiling::Update();
@@ -737,8 +721,7 @@ RTAO - Titan XP 1440p Quarter Res
         auto renderTargets = m_deviceResources->GetRenderTargets();
 
         UINT GBufferWidth, GBufferHeight;
-        UINT GBufferWidth, GBufferHeight;
-        switch (Composition::Args::AntialiasingMode)
+        switch (Composition_Args::AntialiasingMode)
         {
         case DownsampleFilter::None:
             GBufferWidth = m_width;
@@ -755,7 +738,7 @@ RTAO - Titan XP 1440p Quarter Res
             break;
         }
 
-        if (RTAO::Args::QuarterResAO)
+        if (RTAO_Args::QuarterResAO)
         {
             // Handle odd resolution.
             m_raytracingWidth = CeilDivide(GBufferWidth, 2);
@@ -878,9 +861,9 @@ RTAO - Titan XP 1440p Quarter Res
 
                     m_scene.OnRender();
 
-                    m_pathtracer.Run(&m_scene);
+                    m_pathtracer.Run(m_scene);
 
-                    if (Args::AOMode == Args::AOType::RTAO)
+                    if (Sample_Args::AOMode == Sample_Args::AOType::RTAO)
                     {
                         ScopedTimer _prof(L"RTAO_Root", commandList);
 
@@ -911,7 +894,7 @@ RTAO - Titan XP 1440p Quarter Res
                     }
 #endif
                 }
-                m_composition.Render(&m_raytracingOutput, m_scene, m_pathtracer, m_RTAO, m_GBufferWidth, m_GBufferHeight);
+                m_composition.Render(&m_raytracingOutput, m_scene, m_pathtracer, m_RTAO, m_denoiser, m_GBufferWidth, m_GBufferHeight);
 
                 if (m_GBufferWidth != m_width || m_GBufferHeight != m_height)
                 {
@@ -994,36 +977,6 @@ RTAO - Titan XP 1440p Quarter Res
 #endif
     }
 
-
-
-
-    // Copy the raytracing output to the backbuffer.
-    void D3D12RaytracingAmbientOcclusion::CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState)
-    {
-        auto commandList = m_deviceResources->GetCommandList();
-        auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-        auto renderTarget = m_deviceResources->GetRenderTarget();
-
-        ID3D12Resource* raytracingOutput = nullptr;
-        if (m_GBufferWidth == m_width && m_GBufferHeight == m_height)
-        {
-            raytracingOutput = m_raytracingOutputIntermediate.GetResource();
-        }
-        else
-        {
-            raytracingOutput = m_raytracingOutput.GetResource();
-        }
-
-        resourceStateTracker->FlushResourceBarriers();
-        CopyResource(
-            commandList,
-            raytracingOutput,
-            renderTarget,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            D3D12_RESOURCE_STATE_RENDER_TARGET,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            outRenderTargetState);
-    }
 
     // Compute the average frames per second and million rays per second.
     void D3D12RaytracingAmbientOcclusion::CalculateFrameStats()

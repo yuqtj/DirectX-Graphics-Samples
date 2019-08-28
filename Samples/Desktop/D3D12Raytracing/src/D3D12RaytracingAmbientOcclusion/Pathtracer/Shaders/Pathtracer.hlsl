@@ -76,9 +76,6 @@ RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
 RWTexture2D<NormalDepthTexFormat> g_rtReprojectedNormalDepth : register(u18); // ToDo rename
 RWTexture2D<float4> g_rtColor : register(u19);
 RWTexture2D<float4> g_rtAOSurfaceAlbedo : register(u20);
-RWTexture2D<float> g_rtShadowMap : register(u21);
-RWTexture2D<float4> g_rtDebug : register(u22);
-RWTexture2D<float4> g_rtDebug2 : register(u24);
 
 ConstantBuffer<PathtracerConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);

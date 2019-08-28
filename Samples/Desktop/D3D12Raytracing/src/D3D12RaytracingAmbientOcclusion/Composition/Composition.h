@@ -30,6 +30,8 @@ namespace Composition_Args
     extern EnumVar CompositionMode;
 }
 
+class RTAO;
+
 class Composition
 {
 public:

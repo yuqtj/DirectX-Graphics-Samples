@@ -742,8 +742,6 @@ void Pathtracer::Run(Scene& scene)
         resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Color], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug2], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
 
 
@@ -762,8 +760,6 @@ void Pathtracer::Run(Scene& scene)
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ReprojectedNormalDepth, m_GBufferResources[GBufferResource::ReprojectedNormalDepth].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Color, m_GBufferResources[GBufferResource::Color].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOSurfaceAlbedo, m_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Debug, m_GBufferResources[GBufferResource::Debug].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Debug2, m_GBufferResources[GBufferResource::Debug2].gpuDescriptorWriteAccess);
 
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::PartialDepthDerivatives, m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
@@ -786,8 +782,6 @@ void Pathtracer::Run(Scene& scene)
         resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::ReprojectedNormalDepth], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Color], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_GBufferResources[GBufferResource::Debug2], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
 
 #if 0  // ToDo Remove?
@@ -914,10 +908,6 @@ void Pathtracer::CreateTextureResources()
         CreateRenderTargetResource(device, backbufferFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Color], initialResourceState, L"GBuffer Color");
 
         CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer AO Surface Albedo");
-
-        CreateRenderTargetResource(device, debugFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug], initialResourceState, L"GBuffer Debug");
-        CreateRenderTargetResource(device, debugFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferResources[GBufferResource::Debug2], initialResourceState, L"GBuffer Debug2");
-
     }
 
     // Low-res GBuffer resources.

@@ -27,20 +27,22 @@
 #include "RTAO\RTAO.h"
 #include "Pathtracer\Pathtracer.h"
 #include "Denoiser\Denoiser.h"
-#include "Composition.h"
+#include "Composition\Composition.h"
 #include "Scene.h"
 #include "EngineTuning.h"
 
 
+namespace Sample_Args
+{
+    extern EnumVar CompositionMode;
+}
+
 namespace Sample
 {
-    namespace Args
-    {
-        extern EnumVar CompositionMode;
-    }
-
     class D3D12RaytracingAmbientOcclusion;
     D3D12RaytracingAmbientOcclusion& instance();
+
+    extern void OnRecreateRaytracingResources(void*);
 
     static const UINT FrameCount = 3;
 
@@ -68,17 +70,9 @@ namespace Sample
 
         const DX::DeviceResources& GetDeviceResources() { return *m_deviceResources; }
 
-        void RequestGeometryInitialization(bool bRequest) { m_isGeometryInitializationRequested = bRequest; }
-        void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
         void RequestSceneInitialization() { m_isSceneInitializationRequested = true; }
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
-        // Module access.
-        Scene& Scene() { return m_scene; }
-        Pathtracer& Pathtracer() { return m_pathtracer; }
-        RTAO& RTAO() { return m_RTAO; }
-        Denoiser& Denoiser() { return m_denoiser; }
-        
     private:
 
         // ToDo change ID3D12Resourcs with views to GpuResource
@@ -110,9 +104,7 @@ namespace Sample
         bool m_isProfiling = false;
         UINT m_numRemainingFramesToProfile = 0;
         std::map<std::wstring, std::list<std::wstring>> m_profilingResults;
-
-
-
+        
         Pathtracer m_pathtracer;
         RTAO m_RTAO;
         Denoiser m_denoiser;

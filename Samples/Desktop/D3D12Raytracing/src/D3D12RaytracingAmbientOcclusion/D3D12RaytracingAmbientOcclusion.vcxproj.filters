@@ -511,9 +511,6 @@
     <FxCompile Include="Pathtracer\Shaders\Pathtracer.hlsl">
       <Filter>Assets\Shaders\Pathtracer</Filter>
     </FxCompile>
-    <FxCompile Include="ComposeRenderPassesCS.hlsl">
-      <Filter>Assets\Shaders\Composition</Filter>
-    </FxCompile>
     <FxCompile Include="Composition\Shaders\CompositionCS.hlsl">
       <Filter>Assets\Shaders\Composition</Filter>
     </FxCompile>
