@@ -13,6 +13,7 @@
 #include "SSAO.h"
 #include "CommonStates.h"
 #include "DirectXRaytracingHelper.h"
+#include "EngineTuning.h"
 
 #include "CompiledShaders/SSAOBlurUpsampleCS.hlsl.h"
 #include "CompiledShaders/SSAOBlurUpsamplePreMinCS.hlsl.h"

@@ -73,19 +73,22 @@ namespace Pathtracer_Args
     BoolVar RTAOUseNormalMaps(L"Render/PathTracing/Normal maps", false);
     const WCHAR* FloatingPointFormatsRG[TextureResourceFormatRG::Count] = { L"R32G32_FLOAT", L"R16G16_FLOAT", L"R8G8_SNORM" };
     // ToDo  ddx needs to be in normalized to use UNORM.
-    EnumVar RTAO_PartialDepthDerivativesResourceFormat(L"Render/Texture Formats/PartialDepthDerivatives", TextureResourceFormatRG::R16G16_FLOAT, TextureResourceFormatRG::Count, FloatingPointFormatsRG, OnRecreateRaytracingResources);
-    EnumVar RTAO_MotionVectorResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Supersampling/Motion Vector", TextureResourceFormatRG::R16G16_FLOAT, TextureResourceFormatRG::Count, FloatingPointFormatsRG, OnRecreateRaytracingResources);
+    EnumVar RTAO_PartialDepthDerivativesResourceFormat(L"Render/Texture Formats/PartialDepthDerivatives", TextureResourceFormatRG::R16G16_FLOAT, TextureResourceFormatRG::Count, FloatingPointFormatsRG, Sample::OnRecreateRaytracingResources);
+    EnumVar RTAO_MotionVectorResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Supersampling/Motion Vector", TextureResourceFormatRG::R16G16_FLOAT, TextureResourceFormatRG::Count, FloatingPointFormatsRG, Sample::OnRecreateRaytracingResources);
 }
 
 GpuResource (&GBufferResources(bool getQuarterResResources))[GBufferResource::Count]
 {
     return g_pPathracer->GBufferResources(getQuarterResResources);
 }
-       
 
-GpuResource (&Pathtracer::GBufferResources(bool getQuarterResResources))[GBufferResource::Count]
+
+GpuResource(&Pathtracer::GBufferResources(bool getQuarterResResources))[GBufferResource::Count]
 {
-    return getQuarterResResources ? m_GBufferQuarterResResources : m_GBufferResources;
+    if (getQuarterResResources)
+        return m_GBufferQuarterResResources;
+    else
+        return m_GBufferResources;
 }
         
 
@@ -101,12 +104,12 @@ Pathtracer::Pathtracer()
     }
 }
 
-void Pathtracer::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap)
+void Pathtracer::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap, Scene& scene)
 {
     m_deviceResources = deviceResources;
     m_cbvSrvUavHeap = descriptorHeap;
 
-    CreateDeviceDependentResources();
+    CreateDeviceDependentResources(scene);
 }
 
 void Pathtracer::ReleaseDeviceDependentResources()
@@ -124,7 +127,7 @@ void Pathtracer::ReleaseDeviceDependentResources()
 }
 
 // Create resources that depend on the device.
-void Pathtracer::CreateDeviceDependentResources()
+void Pathtracer::CreateDeviceDependentResources(Scene& scene)
 {
     CreateAuxilaryDeviceResources();
 
@@ -140,7 +143,7 @@ void Pathtracer::CreateDeviceDependentResources()
     CreateConstantBuffers();
 
     // Build shader tables, which define shaders and their local root arguments.
-    BuildShaderTables();
+    BuildShaderTables(scene);
 }
 
 
@@ -397,7 +400,7 @@ void Pathtracer::CreateRaytracingPipelineStateObject()
 
 // Build shader tables.
 // This encapsulates all shader records - shaders and the arguments for their local root signatures.
-void Pathtracer::BuildShaderTables()
+void Pathtracer::BuildShaderTables(Scene& scene)
 {
     auto device = m_deviceResources->GetD3DDevice();
 
@@ -494,10 +497,9 @@ void Pathtracer::BuildShaderTables()
     // ToDo split shader table per unique pass?
     // Hit group shader table.
     {
-        auto& Scene = Sample::instance().Scene();
-        auto& bottomLevelASGeometries = Scene.BottomLevelASGeometries();
-        auto& accelerationStructure = *Scene.AccelerationStructure();
-        auto& grassPatchVB = Scene.GrassPatchVB();
+        auto& bottomLevelASGeometries = scene.BottomLevelASGeometries();
+        auto& accelerationStructure = *scene.AccelerationStructure();
+        auto& grassPatchVB = scene.GrassPatchVB();
 
         UINT numShaderRecords = 0;
         for (auto& bottomLevelASGeometryPair : bottomLevelASGeometries)
@@ -700,15 +702,15 @@ void Pathtracer::Run(Scene& scene)
     ScopedTimer _prof(L"GenerateGbuffer", commandList);
     UpdateConstantBuffer(scene);
 
-    auto& Scene = Sample::instance().Scene();
+    auto& Scene = scene;
     auto& MaterialBuffer = Scene.MaterialBuffer();
     auto& EnvironmentMap = Scene.EnvironmentMap();
     auto& PrevFrameBottomLevelASInstanceTransforms = Scene.PrevFrameBottomLevelASInstanceTransforms();
 
-    m_CB->useDiffuseFromMaterial = Sample::Args::CompositionMode == CompositionType::Diffuse;
+    m_CB->useDiffuseFromMaterial = Composition_Args::CompositionMode == CompositionType::Diffuse;
 
     // ToDo should we use cameraAtPosition0 too and offset the world space pos vector in the shader?
-    auto& prevFrameCamera = Sample::instance().Scene().PrevFrameCamera();
+    auto& prevFrameCamera = scene.PrevFrameCamera();
     XMMATRIX prevView, prevProj;
     prevFrameCamera.GetViewProj(&prevView, &prevProj, m_width, m_height);
     m_CB->prevViewProj = prevView * prevProj;
@@ -746,9 +748,9 @@ void Pathtracer::Run(Scene& scene)
 
 
     // Bind inputs.
-    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, Sample::instance().Scene().AccelerationStructure()->GetTopLevelASResource()->GetGPUVirtualAddress());
+    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, scene.AccelerationStructure()->GetTopLevelASResource()->GetGPUVirtualAddress());
     commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_CB.GpuVirtualAddress(frameIndex));
-    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, Scene.MaterialBuffer.GpuVirtualAddress());
+    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, Scene.MaterialBuffer().GpuVirtualAddress());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, EnvironmentMap.gpuDescriptorHandle);
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::PrevFrameBottomLevelASIstanceTransforms, PrevFrameBottomLevelASInstanceTransforms.GpuVirtualAddress(frameIndex));
 

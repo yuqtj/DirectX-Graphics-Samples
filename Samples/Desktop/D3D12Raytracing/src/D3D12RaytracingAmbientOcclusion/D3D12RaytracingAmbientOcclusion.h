@@ -46,7 +46,7 @@ namespace Sample
 
     static const UINT FrameCount = 3;
 
-    GpuResource g_debugOutput[2];
+    extern GpuResource g_debugOutput[2];
 
     class D3D12RaytracingAmbientOcclusion : public DXSample
     {

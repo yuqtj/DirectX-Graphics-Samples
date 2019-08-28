@@ -48,6 +48,7 @@ public:
     const std::unique_ptr<RaytracingAccelerationStructureManager>& AccelerationStructure() { return m_accelerationStructure; }
  
     // Getters & setters.
+    // ToDO direct access instead?
     GpuResource(&GrassPatchVB())[UIParameters::NumGrassGeometryLODs][2] { return m_grassPatchVB; }
     D3DTexture& EnvironmentMap() { return m_environmentMap; }
     StructuredBuffer<PrimitiveMaterialBuffer>& MaterialBuffer() { return m_materialBuffer; }

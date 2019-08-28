@@ -273,7 +273,7 @@ namespace SampleScene {
 			PBRT,	// Rename
 			Count
 		};
-		extern const WCHAR* Names[Count - 1];
+		extern const WCHAR* Names[Count];
 	}
 
 	struct Camera

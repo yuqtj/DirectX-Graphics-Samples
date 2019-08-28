@@ -19,7 +19,10 @@
 #include "Sampler.h"
 #include "GpuKernels.h"
 #include "EngineTuning.h"
+#include "Scene.h"
+#include "RTAO/RTAO.h"
 
+class RTAO;
 
 // ToDo rename to AO denoiser?
 namespace Denoiser_Args
@@ -40,7 +43,7 @@ public:
 
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
-    void Run(DenoiseStage stage = Denoise_StageAll);
+    void Run(Scene& scene, Pathtracer& pathtracer, RTAO& rtao, DenoiseStage stage = Denoise_StageAll);
 
     void ReleaseDeviceDependentResources();
     void ReleaseWindowSizeDependentResources() {}; // ToDo
@@ -49,18 +52,17 @@ public:
     void SetResolution(UINT width, UINT height);
 
 private:
-    void TemporalReverseReproject();
-    void TemporalSupersamplingBlendWithCurrentFrame();
-    void MultiPassBlur();
+    void TemporalReverseReproject(Scene& scene, Pathtracer& pathtracer);
+    void TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao);
+    void MultiPassBlur(Pathtracer& pathtracer);
 
     void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
     void CreateConstantBuffers();
     void CreateAuxilaryDeviceResources();
     void CreateTextureResources();
-    void ApplyAtrousWaveletTransformFilter(bool isFirstPass);
+    void ApplyAtrousWaveletTransformFilter(Pathtracer& pathtracer, RTAO& rtao, bool isFirstPass);
     void ApplyAtrousWaveletTransformFilter(const  GpuResource& inValueResource, const  GpuResource& inNormalDepthResource, const  GpuResource& inDepthResource, const  GpuResource& inRayHitDistanceResource, const  GpuResource& inPartialDistanceDerivativesResource, GpuResource* outSmoothedValueResource, GpuResource* varianceResource, GpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
 
-    GpuResource(&GBufferResources())[GBufferResource::Count];
 
     void CreateResolutionDependentResources();
 

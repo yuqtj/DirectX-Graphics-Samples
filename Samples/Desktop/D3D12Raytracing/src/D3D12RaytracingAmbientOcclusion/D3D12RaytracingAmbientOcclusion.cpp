@@ -45,10 +45,10 @@ namespace Sample_Args
 #endif
 }
 
+HWND g_hWnd = 0;
+
 namespace Sample
 {
-    HWND g_hWnd = 0;
-    UIParameters g_UIparameters;    // ToDo move
     D3D12RaytracingAmbientOcclusion* g_pSample = nullptr;
     D3D12RaytracingAmbientOcclusion& instance()
     {
@@ -59,6 +59,8 @@ namespace Sample
     std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
     GpuResource m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
 
+    // ToDo remove?
+    GpuResource g_debugOutput[2];
 
     void OnRecreateRaytracingResources(void*)
     {
@@ -239,9 +241,9 @@ RTAO - Titan XP 1440p Quarter Res
 
 
         m_scene.Setup(m_deviceResources, m_cbvSrvUavHeap);
-        m_pathtracer.Setup(m_deviceResources, m_cbvSrvUavHeap);
+        m_pathtracer.Setup(m_deviceResources, m_cbvSrvUavHeap, m_scene);
         // ToDo add a note the RTAO setup has to be called after pathtracer built its shader tables and updated instanceContributionToHitGroupIndices.
-        m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap);
+        m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_scene);
         m_composition.Setup(m_deviceResources, m_cbvSrvUavHeap);
 #if ENABLE_SSAO
         CreateConstantBuffers();
@@ -869,14 +871,13 @@ RTAO - Titan XP 1440p Quarter Res
 
                         GpuResource* GBufferResources = m_pathtracer.GBufferResources();
 
-                        m_denoiser.Run();
                         m_RTAO.Run(
                             m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
                             GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
                             GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
                             GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
 
-                        m_denoiser.Run();
+                        m_denoiser.Run(m_scene, m_pathtracer, m_RTAO);
 
                     }
 #if ENABLE_SSAO

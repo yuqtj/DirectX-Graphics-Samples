@@ -35,7 +35,7 @@ public:
     Pathtracer();
 
     // Public methods.
-    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
+    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, Scene& scene);
     void Run(Scene& scene);
     void ReleaseDeviceDependentResources();
     void ReleaseWindowSizeDependentResources() {}; // ToDo
@@ -48,7 +48,7 @@ public:
     void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 private:
     void UpdateConstantBuffer(Scene& scene);
-    void CreateDeviceDependentResources();
+    void CreateDeviceDependentResources(Scene& scene);
     void CreateConstantBuffers();
     void CreateAuxilaryDeviceResources();
     void CreateRootSignatures();
@@ -59,7 +59,7 @@ private:
     void CreateTextureResources();
 
     void CreateResolutionDependentResources();
-    void BuildShaderTables();
+    void BuildShaderTables(Scene& scene);
     void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
     void CalculateRayHitCount();
     void DownsampleGBuffer();

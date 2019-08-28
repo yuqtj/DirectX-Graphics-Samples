@@ -17,8 +17,8 @@
 
 namespace SampleScene
 {
-	const WCHAR* Type::Names[] = { L"Squid room", L"PBRT scene" };
-	Params args[SampleScene::Type::Count];
+	const WCHAR* Type::Names[Type::Count] = { L"Squid room", L"PBRT scene" };
+	Params args[Type::Count];
 
 	// Initialize scene parameters
 	Initialize initializeObject;
@@ -26,7 +26,7 @@ namespace SampleScene
 	{
 		// Camera Position
 		{
-			auto& camera = args[SampleScene::Type::PBRT].camera;
+			auto& camera = args[Type::PBRT].camera;
 #if TESSELATED_GEOMETRY_BOX
 #if NUM_GEOMETRIES_1000
 			camera.position.eye = { 0, (TESSELATED_GEOMETRY_TILES*TESSELATED_GEOMETRY_TILES_WIDTH + CAMERA_Y_SCALE) * 0.43f, 0, 1 };
@@ -54,7 +54,7 @@ namespace SampleScene
         
         {
 
-			auto& camera = args[SampleScene::Type::SquidRoom].camera;
+			auto& camera = args[Type::SquidRoom].camera;
 			camera.position.eye = { 0, 80, 268.555980f, 1 };
 			camera.position.at = { 0, 80, 0, 1 };
 			camera.position.up = { 0, 1, 0, 0 };

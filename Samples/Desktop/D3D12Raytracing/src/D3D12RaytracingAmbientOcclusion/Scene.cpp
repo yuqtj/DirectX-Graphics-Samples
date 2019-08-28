@@ -27,6 +27,8 @@ using namespace DirectX;
 using namespace SceneEnums;
 using namespace GameCore;
 
+UIParameters g_UIparameters;    // ToDo move
+
 namespace Scene_Args
 {
     void OnSceneChange(void*)
@@ -113,7 +115,7 @@ void Scene::OnRender()
 void Scene::OnUpdate()
 {
     m_timer.Tick();
-    float elapsedTime = m_timer.GetElapsedSeconds();
+    float elapsedTime = static_cast<float>(m_timer.GetElapsedSeconds());
 
     if (GameInput::IsFirstPressed(GameInput::kKey_f))
     {
@@ -125,7 +127,7 @@ void Scene::OnUpdate()
     m_hasCameraChanged = false;
     if (!m_isCameraFrozen)
     {
-        m_hasCameraChanged = m_cameraController->Update(m_timer.GetElapsedSeconds());
+        m_hasCameraChanged = m_cameraController->Update(elapsedTime);
         // ToDo
         // if (CameraChanged)
         //m_bClearTemporalSupersampling = true;

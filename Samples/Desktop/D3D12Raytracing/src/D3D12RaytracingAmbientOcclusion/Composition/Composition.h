@@ -31,6 +31,7 @@ namespace Composition_Args
 }
 
 class RTAO;
+class Denoiser;
 
 class Composition
 {

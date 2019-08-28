@@ -20,7 +20,7 @@
 #include "GpuKernels.h"
 #include "EngineTuning.h"
 #include "Composition/Composition.h"
-
+#include "Scene.h"
 
 // ToDo move to cpp
 namespace RTAORayGenShaderType {
@@ -43,7 +43,7 @@ public:
     RTAO();
 
     // Public methods.
-    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
+    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, Scene& scene);
     void OnUpdate();
     void Run(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource);
     void ReleaseDeviceDependentResources();
@@ -51,7 +51,7 @@ public:
 
     // Getters & Setters.
     GpuResource(&AOResources())[AOResource::Count]{ return m_AOResources; }
-    DXGI_FORMAT AOCoefficientFormat();
+    static DXGI_FORMAT AOCoefficientFormat();
     float MaxRayHitTime();
     void SetMaxRayHitTime(float maxRayHitTime); 
     void SetResolution(UINT width, UINT height);
@@ -62,7 +62,7 @@ public:
     void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
 private:
-    void CreateDeviceDependentResources();
+    void CreateDeviceDependentResources(Scene& scene);
     void CreateConstantBuffers();
     void CreateAuxilaryDeviceResources();
     void CreateRootSignatures();
@@ -73,7 +73,7 @@ private:
 
     void CreateSamplesRNG();
     void CreateResolutionDependentResources();
-    void BuildShaderTables();
+    void BuildShaderTables(Scene& scene);
     void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
     void CalculateRayHitCount();
 
