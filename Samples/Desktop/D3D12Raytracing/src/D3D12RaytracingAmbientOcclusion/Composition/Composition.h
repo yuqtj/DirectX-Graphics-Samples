@@ -37,7 +37,7 @@ class Composition
 {
 public:
     // Ctors.
-    Composition();
+    Composition() {}
 
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
@@ -46,6 +46,7 @@ public:
     void ReleaseDeviceDependentResources();
     void ReleaseWindowSizeDependentResources() {}; // ToDo
     void SetResolution(UINT width, UINT height);
+    void Release() {} // ToDo;
 
 private:
     void CreateComposeRenderPassesCSResources();
@@ -81,7 +82,8 @@ private:
     ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
     ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
 
-
+    UINT m_width;
+    UINT m_height;
 
     GpuResource m_upsampledAOValueResource;
     GpuResource m_upsampledTrppResource;

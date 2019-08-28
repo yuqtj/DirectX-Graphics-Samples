@@ -34,7 +34,6 @@
 //*****------ Shader resources bound via root signatures -------*************
 //***************************************************************************
 
-// Scene wide resources.
 //  g_* - bound via a global root signature.
 //  l_* - bound via a local root signature.
 RaytracingAccelerationStructure g_scene : register(t0, space0);
@@ -55,7 +54,7 @@ Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<NormalDepthTexFormat> g_texGBufferNormalDepth : register(t8);
 Texture2D<float4> g_texGBufferDistance : register(t9);
 TextureCube<float4> g_texEnvironmentMap : register(t12);
-Texture2D<float> g_filterWeightSum : register(t13);
+Texture2D<float> g_filterWeightSum : register(t13); // ToDo remove
 Texture2D<uint> g_texInputAOFrameAge : register(t14);
 Texture2D<float> g_texShadowMap : register(t21);
 Texture2D<float4> g_texAORaysDirectionOriginDepthHit : register(t22);

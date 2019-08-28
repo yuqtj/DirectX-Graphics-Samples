@@ -25,6 +25,69 @@ using namespace DirectX;
 using namespace SceneEnums;
 
 
+namespace GlobalRootSignature {
+    namespace Slot {
+        enum Enum {
+            Output = 0,
+            GBufferResources,
+            GBufferResourcesIn,
+            AOResourcesOut,	// ToDo cleanup, move to local root sigs 
+            VisibilityResource,	// ToDo cleanup, move to local root sigs 
+            AccelerationStructure,
+            SceneConstant,
+            MaterialBuffer,
+            SampleBuffers,
+            EnvironmentMap,
+            FilterWeightSum,
+            GBufferDepth,   // ToDo move to the above slot for GBufferResources ?
+            GbufferNormalRGB,
+            AORayHitDistance,
+            AOFrameAge,
+            AORayDirectionOriginDepthHitSRV,
+            Debug,
+            Debug2,
+            AOSourceToSortedRayIndex,
+#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
+            PartialDepthDerivatives,
+#endif
+            PrevFrameBottomLevelASIstanceTransforms,
+            MotionVector,
+            ReprojectedNormalDepth,
+            Color,
+            AOSurfaceAlbedo,
+            Count
+        };
+    }
+}
+
+
+namespace LocalRootSignature {
+    namespace Slot {
+        enum Enum {
+            ConstantBuffer = 0,
+            IndexBuffer,
+            VertexBuffer,
+            PreviousFrameVertexBuffer,
+            DiffuseTexture,
+            NormalTexture,
+            Count
+        };
+    }
+    struct RootArguments {
+        PrimitiveConstantBuffer cb;
+        // ToDo add align specifier
+        // Bind each resource via a descriptor.
+        // This design was picked for simplicity, but one could optimize for shader record size by:
+        //    1) Binding multiple descriptors via a range descriptor instead.
+        //    2) Storing 4 Byte indices (instead of 8 Byte descriptors) to a global pool resources.
+        D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
+        D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
+        D3D12_GPU_DESCRIPTOR_HANDLE previousFrameVertexBufferGPUHandle;
+        D3D12_GPU_DESCRIPTOR_HANDLE diffuseTextureGPUHandle;
+        D3D12_GPU_DESCRIPTOR_HANDLE normalTextureGPUHandle;
+    };
+}
+
 // Shader entry points.
 const wchar_t* Pathtracer::c_rayGenShaderNames[] = { L"MyRayGenShader_GBuffer" };
 const wchar_t* Pathtracer::c_closestHitShaderNames[] = { L"MyClosestHitShader_GBuffer", L"MyClosestHitShader_ShadowRay" };
@@ -119,7 +182,7 @@ void Pathtracer::ReleaseDeviceDependentResources()
     m_dxrStateObject.Reset();
 
     m_raytracingGlobalRootSignature.Reset();
-    ResetComPtrArray(&m_raytracingLocalRootSignature);
+    m_raytracingLocalRootSignature.Reset();
 
     ResetComPtrArray(&m_rayGenShaderTables);
     m_missShaderTable.Reset();
@@ -262,7 +325,7 @@ void Pathtracer::CreateRootSignatures()
     {
         // Triangle geometry
         {
-            using namespace LocalRootSignature::Triangle;
+            using namespace LocalRootSignature;
 
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
             ranges[Slot::IndexBuffer].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 1 buffer - index buffer.
@@ -281,7 +344,7 @@ void Pathtracer::CreateRootSignatures()
 
             CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
             localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
-            SerializeAndCreateRootSignature(device, localRootSignatureDesc, &m_raytracingLocalRootSignature[LocalRootSignature::Type::Triangle], L"Local root signature: triangle geometry");
+            SerializeAndCreateRootSignature(device, localRootSignatureDesc, &m_raytracingLocalRootSignature, L"Local root signature");
         }
     }
 }
@@ -330,7 +393,7 @@ void Pathtracer::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* r
     // Triangle geometry
     {
         auto localRootSignature = raytracingPipeline->CreateSubobject<CD3DX12_LOCAL_ROOT_SIGNATURE_SUBOBJECT>();
-        localRootSignature->SetRootSignature(m_raytracingLocalRootSignature[LocalRootSignature::Type::Triangle].Get());
+        localRootSignature->SetRootSignature(m_raytracingLocalRootSignature.Get());
         // Shader association
         auto rootSignatureAssociation = raytracingPipeline->CreateSubobject<CD3DX12_SUBOBJECT_TO_EXPORTS_ASSOCIATION_SUBOBJECT>();
         rootSignatureAssociation->SetSubobjectToAssociate(*localRootSignature);
@@ -510,7 +573,7 @@ void Pathtracer::BuildShaderTables(Scene& scene)
         UINT numGrassGeometryShaderRecords = 2 * UIParameters::NumGrassGeometryLODs * 3 * RayType::Count;
         numShaderRecords += numGrassGeometryShaderRecords;
 
-        UINT shaderRecordSize = shaderIDSize + LocalRootSignature::MaxRootArgumentsSize();
+        UINT shaderRecordSize = shaderIDSize + sizeof(LocalRootSignature::RootArguments);
         ShaderTable hitGroupShaderTable(device, numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
 
         // Triangle geometry hit groups.
@@ -532,7 +595,7 @@ void Pathtracer::BuildShaderTables(Scene& scene)
                 assert(bottomLevelASGeometry.m_geometryInstances.size() == 1);
                 auto& geometryInstance = bottomLevelASGeometry.m_geometryInstances[0];
 
-                LocalRootSignature::Triangle::RootArguments rootArgs;
+                LocalRootSignature::RootArguments rootArgs;
                 rootArgs.cb.materialID = geometryInstance.materialID;
                 rootArgs.cb.isVertexAnimated = geometryInstance.isVertexAnimated;
 
@@ -601,7 +664,7 @@ void Pathtracer::BuildShaderTables(Scene& scene)
             {
                 for (auto& geometryInstance : bottomLevelASGeometry.m_geometryInstances)
                 {
-                    LocalRootSignature::Triangle::RootArguments rootArgs;
+                    LocalRootSignature::RootArguments rootArgs;
                     rootArgs.cb.materialID = geometryInstance.materialID;
                     rootArgs.cb.isVertexAnimated = geometryInstance.isVertexAnimated;
 
@@ -887,7 +950,6 @@ void Pathtracer::CreateTextureResources()
         m_GBufferResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(GBufferResource::Count);
         for (UINT i = 0; i < GBufferResource::Count; i++)
         {
-            m_GBufferResources[i].rwFlags = GpuResource::RWFlags::AllowWrite | GpuResource::RWFlags::AllowRead;
             m_GBufferResources[i].uavDescriptorHeapIndex = m_GBufferResources[0].uavDescriptorHeapIndex + i;
             m_GBufferResources[i].srvDescriptorHeapIndex = m_GBufferResources[0].srvDescriptorHeapIndex + i;
         }

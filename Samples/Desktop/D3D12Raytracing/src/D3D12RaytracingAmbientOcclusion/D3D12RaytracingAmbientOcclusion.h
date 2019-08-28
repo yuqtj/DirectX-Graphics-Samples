@@ -117,7 +117,6 @@ namespace Sample
         // ToDo use the struct
         GpuResource m_raytracingOutput;
         GpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
-        GpuResource m_AOResources[AOResource::Count];
 
         GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
         GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
@@ -156,7 +155,7 @@ namespace Sample
         void ReleaseWindowSizeDependentResources();
         void CreateDescriptorHeaps();
         void CreateRaytracingOutputResource();
-        void CreateGBufferResources();
+        void CreateDebugResources();
         void CreateAuxilaryDeviceResources();
         void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
         void CalculateFrameStats();

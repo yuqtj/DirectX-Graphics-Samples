@@ -25,6 +25,27 @@ using namespace DX;
 using namespace DirectX;
 using namespace SceneEnums;
 
+
+// ToDo move to RTAO specific defines
+namespace GlobalRootSignature {
+    namespace Slot {
+        enum Enum {
+            AccelerationStructure = 0,
+            RayOriginPosition,
+            RayOriginSurfaceNormalDepth,
+            AOResourcesOut,
+            AORayHitDistance,
+            AORayDirectionOriginDepthHitSRV,
+            AORayDirectionOriginDepthHitUAV,
+            AOFrameAge,
+            AOSortedToSourceRayIndex,
+            AOSurfaceAlbedo,
+            ConstantBuffer,
+            SampleBuffers,
+            Count
+        };
+    }
+}
   
 // Shader entry points.
 const wchar_t* RTAO::c_rayGenShaderNames[] = { L"RayGenShader", L"RayGenShader_sortedRays" };
@@ -89,9 +110,16 @@ namespace RTAO_Args
     BoolVar QuarterResAO(L"Render/AO/RTAO/Quarter res", true, Sample::OnRecreateRaytracingResources, nullptr);
 }
 
-DXGI_FORMAT RTAO::AOCoefficientFormat()
+
+DXGI_FORMAT RTAOResourceFormats::Get(Enum resource)
 {
-    return TextureResourceFormatR::ToDXGIFormat(RTAO_Args::RTAO_AmbientCoefficientResourceFormat);
+    switch (resource)
+    {
+    case AOCoefficient: return TextureResourceFormatR::ToDXGIFormat(RTAO_Args::RTAO_AmbientCoefficientResourceFormat);
+    case RayHitDistance: return DXGI_FORMAT_R16_FLOAT;
+    }
+
+    return DXGI_FORMAT_UNKNOWN;
 }
 
 float RTAO::MaxRayHitTime()
@@ -113,9 +141,16 @@ RTAO::RTAO()
     m_generatorURNG.seed(1729);
 }
 
+// ToDo
+RTAO::~RTAO()
+{
+}
 
 void RTAO::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap, Scene& scene)
 {
+    m_deviceResources = deviceResources;
+    m_cbvSrvUavHeap = descriptorHeap;
+
     CreateDeviceDependentResources(scene);
 }
 
@@ -184,7 +219,7 @@ void RTAO::CreateRootSignatures()
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
-        using namespace RTAOGlobalRootSignature;
+        using namespace GlobalRootSignature;
 
         // ToDo use slot index in ranges everywhere
         CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
@@ -195,7 +230,6 @@ void RTAO::CreateRootSignatures()
 
         ranges[Slot::RayOriginPosition].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 7);  // 1 input surface hit position texture
         ranges[Slot::RayOriginSurfaceNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // 1 input surface normal depth
-        ranges[Slot::FilterWeightSum].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 13);  // 1 input filter weight sum texture
         ranges[Slot::AOFrameAge].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 14);  // 1 input AO frame age
         ranges[Slot::AORayDirectionOriginDepthHitSRV].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 22);  // 1 AO ray direction and origin depth texture
         ranges[Slot::AOSortedToSourceRayIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 23);  // 1 input AO ray group thread offsets
@@ -205,7 +239,6 @@ void RTAO::CreateRootSignatures()
         rootParameters[Slot::RayOriginPosition].InitAsDescriptorTable(1, &ranges[Slot::RayOriginPosition]);
         rootParameters[Slot::RayOriginSurfaceNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::RayOriginSurfaceNormalDepth]);
         rootParameters[Slot::AOResourcesOut].InitAsDescriptorTable(1, &ranges[Slot::AOResourcesOut]);
-        rootParameters[Slot::FilterWeightSum].InitAsDescriptorTable(1, &ranges[Slot::FilterWeightSum]);
         rootParameters[Slot::AORayHitDistance].InitAsDescriptorTable(1, &ranges[Slot::AORayHitDistance]);
         rootParameters[Slot::AOFrameAge].InitAsDescriptorTable(1, &ranges[Slot::AOFrameAge]);
         rootParameters[Slot::AORayDirectionOriginDepthHitSRV].InitAsDescriptorTable(1, &ranges[Slot::AORayDirectionOriginDepthHitSRV]);
@@ -342,8 +375,7 @@ void RTAO::CreateTextureResources()
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"Render/AO Hit Count");
 
         // ToDo use lower bit float?
-        CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::FilterWeightSum], initialResourceState, L"Render/AO Filter Weight Sum");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
+        CreateRenderTargetResource(device, RTAOResourceFormats::Get(RTAOResourceFormats::RayHitDistance), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
     }
 
 
@@ -546,7 +578,6 @@ void RTAO::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT heig
 
 void RTAO::OnUpdate()
 {
-
     if (m_isRecreateAOSamplesRequested)
     {
         m_isRecreateAOSamplesRequested = false;
@@ -567,19 +598,12 @@ void RTAO::OnUpdate()
         CreateResolutionDependentResources();
         CreateAuxilaryDeviceResources();
     }
+}
 
-
+void RTAO::UpdateConstantBuffer(UINT frameIndex)
+{
     uniform_int_distribution<UINT> seedDistribution(0, UINT_MAX);
 
-#if 0
-    if (RTAO_Args::RTAORandomFrameSeed)
-    {
-        m_CB->seed = seedDistribution(m_generatorURNG);
-        RTAO_Args::RTAORandomFrameSeed.Bang();
-    }
-#elif 0
-    m_CB->seed = 287535318;
-#else
     if (RTAO_Args::RTAORandomFrameSeed)
     {
         m_CB->seed = seedDistribution(m_generatorURNG);
@@ -588,7 +612,7 @@ void RTAO::OnUpdate()
     {
         m_CB->seed = 1879;
     }
-#endif
+
 #if DEBUG_PRINT_OUT_SEED_VALUE
     std::wstringstream wstr;
     static UINT frameIndex = 0;
@@ -637,6 +661,8 @@ void RTAO::OnUpdate()
         m_CB->RTAO_maxShadowRayHitTime = t * RTAO_Args::RTAOMaxRayHitTime;
         m_CB->RTAO_maxTheoreticalShadowRayHitTime = RTAO_Args::RTAOMaxRayHitTime;
     }
+
+    m_CB.CopyStagingToGpu(frameIndex);
 }
 
 void RTAO::Run(
@@ -649,17 +675,16 @@ void RTAO::Run(
     auto commandList = m_deviceResources->GetCommandList();
     auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-               
-    // Copy dynamic buffers to GPU.
-    {
-        // ToDo copy on change
-        m_CB.CopyStagingToGpu(frameIndex);
-        m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
-    }
 
     ScopedTimer _prof(L"CalculateAmbientOcclusion_Root", commandList);
 
-    // Transition AO resources to UAV state.        // ToDo check all comments
+    // Copy dynamic buffers to GPU.
+    {
+        UpdateConstantBuffer(frameIndex);
+        m_hemisphereSamplesGPUBuffer.CopyStagingToGpu(frameIndex);
+    }
+
+    // Transition AO resources to UAV state.    
     {
         // ToDo remove the if-else
         if (RTAO_Args::RTAOUseRaySorting)
@@ -679,28 +704,25 @@ void RTAO::Run(
             resourceStateTracker->TransitionResource(&m_AOResources[AOResource::RayHitDistance], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
     }
-
     commandList->SetComputeRootSignature(m_raytracingGlobalRootSignature.Get());
 
-
     // Bind inputs.
-    commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::RayOriginPosition, rayOriginSurfaceHitPositionResource);
-    commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::RayOriginSurfaceNormalDepth, rayOriginSurfaceNormalDepthResource);
-    commandList->SetComputeRootShaderResourceView(RTAOGlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
-    commandList->SetComputeRootConstantBufferView(RTAOGlobalRootSignature::Slot::ConstantBuffer, m_CB.GpuVirtualAddress(frameIndex));
-    commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
-    commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedoResource);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::RayOriginPosition, rayOriginSurfaceHitPositionResource);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::RayOriginSurfaceNormalDepth, rayOriginSurfaceNormalDepthResource);
+    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
+    commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::ConstantBuffer, m_CB.GpuVirtualAddress(frameIndex));
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedoResource);
 
 
     // Bind output RT.
     // ToDo remove output and rename AOout
     // ToDo use [enum] instead of [0]
-    commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOResourcesOut, m_AOResources[0].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AORayHitDistance, m_AOResources[AOResource::RayHitDistance].gpuDescriptorWriteAccess);
-    commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AORayDirectionOriginDepthHitUAV, m_AORayDirectionOriginDepth.gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOResourcesOut, m_AOResources[0].gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AORayHitDistance, m_AOResources[AOResource::RayHitDistance].gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AORayDirectionOriginDepthHitUAV, m_AORayDirectionOriginDepth.gpuDescriptorWriteAccess);
 
     // Bind the heaps, acceleration structure and dispatch rays. 
-    commandList->SetComputeRootShaderResourceView(RTAOGlobalRootSignature::Slot::AccelerationStructure, accelerationStructure);
+    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, accelerationStructure);
 
 #if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
     dispatchRayTime.BeginFrame(commandList);
@@ -788,25 +810,24 @@ void RTAO::Run(
 
             // Bind inputs.
             // ToDo use [enum] instead of [0]
-            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::RayOriginPosition, rayOriginSurfaceHitPositionResource);
-            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::RayOriginSurfaceNormalDepth, rayOriginSurfaceNormalDepthResource);
-            commandList->SetComputeRootShaderResourceView(RTAOGlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
-            commandList->SetComputeRootConstantBufferView(RTAOGlobalRootSignature::Slot::ConstantBuffer, m_CB.GpuVirtualAddress(frameIndex));   // ToDo let AO have its own CB.
-            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::FilterWeightSum, m_AOResources[AOResource::FilterWeightSum].gpuDescriptorReadAccess);
-            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedoResource);
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::RayOriginPosition, rayOriginSurfaceHitPositionResource);
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::RayOriginSurfaceNormalDepth, rayOriginSurfaceNormalDepthResource);
+            commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
+            commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::ConstantBuffer, m_CB.GpuVirtualAddress(frameIndex));   // ToDo let AO have its own CB.
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedoResource);
 
             // ToDo remove
-            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AORayDirectionOriginDepthHitSRV, m_AORayDirectionOriginDepth.gpuDescriptorReadAccess);
-            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOSortedToSourceRayIndex, m_sortedToSourceRayIndexOffset.gpuDescriptorReadAccess);
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AORayDirectionOriginDepthHitSRV, m_AORayDirectionOriginDepth.gpuDescriptorReadAccess);
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOSortedToSourceRayIndex, m_sortedToSourceRayIndexOffset.gpuDescriptorReadAccess);
 
             // Bind output RT.
             // ToDo remove output and rename AOout
-            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AOResourcesOut, m_AOResources[0].gpuDescriptorWriteAccess);
-            commandList->SetComputeRootDescriptorTable(RTAOGlobalRootSignature::Slot::AORayHitDistance, m_AOResources[AOResource::RayHitDistance].gpuDescriptorWriteAccess);
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOResourcesOut, m_AOResources[0].gpuDescriptorWriteAccess);
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AORayHitDistance, m_AOResources[AOResource::RayHitDistance].gpuDescriptorWriteAccess);
 
             // Bind the heaps, acceleration structure and dispatch rays. 
             // ToDo dedupe calls
-            commandList->SetComputeRootShaderResourceView(RTAOGlobalRootSignature::Slot::AccelerationStructure, accelerationStructure);
+            commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, accelerationStructure);
 
 #if RTAO_RAY_SORT_1DRAYTRACE
             UINT NumRays = activeRaytracingWidth * m_raytracingHeight;
@@ -851,7 +872,6 @@ void RTAO::CalculateRayHitCount()
 void RTAO::CreateResolutionDependentResources()
 {
     auto device = m_deviceResources->GetD3DDevice();
-    auto commandQueue = m_deviceResources->GetCommandQueue();
     auto FrameCount = m_deviceResources->GetBackBufferCount();
 
     CreateTextureResources();
@@ -862,7 +882,6 @@ void RTAO::CreateResolutionDependentResources()
         m_raytracingWidth,
         m_raytracingHeight);
 }
-
 
 void RTAO::SetResolution(UINT width, UINT height)
 {

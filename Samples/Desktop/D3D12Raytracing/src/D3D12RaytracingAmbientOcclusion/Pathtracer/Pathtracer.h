@@ -91,7 +91,7 @@ private:
 
     // Root signatures
     ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
-    ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature[LocalRootSignature::Type::Count];
+    ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
 
     // Raytracing resources.
     ConstantBuffer<PathtracerConstantBuffer> m_CB;

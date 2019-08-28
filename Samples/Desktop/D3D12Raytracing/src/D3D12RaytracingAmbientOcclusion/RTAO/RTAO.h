@@ -35,23 +35,32 @@ namespace RTAO_Args
 {
     extern BoolVar QuarterResAO;
 }
+
+namespace RTAOResourceFormats {
+    enum Enum {
+        AOCoefficient = 0,
+        RayHitDistance
+    };
+    DXGI_FORMAT Get(Enum resource);
+}
     
 class RTAO
 {
 public:
     // Ctors.
     RTAO();
+    ~RTAO();
 
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, Scene& scene);
     void OnUpdate();
     void Run(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource);
     void ReleaseDeviceDependentResources();
-    void ReleaseWindowSizeDependentResources() {}; // ToDo
+    void ReleaseWindowSizeDependentResources(); // ToDo
+    void Release();
 
     // Getters & Setters.
     GpuResource(&AOResources())[AOResource::Count]{ return m_AOResources; }
-    static DXGI_FORMAT AOCoefficientFormat();
     float MaxRayHitTime();
     void SetMaxRayHitTime(float maxRayHitTime); 
     void SetResolution(UINT width, UINT height);
@@ -62,6 +71,7 @@ public:
     void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
 private:
+    void UpdateConstantBuffer(UINT frameIndex);
     void CreateDeviceDependentResources(Scene& scene);
     void CreateConstantBuffers();
     void CreateAuxilaryDeviceResources();

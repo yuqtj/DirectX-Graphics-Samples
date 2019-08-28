@@ -104,110 +104,6 @@ namespace DownsampleFilter {
 	};
 }
 
-namespace GlobalRootSignature {
-    namespace Slot {
-        enum Enum {
-            Output = 0,
-			GBufferResources,
-			GBufferResourcesIn,
-			AOResourcesOut,	// ToDo cleanup, move to local root sigs 
-			VisibilityResource,	// ToDo cleanup, move to local root sigs 
-            AccelerationStructure,
-            SceneConstant,
-			MaterialBuffer,
-            SampleBuffers,
-            EnvironmentMap,
-            FilterWeightSum,
-            GBufferDepth,   // ToDo move to the above slot for GBufferResources ?
-            GbufferNormalRGB,
-            AORayHitDistance,
-            AOFrameAge,
-            AORayDirectionOriginDepthHitSRV,
-            Debug,
-            Debug2,
-            AOSourceToSortedRayIndex,
-#if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
-            PartialDepthDerivatives,
-#endif
-            PrevFrameBottomLevelASIstanceTransforms,
-            MotionVector,
-            ReprojectedNormalDepth,
-            Color,
-            AOSurfaceAlbedo,
-            Count
-        };
-    }
-}
-
-// ToDo move to RTAO specific defines
-namespace RTAOGlobalRootSignature {
-    namespace Slot {
-        enum Enum {
-            AccelerationStructure = 0,
-            RayOriginPosition,
-            RayOriginSurfaceNormalDepth,
-            AOResourcesOut,
-            AORayHitDistance,
-            AORayDirectionOriginDepthHitSRV,
-            AORayDirectionOriginDepthHitUAV,
-            FilterWeightSum,
-            AOFrameAge,
-            AOSortedToSourceRayIndex,
-            AOSurfaceAlbedo,
-            ConstantBuffer,
-            SampleBuffers,
-            Count
-        };
-    }
-}
-
-
-namespace LocalRootSignature {
-    namespace Type {
-        enum Enum {
-            Triangle = 0,
-            AABB,
-            Count
-        };
-    }
-}
-
-namespace LocalRootSignature {
-    namespace Triangle {
-        namespace Slot {
-            enum Enum {
-                ConstantBuffer = 0,
-                IndexBuffer,
-                VertexBuffer,
-                PreviousFrameVertexBuffer,
-                DiffuseTexture,
-                NormalTexture,
-                Count
-            };
-        }
-        struct RootArguments {
-            PrimitiveConstantBuffer cb;
-            // ToDo add align specifier
-            // Bind each resource via a descriptor.
-            // This design was picked for simplicity, but one could optimize for shader record size by:
-            //    1) Binding multiple descriptors via a range descriptor instead.
-            //    2) Storing 4 Byte indices (instead of 8 Byte descriptors) to a global pool resources.
-            D3D12_GPU_DESCRIPTOR_HANDLE indexBufferGPUHandle;
-            D3D12_GPU_DESCRIPTOR_HANDLE vertexBufferGPUHandle;
-            D3D12_GPU_DESCRIPTOR_HANDLE previousFrameVertexBufferGPUHandle;
-            D3D12_GPU_DESCRIPTOR_HANDLE diffuseTextureGPUHandle;
-            D3D12_GPU_DESCRIPTOR_HANDLE normalTextureGPUHandle;
-        };
-    }
-}
-
-namespace LocalRootSignature {
-    inline UINT MaxRootArgumentsSize()
-    {
-        return sizeof(Triangle::RootArguments);
-    }
-}
-
 namespace GeometryType {
     enum Enum {
         Plane = 0,
@@ -242,7 +138,6 @@ namespace AOResource {
 		HitCount,
         Smoothed,
         RayHitDistance,
-        FilterWeightSum,
 		Count
 	};
 }

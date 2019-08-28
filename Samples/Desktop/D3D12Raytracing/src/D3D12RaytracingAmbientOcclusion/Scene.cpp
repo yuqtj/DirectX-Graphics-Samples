@@ -45,10 +45,6 @@ namespace Scene_Args
 
     NumVar DebugVar(L"Render/Debug var", -20, -90, 90, 0.5f);
 }
-       
-Scene::Scene()
-{
-}
 
 void Scene::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap)
 {
@@ -62,27 +58,17 @@ void Scene::ReleaseDeviceDependentResources()
 {
 }
 
-// Create resources that depend on the device.
 void Scene::CreateDeviceDependentResources()
 {
     auto device = m_deviceResources->GetD3DDevice();
 
     CreateAuxilaryDeviceResources();
 
-    // ToDo move
-    m_geometryTransforms.Create(device, MaxGeometryTransforms, Sample::FrameCount, L"Structured buffer: Geometry desc transforms");
-
-    // Build geometry to be used in the sample.
     InitializeGeometry();
-
-    // Build raytracing acceleration structures from the generated geometry.
-    m_isASinitializationRequested = true;
-
     InitializeAccelerationStructures();
 
     m_prevFrameBottomLevelASInstanceTransforms.Create(device, MaxNumBottomLevelInstances, Sample::FrameCount, L"GPU buffer: Bottom Level AS Instance transforms for previous frame");
 }
-
 
 // ToDo rename
 void Scene::CreateAuxilaryDeviceResources()
@@ -96,7 +82,6 @@ void Scene::CreateAuxilaryDeviceResources()
 
     m_grassGeometryGenerator.Initialize(device, L"Assets\\wind\\wind2.jpg", m_cbvSrvUavHeap.get(), &resourceUpload, Sample::FrameCount, UIParameters::NumGrassGeometryLODs);
    
-
     // Upload the resources to the GPU.
     auto finish = resourceUpload.End(commandQueue);
 
@@ -132,7 +117,6 @@ void Scene::OnUpdate()
         // if (CameraChanged)
         //m_bClearTemporalSupersampling = true;
     }
-
 
     if (m_animateScene)
     {
@@ -332,13 +316,11 @@ void Scene::LoadPBRTScene()
             for (auto& parseVertex : mesh.m_VertexBuffer)
             {
                 VertexPositionNormalTextureTangent vertex;
-#if PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES
+
+                // Apply the initial transform to VB attributes.
                 XMStoreFloat3(&vertex.normal, XMVector3TransformNormal(parseVertex.Normal.GetXMVECTOR(), mesh.m_transform));
                 XMStoreFloat3(&vertex.position, XMVector3TransformCoord(parseVertex.Position.GetXMVECTOR(), mesh.m_transform));
-#else
-                vertex.normal = parseVertex.Normal.xmFloat3;
-                vertex.position = parseVertex.Position.xmFloat3;
-#endif
+
                 vertex.tangent = parseVertex.Tangent.xmFloat3;
                 vertex.textureCoordinate = parseVertex.UV.xmFloat2;
                 vertexBuffer.push_back(vertex);
@@ -360,7 +342,6 @@ void Scene::LoadPBRTScene()
             cb.hasNormalTexture = !mesh.m_pMaterial->m_NormalMapTextureFilename.empty();
             cb.hasPerVertexTangents = true;
             cb.type = mesh.m_pMaterial->m_Type;
-
 
             auto LoadPBRTTexture = [&](auto** ppOutTexture, auto& textureFilename)
             {
@@ -411,10 +392,6 @@ void Scene::LoadPBRTScene()
             }
 
             bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, diffuseTexture->gpuDescriptorHandle, normalTexture->gpuDescriptorHandle, geometryFlags, isVertexAnimated));
-#if !PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES
-            XMStoreFloat3x4(reinterpret_cast<XMFLOAT3X4*>(m_geometryTransforms[i].transform3x4), mesh.m_transform);
-            geometryInstances.back().transform = m_geometryTransforms.GpuVirtualAddress(0, i);
-#endif
             numTriangles += desc.ib.count / 3;
         }
     }
@@ -521,7 +498,6 @@ void Scene::BuildPlaneGeometry()
     ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
 
     ThrowIfFalse(0 && L"ToDo: fix up null VB SRV");
-
 
     PrimitiveMaterialBuffer planeMaterialCB;
     planeMaterialCB.Kd = XMFLOAT3(0.24f, 0.4f, 0.4f);

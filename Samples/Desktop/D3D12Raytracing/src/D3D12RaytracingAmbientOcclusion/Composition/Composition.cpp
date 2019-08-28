@@ -68,9 +68,6 @@ namespace Composition_Args
     BoolVar AOEnabled(L"Render/AO/Enabled", true);
 }
 
-Composition::Composition()
-{
-}
 
 void Composition::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap)
 {
@@ -92,7 +89,6 @@ void Composition::CreateDeviceDependentResources()
 
     // ToDo move/rename
     CreateComposeRenderPassesCSResources();
-
 }
 
 
@@ -118,15 +114,23 @@ void Composition::CreateResolutionDependentResources()
 
 void Composition::SetResolution(UINT width, UINT height)
 {
+    m_width = width;
+    m_height = height;
+
+    CreateResolutionDependentResources();
 }
-
-
 
 void Composition::CreateTextureResources()
 {
+    auto device = m_deviceResources->GetD3DDevice();
+    D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+
+    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledAOValueResource, initialResourceState, L"Upsampled AO value");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledTrppResource, initialResourceState, L"Upsampled Trpp");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledAORayHitDistanceResource, initialResourceState, L"Upsampled AO Ray Hit Distance");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledVarianceResource, initialResourceState, L"Upsampled Variance");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledLocalMeanVarianceResource, initialResourceState, L"Upsampled Local Mean Variance");
 }
-
-
 
 void Composition::CreateComposeRenderPassesCSResources()
 {

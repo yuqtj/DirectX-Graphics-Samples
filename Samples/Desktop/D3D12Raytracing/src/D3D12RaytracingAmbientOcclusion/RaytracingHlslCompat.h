@@ -91,6 +91,11 @@ Optimization
     - Tearing with VSync on at 4K full res.
 - Cleanup:
     - ToDo remove .f specifier from floating numbers in hlsl
+    - ToDo clean up scoped timer names.
+    - Add/revise comments
+    - Add UAV barrier to SRV - UAV transitions. Remove post D3D barriers.
+    - Move global defines in RaytracingSceneDefines.h locally for RTAO and Denoiser.
+    - Add dtors/release . Wait on GPU?
 
 - Sample generic
     - Add device removal support
@@ -123,7 +128,6 @@ Optimization
 #define EXACT_DDXY_ON_QUARTER_RES_USING_DOWNSAMPLED_PIXEL_OFFSETS 0 
 
 #define MOVE_ONCE_ON_STRAFE 1
-#define PBRT_APPLY_INITIAL_TRANSFORM_TO_VB_ATTRIBUTES 1
 
 
 #define RTAO_MARK_CACHED_VALUES_NEGATIVE 1

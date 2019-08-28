@@ -32,7 +32,8 @@ class Scene
 {
 public:
     // Ctors.
-    Scene();
+    Scene() {}
+    ~Scene() {} // ToDo
 
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
@@ -53,10 +54,7 @@ public:
     D3DTexture& EnvironmentMap() { return m_environmentMap; }
     StructuredBuffer<PrimitiveMaterialBuffer>& MaterialBuffer() { return m_materialBuffer; }
     StructuredBuffer<XMFLOAT3X4>& PrevFrameBottomLevelASInstanceTransforms() { return m_prevFrameBottomLevelASInstanceTransforms; }
-
-    void RequestGeometryInitialization(bool bRequest) { m_isGeometryInitializationRequested = bRequest; }
-    void RequestASInitialization(bool bRequest) { m_isASinitializationRequested = bRequest; }
-
+    
     void ToggleAnimateLight() { m_animateLight = !m_animateLight; }
     void ToggleAnimateCamera() { m_animateCamera = !m_animateCamera; }
 private:
@@ -94,11 +92,7 @@ private:
     GameCore::Camera m_prevFrameCamera;
     float m_manualCameraRotationAngle = 0; // ToDo remove
     std::unique_ptr<GameCore::CameraController> m_cameraController;
-
-    // ToDo remove?
-    bool m_isGeometryInitializationRequested = false;
-    bool m_isASinitializationRequested = false;
-
+    
     // Geometry.
     UINT m_numTriangles;
     UINT m_numInstancedTriangles;
@@ -121,9 +115,11 @@ private:
     std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
     GpuResource m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
 
-    StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.
     const UINT MaxNumBottomLevelInstances = 10100;           // ToDo tighten this to only what needed or add support a copy of whats used from StructuredBuffers to GPU.
 
+
+    // Motion Vector resources.
+    StructuredBuffer<XMFLOAT3X4> m_prevFrameBottomLevelASInstanceTransforms;        // Bottom-Level AS Instance transforms used for previous frame. Used for Temporal Reprojection.
 
     // ToDo remove?
     // ToDo clean up buffer management
@@ -143,9 +139,8 @@ private:
     };
 
     // Materials & textures.
-    std::vector<PrimitiveMaterialBuffer> m_materials;	// ToDO dedupe mats - hash materials
+    std::vector<PrimitiveMaterialBuffer> m_materials;
     StructuredBuffer<PrimitiveMaterialBuffer> m_materialBuffer;
-    StructuredBuffer<AlignedGeometryTransform3x4> m_geometryTransforms;
     D3DTexture m_environmentMap;
     D3DTexture m_nullTexture;
 

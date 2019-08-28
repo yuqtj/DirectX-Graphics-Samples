@@ -30,7 +30,6 @@ using namespace GameCore;
 
 namespace Sample_Args
 {
-
     //**********************************************************************************************************************************
     // Ambient Occlusion
     // TODo standardize naming in options
@@ -66,17 +65,7 @@ namespace Sample
     {
         g_pSample->RequestRecreateRaytracingResources();
     }
-
-    /*
-RTAO - Titan XP 1440p Quarter Res
-- Min kernel width 20
-- Depth Sigma 0.5, Cutoff 0.9
-- Low tspp 8 frames, decay 0.6, 4 blurs
-- 1/2 spp
-
-*/
-
-
+    
 
     D3D12RaytracingAmbientOcclusion::D3D12RaytracingAmbientOcclusion(UINT width, UINT height, wstring name) :
         DXSample(width, height, name),
@@ -234,12 +223,10 @@ RTAO - Titan XP 1440p Quarter Res
     {
         auto device = m_deviceResources->GetD3DDevice();
 
-        // Create a heap for descriptors.
         CreateDescriptorHeaps();
-
         CreateAuxilaryDeviceResources();
-
-
+        CreateDebugResources();
+        
         m_scene.Setup(m_deviceResources, m_cbvSrvUavHeap);
         m_pathtracer.Setup(m_deviceResources, m_cbvSrvUavHeap, m_scene);
         // ToDo add a note the RTAO setup has to be called after pathtracer built its shader tables and updated instanceContributionToHitGroupIndices.
@@ -252,6 +239,7 @@ RTAO - Titan XP 1440p Quarter Res
     }
 
 
+    // ToDo rename fnc and resources as its not just RTAO its the final composite.
     // Create a 2D output texture for raytracing.
     void D3D12RaytracingAmbientOcclusion::CreateRaytracingOutputResource()
     {
@@ -277,58 +265,19 @@ RTAO - Titan XP 1440p Quarter Res
     UINT texFormatByteSize = 4;
 #endif
 
-    void D3D12RaytracingAmbientOcclusion::CreateGBufferResources()
+    // ToDo remove
+    void D3D12RaytracingAmbientOcclusion::CreateDebugResources()
     {
         auto device = m_deviceResources->GetD3DDevice();
         auto backbufferFormat = m_deviceResources->GetBackBufferFormat();
 
-        // ToDo move depth out of normal resource and switch normal to 16bit precision
-        DXGI_FORMAT hitPositionFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;// DXGI_FORMAT_R16G16B16A16_FLOAT; // ToDo change to 16bit? or encode as 64bits
-
-        DXGI_FORMAT debugFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;// DXGI_FORMAT_R32G32B32A32_FLOAT;
-        // ToDo tune formats
-        D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-
+        DXGI_FORMAT debugFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
 
 #if ENABLE_SSAO
         // ToDo
         m_SSAO.BindGBufferResources(Pathtracer::GBufferResources()[GBufferResource::SurfaceNormalDepth].GetResource(), Pathtracer::GBufferResources()[GBufferResource::Depth].GetResource());
 #endif
-
-        // ToDo remove unneeded ones
-        // Full-res AO resources.
-        {
-            // Preallocate subsequent descriptor indices for both SRV and UAV groups.
-            m_AOResources[0].uavDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count);
-            m_AOResources[0].srvDescriptorHeapIndex = m_cbvSrvUavHeap->AllocateDescriptorIndices(AOResource::Count);
-            for (UINT i = 0; i < AOResource::Count; i++)
-            {
-                m_AOResources[i].uavDescriptorHeapIndex = m_AOResources[0].uavDescriptorHeapIndex + i;
-                m_AOResources[i].srvDescriptorHeapIndex = m_AOResources[0].srvDescriptorHeapIndex + i;
-            }
-
-            // ToDo pack some resources.
-
-            // ToDo cleanup raytracing resolution - twice for coefficient.
-            CreateRenderTargetResource(device, m_RTAO.AOCoefficientFormat(), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"Render/AO Coefficient");
-
-#if ATROUS_DENOISER
-            CreateRenderTargetResource(device, m_RTAO.AOCoefficientFormat(), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Smoothed");
-#else
-            CreateRenderTargetResource(device, m_RTAO.AOCoefficientFormat(), m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Smoothed");
-#endif
-            // ToDo 8 bit hit count?
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"Render/AO Hit Count");
-
-            // ToDo use lower bit float?
-            CreateRenderTargetResource(device, DXGI_FORMAT_R32_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::FilterWeightSum], initialResourceState, L"Render/AO Filter Weight Sum");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
-        }
-
-        // ToDo remove unnecessary copies for 2 resolutions. Only keep one where possible and recreate on change.
-        // ToDo pass formats via params shared across AO, GBuffer, TC
-
-
+        
         // Debug resources
         {
             // Preallocate subsequent descriptor indices for both SRV and UAV groups.
@@ -341,7 +290,6 @@ RTAO - Titan XP 1440p Quarter Res
                 CreateRenderTargetResource(device, debugFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &g_debugOutput[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Debug");
             }
         }
-
     }
 
     void D3D12RaytracingAmbientOcclusion::CreateAuxilaryDeviceResources()
@@ -364,7 +312,7 @@ RTAO - Titan XP 1440p Quarter Res
 
         // ToDo use exact number?
         // 2 * GeometryType::Count + 1 + 2 * MaxBLAS + 1 + ARRAYSIZE(SquidRoomAssets::Draws) * 2 + ARRAYSIZE(SquidRoomAssets::Textures) + 1;
-        // Allocate large number of descriptors.
+        // Allocate large enough number of descriptors.
         UINT NumDescriptors = 10000;
         m_cbvSrvUavHeap = make_shared<DX::DescriptorHeap>(device, NumDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
@@ -375,8 +323,7 @@ RTAO - Titan XP 1440p Quarter Res
             m_samplerHeap = make_unique<DX::DescriptorHeap>(device, NumDescriptors, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
         }
     }
-
-
+    
     void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
     {
         float fValue;
@@ -725,10 +672,6 @@ RTAO - Titan XP 1440p Quarter Res
         UINT GBufferWidth, GBufferHeight;
         switch (Composition_Args::AntialiasingMode)
         {
-        case DownsampleFilter::None:
-            GBufferWidth = m_width;
-            GBufferHeight = m_height;
-            break;
         case DownsampleFilter::BoxFilter2x2:
             GBufferWidth = c_SupersamplingScale * m_width;
             GBufferHeight = c_SupersamplingScale * m_height;
@@ -737,6 +680,11 @@ RTAO - Titan XP 1440p Quarter Res
         case DownsampleFilter::GaussianFilter25Tap:
             GBufferWidth = c_SupersamplingScale * m_width;
             GBufferHeight = c_SupersamplingScale * m_height;
+            break;
+        case DownsampleFilter::None:
+        default:
+            GBufferWidth = m_width;
+            GBufferHeight = m_height;
             break;
         }
 
@@ -755,11 +703,9 @@ RTAO - Titan XP 1440p Quarter Res
         m_pathtracer.SetResolution(GBufferWidth, GBufferHeight, m_raytracingWidth, m_raytracingHeight);
         m_RTAO.SetResolution(m_raytracingWidth, m_raytracingHeight);
         m_denoiser.SetResolution(m_raytracingWidth, m_raytracingHeight);
+        m_composition.SetResolution(GBufferWidth, GBufferHeight);
 
-        // Create an output 2D texture to store the raytracing result to.
         CreateRaytracingOutputResource();
-
-        CreateGBufferResources();
 
 
 #if ENABLE_SSAO

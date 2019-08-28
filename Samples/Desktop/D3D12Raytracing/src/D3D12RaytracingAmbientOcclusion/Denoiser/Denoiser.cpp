@@ -210,6 +210,7 @@ void Denoiser::CreateResolutionDependentResources()
     auto device = m_deviceResources->GetD3DDevice();
 
     m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_width, m_height, RTAO::AOCoefficientFormat());
+    CreateTextureResources();
 }
 
 
@@ -217,6 +218,8 @@ void Denoiser::SetResolution(UINT width, UINT height)
 {
     m_width = width;
     m_height = height;
+
+    CreateResolutionDependentResources();
 }
     
 

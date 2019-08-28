@@ -46,7 +46,6 @@ Texture2D<float4> g_texAOSurfaceAlbedo : register(t24);
 
 
 // ToDo remove ? 
-Texture2D<float> g_filterWeightSum : register(t13);
 Texture2D<uint> g_texInputAOFrameAge : register(t14);
 
 // ToDo remove AOcoefficient and use AO hits instead?
