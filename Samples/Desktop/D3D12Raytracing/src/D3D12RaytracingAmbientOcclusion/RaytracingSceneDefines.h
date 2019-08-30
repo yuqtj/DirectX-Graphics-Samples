@@ -136,7 +136,7 @@ namespace AOResource {
 	enum Enum {
 		Coefficient = 0,
 		HitCount,
-        Smoothed,
+        Smoothed,   // ToDo remove
         RayHitDistance,
 		Count
 	};

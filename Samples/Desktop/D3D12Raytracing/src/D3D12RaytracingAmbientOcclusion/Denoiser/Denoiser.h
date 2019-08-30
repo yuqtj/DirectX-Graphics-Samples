@@ -33,23 +33,28 @@ namespace Denoiser_Args
 class Denoiser
 {
 public:
+    enum class ResourceType {
+        Variance = 0,
+        LocalMeanVariance
+    };
+
     enum DenoiseStage {
         Denoise_Stage1_TemporalReverseReproject = 0x1 << 0,
         Denoise_Stage2_Denoise = 0x1 << 1,
         Denoise_StageAll = Denoise_Stage1_TemporalReverseReproject | Denoise_Stage2_Denoise
     };
     // Ctors.
-    Denoiser();
+    Denoiser() {}
+    ~Denoiser() {} // ToDo
 
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
     void Run(Scene& scene, Pathtracer& pathtracer, RTAO& rtao, DenoiseStage stage = Denoise_StageAll);
-
-    void ReleaseDeviceDependentResources();
-    void ReleaseWindowSizeDependentResources() {}; // ToDo
+    void SetResolution(UINT width, UINT height);
+    void Release();
         
     // Getters/Setters.
-    void SetResolution(UINT width, UINT height);
+    static DXGI_FORMAT ResourceFormat(ResourceType resourceType);
 
 private:
     void TemporalReverseReproject(Scene& scene, Pathtracer& pathtracer);
@@ -62,15 +67,13 @@ private:
     void CreateTextureResources();
     void ApplyAtrousWaveletTransformFilter(Pathtracer& pathtracer, RTAO& rtao, bool isFirstPass);
     void ApplyAtrousWaveletTransformFilter(const  GpuResource& inValueResource, const  GpuResource& inNormalDepthResource, const  GpuResource& inDepthResource, const  GpuResource& inRayHitDistanceResource, const  GpuResource& inPartialDistanceDerivativesResource, GpuResource* outSmoothedValueResource, GpuResource* varianceResource, GpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
-
-
     void CreateResolutionDependentResources();
 
     std::shared_ptr<DX::DeviceResources> m_deviceResources;
     std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 
-    UINT m_width;
-    UINT m_height;
+    UINT m_denoisingWidth = 0;
+    UINT m_denoisingHeight = 0;
 
     // ToDo dedupe resources. Does dpeth need to have 2 instances?   
     GpuResource m_temporalCache[2][TemporalSupersampling::Count]; // ~array[Read/Write ping pong resource][Resources].

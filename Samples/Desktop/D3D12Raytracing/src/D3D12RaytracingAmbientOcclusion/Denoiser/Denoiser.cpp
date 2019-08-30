@@ -140,8 +140,16 @@ namespace Denoiser_Args
     NumVar AODenoiseNormalSigma(L"Render/AO/RTAO/Denoising_/Normal Sigma", 64, 0, 256, 4);   // ToDo rename sigma as sigma in depth/var means tolernace. here its an exponent.
 }
 
-Denoiser::Denoiser()
+
+DXGI_FORMAT Denoiser::ResourceFormat(ResourceType resourceType)
 {
+    switch (resourceType)
+    {
+    case ResourceType::Variance: return DXGI_FORMAT_R16_FLOAT;
+    case ResourceType::LocalMeanVariance: return DXGI_FORMAT_R16G16_FLOAT;
+    }
+
+    return DXGI_FORMAT_UNKNOWN;
 }
 
 void Denoiser::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex)
@@ -152,8 +160,9 @@ void Denoiser::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX:
     CreateDeviceDependentResources(maxInstanceContributionToHitGroupIndex);
 }
 
-void Denoiser::ReleaseDeviceDependentResources()
+void Denoiser::Release()
 {
+    // ToDo
 }
 
 // Create resources that depend on the device.
@@ -209,15 +218,15 @@ void Denoiser::CreateResolutionDependentResources()
 {
     auto device = m_deviceResources->GetD3DDevice();
 
-    m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_width, m_height, RTAO::AOCoefficientFormat());
+    m_atrousWaveletTransformFilter.CreateInputResourceSizeDependentResources(device, m_cbvSrvUavHeap.get(), m_denoisingWidth, m_denoisingHeight, RTAO::ResourceFormat(RTAO::ResourceType::AOCoefficient));
     CreateTextureResources();
 }
 
 
 void Denoiser::SetResolution(UINT width, UINT height)
 {
-    m_width = width;
-    m_height = height;
+    m_denoisingWidth = width;
+    m_denoisingHeight = height;
 
     CreateResolutionDependentResources();
 }
@@ -242,42 +251,37 @@ void Denoiser::CreateTextureResources()
             }
 
             // ToDo cleanup raytracing resolution - twice for coefficient.
-            CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::FrameAge], initialResourceState, L"Temporal Cache: Frame Age");
-            CreateRenderTargetResource(device, RTAO::AOCoefficientFormat(), m_width, m_height, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::CoefficientSquaredMean], initialResourceState, L"Temporal Cache: Coefficient Squared Mean");
-            CreateRenderTargetResource(device, DXGI_FORMAT_R16_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::RayHitDistance], initialResourceState, L"Temporal Cache: Ray Hit Distance");
-
-            CreateRenderTargetResource(device, RTAO::AOCoefficientFormat(), m_width, m_height, m_cbvSrvUavHeap.get(), &m_temporalAOCoefficient[i], initialResourceState, L"Render/AO Temporally Supersampled Coefficient");
+            // ToDo cleanup frame age format
+            CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::FrameAge], initialResourceState, L"Temporal Cache: Frame Age");
+            CreateRenderTargetResource(device, RTAO::ResourceFormat(RTAO::ResourceType::AOCoefficient), m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::CoefficientSquaredMean], initialResourceState, L"Temporal Cache: Coefficient Squared Mean");
+            CreateRenderTargetResource(device, RTAO::ResourceFormat(RTAO::ResourceType::RayHitDistance), m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_temporalCache[i][TemporalSupersampling::RayHitDistance], initialResourceState, L"Temporal Cache: Ray Hit Distance");
+            CreateRenderTargetResource(device, RTAO::ResourceFormat(RTAO::ResourceType::AOCoefficient), m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_temporalAOCoefficient[i], initialResourceState, L"Render/AO Temporally Supersampled Coefficient");
         }
     }
 
     for (UINT i = 0; i < 2; i++)
     {
-        CreateRenderTargetResource(device, RTAO::AOCoefficientFormat(), m_width, m_height, m_cbvSrvUavHeap.get(), &m_temporalSupersampling_blendedAOCoefficient[i], initialResourceState, L"Temporal Supersampling: AO coefficient current frame blended with the cache.");
+        CreateRenderTargetResource(device, RTAO::ResourceFormat(RTAO::ResourceType::AOCoefficient), m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_temporalSupersampling_blendedAOCoefficient[i], initialResourceState, L"Temporal Supersampling: AO coefficient current frame blended with the cache.");
     }
-    CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_UINT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_cachedFrameAgeValueSquaredValueRayHitDistance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Temporal Supersampling intermediate reprojected Frame Age, Value, Squared Mean Value, Ray Hit Distance");
-
-
-
+    CreateRenderTargetResource(device, DXGI_FORMAT_R16G16B16A16_UINT, m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_cachedFrameAgeValueSquaredValueRayHitDistance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Temporal Supersampling intermediate reprojected Frame Age, Value, Squared Mean Value, Ray Hit Distance");
 
     // Variance resources
-    DXGI_FORMAT varianceTexFormat = RTAO::AOCoefficientFormat();       // ToDo 8 bit suffers from loss of precision and clamps too much.
     {
-        DXGI_FORMAT meanVarianceTexFormat = DXGI_FORMAT_R16G16_FLOAT;       // ToDo 8 bit suffers from loss of precision and clamps too much.
 
         // ToDo specialize formats instead of using a common one?
         {
             for (UINT i = 0; i < AOVarianceResource::Count; i++)
             {
-                CreateRenderTargetResource(device, varianceTexFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_varianceResources[i], initialResourceState, L"Post Temporal Reprojection Variance");
-                CreateRenderTargetResource(device, meanVarianceTexFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_localMeanVarianceResources[i], initialResourceState, L"Local Mean Variance");
+                CreateRenderTargetResource(device, ResourceFormat(ResourceType::Variance), m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_varianceResources[i], initialResourceState, L"Post Temporal Reprojection Variance");
+                CreateRenderTargetResource(device, ResourceFormat(ResourceType::LocalMeanVariance), m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_localMeanVarianceResources[i], initialResourceState, L"Local Mean Variance");
             }
         }
     }
 
     // ToDo remove obsolete resources, QuarterResAO event triggers this so we may not need all low/gbuffer width AO resources.
-    CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_width, m_height, m_cbvSrvUavHeap.get(), &m_multiPassDenoisingBlurStrength, initialResourceState, L"Multi Pass Denoising Blur Strength");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R8_UNORM, m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_multiPassDenoisingBlurStrength, initialResourceState, L"Multi Pass Denoising Blur Strength");
        
-    CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_prevFrameGBufferNormalDepth, initialResourceState, L"Previous Frame GBuffer Normal Depth");
+    CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_denoisingWidth, m_denoisingHeight, m_cbvSrvUavHeap.get(), &m_prevFrameGBufferNormalDepth, initialResourceState, L"Previous Frame GBuffer Normal Depth");
 }
 
 
@@ -311,8 +315,8 @@ void Denoiser::TemporalReverseReproject(Scene& scene, Pathtracer& pathtracer)
     auto& camera = scene.Camera();
     auto& prevFrameCamera = scene.PrevFrameCamera();
     XMMATRIX view, proj, prevView, prevProj;
-    camera.GetProj(&proj, m_width, m_height);
-    prevFrameCamera.GetProj(&prevProj, m_width, m_height);
+    camera.GetProj(&proj, m_denoisingWidth, m_denoisingHeight);
+    prevFrameCamera.GetProj(&prevProj, m_denoisingWidth, m_denoisingHeight);
 
     // ToDO can we remove this or document.
     // Calculate view matrix as if the camera was at (0,0,0) to avoid 
@@ -338,8 +342,8 @@ void Denoiser::TemporalReverseReproject(Scene& scene, Pathtracer& pathtracer)
     resourceStateTracker->FlushResourceBarriers();
     m_temporalCacheReverseReprojectKernel.Run(
         commandList,
-        m_width,
-        m_height,
+        m_denoisingWidth,
+        m_denoisingHeight,
         m_cbvSrvUavHeap->GetHeap(),
         GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
         GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorReadAccess,
@@ -385,7 +389,7 @@ void Denoiser::TemporalReverseReproject(Scene& scene, Pathtracer& pathtracer)
             commandList,
             GBufferResources[GBufferResource::SurfaceNormalDepth].GetResource(),
             m_prevFrameGBufferNormalDepth.GetResource(),
-            &CD3DX12_BOX(0, 0, m_width, m_height),
+            &CD3DX12_BOX(0, 0, m_denoisingWidth, m_denoisingHeight),
             GBufferResources[GBufferResource::SurfaceNormalDepth].m_UsageState,
             m_prevFrameGBufferNormalDepth.m_UsageState);
     }
@@ -431,8 +435,8 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
         m_calculateMeanVarianceKernel.Run(
             commandList,
             m_cbvSrvUavHeap->GetHeap(),
-            m_width,
-            m_height,
+            m_denoisingWidth,
+            m_denoisingHeight,
             //GpuKernels::CalculateMeanVariance::FilterType::Separable_AnyToAnyWaveReadLaneAt,
             GpuKernels::CalculateMeanVariance::FilterType::Separable_CheckerboardSampling_AnyToAnyWaveReadLaneAt,
             AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
@@ -449,8 +453,8 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
             m_fillInCheckerboardKernel.Run(
                 commandList,
                 m_cbvSrvUavHeap->GetHeap(),
-                m_width,
-                m_height,
+                m_denoisingWidth,
+                m_denoisingHeight,
                 GpuKernels::FillInCheckerboard::FilterType::CrossBox4TapFilter,
                 // ToDo why is smoothed as input and RAW output?
                 m_localMeanVarianceResources[AOVarianceResource::Smoothed].gpuDescriptorReadAccess,
@@ -471,8 +475,8 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
             resourceStateTracker->FlushResourceBarriers();
             m_gaussianSmoothingKernel.Run(
                 commandList,
-                m_width,
-                m_height,
+                m_denoisingWidth,
+                m_denoisingHeight,
                 GpuKernels::GaussianFilter::Filter3x3RG,
                 m_cbvSrvUavHeap->GetHeap(),
                 m_localMeanVarianceResources[AOVarianceResource::Raw].gpuDescriptorReadAccess,
@@ -508,8 +512,8 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
     resourceStateTracker->FlushResourceBarriers();
     m_temporalCacheBlendWithCurrentFrameKernel.Run(
         commandList,
-        m_width,
-        m_height,
+        m_denoisingWidth,
+        m_denoisingHeight,
         m_cbvSrvUavHeap->GetHeap(),
         AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
 #if VARIABLE_RATE_RAYTRACING
@@ -564,8 +568,8 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
                 resourceStateTracker->FlushResourceBarriers();
                 m_gaussianSmoothingKernel.Run(
                     commandList,
-                    m_width,
-                    m_height,
+                    m_denoisingWidth,
+                    m_denoisingHeight,
                     GpuKernels::GaussianFilter::Filter3x3,
                     m_cbvSrvUavHeap->GetHeap(),
                     m_varianceResources[AOVarianceResource::Raw].gpuDescriptorReadAccess,
@@ -590,8 +594,8 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
                 m_fillInCheckerboardKernel.Run(
                     commandList,
                     m_cbvSrvUavHeap->GetHeap(),
-                    m_width,
-                    m_height,
+                    m_denoisingWidth,
+                    m_denoisingHeight,
                     GpuKernels::FillInCheckerboard::FilterType::CrossBox4TapFilter,
                     m_localMeanVarianceResources[AOVarianceResource::Smoothed].gpuDescriptorReadAccess,
                     TemporalOutCoefficient->gpuDescriptorWriteAccess,
@@ -608,8 +612,8 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
             resourceStateTracker->FlushResourceBarriers();
             m_fillInMissingValuesFilterKernel.Run(
                 commandList,
-                m_width,
-                m_height,
+                m_denoisingWidth,
+                m_denoisingHeight,
                 GpuKernels::FillInMissingValuesFilter::DepthAware_GaussianFilter7x7,
                 1,
                 isCheckerboardSamplingEnabled,
@@ -871,7 +875,7 @@ void Denoiser::ApplyAtrousWaveletTransformFilter(Pathtracer& pathtracer, RTAO& r
             Denoiser_Args::Denoising_UseAdaptiveKernelSize,
             Denoiser_Args::Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor,
             Denoiser_Args::Denoising_FilterMinKernelWidth,
-            static_cast<UINT>((Denoiser_Args::Denoising_FilterMaxKernelWidthPercentage / 100) * m_width),
+            static_cast<UINT>((Denoiser_Args::Denoising_FilterMaxKernelWidthPercentage / 100) * m_denoisingWidth),
             Denoiser_Args::Denoising_FilterVarianceSigmaScaleOnSmallKernels,
             RTAO_Args::QuarterResAO,
             Denoiser_Args::Denoising_MinVarianceToDenoise,
@@ -1014,7 +1018,7 @@ void Denoiser::ApplyAtrousWaveletTransformFilter(
             Denoiser_Args::Denoising_UseAdaptiveKernelSize,
             Denoiser_Args::Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor,
             Denoiser_Args::Denoising_FilterMinKernelWidth,
-            static_cast<UINT>((Denoiser_Args::Denoising_FilterMaxKernelWidthPercentage / 100) * m_width),
+            static_cast<UINT>((Denoiser_Args::Denoising_FilterMaxKernelWidthPercentage / 100) * m_denoisingWidth),
             Denoiser_Args::Denoising_FilterVarianceSigmaScaleOnSmallKernels,
             Denoiser_Args::QuarterResAO);
     }

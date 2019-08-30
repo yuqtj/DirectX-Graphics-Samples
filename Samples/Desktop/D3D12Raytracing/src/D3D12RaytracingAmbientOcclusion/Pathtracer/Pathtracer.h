@@ -37,12 +37,12 @@ public:
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, Scene& scene);
     void Run(Scene& scene);
-    void ReleaseDeviceDependentResources();
-    void ReleaseWindowSizeDependentResources() {}; // ToDo
-    void SetCamera(const GameCore::Camera& camera);
     void SetResolution(UINT GBufferWidth, UINT GBufferHeight, UINT RTAOWidth, UINT RTAOHeight);
+    void Release();
 
     // Getters & Setters.
+    // ToDo remove
+    void SetCamera(const GameCore::Camera& camera);
     GpuResource(&GBufferResources(bool getQuarterResResources = false))[GBufferResource::Count];
 
     void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }

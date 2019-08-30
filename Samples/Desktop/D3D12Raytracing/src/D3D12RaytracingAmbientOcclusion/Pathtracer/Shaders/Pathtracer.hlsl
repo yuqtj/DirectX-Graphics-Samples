@@ -662,11 +662,7 @@ void MyRayGenShader_GBuffer()
     if (hasCameraRayHitGeometry)
     {
 #endif
-       // float forwardFacing = dot(rayPayload.surfaceNormal, raySegment) / rayLength;
-       // obliqueness = -forwardFacing;// min(f16tof32(0x7BFF), rcp(max(forwardFacing, 1e-5)));
-#if OBLIQUENESS_IS_SURFACE_PLANE_DISTANCE_FROM_ORIGIN_ALONG_SHADING_NORMAL
-        //obliqueness = -dot(rayPayload.surfaceNormal, rayPayload.hitPosition);
-#endif
+
         rayLength = rayPayload.AOGBuffer.tHit;
         obliqueness = 0;// ToDo rayPayload.AOGBuffer.obliqueness;
     

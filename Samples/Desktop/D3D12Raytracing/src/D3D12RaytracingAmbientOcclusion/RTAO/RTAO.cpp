@@ -55,14 +55,6 @@ const wchar_t* RTAO::c_missShaderName = L"MissShader";
 // Hit groups.
 const wchar_t* RTAO::c_hitGroupName = L"HitGroup_Triangle";
 
-// ToDo dedupe with below
-
-void OnRecreateSamples(void* param)
-{
-    // ToDo
-    Sample::OnRecreateRaytracingResources(param);
-    //rtao.RequestRecreateAOSamples();
-}
        
 namespace RTAO_Args
 {
@@ -93,8 +85,11 @@ namespace RTAO_Args
     IntVar RTAOAdaptiveSamplingMinSamples(L"Render/AO/RTAO/Adaptive Sampling/Min samples", 1, 1, AO_SPP_N* AO_SPP_N, 1);
 
     // ToDo remove
-    IntVar AOSampleCountPerDimension(L"Render/AO/RTAO/Samples per pixel NxN", AO_SPP_N, 1, AO_SPP_N_MAX, 1, OnRecreateSamples, nullptr);
-    IntVar AOSampleSetDistributedAcrossPixels(L"Render/AO/RTAO/Sample set distribution across NxN pixels ", 8, 1, 8, 1, OnRecreateSamples, nullptr);
+    // ToDo make this static for GroundTruth
+    IntVar AOSampleCountPerDimension(L"Render/AO/RTAO/Samples per pixel NxN", AO_SPP_N, 1, AO_SPP_N_MAX, 1);
+    IntVar AOSampleSetDistributedAcrossPixels(L"Render/AO/RTAO/Sample set distribution across NxN pixels ", 8, 1, 8, 1);
+
+
 #if LOAD_PBRT_SCENE
     NumVar RTAOMaxRayHitTime(L"Render/AO/RTAO/Max ray hit time", AO_RAY_T_MAX, 0.0f, 50.0f, 0.2f);
 #else
@@ -111,12 +106,12 @@ namespace RTAO_Args
 }
 
 
-DXGI_FORMAT RTAOResourceFormats::Get(Enum resource)
+DXGI_FORMAT RTAO::ResourceFormat(ResourceType resourceType)
 {
-    switch (resource)
+    switch (resourceType)
     {
-    case AOCoefficient: return TextureResourceFormatR::ToDXGIFormat(RTAO_Args::RTAO_AmbientCoefficientResourceFormat);
-    case RayHitDistance: return DXGI_FORMAT_R16_FLOAT;
+    case ResourceType::AOCoefficient: return  ResourceFormat(ResourceType::AOCoefficient);
+    case ResourceType::RayHitDistance: return DXGI_FORMAT_R16_FLOAT;
     }
 
     return DXGI_FORMAT_UNKNOWN;
@@ -154,10 +149,6 @@ void RTAO::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::Des
     CreateDeviceDependentResources(scene);
 }
 
-void RTAO::ReleaseDeviceDependentResources()
-{
-    // ToDo 
-}
 
 // Create resources that depend on the device.
 void RTAO::CreateDeviceDependentResources(Scene& scene)
@@ -172,13 +163,10 @@ void RTAO::CreateDeviceDependentResources(Scene& scene)
     // Create a raytracing pipeline state object which defines the binding of shaders, state and resources to be used during raytracing.
     CreateRaytracingPipelineStateObject();
 
-    // Create constant buffers for the geometry and the scene.
     CreateConstantBuffers();
 
-    // Build shader tables, which define shaders and their local root arguments.
     BuildShaderTables(scene);
 
-    // ToDo rename
     CreateSamplesRNG();
 
 #if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
@@ -200,6 +188,11 @@ void RTAO::CreateAuxilaryDeviceResources()
     m_reduceSumKernel.Initialize(device, GpuKernels::ReduceSum::Uint);
     m_rayGen.Initialize(device, FrameCount);
     m_raySorter.Initialize(device, FrameCount);
+}
+
+void RTAO::Release()
+{
+    // ToDo
 }
 
 // Create constant buffers.
@@ -366,22 +359,19 @@ void RTAO::CreateTextureResources()
         // ToDo pack some resources.
 
         // ToDo cleanup raytracing resolution - twice for coefficient.
-        CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(RTAO_Args::RTAO_AmbientCoefficientResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"Render/AO Coefficient");
+        CreateRenderTargetResource(device,  ResourceFormat(ResourceType::AOCoefficient), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Coefficient], initialResourceState, L"Render/AO Coefficient");
+        CreateRenderTargetResource(device,  ResourceFormat(ResourceType::AOCoefficient), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Denoised Coefficient");
 
-        // ToDo move outside of RTAO
-        CreateRenderTargetResource(device, TextureResourceFormatR::ToDXGIFormat(RTAO_Args::RTAO_AmbientCoefficientResourceFormat), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::Smoothed], initialResourceState, L"Render/AO Denoised Coefficient");
-
-        // ToDo 8 bit hit count?
+        // ToDo 8 bit hit count? / remove
         CreateRenderTargetResource(device, DXGI_FORMAT_R32_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::HitCount], initialResourceState, L"Render/AO Hit Count");
 
         // ToDo use lower bit float?
-        CreateRenderTargetResource(device, RTAOResourceFormats::Get(RTAOResourceFormats::RayHitDistance), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
+        CreateRenderTargetResource(device, ResourceFormat(ResourceType::RayHitDistance), m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AOResources[AOResource::RayHitDistance], initialResourceState, L"Render/AO Hit Distance");
     }
 
 
     CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sourceToSortedRayIndexOffset, initialResourceState, L"Source To Sorted Ray Index");
     CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedToSourceRayIndexOffset, initialResourceState, L"Sorted To Source Ray Index"); // ToDo remove
-    CreateRenderTargetResource(device, DXGI_FORMAT_R32G32B32A32_FLOAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedRayGroupDebug, initialResourceState, L"Sorted Ray Group Debug");
     CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AORayDirectionOriginDepth, initialResourceState, L"AO Rays Direction, Origin Depth and Hit");
 }
 
@@ -575,31 +565,6 @@ void RTAO::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UINT heig
     commandList->DispatchRays(&dispatchDesc);
 }
 
-
-void RTAO::OnUpdate()
-{
-    if (m_isRecreateAOSamplesRequested)
-    {
-        m_isRecreateAOSamplesRequested = false;
-
-        // ToDo Update all components at once with 1 wait?
-        m_deviceResources->WaitForGpu();
-        CreateSamplesRNG();
-    }
-
-    if (m_isRecreateRaytracingResourcesRequested)
-    {
-        // ToDo what if scenargs change during rendering? race condition??
-        // Buffer them - create an intermediate
-        m_isRecreateRaytracingResourcesRequested = false;
-        m_deviceResources->WaitForGpu();
-
-        // ToDo split to recreate only whats needed?
-        CreateResolutionDependentResources();
-        CreateAuxilaryDeviceResources();
-    }
-}
-
 void RTAO::UpdateConstantBuffer(UINT frameIndex)
 {
     uniform_int_distribution<UINT> seedDistribution(0, UINT_MAX);
@@ -694,7 +659,7 @@ void RTAO::Run(
             resourceStateTracker->TransitionResource(&m_AOResources[AOResource::RayHitDistance], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             resourceStateTracker->TransitionResource(&m_sourceToSortedRayIndexOffset, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             resourceStateTracker->TransitionResource(&m_sortedToSourceRayIndexOffset, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            resourceStateTracker->TransitionResource(&m_sortedRayGroupDebug, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            resourceStateTracker->TransitionResource(&Sample::g_debugOutput[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             resourceStateTracker->TransitionResource(&m_AORayDirectionOriginDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         }
         else
@@ -794,11 +759,11 @@ void RTAO::Run(
             m_AORayDirectionOriginDepth.gpuDescriptorReadAccess,
             m_sortedToSourceRayIndexOffset.gpuDescriptorWriteAccess,
             m_sourceToSortedRayIndexOffset.gpuDescriptorWriteAccess,
-            m_sortedRayGroupDebug.gpuDescriptorWriteAccess);
+            Sample::g_debugOutput[0].gpuDescriptorWriteAccess);
 
         resourceStateTracker->TransitionResource(&m_sourceToSortedRayIndexOffset, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         resourceStateTracker->TransitionResource(&m_sortedToSourceRayIndexOffset, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->TransitionResource(&m_sortedRayGroupDebug, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        resourceStateTracker->TransitionResource(&Sample::g_debugOutput[0], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         resourceStateTracker->InsertUAVBarrier(&m_sourceToSortedRayIndexOffset);
         resourceStateTracker->InsertUAVBarrier(&m_sortedToSourceRayIndexOffset);
 

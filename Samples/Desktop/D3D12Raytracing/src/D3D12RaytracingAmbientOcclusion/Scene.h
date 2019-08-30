@@ -39,8 +39,7 @@ public:
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
     void OnUpdate();
     void OnRender();
-    void ReleaseDeviceDependentResources();
-    void ReleaseWindowSizeDependentResources() {}; // ToDo
+    void Release();
 
     const GameCore::Camera& Camera() { return m_camera; }
     const GameCore::Camera& PrevFrameCamera() { return m_prevFrameCamera; }

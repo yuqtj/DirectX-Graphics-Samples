@@ -41,12 +41,9 @@ public:
 
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
-    void OnUpdate();
     void Render(GpuResource* outputResource, Scene& scene, Pathtracer& pathtracer, RTAO& rtao, Denoiser& denoiser, UINT GBufferWidth, UINT GBufferHeight);
-    void ReleaseDeviceDependentResources();
-    void ReleaseWindowSizeDependentResources() {}; // ToDo
     void SetResolution(UINT width, UINT height);
-    void Release() {} // ToDo;
+    void Release();
 
 private:
     void CreateComposeRenderPassesCSResources();
@@ -82,8 +79,8 @@ private:
     ConstantBuffer<ComposeRenderPassesConstantBuffer>   m_csComposeRenderPassesCB;
     ConstantBuffer<RNGConstantBuffer>   m_csHemisphereVisualizationCB;
 
-    UINT m_width;
-    UINT m_height;
+    UINT m_renderingWidth = 0;
+    UINT m_renderingHeight = 0;
 
     GpuResource m_upsampledAOValueResource;
     GpuResource m_upsampledTrppResource;

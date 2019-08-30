@@ -54,7 +54,7 @@ void Scene::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::De
     CreateDeviceDependentResources();
 }
 
-void Scene::ReleaseDeviceDependentResources()
+void Scene::Release()
 {
 }
 

@@ -77,7 +77,7 @@ void Composition::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<
     CreateDeviceDependentResources();
 }
 
-void Composition::ReleaseDeviceDependentResources()
+void Composition::Release()
 {
     m_csHemisphereVisualizationCB.Release();
 }
@@ -101,21 +101,16 @@ void Composition::CreateAuxilaryDeviceResources()
     m_upsampleBilateralFilterKernel.Initialize(device, FrameCount);
 }
 
-
-void Composition::OnUpdate()
-{
-
-}
-
 void Composition::CreateResolutionDependentResources()
 {
+    CreateTextureResources();
 }
 
 
 void Composition::SetResolution(UINT width, UINT height)
 {
-    m_width = width;
-    m_height = height;
+    m_renderingWidth = width;
+    m_renderingHeight = height;
 
     CreateResolutionDependentResources();
 }
@@ -125,11 +120,11 @@ void Composition::CreateTextureResources()
     auto device = m_deviceResources->GetD3DDevice();
     D3D12_RESOURCE_STATES initialResourceState = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
-    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledAOValueResource, initialResourceState, L"Upsampled AO value");
-    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledTrppResource, initialResourceState, L"Upsampled Trpp");
-    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledAORayHitDistanceResource, initialResourceState, L"Upsampled AO Ray Hit Distance");
-    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledVarianceResource, initialResourceState, L"Upsampled Variance");
-    CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_upsampledLocalMeanVarianceResource, initialResourceState, L"Upsampled Local Mean Variance");
+    CreateRenderTargetResource(device, RTAO::ResourceFormat(RTAO::ResourceType::AOCoefficient), m_renderingWidth, m_renderingHeight, m_cbvSrvUavHeap.get(), &m_upsampledAOValueResource, initialResourceState, L"Upsampled AO value");
+    CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_renderingWidth, m_renderingHeight, m_cbvSrvUavHeap.get(), &m_upsampledTrppResource, initialResourceState, L"Upsampled Trpp");
+    CreateRenderTargetResource(device, RTAO::ResourceFormat(RTAO::ResourceType::RayHitDistance), m_renderingWidth, m_renderingHeight, m_cbvSrvUavHeap.get(), &m_upsampledAORayHitDistanceResource, initialResourceState, L"Upsampled AO Ray Hit Distance");
+    CreateRenderTargetResource(device, Denoiser::ResourceFormat(Denoiser::ResourceType::Variance), m_renderingWidth, m_renderingHeight, m_cbvSrvUavHeap.get(), &m_upsampledVarianceResource, initialResourceState, L"Upsampled Variance");
+    CreateRenderTargetResource(device, Denoiser::ResourceFormat(Denoiser::ResourceType::LocalMeanVariance), m_renderingWidth, m_renderingHeight, m_cbvSrvUavHeap.get(), &m_upsampledLocalMeanVarianceResource, initialResourceState, L"Upsampled Local Mean Variance");
 }
 
 void Composition::CreateComposeRenderPassesCSResources()
@@ -331,7 +326,7 @@ void Composition::RenderRNGVisualizations()
         m_csHemisphereVisualizationCB->stratums = XMUINT2(static_cast<UINT>(sqrt(m_randomSampler.NumSamples())),
             static_cast<UINT>(sqrt(m_randomSampler.NumSamples())));
         m_csHemisphereVisualizationCB->grid = XMUINT2(m_randomSampler.NumSamples(), m_randomSampler.NumSamples());
-        m_csHemisphereVisualizationCB->uavOffset = XMUINT2(0 /*ToDo remove m_width - rngWindowSize.x*/, m_height - rngWindowSize.y);
+        m_csHemisphereVisualizationCB->uavOffset = XMUINT2(0 /*ToDo remove m_renderingWidth - rngWindowSize.x*/, m_renderingHeight - rngWindowSize.y);
         m_csHemisphereVisualizationCB->numSamples = m_randomSampler.NumSamples();
         m_csHemisphereVisualizationCB->numSampleSets = m_randomSampler.NumSampleSets();
     }

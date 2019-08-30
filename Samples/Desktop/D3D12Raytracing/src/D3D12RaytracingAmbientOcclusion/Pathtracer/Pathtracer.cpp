@@ -175,7 +175,7 @@ void Pathtracer::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<D
     CreateDeviceDependentResources(scene);
 }
 
-void Pathtracer::ReleaseDeviceDependentResources()
+void Pathtracer::Release()
 { 
     // ToDo 
 

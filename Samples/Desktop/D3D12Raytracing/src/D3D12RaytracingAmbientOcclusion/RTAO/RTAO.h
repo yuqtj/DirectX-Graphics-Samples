@@ -36,39 +36,32 @@ namespace RTAO_Args
     extern BoolVar QuarterResAO;
 }
 
-namespace RTAOResourceFormats {
-    enum Enum {
-        AOCoefficient = 0,
-        RayHitDistance
-    };
-    DXGI_FORMAT Get(Enum resource);
-}
-    
+
 class RTAO
 {
 public:
+    enum class ResourceType {
+        AOCoefficient = 0,
+        RayHitDistance
+    };
+
     // Ctors.
     RTAO();
     ~RTAO();
 
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, Scene& scene);
-    void OnUpdate();
     void Run(D3D12_GPU_VIRTUAL_ADDRESS accelerationStructure, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceHitPositionResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceNormalDepthResource, D3D12_GPU_DESCRIPTOR_HANDLE rayOriginSurfaceAlbedoResource);
-    void ReleaseDeviceDependentResources();
-    void ReleaseWindowSizeDependentResources(); // ToDo
+    void SetResolution(UINT width, UINT height); 
     void Release();
 
     // Getters & Setters.
     GpuResource(&AOResources())[AOResource::Count]{ return m_AOResources; }
+    static DXGI_FORMAT ResourceFormat(ResourceType resourceType);
     float MaxRayHitTime();
     void SetMaxRayHitTime(float maxRayHitTime); 
-    void SetResolution(UINT width, UINT height);
     float GetSpp();
     void GetRayGenParameters(bool* isCheckerboardSamplingEnabled, bool* checkerboardLoadEvenPixels);
-
-    void RequestRecreateAOSamples() { m_isRecreateAOSamplesRequested = true; }
-    void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
 private:
     void UpdateConstantBuffer(UINT frameIndex);
@@ -87,8 +80,8 @@ private:
     void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
     void CalculateRayHitCount();
 
-    UINT m_raytracingWidth;
-    UINT m_raytracingHeight;
+    UINT m_raytracingWidth = 0;
+    UINT m_raytracingHeight = 0;
 
     std::shared_ptr<DX::DeviceResources> m_deviceResources;
     std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
@@ -106,8 +99,9 @@ private:
     GpuResource   m_AOResources[AOResource::Count];
     GpuResource   m_AORayDirectionOriginDepth;
     GpuResource   m_sortedToSourceRayIndexOffset;   // Index of a ray in the source array given a sorted index.
+    
+    // ToDo remove
     GpuResource   m_sourceToSortedRayIndexOffset;   // Index of a ray in the sorted array given a source index.
-    GpuResource   m_sortedRayGroupDebug;            // ToDo remove
     ConstantBuffer<RTAOConstantBuffer> m_CB;
     Samplers::MultiJittered m_randomSampler;
     StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;
@@ -140,9 +134,6 @@ private:
     GpuKernels::AdaptiveRayGenerator m_rayGen;
     GpuKernels::SortRays        m_raySorter;
 
-
-    bool m_isRecreateAOSamplesRequested = false;
-    bool m_isRecreateRaytracingResourcesRequested = false;
 
     // Parameters
     bool m_calculateRayHitCounts = false;

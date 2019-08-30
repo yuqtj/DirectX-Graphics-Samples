@@ -251,20 +251,6 @@ namespace Sample
     }
 
 
-    // ToDo move remove
-#if FLOAT_TEXTURE_AS_R8_UNORM_1BYTE_FORMAT
-    This has issue with small variance geting rounded to 0...
-        DXGI_FORMAT texFormat = DXGI_FORMAT_R8_UNORM;       // ToDo rename to coefficient or avoid using same variable for different types.
-    UINT texFormatByteSize = 1;
-#elif FLOAT_TEXTURE_AS_R16_FLOAT_2BYTE_FORMAT
-    DXGI_FORMAT texFormat = DXGI_FORMAT_R16_FLOAT;       // ToDo rename to coefficient or avoid using same variable for different types.
-    UINT texFormatByteSize = 1;
-#else
-    this has issues with variance going negative
-        DXGI_FORMAT texFormat = DXGI_FORMAT_R32_FLOAT;
-    UINT texFormatByteSize = 4;
-#endif
-
     // ToDo remove
     void D3D12RaytracingAmbientOcclusion::CreateDebugResources()
     {
@@ -447,9 +433,6 @@ namespace Sample
 
             // ToDo split to recreate only whats needed?
             OnCreateWindowSizeDependentResources();
-            CreateAuxilaryDeviceResources();
-
-            m_RTAO.RequestRecreateRaytracingResources();
         }
 
 
@@ -461,7 +444,6 @@ namespace Sample
         EngineProfiling::Update();
 
         m_scene.OnUpdate();
-        m_RTAO.OnUpdate();
 
 
 #if ENABLE_SSAO
@@ -750,12 +732,11 @@ namespace Sample
 
         m_cbvSrvUavHeap.reset();
 
-
-        m_pathtracer.ReleaseDeviceDependentResources();
-        m_RTAO.ReleaseDeviceDependentResources();
-        m_denoiser.ReleaseDeviceDependentResources();
-        m_composition.ReleaseDeviceDependentResources();
-        m_scene.ReleaseDeviceDependentResources();
+        m_pathtracer.Release();
+        m_RTAO.Release();
+        m_denoiser.Release();
+        m_composition.Release();
+        m_scene.Release();
 
         m_raytracingOutput.resource.Reset();
     }
