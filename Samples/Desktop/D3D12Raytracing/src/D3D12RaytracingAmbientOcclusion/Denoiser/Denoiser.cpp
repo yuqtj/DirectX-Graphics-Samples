@@ -152,12 +152,12 @@ DXGI_FORMAT Denoiser::ResourceFormat(ResourceType resourceType)
     return DXGI_FORMAT_UNKNOWN;
 }
 
-void Denoiser::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex)
+void Denoiser::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap)
 {
     m_deviceResources = deviceResources;
     m_cbvSrvUavHeap = descriptorHeap;
 
-    CreateDeviceDependentResources(maxInstanceContributionToHitGroupIndex);
+    CreateDeviceDependentResources();
 }
 
 void Denoiser::Release()
@@ -166,12 +166,10 @@ void Denoiser::Release()
 }
 
 // Create resources that depend on the device.
-void Denoiser::CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex)
+void Denoiser::CreateDeviceDependentResources()
 {
     CreateAuxilaryDeviceResources();
-
 }
-
 
 // ToDo rename
 void Denoiser::CreateAuxilaryDeviceResources()

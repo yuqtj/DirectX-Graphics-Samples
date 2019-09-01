@@ -63,6 +63,9 @@ public:
     float GetSpp();
     void GetRayGenParameters(bool* isCheckerboardSamplingEnabled, bool* checkerboardLoadEvenPixels);
 
+    UINT RaytracingWidth() { return m_raytracingWidth; }
+    UINT RaytracingHeight() { return m_raytracingHeight; }
+
 private:
     void UpdateConstantBuffer(UINT frameIndex);
     void CreateDeviceDependentResources(Scene& scene);

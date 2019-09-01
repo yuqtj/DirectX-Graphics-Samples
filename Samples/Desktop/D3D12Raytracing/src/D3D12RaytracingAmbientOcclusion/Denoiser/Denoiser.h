@@ -48,20 +48,22 @@ public:
     ~Denoiser() {} // ToDo
 
     // Public methods.
-    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap, UINT maxInstanceContributionToHitGroupIndex);
+    void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
     void Run(Scene& scene, Pathtracer& pathtracer, RTAO& rtao, DenoiseStage stage = Denoise_StageAll);
     void SetResolution(UINT width, UINT height);
     void Release();
         
     // Getters/Setters.
     static DXGI_FORMAT ResourceFormat(ResourceType resourceType);
+    UINT DenoisingWidth() { return m_denoisingWidth; }
+    UINT DenoisingHeight() { return m_denoisingHeight; }
 
 private:
     void TemporalReverseReproject(Scene& scene, Pathtracer& pathtracer);
     void TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao);
     void MultiPassBlur(Pathtracer& pathtracer);
 
-    void CreateDeviceDependentResources(UINT maxInstanceContributionToHitGroupIndex);
+    void CreateDeviceDependentResources();
     void CreateConstantBuffers();
     void CreateAuxilaryDeviceResources();
     void CreateTextureResources();

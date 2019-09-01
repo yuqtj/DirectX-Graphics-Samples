@@ -37,6 +37,11 @@ namespace Sample_Args
     extern EnumVar CompositionMode;
 }
 
+
+namespace Sample_GPUTime {
+    enum { Pathtracing = 0, AOraytracing, AOdenoising, Count };
+}
+
 namespace Sample
 {
     class D3D12RaytracingAmbientOcclusion;
@@ -122,14 +127,16 @@ namespace Sample
         GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
         GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
     private:
-
+#if ENABLE_SSAA
         UINT m_GBufferWidth;
         UINT m_GBufferHeight;
+#endif
 
         UINT m_raytracingWidth;
         UINT m_raytracingHeight;
 
         // Application state
+        DX::GPUTimer m_sampleGpuTimes[Sample_GPUTime::Count];
 
         // UI
         std::unique_ptr<UILayer> m_uiLayer;

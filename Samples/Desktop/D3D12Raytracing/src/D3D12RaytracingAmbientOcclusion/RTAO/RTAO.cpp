@@ -110,7 +110,7 @@ DXGI_FORMAT RTAO::ResourceFormat(ResourceType resourceType)
 {
     switch (resourceType)
     {
-    case ResourceType::AOCoefficient: return  ResourceFormat(ResourceType::AOCoefficient);
+    case ResourceType::AOCoefficient: return  TextureResourceFormatR::ToDXGIFormat(RTAO_Args::RTAO_AmbientCoefficientResourceFormat);
     case ResourceType::RayHitDistance: return DXGI_FORMAT_R16_FLOAT;
     }
 

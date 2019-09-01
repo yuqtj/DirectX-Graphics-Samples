@@ -414,8 +414,6 @@ float3 TraceReflectedGBufferRay(in float3 hitPosition, in float3 wi, in float3 N
         // Skipping normalization as it's not required for the uses of the transformed normal here.
         float3 _mirrorNormal = mul((float3x3)_mirrorBLASTransform, objectNormal);
 
-        //g_rtDebug[DispatchRaysIndex().xy] = float4(_mirrorHitPosition, 0);
-        //g_rtDebug2[DispatchRaysIndex().xy] = float4(_mirrorNormal, 0);
         rayPayload.AOGBuffer._virtualHitPosition = ReflectFrontPointThroughPlane(rayPayload.AOGBuffer._virtualHitPosition, _mirrorHitPosition, _mirrorNormal);
 
         // Add current thit and the added offset to the thit of the traced ray.
@@ -668,7 +666,6 @@ void MyRayGenShader_GBuffer()
     
         // Calculate the motion vector.
         float _depth;
-        //g_rtDebug2[DTid] = float4(rayPayload.AOGBuffer._virtualHitPosition, 0);
         float2 motionVector = CalculateMotionVector(rayPayload.AOGBuffer._virtualHitPosition, _depth, DTid);
         g_rtTextureSpaceMotionVector[DTid] = motionVector;
 

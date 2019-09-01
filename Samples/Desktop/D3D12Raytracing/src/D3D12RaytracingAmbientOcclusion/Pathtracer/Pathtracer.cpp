@@ -44,8 +44,6 @@ namespace GlobalRootSignature {
             AORayHitDistance,
             AOFrameAge,
             AORayDirectionOriginDepthHitSRV,
-            Debug,
-            Debug2,
             AOSourceToSortedRayIndex,
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
             PartialDepthDerivatives,
@@ -261,8 +259,6 @@ void Pathtracer::CreateRootSignatures()
         ranges[Slot::ReprojectedNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 18);  // 1 output texture reprojected hit position
         ranges[Slot::Color].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 19);  // 1 output texture shaded color
         ranges[Slot::AOSurfaceAlbedo].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 20);  // 1 output texture AO diffuse
-        ranges[Slot::Debug].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 22);
-        ranges[Slot::Debug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 24);
 
 
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
@@ -297,8 +293,6 @@ void Pathtracer::CreateRootSignatures()
         rootParameters[Slot::ReprojectedNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::ReprojectedNormalDepth]);
         rootParameters[Slot::Color].InitAsDescriptorTable(1, &ranges[Slot::Color]);
         rootParameters[Slot::AOSurfaceAlbedo].InitAsDescriptorTable(1, &ranges[Slot::AOSurfaceAlbedo]);
-        rootParameters[Slot::Debug].InitAsDescriptorTable(1, &ranges[Slot::Debug]);
-        rootParameters[Slot::Debug2].InitAsDescriptorTable(1, &ranges[Slot::Debug2]);
 
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
@@ -917,6 +911,7 @@ void Pathtracer::CreateResolutionDependentResources()
 
 void Pathtracer::CreateResolutionDependentResources()
 {
+    CreateTextureResources();
 }
 
 void Pathtracer::SetResolution(UINT GBufferWidth, UINT GBufferHeight, UINT RTAOWidth, UINT RTAOHeight)

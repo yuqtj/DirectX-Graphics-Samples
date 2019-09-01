@@ -54,10 +54,6 @@ namespace Sample
         return *g_pSample;
     }
 
-    std::map<std::wstring, BottomLevelAccelerationStructureGeometry> m_bottomLevelASGeometries;
-    std::unique_ptr<RaytracingAccelerationStructureManager> m_accelerationStructure;
-    GpuResource m_grassPatchVB[UIParameters::NumGrassGeometryLODs][2];      // Two VBs: current and previous frame.
-
     // ToDo remove?
     GpuResource g_debugOutput[2];
 
@@ -225,12 +221,12 @@ namespace Sample
 
         CreateDescriptorHeaps();
         CreateAuxilaryDeviceResources();
-        CreateDebugResources();
         
         m_scene.Setup(m_deviceResources, m_cbvSrvUavHeap);
         m_pathtracer.Setup(m_deviceResources, m_cbvSrvUavHeap, m_scene);
         // ToDo add a note the RTAO setup has to be called after pathtracer built its shader tables and updated instanceContributionToHitGroupIndices.
         m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_scene);
+        m_denoiser.Setup(m_deviceResources, m_cbvSrvUavHeap);
         m_composition.Setup(m_deviceResources, m_cbvSrvUavHeap);
 #if ENABLE_SSAO
         CreateConstantBuffers();
@@ -247,7 +243,9 @@ namespace Sample
         auto backbufferFormat = m_deviceResources->GetBackBufferFormat();
 
         CreateRenderTargetResource(device, backbufferFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_raytracingOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+#if ENABLE_SSAA
         CreateRenderTargetResource(device, backbufferFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+#endif
     }
 
 
@@ -273,7 +271,7 @@ namespace Sample
             {
                 g_debugOutput[i].uavDescriptorHeapIndex = g_debugOutput[0].uavDescriptorHeapIndex + i;
                 g_debugOutput[i].srvDescriptorHeapIndex = g_debugOutput[0].srvDescriptorHeapIndex + i;
-                CreateRenderTargetResource(device, debugFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &g_debugOutput[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Debug");
+                CreateRenderTargetResource(device, debugFormat, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &g_debugOutput[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Debug");
             }
         }
     }
@@ -284,12 +282,19 @@ namespace Sample
         auto commandQueue = m_deviceResources->GetCommandQueue();
         auto commandList = m_deviceResources->GetCommandList();
 
+        // ToDo use backbuffer count instead of frame count everywhere
         EngineProfiling::RestoreDevice(device, commandQueue, FrameCount);
 
         // ToDo move?
         m_downsampleBoxFilter2x2Kernel.Initialize(device, FrameCount);
         m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9, FrameCount);
         m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25, FrameCount); // ToDo Dedupe 9 and 25
+
+        for (UINT i = 0; i < Sample_GPUTime::Count; i++)
+        {
+            m_sampleGpuTimes[i].RestoreDevice(device, m_deviceResources->GetCommandQueue(), FrameCount);
+            m_sampleGpuTimes[i].SetAvgRefreshPeriodMS(500); // ToDo finetune
+        }
     }
 
     void D3D12RaytracingAmbientOcclusion::CreateDescriptorHeaps()
@@ -478,11 +483,13 @@ namespace Sample
         auto renderTarget = m_deviceResources->GetRenderTarget();
 
         ID3D12Resource* raytracingOutput = nullptr;
+#if ENABLE_SSAA
         if (m_GBufferWidth == m_width && m_GBufferHeight == m_height)
         {
             raytracingOutput = m_raytracingOutputIntermediate.GetResource();
         }
         else
+#endif
         {
             raytracingOutput = m_raytracingOutput.GetResource();
         }
@@ -571,37 +578,45 @@ namespace Sample
 
         // ToDo fix Window Tab and UI showing the same FPS.
 
+
+  
+
         // Header information
         {
-            // ToDo make default resolutions round to 0
+            // Prints <component name>[<resolution X>x<resolution Y>]: <GPU time>
             wstringstream wLabel;
-            wLabel << L"GBuffer resolution: " << m_GBufferWidth << "x" << m_GBufferHeight << L"\n";
-            wLabel << L"AO raytracing resolution: " << m_raytracingWidth << "x" << m_raytracingHeight << L"\n";
+            auto PrintComponentInfo = [&](const wstring& componentName, UINT width, UINT height, float gpuTime)
+            {
+                wLabel << componentName << L"[" << width << L"x" << height << "]: " << setprecision(2) << fixed << gpuTime << "ms" << L"\n";
+            };
+            PrintComponentInfo(L"Pathtracing", m_pathtracer.Width(), m_pathtracer.Height(), m_sampleGpuTimes[Sample_GPUTime::Pathtracing].GetAverageMS());
+            PrintComponentInfo(L"AO raytracing", m_RTAO.RaytracingWidth(), m_RTAO.RaytracingHeight(), m_sampleGpuTimes[Sample_GPUTime::AOraytracing].GetAverageMS());
+            PrintComponentInfo(L"AO denoising", m_denoiser.DenoisingWidth(), m_denoiser.DenoisingHeight(), m_sampleGpuTimes[Sample_GPUTime::AOdenoising].GetAverageMS());
             labels.push_back(wLabel.str());
         }
         // Engine tuning.
-        {
+        {     
             wstringstream wLabel;
             EngineTuning::Display(&wLabel, m_isProfiling);
             labels.push_back(wLabel.str());
 
-
-
+            // ToDo retrieve GPU times even when EngineTuning is not diplaying times on screen.
+            // Do GPUtimers/scopedtimers in this cpp and use those?
             if (m_isProfiling)
             {
                 set<wstring> profileMarkers = {
-                       L"DownsampleGBuffer",
-                       L"RTAO_Root",
-                       L"TemporalReverseReproject",
-                       L"[Sorted]CalculateAmbientOcclusion",
-                       L"CalculateAmbientOcclusion_Root",
-                       L"Adaptive Ray Gen",
-                       L"Sort Rays",
-                       L"AO DispatchRays 2D",
-                       L"RenderPass_TemporalSupersamplingBlendWithCurrentFrame",
-                       L"DenoiseAO",
-                       L"Upsample AO",
-                       L"Low-Tspp Multi-pass blur"
+                        L"DownsampleGBuffer",
+                        L"RTAO_Root",
+                        L"TemporalReverseReproject",
+                        L"[Sorted]CalculateAmbientOcclusion",
+                        L"CalculateAmbientOcclusion_Root",
+                        L"Adaptive Ray Gen",
+                        L"Sort Rays",
+                        L"AO DispatchRays 2D",
+                        L"RenderPass_TemporalSupersamplingBlendWithCurrentFrame",
+                        L"DenoiseAO",
+                        L"Upsample AO",
+                        L"Low-Tspp Multi-pass blur"
                 };
 
                 wstring line;
@@ -651,6 +666,7 @@ namespace Sample
         auto commandQueue = m_deviceResources->GetCommandQueue();
         auto renderTargets = m_deviceResources->GetRenderTargets();
 
+        // ToDo move this?
         UINT GBufferWidth, GBufferHeight;
         switch (Composition_Args::AntialiasingMode)
         {
@@ -670,6 +686,7 @@ namespace Sample
             break;
         }
 
+        // ToDo the resolution should be queried from RTAO.
         if (RTAO_Args::QuarterResAO)
         {
             // Handle odd resolution.
@@ -688,7 +705,7 @@ namespace Sample
         m_composition.SetResolution(GBufferWidth, GBufferHeight);
 
         CreateRaytracingOutputResource();
-
+        CreateDebugResources();
 
 #if ENABLE_SSAO
         // SSAO
@@ -777,6 +794,12 @@ namespace Sample
         m_deviceResources->Prepare();
 
         EngineProfiling::BeginFrame(commandList);
+        
+        // ToDo sample EngineProfiling for GPUtimes instead?
+        for (UINT i = 0; i < Sample_GPUTime::Count; i++)
+        {
+            m_sampleGpuTimes[i].BeginFrame(commandList);
+        }
 
         {
             // ToDo fix - this dummy and make sure the children are properly enumerated as children in the UI output.
@@ -790,7 +813,12 @@ namespace Sample
 
                     m_scene.OnRender();
 
-                    m_pathtracer.Run(m_scene);
+                    // Pathracing
+                    {
+                        m_sampleGpuTimes[Sample_GPUTime::Pathtracing].Start(commandList);
+                        m_pathtracer.Run(m_scene);
+                        m_sampleGpuTimes[Sample_GPUTime::Pathtracing].Stop(commandList);
+                    }
 
                     if (Sample_Args::AOMode == Sample_Args::AOType::RTAO)
                     {
@@ -798,13 +826,23 @@ namespace Sample
 
                         GpuResource* GBufferResources = m_pathtracer.GBufferResources();
 
-                        m_RTAO.Run(
-                            m_accelerationStructure->GetTopLevelASResource()->GetGPUVirtualAddress(),
-                            GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
-                            GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
-                            GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
+                        // Raytracing
+                        {
+                            m_sampleGpuTimes[Sample_GPUTime::AOraytracing].Start(commandList);
+                            m_RTAO.Run(
+                                m_scene.AccelerationStructure()->GetTopLevelASResource()->GetGPUVirtualAddress(),
+                                GBufferResources[GBufferResource::HitPosition].gpuDescriptorReadAccess,
+                                GBufferResources[GBufferResource::SurfaceNormalDepth].gpuDescriptorReadAccess,
+                                GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorReadAccess);
+                            m_sampleGpuTimes[Sample_GPUTime::AOraytracing].Stop(commandList);
+                        }
 
-                        m_denoiser.Run(m_scene, m_pathtracer, m_RTAO);
+                        // Denoising
+                        {
+                            m_sampleGpuTimes[Sample_GPUTime::AOdenoising].Start(commandList);
+                            m_denoiser.Run(m_scene, m_pathtracer, m_RTAO);
+                            m_sampleGpuTimes[Sample_GPUTime::AOdenoising].Stop(commandList);
+                        }
 
                     }
 #if ENABLE_SSAO
@@ -822,12 +860,16 @@ namespace Sample
                     }
 #endif
                 }
+#if ENABLE_SSAA
                 m_composition.Render(&m_raytracingOutput, m_scene, m_pathtracer, m_RTAO, m_denoiser, m_GBufferWidth, m_GBufferHeight);
 
                 if (m_GBufferWidth != m_width || m_GBufferHeight != m_height)
                 {
                     DownsampleRaytracingOutput();
                 }
+#else
+                m_composition.Render(&m_raytracingOutput, m_scene, m_pathtracer, m_RTAO, m_denoiser, m_width, m_height);
+#endif
 
 #if RENDER_RNG_SAMPLE_VISUALIZATION
                 RenderRNGVisualizations();
@@ -838,6 +880,10 @@ namespace Sample
         }
 
         // End frame.
+        for (UINT i = 0; i < Sample_GPUTime::Count; i++)
+        {
+            m_sampleGpuTimes[i].EndFrame(commandList);
+        }
         EngineProfiling::EndFrame(commandList);
         m_deviceResources->ExecuteCommandList();
 

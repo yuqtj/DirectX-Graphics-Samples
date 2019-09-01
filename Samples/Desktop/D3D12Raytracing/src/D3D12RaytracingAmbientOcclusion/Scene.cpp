@@ -46,6 +46,11 @@ namespace Scene_Args
     NumVar DebugVar(L"Render/Debug var", -20, -90, 90, 0.5f);
 }
 
+Scene::Scene()
+{
+    InitializeScene();
+}
+
 void Scene::Setup(shared_ptr<DeviceResources> deviceResources, shared_ptr<DX::DescriptorHeap> descriptorHeap)
 {
     m_deviceResources = deviceResources;
@@ -403,10 +408,9 @@ void Scene::LoadPBRTScene()
     finish.wait();
 }
 
+// ToDo rename
 void Scene::InitializeScene()
 {
-    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-
     // Setup materials.
     {
         auto SetAttributes = [&](

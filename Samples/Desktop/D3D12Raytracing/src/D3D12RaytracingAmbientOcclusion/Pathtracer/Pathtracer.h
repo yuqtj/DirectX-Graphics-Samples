@@ -44,6 +44,8 @@ public:
     // ToDo remove
     void SetCamera(const GameCore::Camera& camera);
     GpuResource(&GBufferResources(bool getQuarterResResources = false))[GBufferResource::Count];
+    UINT Width() { return m_width; }
+    UINT Height() { return m_height; }
 
     void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 private:

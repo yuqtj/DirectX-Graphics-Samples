@@ -32,7 +32,7 @@ class Scene
 {
 public:
     // Ctors.
-    Scene() {}
+    Scene();
     ~Scene() {} // ToDo
 
     // Public methods.
