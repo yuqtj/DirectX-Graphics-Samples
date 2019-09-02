@@ -31,9 +31,6 @@ Texture2D<uint2> g_inFrameAge : register(t8);
 
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
-#if !WORKAROUND_ATROUS_VARYING_OUTPUTS 
-RWTexture2D<float> g_outFilterWeightSum : register(u2);
-#endif
 RWTexture2D<float4> g_outDebug1 : register(u3);
 RWTexture2D<float4> g_outDebug2 : register(u4);
 

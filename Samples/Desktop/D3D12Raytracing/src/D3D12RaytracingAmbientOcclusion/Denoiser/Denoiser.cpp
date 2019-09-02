@@ -514,11 +514,7 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
         m_denoisingHeight,
         m_cbvSrvUavHeap->GetHeap(),
         AOResources[AOResource::Coefficient].gpuDescriptorReadAccess,
-#if VARIABLE_RATE_RAYTRACING
         m_localMeanVarianceResources[AOVarianceResource::Raw].gpuDescriptorReadAccess,
-#else
-        m_smoothedLocalMeanVarianceResource.gpuDescriptorReadAccess,
-#endif
         AOResources[AOResource::RayHitDistance].gpuDescriptorReadAccess,
         TemporalOutCoefficient->gpuDescriptorWriteAccess,
         m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].gpuDescriptorWriteAccess,

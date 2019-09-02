@@ -168,11 +168,6 @@ void RTAO::CreateDeviceDependentResources(Scene& scene)
     BuildShaderTables(scene);
 
     CreateSamplesRNG();
-
-#if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
-    auto device = m_deviceResources->GetD3DDevice();
-    dispatchRayTime.RestoreDevice(device, m_deviceResources->GetCommandQueue(), m_deviceResources->GetBackBufferCount());
-#endif
 }
 
 
@@ -688,26 +683,13 @@ void RTAO::Run(
 
     // Bind the heaps, acceleration structure and dispatch rays. 
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, accelerationStructure);
-
-#if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
-    dispatchRayTime.BeginFrame(commandList);
-    dispatchRayTime.Start(commandList);
-#endif
-
-
+    
     if (!RTAO_Args::RTAOUseRaySorting)
     {
         ScopedTimer _prof(L"AO DispatchRays 2D", commandList);
         DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOFullRes].Get());
     }
-#if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
-    dispatchRayTime.Stop(commandList);
-    dispatchRayTime.EndFrame(commandList);
 
-    std::wstringstream wstr;
-    wstr << L"RTAO DispatchRays[FrameCount ago] " << dispatchRayTime.GetElapsedMS() << L"\n";
-    OutputDebugStringW(wstr.str().c_str());
-#endif
     // ToDo Remove
     //DispatchRays(m_rayGenShaderTables[RTAO_Args::QuarterResAO ? RTAORayGenShaderType::AOQuarterRes : RTAORayGenShaderType::AOFullRes].Get(),
     //    &m_gpuTimers[GpuTimers::Raytracing_AO], m_raytracingWidth, m_raytracingHeight);

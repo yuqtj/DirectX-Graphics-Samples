@@ -90,6 +90,8 @@ Optimization
     - Debug break on FS on 1080 display resolution.
     - Tearing with VSync on at 4K full res.
     - White halo under tiers.
+    - Upsampling artifacts on 1080(540p)
+
 - Cleanup:
     - ToDo remove .f specifier from floating numbers in hlsl
     - ToDo clean up scoped timer names.
@@ -117,16 +119,11 @@ Optimization
 //**********************************************************************************************
 #define MARK_PERFECT_MIRRORS_AS_NOT_OPAQUE 1
 
-#define WORKAROUND_ATROUS_VARYING_OUTPUTS 1
-#define VARIABLE_RATE_RAYTRACING 1
 #define RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS 1
 #define AO_SPP_N 1
 #define AO_SPP_N_MAX 1          // ToDo Uses no loop on 1 => saves 0.3 ms on TitanXp at 1080p
-#define USE_ENVIRONMENT_MAP 1
-#define DEBUG_AS 0
 
-#define SIGNED_DDXY 1       // Preserve the sign of ddxy
-#define EXACT_DDXY_ON_QUARTER_RES_USING_DOWNSAMPLED_PIXEL_OFFSETS 0 
+#define SIGNED_DDXY 1           // Preserve the sign of ddxy
 
 #define MOVE_ONCE_ON_STRAFE 1
 
@@ -139,11 +136,6 @@ Incompatible macros
 #define STOP_TRACING_AND_DENOISING_AFTER_FEW_FRAMES 0
 
 // ToDo TAO is swimming in reflections
-
-
-#define CAMERA_PRESERVE_UP_ORIENTATION 1
-
-#define PACK_CACHE_VALUE_FRAME_AGE 0
 #define CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN 0
 #define USE_UV_DERIVATIVES 0
 #define HACK_CLAMP_DDXY_TO_BE_SMALL 1
@@ -167,24 +159,17 @@ Incompatible macros
 #define DISTANCE_ON_MISS 65504  // ~FLT_MAX within 16 bit format // ToDo explain
 
 #define PRINT_OUT_TC_MATRICES 0
-#define DEBUG_CAMERA_POS 1
 #define PRINT_OUT_CAMERA_CONFIG 0
 #define DEBUG_PRINT_OUT_SEED_VALUE 0
-#define DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME 0
 
 #ifdef HLSL
-// ToDo append lowres
 typedef uint NormalDepthTexFormat;
 #else
 #define COMPACT_NORMAL_DEPTH_DXGI_FORMAT DXGI_FORMAT_R32_UINT
 #endif
 #define GBUFFER_AO_COUNT_AO_HITS 0
-#define AO_ANY_HIT_FULL_OCCLUSION 0
-#define AO_HITPOSITION_BASED_SEED 1
 
-#define ADAPTIVE_KERNEL_SIZE 1
-#define AO_PROGRESSIVE_SAMPLING 0
-
+// ToDO enable Vsync via cmdline/or UI
 #define ENABLE_VSYNC 1
 #if ENABLE_VSYNC
 #define VSYNC_PRESENT_INTERVAL 1  
@@ -197,8 +182,6 @@ typedef uint NormalDepthTexFormat;
 #define ATROUS_DENOISER_MAX_PASSES 10
 #define RENDER_RNG_SAMPLE_VISUALIZATION 0   // ToDo doesn't render for all AA settings
 #define ATROUS_ONELEVEL_ONLY 0
-
-#define DEBUG_MULTI_BLAS_BUILD 0
 
 #define APPLY_SRGB_CORRECTION 0
 
@@ -227,20 +210,8 @@ typedef uint NormalDepthTexFormat;
 #define AO_RAY_T_MAX 150
 #define SCENE_SCALE 2000
 #endif
-#define CAMERA_Y_SCALE 1
-#define FLAT_FACE_NORMALS 0
 #define INDEX_FORMAT_UINT 1
-#define NUM_GEOMETRIES 1
 
-
-#define TESSELATED_GEOMETRY_BOX 1
-#define TESSELATED_GEOMETRY_TEAPOT 1
-#define TESSELATED_GEOMETRY_BOX_TETRAHEDRON 1
-#define TESSELATED_GEOMETRY_BOX_TETRAHEDRON_REMOVE_BOTTOM_TRIANGLE 1
-#define TESSELATED_GEOMETRY_THIN 1
-#define TESSELATED_GEOMETRY_TILES 0
-#define TESSELATED_GEOMETRY_TILES_WIDTH 4
-#define TESSELATED_GEOMETRY_ASPECT_RATIO_DIMENSIONS 1
 
 
 // ToDo separate per-vertex attributes from VB
@@ -297,10 +268,6 @@ typedef UINT16 Index;
 // - deformed geometry
 // - Dynamic options
 // - Update/Build
-#define ALBEDO_SHADING 0
-#define NORMAL_SHADING 0
-#define DEPTH_SHADING 0
-#define SINGLE_COLOR_SHADING 0
 
 // ToDo clean up
 struct ProceduralPrimitiveAttributes

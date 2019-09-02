@@ -65,7 +65,6 @@ float4 RenderPBRResult(in uint2 DTid)
     }
     else
     {
-#if USE_ENVIRONMENT_MAP
         uint2 materialInfo = g_texGBufferMaterial[DTid];
         UINT materialID;
         float3 albedo;
@@ -74,9 +73,6 @@ float4 RenderPBRResult(in uint2 DTid)
         float3 hitPosition = g_texGBufferPositionRT[DTid].xyz;
         float t = (clamp(hitPosition.y, 0.015, 0.025) - 0.015) * 100;       // ToDo
         color = lerp(BackgroundColor, float4(albedo, 1), t);
-#else
-        color = BackgroundColor;
-#endif
     }
     return color;
 }

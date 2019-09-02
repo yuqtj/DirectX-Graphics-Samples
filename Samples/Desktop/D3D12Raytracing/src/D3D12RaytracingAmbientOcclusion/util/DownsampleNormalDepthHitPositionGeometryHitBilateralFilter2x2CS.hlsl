@@ -35,12 +35,6 @@ RWTexture2D<float2> g_outMotionVector : register(u6);
 RWTexture2D<NormalDepthTexFormat> g_outReprojectedNormalDepth : register(u7);
 RWTexture2D<float4> g_outSurfaceAlbedo : register(u8);
 
-#if EXACT_DDXY_ON_QUARTER_RES_USING_DOWNSAMPLED_PIXEL_OFFSETS
-// Stores a pixel offset of the selected hi-res pixel from the top-left corner.
-// Encodes low-res 2x2 quad into 8 bits.
-RWTexture2D<uint> g_outSourcePixelOffset : register(u9);    
-#endif
-
 SamplerState ClampSampler : register(s0);
 
 ConstantBuffer<TextureDimConstantBuffer> cb : register(b0);

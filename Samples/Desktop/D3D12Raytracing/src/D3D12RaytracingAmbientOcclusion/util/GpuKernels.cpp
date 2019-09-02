@@ -454,8 +454,6 @@ namespace GpuKernels
                     OutputPrevFrameHitPosition,
                     OutputDepth,
                     OutputSurfaceAlbedo,
-#if EXACT_DDXY_ON_QUARTER_RES_USING_DOWNSAMPLED_PIXEL_OFFSETS
-#endif
                     Input,
                     InputNormal,
                     InputPosition,
@@ -1418,9 +1416,6 @@ namespace GpuKernels
                 enum Enum {
                     Output = 0,
                     VarianceOutput,
-#if !WORKAROUND_ATROUS_VARYING_OUTPUTS
-                    FilterWeightSumOutput,
-#endif
                     // ToDo standardize naming in RootSigs
                     Input,
                     Normals,
@@ -1469,9 +1464,6 @@ namespace GpuKernels
             rootParameters[Slot::SmoothedVariance].InitAsDescriptorTable(1, &ranges[5]);
             rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[6]);
             rootParameters[Slot::VarianceOutput].InitAsDescriptorTable(1, &ranges[7]);
-#if !WORKAROUND_ATROUS_VARYING_OUTPUTS
-            rootParameters[Slot::FilterWeightSumOutput].InitAsDescriptorTable(1, &ranges[8]);
-#endif
             rootParameters[Slot::RayHitDistance].InitAsDescriptorTable(1, &ranges[9]);
             rootParameters[Slot::PartialDistanceDerivatives].InitAsDescriptorTable(1, &ranges[10]);
             rootParameters[Slot::FrameAge].InitAsDescriptorTable(1, &ranges[11]);
@@ -1701,13 +1693,7 @@ namespace GpuKernels
 
             // First iteration reads from input resource.		
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputValuesResourceHandle);
-#if WORKAROUND_ATROUS_VARYING_OUTPUTS
             commandList->SetComputeRootDescriptorTable(Slot::Output, outValueResources[0]->gpuDescriptorWriteAccess);
-#else
-            ToDo
-            UINT outputSlot = (filterMode == Mode::OutputFilteredValue) ? Slot::Output : Slot::FilterWeightSumOutput; // ToDo Cleanup
-            commandList->SetComputeRootDescriptorTable(outputSlot, outValueResources[0]->gpuDescriptorWriteAccess);
-#endif
             commandList->SetComputeRootDescriptorTable(Slot::VarianceOutput, m_intermediateVarianceOutputs[0].gpuDescriptorWriteAccess);
 
             for (UINT i = 0; i < numFilterPasses; i++)

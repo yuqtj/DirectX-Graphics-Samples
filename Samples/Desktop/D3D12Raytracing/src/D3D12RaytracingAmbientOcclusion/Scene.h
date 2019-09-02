@@ -146,18 +146,7 @@ private:
 
     XMVECTOR m_lightPosition;
     XMFLOAT3 m_lightColor;
-
-#if TESSELATED_GEOMETRY_BOX
-#if TESSELATED_GEOMETRY_THIN
-    const XMFLOAT3 m_boxSize = XMFLOAT3(0.01f, 0.1f, 0.01f);
-#else
-    const XMFLOAT3 m_boxSize = XMFLOAT3(1, 1, 1);
-#endif
-    const float m_geometryRadius = 2.0f;
-#else
-    const float m_geometryRadius = 3.0f;
-#endif
-
+    
     const UINT MaxGeometryTransforms = 10000;       // ToDo lower / remove?
 
     friend class Pathtracer;

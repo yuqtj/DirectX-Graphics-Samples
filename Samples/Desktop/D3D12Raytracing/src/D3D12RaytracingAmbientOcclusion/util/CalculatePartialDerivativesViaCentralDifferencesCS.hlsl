@@ -49,25 +49,23 @@ void main(uint2 DTid : SV_DispatchThreadID)
         GetIndexOfValueClosestToTheReference(0, ddx),
         GetIndexOfValueClosestToTheReference(0, ddy)
     };
-
     float2 ddxy = float2(ddx[minIndex.x], ddy[minIndex.y]);
 
-
-#if HACK_CLAMP_DDXY_TO_BE_SMALL
+    // Clamp ddxy to a reasonable value to avoid ddxy going over surface boundaries
+    // on thin geometry and getting background/foreground blended together on blur.
     float2 _sign = sign(ddxy);
     float maxDdxy = 1;
     ddxy = _sign * min(abs(ddxy), maxDdxy);
-#endif
 #else
 
     // The min is taken to handle edges when calculating partial distance derivatives.
     // The min avoids the distance derivative slope being to that of another surface behind/in front of it on surface edges.
-    // ToDo dont strip the sign?
     float2 ddxy = min(abs(backwardDifferences), abs(forwardDifferences));
-#if HACK_CLAMP_DDXY_TO_BE_SMALL
-    float maxDdxy = 1;
-    ddxy = min(ddxy, maxDdxy);
-#endif
+
+    // Clamp ddxy to a reasonable value to avoid ddxy going over surface boundaries
+    // on thin geometry and getting background/foreground blended together on blur.
+    const float MaxDdxy = 1;
+    ddxy = min(ddxy, MaxDdxy);
 #endif
 
     g_outValue[DTid] = ddxy;

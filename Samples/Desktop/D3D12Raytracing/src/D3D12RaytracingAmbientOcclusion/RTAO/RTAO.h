@@ -113,10 +113,6 @@ private:
     UINT		    m_numAORayGeometryHits;
     bool            m_checkerboardGenerateRaysForEvenPixels = false;
 
-#if DEBUG_PRINT_OUT_RTAO_DISPATCH_TIME
-    DX::GPUTimer dispatchRayTime;
-#endif
-
     // DirectX Raytracing (DXR) attributes
     ComPtr<ID3D12StateObject>   m_dxrStateObject;
 
