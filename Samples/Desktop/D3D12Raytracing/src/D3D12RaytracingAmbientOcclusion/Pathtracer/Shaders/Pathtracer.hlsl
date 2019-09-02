@@ -18,7 +18,6 @@
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
 #include "RandomNumberGenerator.hlsli"
-#include "SSAO/GlobalSharedHlslCompat.h" // ToDo remove
 #include "AnalyticalTextures.hlsli"
 #include "BxDF.hlsli"
 #define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS
@@ -650,19 +649,12 @@ void MyRayGenShader_GBuffer()
     float rayLength = DISTANCE_ON_MISS;
     float obliqueness = 0;
 
-#if  REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO // CB value is incorrect on rayPayload.AOGBuffer.hit boundaries causing blocky artifacts when within if (hit) block
-    if (rayPayload.AOGBuffer.hit)
-    {
-        float3 raySegment = rayPayload.hitPosition - CB.cameraPosition;
-#else
     
     // 
     // ToDo dedupe
     //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - CB.cameraPosition, 1);
     if (hasCameraRayHitGeometry)
     {
-#endif
-
         rayLength = rayPayload.AOGBuffer.tHit;
         obliqueness = 0;// ToDo rayPayload.AOGBuffer.obliqueness;
     

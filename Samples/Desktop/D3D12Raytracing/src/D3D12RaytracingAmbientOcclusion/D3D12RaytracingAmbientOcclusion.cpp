@@ -30,18 +30,6 @@ using namespace GameCore;
 
 namespace Sample_Args
 {
-    //**********************************************************************************************************************************
-    // Ambient Occlusion
-    // TODo standardize naming in options
-    namespace AOType {
-        enum Enum { RTAO = 0, SSAO, Count };
-    }
-    const WCHAR* AOTypes[AOType::Count] = { L"Raytraced (RTAO)", L"Screen-space (MiniEngine SSAO)" };
-#if REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO
-    EnumVar AOMode(L"Render/AO/Mode", AOType::SSAO, AOType::Count, AOTypes);
-#else
-    EnumVar AOMode(L"Render/AO/Mode", AOType::RTAO, AOType::Count, AOTypes);
-#endif
 }
 
 HWND g_hWnd = 0;
@@ -153,67 +141,6 @@ namespace Sample
         outputFile.close();
     }
 
-#if ENABLE_SSAO
-    // Update camera matrices passed into the shader.
-    void D3D12RaytracingAmbientOcclusion::UpdateCameraMatrices()
-    {
-        // SSAO.
-        {
-            XMMATRIX view, proj;
-            m_camera.GetProj(&proj, m_GBufferWidth, m_GBufferHeight);
-            view = XMMatrixLookAtLH(m_camera.Eye(), m_camera.At(), m_camera.Up());
-            XMMATRIX viewProj = view * proj;
-
-            m_SSAO.OnCameraChanged(proj);
-            m_SSAOCB->cameraPosition = m_camera.Eye();
-            // ToDo why transpose? Because DirectXMath uses row-major and hlsl is column-major
-            m_SSAOCB->worldView = XMMatrixTranspose(view);
-            m_SSAOCB->worldViewProjection = XMMatrixTranspose(viewProj);
-            m_SSAOCB->projectionToWorld = XMMatrixInverse(nullptr, viewProj);
-
-            // Update frustum.
-            {
-                BoundingFrustum bf;
-                BoundingFrustum::CreateFromMatrix(bf, proj);
-
-                XMMATRIX viewToWorld = XMMatrixInverse(nullptr, view);
-
-                XMFLOAT3 corners[BoundingFrustum::CORNER_COUNT];
-                bf.GetCorners(corners);
-
-                auto lowerLeft = XMVector3Transform(
-                    XMLoadFloat3(&corners[7]),
-                    viewToWorld
-                );
-                auto lowerRight = XMVector3Transform(
-                    XMLoadFloat3(&corners[6]),
-                    viewToWorld
-                );
-                auto topLeft = XMVector3Transform(
-                    XMLoadFloat3(&corners[4]),
-                    viewToWorld
-                );
-
-                XMVECTOR point = XMVectorSubtract(topLeft, m_camera.Eye());
-                XMVECTOR horizDelta = XMVectorSubtract(lowerRight, lowerLeft);
-                XMVECTOR vertDelta = XMVectorSubtract(lowerLeft, topLeft);
-
-                m_SSAOCB->frustumPoint = point;
-                m_SSAOCB->frustumHDelta = horizDelta;
-                m_SSAOCB->frustumVDelta = vertDelta;
-            }
-        }
-    }
-
-    void D3D12RaytracingAmbientOcclusion::CreateConstantBuffers()
-    {
-        auto device = m_deviceResources->GetD3DDevice();
-        auto FrameCount = m_deviceResources->GetBackBufferCount();
-
-        m_SSAOCB.Create(device, FrameCount, L"SSAO Constant Buffer");
-    }
-#endif
-
     // Create resources that depend on the device.
     void D3D12RaytracingAmbientOcclusion::CreateDeviceDependentResources()
     {
@@ -235,11 +162,6 @@ namespace Sample
         m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_scene);
         m_denoiser.Setup(m_deviceResources, m_cbvSrvUavHeap);
         m_composition.Setup(m_deviceResources, m_cbvSrvUavHeap);
-#if ENABLE_SSAO
-        CreateConstantBuffers();
-        m_SSAO.Setup(m_deviceResources);
-#endif
-
     }
 
 
@@ -264,12 +186,6 @@ namespace Sample
         auto backbufferFormat = m_deviceResources->GetBackBufferFormat();
 
         DXGI_FORMAT debugFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
-
-#if ENABLE_SSAO
-        // ToDo
-        RTAO_Args::QuarterResAO
-        m_SSAO.BindGBufferResources(Pathtracer::GBufferResources(RTAO_Args::QuarterResAO)[GBufferResource::SurfaceNormalDepth].GetResource(), Pathtracer::GBufferResources(RTAO_Args::QuarterResAO)[GBufferResource::Depth].GetResource());
-#endif
         
         // Debug resources
         {
@@ -437,16 +353,6 @@ namespace Sample
 
         m_scene.OnUpdate();
 
-
-#if ENABLE_SSAO
-        // ToDo move
-        // SSAO
-        {
-            m_SSAOCB->noiseTile = { float(m_width) / float(SSAO_NOISE_W), float(m_height) / float(SSAO_NOISE_W), 0, 0 };
-            m_SSAO.SetParameters(Args::SSAONoiseFilterTolerance, Args::SSAOBlurTolerance, Args::SSAOUpsampleTolerance, Args::SSAONormalMultiply);
-
-        }
-#endif
         if (m_enableUI)
         {
             UpdateUI();
@@ -695,16 +601,6 @@ namespace Sample
         CreateRaytracingOutputResource();
         CreateDebugResources();
 
-#if ENABLE_SSAO
-        // SSAO
-        {
-            m_SSAO.OnSizeChanged(GBufferWidth, GBufferHeight);
-            ID3D12Resource* SSAOoutputResource = m_SSAO.GetSSAOOutputResource();
-            D3D12_CPU_DESCRIPTOR_HANDLE dummyHandle;
-            CreateTextureSRV(device, SSAOoutputResource, m_cbvSrvUavHeap.get(), &m_SSAOsrvDescriptorHeapIndex, &dummyHandle, &SSAOgpuDescriptorReadAccess);
-        }
-#endif
-
         if (m_enableUI)
         {
             if (!m_uiLayer)
@@ -808,7 +704,7 @@ namespace Sample
                         m_sampleGpuTimes[Sample_GPUTime::Pathtracing].Stop(commandList);
                     }
 
-                    if (Sample_Args::AOMode == Sample_Args::AOType::RTAO)
+                    // RTAO
                     {
                         ScopedTimer _prof(L"RTAO_Root", commandList);
 
@@ -831,22 +727,7 @@ namespace Sample
                             m_denoiser.Run(m_scene, m_pathtracer, m_RTAO);
                             m_sampleGpuTimes[Sample_GPUTime::AOdenoising].Stop(commandList);
                         }
-
                     }
-#if ENABLE_SSAO
-                    else // SSAO
-                    {
-                        ScopedTimer _prof(L"SSAO", commandList);
-                        // Copy dynamic buffers to GPU.
-                        {
-                            auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-                            m_SSAOCB.CopyStagingToGpu(frameIndex);
-                        }
-
-                        m_SSAO.ChangeScreenScale(1.f);
-                        m_SSAO.Run(m_SSAOCB.GetResource());
-                    }
-#endif
                 }
 #if ENABLE_SSAA
                 m_composition.Render(&m_raytracingOutput, m_scene, m_pathtracer, m_RTAO, m_denoiser, m_GBufferWidth, m_GBufferHeight);

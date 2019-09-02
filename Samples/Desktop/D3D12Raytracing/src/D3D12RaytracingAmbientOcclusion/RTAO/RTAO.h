@@ -55,7 +55,7 @@ public:
     void SetResolution(UINT width, UINT height); 
     void Release();
 
-    // Getters & Setters.
+    // Getters & setters.
     GpuResource(&AOResources())[AOResource::Count]{ return m_AOResources; }
     static DXGI_FORMAT ResourceFormat(ResourceType resourceType);
     float MaxRayHitTime();

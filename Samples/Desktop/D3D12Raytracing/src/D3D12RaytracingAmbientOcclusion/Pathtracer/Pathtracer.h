@@ -40,7 +40,7 @@ public:
     void SetResolution(UINT GBufferWidth, UINT GBufferHeight, UINT RTAOWidth, UINT RTAOHeight);
     void Release();
 
-    // Getters & Setters.
+    // Getters & setters.
     // ToDo remove
     void SetCamera(const GameCore::Camera& camera);
     GpuResource(&GBufferResources(bool getQuarterResResources = false))[GBufferResource::Count];

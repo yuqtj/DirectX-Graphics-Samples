@@ -12,8 +12,6 @@
 #ifndef RAYTRACINGHLSLCOMPAT_H
 #define RAYTRACINGHLSLCOMPAT_H
 
-#include "SSAO//GlobalSharedHlslCompat.h"
-
 /*
 //ToDo
 // ToDo switch to default column major in hlsl and do a transpose before passing matrices to HLSL.
@@ -108,7 +106,6 @@ Optimization
 
 */
 // Workarounds - ToDo remove/document
-#define REPRO_BLOCKY_ARTIFACTS_NONUNIFORM_CB_REFERENCE_SSAO 0
 #define REPRO_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF 0
 #define REPRO_INVISIBLE_WALL 0
 
@@ -119,6 +116,12 @@ Optimization
 // A header with shared definitions for C++ and HLSL source files. 
 //
 //**********************************************************************************************
+
+#define FOVY 45.f
+// ToDo remove
+#define NEAR_PLANE 0.001f
+#define FAR_PLANE 1000.0f   // ToDo pass form the app
+
 #define MARK_PERFECT_MIRRORS_AS_NOT_OPAQUE 1
 
 #define RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS 1
@@ -149,14 +152,6 @@ Incompatible macros
 #define ENABLE_PROFILING 0
 #define ENABLE_LAZY_RENDER 0
 #define ENABLE_SSAA 0
-
-// ToDo
-// SSAO
-#define ENABLE_SSAO 0
-#define SSAO_NOISE_W 100
-#define SSAO_MAX_SAMPLES 15
-#define SSAO_MAX_OCCLUSION_RAYS (SSAO_MAX_SAMPLES * SSAO_MAX_SAMPLES)
-// ~SSAO
 
 #define DISTANCE_ON_MISS 65504  // ~FLT_MAX within 16 bit format // ToDo explain
 
@@ -193,7 +188,7 @@ typedef uint NormalDepthTexFormat;
 #define USE_GRASS_GEOMETRY 1
 #define GRASS_NO_DEGENERATE_INSTANCES 1 // Degenerate instances cause long trace ray times
 
-#define LOAD_PBRT_SCENE 0       // loads PBRT(1) or SquidRoom(0)
+#define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
 #ifdef _DEBUG
 #define LOAD_ONLY_ONE_PBRT_MESH 1  // for LOAD_PBRT_SCENE == 1 only
 #else

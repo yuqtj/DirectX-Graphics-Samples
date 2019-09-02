@@ -197,10 +197,6 @@ void Scene::OnUpdate()
 
         m_lightPosition = XMVector3Transform(m_lightPosition, rotate);
     }
-
-#if ENABLE_SSAO
-    UpdateCameraMatrices();
-#endif
 }
 
 void Scene::CreateResolutionDependentResources()

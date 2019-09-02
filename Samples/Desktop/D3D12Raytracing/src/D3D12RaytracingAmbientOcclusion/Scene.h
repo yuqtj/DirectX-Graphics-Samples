@@ -71,7 +71,6 @@ private:
     void CreateIndexAndVertexBuffers(const GeometryDescriptor& desc, D3DGeometry* geometry);
     void LoadPBRTScene();
     void LoadSceneGeometry();
-    void UpdateSSAOCameraMatrices();
     void InitializeScene();
     void UpdateAccelerationStructure();
     void InitializeGrassGeometry();

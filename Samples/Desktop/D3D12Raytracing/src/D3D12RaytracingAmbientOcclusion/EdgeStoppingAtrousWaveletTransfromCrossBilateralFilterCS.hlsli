@@ -376,7 +376,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
             // ToDo remove?
 
         float2 varianceSigmaScale = 1; 
-        if ( g_CB.useAdaptiveKernelSize)
+        if (g_CB.useAdaptiveKernelSize)
         {
             float avgRayHitDistance = isValidValue ? g_inHitDistance[DTid] : 0;
 

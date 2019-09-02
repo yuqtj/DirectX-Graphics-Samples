@@ -22,7 +22,6 @@
 #include "UILayer.h"
 #include "GpuKernels.h"
 #include "PBRTParser.h"
-#include "SSAO\SSAO.h"
 #include "SceneParameters.h"
 #include "RTAO\RTAO.h"
 #include "Pathtracer\Pathtracer.h"
@@ -98,26 +97,17 @@ namespace Sample
         std::unique_ptr<DX::DescriptorHeap> m_samplerHeap;
 
         // Raytracing scene
-
-
-        // ToDo move to SSAO
-        // SSAO
-        ConstantBuffer<SSAOSceneConstantBuffer> m_SSAOCB;
-        UINT m_SSAOsrvDescriptorHeapIndex = UINT_MAX;
-        D3D12_GPU_DESCRIPTOR_HANDLE SSAOgpuDescriptorReadAccess = { UINT64_MAX };
-
         bool m_isProfiling = false;
         UINT m_numRemainingFramesToProfile = 0;
         std::map<std::wstring, std::list<std::wstring>> m_profilingResults;
-        
+
+        // Game components
         Pathtracer m_pathtracer;
         RTAO m_RTAO;
         Denoiser m_denoiser;
         Composition m_composition;
         Scene m_scene;
-#if ENABLE_SSAO
-        SSAO::SSAO        m_SSAO;
-#endif
+
         // Raytracing output
         // ToDo use the struct
         GpuResource m_raytracingOutput;
@@ -151,10 +141,6 @@ namespace Sample
         void DownsampleRaytracingOutput();        // ToDo standardize const& vs *
         void ParseCommandLineArgs(WCHAR* argv[], int argc);
         void RecreateD3D();
-#if ENABLE_SSAO
-        void UpdateCameraMatrices();
-        void CreateConstantBuffers();
-#endif
         void UpdateUI();
         void CreateDeviceDependentResources();
         void CreateWindowSizeDependentResources();
