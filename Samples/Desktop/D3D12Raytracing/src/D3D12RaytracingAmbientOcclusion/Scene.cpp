@@ -70,8 +70,6 @@ void Scene::CreateDeviceDependentResources()
     CreateAuxilaryDeviceResources();
 
     InitializeGeometry();
-    InitializeAccelerationStructures();
-
     m_prevFrameBottomLevelASInstanceTransforms.Create(device, MaxNumBottomLevelInstances, Sample::FrameCount, L"GPU buffer: Bottom Level AS Instance transforms for previous frame");
 }
 
@@ -123,6 +121,7 @@ void Scene::OnUpdate()
         //m_bClearTemporalSupersampling = true;
     }
 
+    // ToDO make sure not to update grass on disabled scen animation
     if (m_animateScene)
     {
         float animationDuration = 180.0f;
@@ -268,6 +267,7 @@ void Scene::LoadPBRTScene()
 #endif
     };
 
+    // ToDo reuse a single resourceUpload during scene load
     ResourceUploadBatch resourceUpload(device);
     resourceUpload.Begin();
 
@@ -283,7 +283,7 @@ void Scene::LoadPBRTScene()
         bottomLevelASGeometry.SetName(pbrtSceneDefinition.name);
 
         // ToDo switch to a common namespace rather than 't reference SquidRoomAssets?
-        bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat;
+        bottomLevelASGeometry.m_indexFormat = SquidRoomAssets::StandardIndexFormat;     // ToDo use a common IB Format
         bottomLevelASGeometry.m_ibStrideInBytes = SquidRoomAssets::StandardIndexStride;
         bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
         bottomLevelASGeometry.m_vbStrideInBytes = SquidRoomAssets::StandardVertexStride;
@@ -454,70 +454,6 @@ void Scene::InitializeScene()
         m_lightPosition = XMVectorSet(-20.0f, 60.0f, 20.0f, 0);
         m_lightColor = XMFLOAT3(0.6f, 0.6f, 0.6f);
     }
-}
-
-void Scene::BuildPlaneGeometry()
-{
-    auto device = m_deviceResources->GetD3DDevice();
-
-    auto& bottomLevelASGeometry = m_bottomLevelASGeometries[L"Plane"];
-    bottomLevelASGeometry.SetName(L"Plane");
-    bottomLevelASGeometry.m_indexFormat = DXGI_FORMAT_R16_UINT; // ToDo use common or add support to shaders 
-    bottomLevelASGeometry.m_ibStrideInBytes = sizeof(Index);
-    bottomLevelASGeometry.m_vertexFormat = DXGI_FORMAT_R32G32B32_FLOAT; // ToDo use common or add support to shaders 
-    bottomLevelASGeometry.m_vbStrideInBytes = sizeof(DirectX::GeometricPrimitive::VertexType);
-
-    auto& geometries = bottomLevelASGeometry.m_geometries;
-    geometries.resize(1);
-    auto& geometry = geometries[0];
-
-    // Plane indices.
-    Index indices[] =
-    {
-        3, 1, 0,
-        2, 1, 3
-    };
-
-    // Cube vertices positions and corresponding triangle normals.
-    DirectX::VertexPositionNormalTexture vertices[] =
-    {
-        { XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT2(0.0f, 0.0f) },
-        { XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
-        { XMFLOAT3(1.0f, 0.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT2(1.0f, 0.0f) },
-        { XMFLOAT3(0.0f, 0.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT2(0.0f, 1.0f) }
-    };
-
-    // A ByteAddressBuffer SRV is created with a ElementSize = 0 and NumElements = number of 32 - bit words.
-    UINT indexBufferSize = CeilDivide(sizeof(indices), sizeof(UINT)) * sizeof(UINT);	// Pad the buffer to fit NumElements of 32bit words.
-    UINT numIndexBufferElements = indexBufferSize / sizeof(UINT);
-
-    AllocateUploadBuffer(device, indices, indexBufferSize, &geometry.ib.buffer.resource);
-    AllocateUploadBuffer(device, vertices, sizeof(vertices), &geometry.vb.buffer.resource);
-
-    // Vertex buffer is passed to the shader along with index buffer as a descriptor range.
-
-    // ToDo revise numElements calculation
-    CreateBufferSRV(device, numIndexBufferElements, 0, m_cbvSrvUavHeap.get(), &geometry.ib.buffer);
-    CreateBufferSRV(device, ARRAYSIZE(vertices), sizeof(vertices[0]), m_cbvSrvUavHeap.get(), &geometry.vb.buffer);
-    ThrowIfFalse(geometry.vb.buffer.heapIndex == geometry.ib.buffer.heapIndex + 1, L"Vertex Buffer descriptor index must follow that of Index Buffer descriptor index");
-
-    ThrowIfFalse(0 && L"ToDo: fix up null VB SRV");
-
-    PrimitiveMaterialBuffer planeMaterialCB;
-    planeMaterialCB.Kd = XMFLOAT3(0.24f, 0.4f, 0.4f);
-    planeMaterialCB.opacity = XMFLOAT3(1, 1, 1);
-    planeMaterialCB.hasDiffuseTexture = false;
-    planeMaterialCB.hasNormalTexture = false;
-    planeMaterialCB.hasPerVertexTangents = false;
-    planeMaterialCB.roughness = 0.0;
-    planeMaterialCB.type = MaterialType::Matte;
-
-    UINT materialID = static_cast<UINT>(m_materials.size());
-    m_materials.push_back(planeMaterialCB);
-
-    bottomLevelASGeometry.m_geometryInstances.resize(1);
-    bottomLevelASGeometry.m_geometryInstances.push_back(GeometryInstance(geometry, materialID, m_nullTexture.gpuDescriptorHandle, m_nullTexture.gpuDescriptorHandle));
-    bottomLevelASGeometry.m_numTriangles = bottomLevelASGeometry.m_geometryInstances.back().ib.count / 3;
 }
     
 // ToDo move this out as a helper
@@ -732,7 +668,6 @@ void Scene::InitializeGeometry()
             m_nullTexture.heapIndex, m_cbvSrvUavHeap->DescriptorSize());
     }
 
-    //BuildPlaneGeometry();   
 
     // Begin frame.
     m_deviceResources->ResetCommandAllocatorAndCommandlist();
@@ -782,6 +717,7 @@ void Scene::InitializeAllBottomLevelAccelerationStructures()
 
 
 // Build acceleration structure needed for raytracing.
+// Requires: BLASes to have their instanceContributionToHitGroupIndex already initialized. 
 void Scene::InitializeAccelerationStructures()
 {
     auto device = m_deviceResources->GetD3DDevice();

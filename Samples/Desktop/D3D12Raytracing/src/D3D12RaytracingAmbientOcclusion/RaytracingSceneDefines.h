@@ -19,7 +19,7 @@ namespace ComputeShader {
 		enum Enum {
 			HemisphereSampleSetVisualization = 0,
 			ReduceSum,
-			ComposeRenderPassesCS,
+			CompositionCS,
             AoBlurCS,
             AoBlurAndUpsampleCS,
 			Count
@@ -48,7 +48,7 @@ namespace ComputeShader {
 			}
 		}
 
-		namespace ComposeRenderPassesCS {
+		namespace CompositionCS {
 			namespace Slot {
 				enum Enum {
 					Output = 0,

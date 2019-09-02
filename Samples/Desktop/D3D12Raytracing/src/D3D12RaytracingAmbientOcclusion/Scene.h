@@ -37,6 +37,7 @@ public:
 
     // Public methods.
     void Setup(std::shared_ptr<DX::DeviceResources> deviceResources, std::shared_ptr<DX::DescriptorHeap> descriptorHeap);
+    void InitializeAccelerationStructures();
     void OnUpdate();
     void OnRender();
     void Release();
@@ -56,6 +57,8 @@ public:
     
     void ToggleAnimateLight() { m_animateLight = !m_animateLight; }
     void ToggleAnimateCamera() { m_animateCamera = !m_animateCamera; }
+    // ToDo track animation time and resume continuosly.
+    void ToggleAnimateScene() { m_animateScene = !m_animateScene; }
 private:
     void CreateDeviceDependentResources();
     void CreateConstantBuffers();
@@ -73,9 +76,7 @@ private:
     void UpdateAccelerationStructure();
     void InitializeGrassGeometry();
     void InitializeGeometry();
-    void BuildPlaneGeometry();
     void InitializeAllBottomLevelAccelerationStructures();
-    void InitializeAccelerationStructures();
     std::shared_ptr<DX::DeviceResources> m_deviceResources;
     std::shared_ptr<DX::DescriptorHeap> m_cbvSrvUavHeap;
 

@@ -334,7 +334,7 @@ void Denoiser::TemporalReverseReproject(Scene& scene, Pathtracer& pathtracer)
         resourceStateTracker->TransitionResource(&m_cachedFrameAgeValueSquaredValueRayHitDistance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     }
 
-    GpuResource (&GBufferResources)[GBufferResource::Count] = pathtracer.GBufferResources();
+    GpuResource (&GBufferResources)[GBufferResource::Count] = pathtracer.GBufferResources(RTAO_Args::QuarterResAO);
 
     UINT maxFrameAge = static_cast<UINT>(1 / Denoiser_Args::TemporalSupersampling_MinSmoothingFactor);
     resourceStateTracker->FlushResourceBarriers();
@@ -665,7 +665,7 @@ void Denoiser::MultiPassBlur(Pathtracer& pathtracer)
         ? GpuKernels::BilateralFilter::NormalDepthAware_GaussianFilter5x5
         : GpuKernels::BilateralFilter::DepthAware_GaussianFilter5x5;
 
-    GpuResource(&GBufferResources)[GBufferResource::Count] = pathtracer.GBufferResources();
+    GpuResource(&GBufferResources)[GBufferResource::Count] = pathtracer.GBufferResources(RTAO_Args::QuarterResAO);
     GpuResource* depthResource =
         Denoiser_Args::Denoising_LowTsppUseNormalWeights
         ? &GBufferResources[GBufferResource::SurfaceNormalDepth]
@@ -817,7 +817,7 @@ void Denoiser::ApplyAtrousWaveletTransformFilter(Pathtracer& pathtracer, RTAO& r
         Denoiser_Args::TemporalSupersampling_CacheDenoisedOutput &&
         static_cast<UINT>(Denoiser_Args::TemporalSupersampling_CacheDenoisedOutputPassNumber) < numFilterPasses;
 
-    GpuResource(&GBufferResources)[GBufferResource::Count] = pathtracer.GBufferResources();
+    GpuResource(&GBufferResources)[GBufferResource::Count] = pathtracer.GBufferResources(RTAO_Args::QuarterResAO);
     GpuResource* InputAOCoefficientResource = &m_temporalAOCoefficient[m_temporalCacheCurrentFrameTemporalAOCoefficientResourceIndex];
     GpuResource* OutputIntermediateResource = nullptr;
     if (cacheIntermediateDenoiseOutput)

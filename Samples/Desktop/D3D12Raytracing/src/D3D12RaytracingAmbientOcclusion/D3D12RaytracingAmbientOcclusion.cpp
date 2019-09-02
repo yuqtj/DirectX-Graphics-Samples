@@ -224,7 +224,14 @@ namespace Sample
         
         m_scene.Setup(m_deviceResources, m_cbvSrvUavHeap);
         m_pathtracer.Setup(m_deviceResources, m_cbvSrvUavHeap, m_scene);
-        // ToDo add a note the RTAO setup has to be called after pathtracer built its shader tables and updated instanceContributionToHitGroupIndices.
+
+        // With BLAS and their instanceContributionToHitGroupIndex initialized during 
+        // Pathracer setup's shader table build, initialize the AS.
+        // Make sure to call this before RTAO build shader tables as it queries
+        // max instanceContributionToHitGroupIndex from the scene's AS.
+        // ToDo clean up dependencies? Use max instace from Pathtracer?
+        m_scene.InitializeAccelerationStructures();
+
         m_RTAO.Setup(m_deviceResources, m_cbvSrvUavHeap, m_scene);
         m_denoiser.Setup(m_deviceResources, m_cbvSrvUavHeap);
         m_composition.Setup(m_deviceResources, m_cbvSrvUavHeap);
@@ -232,6 +239,7 @@ namespace Sample
         CreateConstantBuffers();
         m_SSAO.Setup(m_deviceResources);
 #endif
+
     }
 
 
@@ -259,7 +267,8 @@ namespace Sample
 
 #if ENABLE_SSAO
         // ToDo
-        m_SSAO.BindGBufferResources(Pathtracer::GBufferResources()[GBufferResource::SurfaceNormalDepth].GetResource(), Pathtracer::GBufferResources()[GBufferResource::Depth].GetResource());
+        RTAO_Args::QuarterResAO
+        m_SSAO.BindGBufferResources(Pathtracer::GBufferResources(RTAO_Args::QuarterResAO)[GBufferResource::SurfaceNormalDepth].GetResource(), Pathtracer::GBufferResources(RTAO_Args::QuarterResAO)[GBufferResource::Depth].GetResource());
 #endif
         
         // Debug resources
@@ -318,7 +327,7 @@ namespace Sample
     void D3D12RaytracingAmbientOcclusion::OnKeyDown(UINT8 key)
     {
         float fValue;
-        // ToDo 
+        // ToDo call componanet's handlers
         switch (key)
         {
         case VK_ESCAPE:
@@ -330,10 +339,10 @@ namespace Sample
             m_scene.ToggleAnimateCamera();
             break;
             // ToDO
-#if 0
         case 'A':
-            //m_animateScene = !m_animateScene;
+            m_scene.ToggleAnimateScene();
             break;
+#if 0
         case 'V':
             Args::TAO_LazyRender.Bang();// TODo remove
             break;
@@ -534,7 +543,7 @@ namespace Sample
 
             float numVisibilityRays = 1e-6f * m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] / GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_Visibility);
             //wLabel << fixed << L" VisibilityRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() << L"ms  ~" << numVisibilityRays << " GigaRay/s\n";
-            //wLabel << fixed << L" Shading: " << m_gpuTimers[GpuTimers::ComposeRenderPassesCS].GetAverageMS() << L"ms\n";
+            //wLabel << fixed << L" Shading: " << m_gpuTimers[GpuTimers::CompositionCS].GetAverageMS() << L"ms\n";
 
 
             wLabel << fixed << L" Downsample SSAA: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::DownsampleToBackbuffer) << L"ms\n";
@@ -824,7 +833,7 @@ namespace Sample
                     {
                         ScopedTimer _prof(L"RTAO_Root", commandList);
 
-                        GpuResource* GBufferResources = m_pathtracer.GBufferResources();
+                        GpuResource* GBufferResources = m_pathtracer.GBufferResources(RTAO_Args::QuarterResAO);
 
                         // Raytracing
                         {

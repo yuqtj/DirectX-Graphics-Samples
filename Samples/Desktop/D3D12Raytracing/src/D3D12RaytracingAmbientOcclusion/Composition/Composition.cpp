@@ -41,6 +41,7 @@ namespace Composition_Args
         L"AO Variance",
         L"AO Local Variance",
         L"Temporal AO Ray Hit Distance", // ToDo  raw as well?
+        // ToDo make it clear normal, depth and diffuse correspond to the surface AO is calculated for?
         L"Normal Map",
         L"Depth Buffer",
         L"Diffuse",
@@ -134,7 +135,7 @@ void Composition::CreateComposeRenderPassesCSResources()
 
     // Create root signature.
     {
-        using namespace CSRootSignature::ComposeRenderPassesCS;
+        using namespace CSRootSignature::CompositionCS;
 
         CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; // Perfomance TIP: Order from most frequent to least frequent.
         ranges[Slot::Output].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
@@ -162,22 +163,22 @@ void Composition::CreateComposeRenderPassesCSResources()
 
 
         CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
-        SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::ComposeRenderPassesCS], L"Root signature: ComposeRenderPassesCS");
+        SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::CompositionCS], L"Root signature: CompositionCS");
     }
 
     // Create shader resources
     {
-        m_csComposeRenderPassesCB.Create(device, FrameCount, L"Constant Buffer: ComposeRenderPassesCS");
+        m_csComposeRenderPassesCB.Create(device, FrameCount, L"Constant Buffer: CompositionCS");
     }
 
     // Create compute pipeline state.
     {
         D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
-        descComputePSO.pRootSignature = m_computeRootSigs[CSType::ComposeRenderPassesCS].Get();
+        descComputePSO.pRootSignature = m_computeRootSigs[CSType::CompositionCS].Get();
         descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void*)g_pCompositionCS, ARRAYSIZE(g_pCompositionCS));
 
-        ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[CSType::ComposeRenderPassesCS])));
-        m_computePSOs[CSType::ComposeRenderPassesCS]->SetName(L"PSO: ComposeRenderPassesCS");
+        ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[CSType::CompositionCS])));
+        m_computePSOs[CSType::CompositionCS]->SetName(L"PSO: CompositionCS");
     }
 }
 
@@ -428,9 +429,9 @@ void Composition::Render(
     auto commandList = m_deviceResources->GetCommandList();
     auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-    auto& GBufferResources = pathtracer.GBufferResources();
+    auto& GBufferResources = pathtracer.GBufferResources(false);
 
-    ScopedTimer _prof(L"ComposeRenderPassesCS", commandList);
+    ScopedTimer _prof(L"CompositionCS", commandList);
 
     if (RTAO_Args::QuarterResAO)
     {
@@ -455,7 +456,7 @@ void Composition::Render(
 
     // Set pipeline state.
     {
-        using namespace ComputeShader::RootSignature::ComposeRenderPassesCS;
+        using namespace ComputeShader::RootSignature::CompositionCS;
 
         GpuResource* TemporalResources = denoiser.m_temporalCache[denoiser.m_temporalCacheCurrentFrameResourceIndex];
         GpuResource* VarianceResource = Denoiser_Args::Denoising_UseSmoothedVariance ? &denoiser.m_varianceResources[AOVarianceResource::Smoothed] : &denoiser.m_varianceResources[AOVarianceResource::Raw];
@@ -479,8 +480,8 @@ void Composition::Render(
         }
 
         commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-        commandList->SetComputeRootSignature(m_computeRootSigs[CSType::ComposeRenderPassesCS].Get());
-        commandList->SetPipelineState(m_computePSOs[CSType::ComposeRenderPassesCS].Get());
+        commandList->SetComputeRootSignature(m_computeRootSigs[CSType::CompositionCS].Get());
+        commandList->SetPipelineState(m_computePSOs[CSType::CompositionCS].Get());
 
         // Bind outputs.
         commandList->SetComputeRootDescriptorTable(Slot::Output, outputResource->gpuDescriptorWriteAccess);

@@ -53,6 +53,8 @@ namespace GlobalRootSignature {
             ReprojectedNormalDepth,
             Color,
             AOSurfaceAlbedo,
+            Debug1,
+            Debug2,
             Count
         };
     }
@@ -87,6 +89,7 @@ namespace LocalRootSignature {
 }
 
 // Shader entry points.
+// ToDO rename gbuffer?
 const wchar_t* Pathtracer::c_rayGenShaderNames[] = { L"MyRayGenShader_GBuffer" };
 const wchar_t* Pathtracer::c_closestHitShaderNames[] = { L"MyClosestHitShader_GBuffer", L"MyClosestHitShader_ShadowRay" };
 const wchar_t* Pathtracer::c_missShaderNames[] = { L"MyMissShader_GBuffer", L"MyMissShader_ShadowRay" };
@@ -138,12 +141,6 @@ namespace Pathtracer_Args
     EnumVar RTAO_MotionVectorResourceFormat(L"Render/Texture Formats/AO/RTAO/Temporal Supersampling/Motion Vector", TextureResourceFormatRG::R16G16_FLOAT, TextureResourceFormatRG::Count, FloatingPointFormatsRG, Sample::OnRecreateRaytracingResources);
 }
 
-GpuResource (&GBufferResources(bool getQuarterResResources))[GBufferResource::Count]
-{
-    return g_pPathracer->GBufferResources(getQuarterResResources);
-}
-
-
 GpuResource(&Pathtracer::GBufferResources(bool getQuarterResResources))[GBufferResource::Count]
 {
     if (getQuarterResResources)
@@ -151,8 +148,6 @@ GpuResource(&Pathtracer::GBufferResources(bool getQuarterResResources))[GBufferR
     else
         return m_GBufferResources;
 }
-        
-
     
 Pathtracer::Pathtracer()
 {
@@ -259,6 +254,8 @@ void Pathtracer::CreateRootSignatures()
         ranges[Slot::ReprojectedNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 18);  // 1 output texture reprojected hit position
         ranges[Slot::Color].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 19);  // 1 output texture shaded color
         ranges[Slot::AOSurfaceAlbedo].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 20);  // 1 output texture AO diffuse
+        ranges[Slot::Debug1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 21); 
+        ranges[Slot::Debug2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 22); 
 
 
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
@@ -293,6 +290,8 @@ void Pathtracer::CreateRootSignatures()
         rootParameters[Slot::ReprojectedNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::ReprojectedNormalDepth]);
         rootParameters[Slot::Color].InitAsDescriptorTable(1, &ranges[Slot::Color]);
         rootParameters[Slot::AOSurfaceAlbedo].InitAsDescriptorTable(1, &ranges[Slot::AOSurfaceAlbedo]);
+        rootParameters[Slot::Debug1].InitAsDescriptorTable(1, &ranges[Slot::Debug1]);
+        rootParameters[Slot::Debug2].InitAsDescriptorTable(1, &ranges[Slot::Debug2]);
 
         rootParameters[Slot::AccelerationStructure].InitAsShaderResourceView(0);
         rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);		// ToDo rename to ConstantBuffer
@@ -711,7 +710,7 @@ void Pathtracer::DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width, UIN
 void Pathtracer::SetCamera(const GameCore::Camera& camera)
 {
     XMMATRIX view, proj;
-    camera.GetProj(&proj, m_quarterResWidth, m_quarterResHeight);
+    camera.GetProj(&proj, m_width, m_height);
 
     // Calculate view matrix as if the camera was at (0,0,0) to avoid 
     // precision issues when camera position is too far from (0,0,0).
@@ -719,6 +718,7 @@ void Pathtracer::SetCamera(const GameCore::Camera& camera)
     view = XMMatrixLookAtLH(XMVectorSet(0, 0, 0, 1), XMVectorSetW(camera.At() - camera.Eye(), 1), camera.Up());
     XMMATRIX viewProj = view * proj;
     m_CB->projectionToWorldWithCameraEyeAtOrigin = XMMatrixInverse(nullptr, viewProj);
+    XMStoreFloat3(&m_CB->cameraPosition, camera.Eye());
     m_CB->Znear = camera.ZMin;
     m_CB->Zfar = camera.ZMax;
 }
@@ -742,6 +742,8 @@ void Pathtracer::UpdateConstantBuffer(Scene& scene)
     XMStoreFloat3(&m_CB->lightPosition, scene.m_lightPosition);
     m_CB->lightColor = scene.m_lightColor;
 
+    SetCamera(scene.Camera());
+
     // ToDo move
     m_CB->maxRadianceRayRecursionDepth = Pathtracer_Args::MaxRadianceRayRecursionDepth;
     m_CB->maxShadowRayRecursionDepth = Pathtracer_Args::MaxShadowRayRecursionDepth;
@@ -756,16 +758,16 @@ void Pathtracer::Run(Scene& scene)
     auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
     auto frameIndex = m_deviceResources->GetCurrentFrameIndex();        // ToDo rename to Backbuffer index
 
-    ScopedTimer _prof(L"GenerateGbuffer", commandList);
+    ScopedTimer _prof(L"Pathtracing", commandList);
     UpdateConstantBuffer(scene);
 
-    auto& Scene = scene;
-    auto& MaterialBuffer = Scene.MaterialBuffer();
-    auto& EnvironmentMap = Scene.EnvironmentMap();
-    auto& PrevFrameBottomLevelASInstanceTransforms = Scene.PrevFrameBottomLevelASInstanceTransforms();
+    auto& MaterialBuffer = scene.MaterialBuffer();
+    auto& EnvironmentMap = scene.EnvironmentMap();
+    auto& PrevFrameBottomLevelASInstanceTransforms = scene.PrevFrameBottomLevelASInstanceTransforms();
 
     m_CB->useDiffuseFromMaterial = Composition_Args::CompositionMode == CompositionType::Diffuse;
 
+    // ToDo move this to UpdateConstant BUffer
     // ToDo should we use cameraAtPosition0 too and offset the world space pos vector in the shader?
     auto& prevFrameCamera = scene.PrevFrameCamera();
     XMMATRIX prevView, prevProj;
@@ -807,7 +809,7 @@ void Pathtracer::Run(Scene& scene)
     // Bind inputs.
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, scene.AccelerationStructure()->GetTopLevelASResource()->GetGPUVirtualAddress());
     commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::SceneConstant, m_CB.GpuVirtualAddress(frameIndex));
-    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, Scene.MaterialBuffer().GpuVirtualAddress());
+    commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::MaterialBuffer, scene.MaterialBuffer().GpuVirtualAddress());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::EnvironmentMap, EnvironmentMap.gpuDescriptorHandle);
     commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::PrevFrameBottomLevelASIstanceTransforms, PrevFrameBottomLevelASInstanceTransforms.GpuVirtualAddress(frameIndex));
 
@@ -819,6 +821,8 @@ void Pathtracer::Run(Scene& scene)
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::ReprojectedNormalDepth, m_GBufferResources[GBufferResource::ReprojectedNormalDepth].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Color, m_GBufferResources[GBufferResource::Color].gpuDescriptorWriteAccess);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOSurfaceAlbedo, m_GBufferResources[GBufferResource::AOSurfaceAlbedo].gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Debug1, m_debugOutput[0].gpuDescriptorWriteAccess);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::Debug2, m_debugOutput[1].gpuDescriptorWriteAccess);
 
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
     commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::PartialDepthDerivatives, m_GBufferResources[GBufferResource::PartialDepthDerivatives].gpuDescriptorWriteAccess);
@@ -992,8 +996,16 @@ void Pathtracer::CreateTextureResources()
         CreateRenderTargetResource(device, TextureResourceFormatRG::ToDXGIFormat(Pathtracer_Args::RTAO_MotionVectorResourceFormat), m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::MotionVector], initialResourceState, L"GBuffer LowRes Texture Space Motion Vector");
 
         CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::ReprojectedNormalDepth], initialResourceState, L"GBuffer LowRes Reprojected Normal Depth");
-        CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_width, m_height, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer LowRes AO Surface Albedo");
-
+        CreateRenderTargetResource(device, DXGI_FORMAT_R11G11B10_FLOAT, m_quarterResWidth, m_quarterResHeight, m_cbvSrvUavHeap.get(), &m_GBufferQuarterResResources[GBufferResource::AOSurfaceAlbedo], initialResourceState, L"GBuffer LowRes AO Surface Albedo");
+    }
+    
+    // ToDo remove/use common ones
+    // Debug resources
+    {
+        for (UINT i = 0; i < ARRAYSIZE(m_debugOutput); i++)
+        {
+            CreateRenderTargetResource(device, debugFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_debugOutput[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"Debug");
+        }
     }
 }
 
@@ -1014,6 +1026,7 @@ void Pathtracer::DownsampleGBuffer()
         resourceStateTracker->TransitionResource(&m_GBufferQuarterResResources[GBufferResource::Depth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         resourceStateTracker->TransitionResource(&m_GBufferQuarterResResources[GBufferResource::SurfaceNormalDepth], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         resourceStateTracker->TransitionResource(&m_GBufferQuarterResResources[GBufferResource::AOSurfaceAlbedo], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        
     }
 
     ScopedTimer _prof(L"DownsampleGBuffer", commandList);

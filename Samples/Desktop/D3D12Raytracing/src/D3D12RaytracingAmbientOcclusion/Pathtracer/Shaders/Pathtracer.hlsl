@@ -9,8 +9,8 @@
 //
 //*********************************************************
 
-#ifndef RAYTRACING_HLSL
-#define RAYTRACING_HLSL
+#ifndef PATHTRACER_HLSL
+#define PATHTRACER_HLSL
 
 // Remove /Zpr and use column-major? It might be slightly faster
 
@@ -46,13 +46,13 @@ RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
 RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}. // ToDo compact to 8b?
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
 RWTexture2D<NormalDepthTexFormat> g_rtGBufferNormalDepth : register(u8);
-RWTexture2D<float> g_rtGBufferDistance : register(u9);
+RWTexture2D<float> g_rtGBufferDistance : register(u9); // ToDo dedupe with Depth u13
 
 Texture2D<uint> g_texGBufferPositionHits : register(t5); 
 Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Material Id, 3x Diffuse.RGB}       // ToDo rename to material like in composerenderpasses
 Texture2D<float4> g_texGBufferPositionRT : register(t7);
 Texture2D<NormalDepthTexFormat> g_texGBufferNormalDepth : register(t8);
-Texture2D<float4> g_texGBufferDistance : register(t9);
+Texture2D<float4> g_texGBufferDistance : register(t9);  
 TextureCube<float4> g_texEnvironmentMap : register(t12);
 Texture2D<float> g_filterWeightSum : register(t13); // ToDo remove
 Texture2D<uint> g_texInputAOFrameAge : register(t14);
@@ -75,6 +75,9 @@ RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
 RWTexture2D<NormalDepthTexFormat> g_rtReprojectedNormalDepth : register(u18); // ToDo rename
 RWTexture2D<float4> g_rtColor : register(u19);
 RWTexture2D<float4> g_rtAOSurfaceAlbedo : register(u20);
+// ToDo remove
+RWTexture2D<float4> g_texOutputDebug1 : register(u21);
+RWTexture2D<float4> g_texOutputDebug2 : register(u22);
 
 ConstantBuffer<PathtracerConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
@@ -473,7 +476,6 @@ float3 TraceRefractedGBufferRay(in float3 hitPosition, in float3 wt, in float3 N
 }
 
 
-
 bool TraceShadowRayAndReportIfHit(in float3 hitPosition, in float3 direction, in float3 N, in GBufferRayPayload rayPayload, in float TMax = 10000)
 {
     float tOffset = 0.001f;
@@ -643,7 +645,7 @@ void MyRayGenShader_GBuffer()
     // g_rtGBufferMaterialInfo[DTid] = rayPayload.materialInfo;
 
     // ToDo Use calculated hitposition based on distance from GBuffer instead?
-    g_rtGBufferPosition[DTid] = float4(rayPayload.AOGBuffer.hitPosition, 0);
+    g_rtGBufferPosition[DTid] = float4(rayPayload.AOGBuffer.hitPosition, 1);
 
     float rayLength = DISTANCE_ON_MISS;
     float obliqueness = 0;
@@ -699,6 +701,9 @@ void MyRayGenShader_GBuffer()
         // ToDo remove the decode step
         g_rtGBufferNormalDepth[DTid] = EncodeNormalDepth(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), linearDepth);
 
+        g_texOutputDebug1[DTid] = float4(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), linearDepth);
+        g_texOutputDebug2[DTid] = float4(DecodeNormal(rayPayload.AOGBuffer._encodedNormal), _depth);
+
         g_rtGBufferDistance[DTid] = linearDepth;
 
         g_rtGBufferDepth[DTid] = linearDepth;
@@ -709,14 +714,14 @@ void MyRayGenShader_GBuffer()
     {
         // ToDo skip unnecessary writes
         // ToDo use commonly defined values
-        // Depth of 0 demarks no hit
-        // as low precision normal depth resource R11G11B10 
-        // can store non-negative numbers only.
         g_rtGBufferNormalDepth[DTid] = 0;
 
         // Invalidate the motion vector - set it to move well out of texture bounds.
         g_rtTextureSpaceMotionVector[DTid] = 1e3f;
-        g_rtReprojectedNormalDepth[DTid] = 0;   // ToDo can we skip this write
+        g_rtReprojectedNormalDepth[DTid] = 0;
+
+        g_texOutputDebug1[DTid] = 0;
+        g_texOutputDebug2[DTid] = 0;
 
     }
 
@@ -904,4 +909,4 @@ void MyMissShader_ShadowRay(inout ShadowRayPayload rayPayload)
 }
 
 
-#endif // RAYTRACING_HLSL
+#endif // PATHTRACER_HLSL

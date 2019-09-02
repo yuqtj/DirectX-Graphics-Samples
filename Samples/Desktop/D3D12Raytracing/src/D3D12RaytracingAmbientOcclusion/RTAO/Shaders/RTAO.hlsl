@@ -248,16 +248,6 @@ void RayGenShader()
     // ToDo move to a CS if always using a raysort.
     uint2 srcRayIndex = DispatchRaysIndex().xy;
     
-#if 0
-    uint2 windowSize = uint2(1920, 1080) / 8;
-    uint2 topLeft = uint2(6,1) * windowSize;
-    uint2 botRight = topLeft + windowSize;
-    if (!(srcRayIndex.x >= topLeft.x && srcRayIndex.y >= topLeft.y &&
-        srcRayIndex.x < botRight.x && srcRayIndex.y < botRight.y))
-    {
-        return;
-    }
-#endif
     // ToDo
     float3 surfaceNormal;
     float depth;
@@ -269,11 +259,7 @@ void RayGenShader()
 	if (hit)
 	{
 		float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;      
-#if 1
         Ray AORay = GenerateRandomAORay(srcRayIndex, hitPosition, surfaceNormal);
-#else
-        Ray AORay = { hitPosition, normalize(float3(0.2, 0.4, 0.2)) };
-#endif
         ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
     }
 #endif

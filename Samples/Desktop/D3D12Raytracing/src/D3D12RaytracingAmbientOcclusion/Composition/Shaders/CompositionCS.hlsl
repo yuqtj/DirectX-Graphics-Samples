@@ -88,7 +88,7 @@ float4 RenderAOResult(in uint2 DTid)
     if (hit)
     {
         float ambientCoef = g_texAO[DTid];
-        float4 color = ambientCoef != RTAO::InvalidAOValue ? ambientCoef : 1;
+        color = ambientCoef != RTAO::InvalidAOValue ? ambientCoef : 1;
         float4 albedo = float4(1, 1, 1, 1);
         color *= albedo;
 

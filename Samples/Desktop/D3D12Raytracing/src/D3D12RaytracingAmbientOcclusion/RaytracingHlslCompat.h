@@ -89,6 +89,7 @@ Optimization
     - clean up PIX /GPU validation warnings on Debug
     - Debug break on FS on 1080 display resolution.
     - Tearing with VSync on at 4K full res.
+    - White halo under tiers.
 - Cleanup:
     - ToDo remove .f specifier from floating numbers in hlsl
     - ToDo clean up scoped timer names.
@@ -510,8 +511,9 @@ namespace SortRays {
 
 // ToDo split CB?
 // ToDo capitalize?
-// ToDo padding?
+// ToDo padding? or force align.
 // ToDo remove unused
+// ToDo PIX shows empty rows (~as many as valid rows) in between entries in multi frame CB.
 struct PathtracerConstantBuffer
 {
     // ToDo rename to world to view matrix and drop (0,0,0) note.
@@ -528,7 +530,7 @@ struct PathtracerConstantBuffer
     XMFLOAT3 prevCameraPosition;
     float    padding;
 
-	float Znear;     // ToDo rename to zNear
+	float Znear;     // ToDo rename to zNear | remove
 	float Zfar;
     UINT  maxRadianceRayRecursionDepth;
     UINT  maxShadowRayRecursionDepth;
@@ -546,6 +548,7 @@ struct RTAOConstantBuffer
     UINT numSampleSets;
     UINT numPixelsPerDimPerSet;
 
+    // ToDo rename to AOray
     float RTAO_maxShadowRayHitTime;             // Max shadow ray hit time used for tMax in TraceRay.
     BOOL RTAO_approximateInterreflections;      // Approximate interreflections. 
     float RTAO_diffuseReflectanceScale;              // Diffuse reflectance from occluding surfaces. 
