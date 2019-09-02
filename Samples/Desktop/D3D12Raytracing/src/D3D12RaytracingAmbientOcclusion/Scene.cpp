@@ -750,7 +750,7 @@ void Scene::InitializeAccelerationStructures()
     }
 
 
-#if !LOAD_ONLY_ONE_PBRT_MESH
+#if LOAD_PBRT_SCENE && !LOAD_ONLY_ONE_PBRT_MESH
     float radius = 75;
     XMMATRIX mTranslationSceneCenter = XMMatrixTranslation(-7, 0, 7);
     XMMATRIX mTranslation = XMMatrixTranslation(0, -1.5, radius);

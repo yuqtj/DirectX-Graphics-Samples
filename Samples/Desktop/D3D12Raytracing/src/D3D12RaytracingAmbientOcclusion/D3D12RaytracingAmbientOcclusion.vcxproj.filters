@@ -323,7 +323,6 @@
     <None Include="EdgeStoppingAtrousWaveletTransfromCrossBilateralFilterCS.hlsli">
       <Filter>Assets\Shaders</Filter>
     </None>
-    <None Include="packages.config" />
     <None Include="RTAO\Shaders\RTAO.hlsli">
       <Filter>Assets\Shaders\RTAO</Filter>
     </None>
@@ -349,6 +348,7 @@
     <None Include="Pathtracer\Shaders\BxDF.hlsli">
       <Filter>Assets\Shaders\Pathtracer</Filter>
     </None>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="RNGVisualizerCS.hlsl">

@@ -91,6 +91,7 @@ Optimization
     - Tearing with VSync on at 4K full res.
     - White halo under tiers.
     - Upsampling artifacts on 1080(540p)
+    - RTAO invisible wall inside kitchen on long rays
 
 - Cleanup:
     - ToDo remove .f specifier from floating numbers in hlsl
@@ -99,6 +100,7 @@ Optimization
     - Add UAV barrier to SRV - UAV transitions. Remove post D3D barriers.
     - Move global defines in RaytracingSceneDefines.h locally for RTAO and Denoiser.
     - Add dtors/release . Wait on GPU?
+    - Build with higher warning bar and cleanup
 
 - Sample generic
     - Add device removal support
@@ -191,7 +193,7 @@ typedef uint NormalDepthTexFormat;
 #define USE_GRASS_GEOMETRY 1
 #define GRASS_NO_DEGENERATE_INSTANCES 1 // Degenerate instances cause long trace ray times
 
-#define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
+#define LOAD_PBRT_SCENE 0       // loads PBRT(1) or SquidRoom(0)
 #ifdef _DEBUG
 #define LOAD_ONLY_ONE_PBRT_MESH 1  // for LOAD_PBRT_SCENE == 1 only
 #else

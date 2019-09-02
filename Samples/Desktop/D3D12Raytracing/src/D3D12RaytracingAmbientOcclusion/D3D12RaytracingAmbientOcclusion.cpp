@@ -346,28 +346,6 @@ namespace Sample
         case 'V':
             Args::TAO_LazyRender.Bang();// TODo remove
             break;
-        case 'J':
-            m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, 5, 0, 0)));
-            m_cameraChangedIndex = 2;
-            break;
-        case 'M':
-            m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(0, -5, 0, 0)));
-            m_cameraChangedIndex = 2;
-            break;
-        case 'U':
-            m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(5, 0, 0, 0)));
-            m_cameraChangedIndex = 2;
-            break;
-        case 'Y':
-            m_accelerationStructure->GetBottomLevelASInstance(GeometryType::PBRT).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-5, 0, 0, 0)));
-            m_cameraChangedIndex = 2;
-            break;
-        case 'O':
-            m_manualCameraRotationAngle = -10;
-            break;
-        case 'P':
-            m_manualCameraRotationAngle = 10;
-            break;
         case 'B':
             m_cameraChangedIndex = 2;
             break;
