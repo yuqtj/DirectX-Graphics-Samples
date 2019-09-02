@@ -14,14 +14,12 @@
 #include "RayTracingHlslCompat.h"
 
 // ToDo standardize use of CS suffix
-namespace ComputeShader {
+namespace ComputeShader {   // ToDo remove this?
 	namespace Type {
 		enum Enum {
 			HemisphereSampleSetVisualization = 0,
 			ReduceSum,
 			CompositionCS,
-            AoBlurCS,
-            AoBlurAndUpsampleCS,
 			Count
 		};
 	}
@@ -65,21 +63,7 @@ namespace ComputeShader {
                     Count
 				};
 			}
-		}
-		
-		namespace AoBlurCS {
-			namespace Slot {
-				enum Enum {
-					Output = 0,
-					Normal,
-                    Distance,
-                    InputAO,
-					ConstantBuffer,
-					Count
-				};
-			}
-		}
-		
+		}		
 	}
 	namespace RS = RootSignature;
 }

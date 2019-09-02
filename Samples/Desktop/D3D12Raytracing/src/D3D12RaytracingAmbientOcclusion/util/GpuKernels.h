@@ -57,63 +57,6 @@ namespace GpuKernels
 		std::vector<ComPtr<ID3D12Resource>>	m_readbackResources;
 	};
 
-	class DownsampleBoxFilter2x2
-	{
-	public:
-		void Release()
-		{
-			assert(0 && L"ToDo");
-		}
-
-		void Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame = 1);
-		void Run(
-			ID3D12GraphicsCommandList4* commandList,
-			UINT width,
-			UINT height,
-			ID3D12DescriptorHeap* descriptorHeap,
-			const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
-			const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
-
-	private:
-		ComPtr<ID3D12RootSignature>         m_rootSignature;
-		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-		std::vector<GpuResource>			m_csReduceSumOutputs;
-		std::vector<ComPtr<ID3D12Resource>>	m_readbackResources;
-		ConstantBuffer<DownsampleFilterConstantBuffer> m_CB;
-        UINT                                m_CBinstanceID = 0;
-	};
-
-
-	class DownsampleGaussianFilter
-	{
-	public:
-        // ToDo images moves switching between.
-		enum Type {
-			Tap9 = 0,
-			Tap25
-		};
-
-		void Release()
-		{
-			assert(0 && L"ToDo");
-		}
-
-		void Initialize(ID3D12Device5* device, Type type, UINT frameCount, UINT numCallsPerFrame = 1);
-		void Run(
-			ID3D12GraphicsCommandList4* commandList,
-			UINT width,
-			UINT height,
-			ID3D12DescriptorHeap* descriptorHeap,
-			const D3D12_GPU_DESCRIPTOR_HANDLE& inputResourceHandle,
-			const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
-
-	private:
-		ComPtr<ID3D12RootSignature>         m_rootSignature;
-		ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-		ConstantBuffer<DownsampleFilterConstantBuffer> m_CB;
-        UINT                                m_CBinstanceID = 0;
-	};
-
     // ToDo rename to GBuffer downsample
     class DownsampleNormalDepthHitPositionGeometryHitBilateralFilter
     {

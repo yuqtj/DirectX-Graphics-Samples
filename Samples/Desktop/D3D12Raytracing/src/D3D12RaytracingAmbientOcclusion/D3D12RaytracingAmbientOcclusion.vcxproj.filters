@@ -318,29 +318,11 @@
     <FxCompile Include="RNGVisualizerCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="AoBlurCS.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="AoBlurAndUpsampleCS.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="util\DownsampleBoxFilter2x2CS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
-    <FxCompile Include="util\DownsampleGaussian9TapFilterCS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
-    <FxCompile Include="util\DownsampleGaussian25TapFilterCS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="util\PerPixelMeanSquareErrorCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
     <FxCompile Include="util\ReduceSumFloatCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
-    <FxCompile Include="AtrousWaveletTransfromCrossBilateralFilter_Gaussian5x5CS.hlsl">
-      <Filter>Assets\Shaders</Filter>
     </FxCompile>
     <FxCompile Include="util\ReduceSumUintCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
@@ -355,9 +337,6 @@
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
     <FxCompile Include="util\GaussianFilter3x3CS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
-    <FxCompile Include="util\DownsampleDepthAwareFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
     <FxCompile Include="util\DownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS.hlsl">

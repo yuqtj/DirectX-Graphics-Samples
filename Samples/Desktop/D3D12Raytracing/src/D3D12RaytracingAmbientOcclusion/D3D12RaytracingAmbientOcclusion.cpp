@@ -173,9 +173,6 @@ namespace Sample
         auto backbufferFormat = m_deviceResources->GetBackBufferFormat();
 
         CreateRenderTargetResource(device, backbufferFormat, m_width, m_height, m_cbvSrvUavHeap.get(), &m_raytracingOutput, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-#if ENABLE_SSAA
-        CreateRenderTargetResource(device, backbufferFormat, m_GBufferWidth, m_GBufferHeight, m_cbvSrvUavHeap.get(), &m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-#endif
     }
 
 
@@ -209,12 +206,7 @@ namespace Sample
 
         // ToDo use backbuffer count instead of frame count everywhere
         EngineProfiling::RestoreDevice(device, commandQueue, FrameCount);
-
-        // ToDo move?
-        m_downsampleBoxFilter2x2Kernel.Initialize(device, FrameCount);
-        m_downsampleGaussian9TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap9, FrameCount);
-        m_downsampleGaussian25TapFilterKernel.Initialize(device, GpuKernels::DownsampleGaussianFilter::Tap25, FrameCount); // ToDo Dedupe 9 and 25
-
+        
         for (UINT i = 0; i < Sample_GPUTime::Count; i++)
         {
             m_sampleGpuTimes[i].RestoreDevice(device, m_deviceResources->GetCommandQueue(), FrameCount);
@@ -375,17 +367,7 @@ namespace Sample
         auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
         auto renderTarget = m_deviceResources->GetRenderTarget();
 
-        ID3D12Resource* raytracingOutput = nullptr;
-#if ENABLE_SSAA
-        if (m_GBufferWidth == m_width && m_GBufferHeight == m_height)
-        {
-            raytracingOutput = m_raytracingOutputIntermediate.GetResource();
-        }
-        else
-#endif
-        {
-            raytracingOutput = m_raytracingOutput.GetResource();
-        }
+        ID3D12Resource* raytracingOutput = m_raytracingOutput.GetResource();
 
         resourceStateTracker->FlushResourceBarriers();
         CopyResource(
@@ -561,24 +543,8 @@ namespace Sample
         auto renderTargets = m_deviceResources->GetRenderTargets();
 
         // ToDo move this?
-        UINT GBufferWidth, GBufferHeight;
-        switch (Composition_Args::AntialiasingMode)
-        {
-        case DownsampleFilter::BoxFilter2x2:
-            GBufferWidth = c_SupersamplingScale * m_width;
-            GBufferHeight = c_SupersamplingScale * m_height;
-            break;
-        case DownsampleFilter::GaussianFilter9Tap:
-        case DownsampleFilter::GaussianFilter25Tap:
-            GBufferWidth = c_SupersamplingScale * m_width;
-            GBufferHeight = c_SupersamplingScale * m_height;
-            break;
-        case DownsampleFilter::None:
-        default:
-            GBufferWidth = m_width;
-            GBufferHeight = m_height;
-            break;
-        }
+        UINT GBufferWidth = m_width;
+        UINT GBufferHeight = m_height;
 
         // ToDo the resolution should be queried from RTAO.
         if (RTAO_Args::QuarterResAO)
@@ -729,16 +695,7 @@ namespace Sample
                         }
                     }
                 }
-#if ENABLE_SSAA
-                m_composition.Render(&m_raytracingOutput, m_scene, m_pathtracer, m_RTAO, m_denoiser, m_GBufferWidth, m_GBufferHeight);
-
-                if (m_GBufferWidth != m_width || m_GBufferHeight != m_height)
-                {
-                    DownsampleRaytracingOutput();
-                }
-#else
                 m_composition.Render(&m_raytracingOutput, m_scene, m_pathtracer, m_RTAO, m_denoiser, m_width, m_height);
-#endif
 
 #if RENDER_RNG_SAMPLE_VISUALIZATION
                 RenderRNGVisualizations();
@@ -766,57 +723,6 @@ namespace Sample
         m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, VSYNC_PRESENT_INTERVAL);
 #else
         m_deviceResources->Present(D3D12_RESOURCE_STATE_PRESENT, 0);
-#endif
-    }
-
-
-    // ToDo rename
-    void D3D12RaytracingAmbientOcclusion::DownsampleRaytracingOutput()
-    {
-#if ENABLE_SSAA
-        auto commandList = m_deviceResources->GetCommandList();
-        auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
-
-        ScopedTimer _prof(L"DownsampleToBackbuffer", commandList);
-
-        resourceStateTracker->TransitionResource(&m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
-        // ToDo pass the filter to the kernel instead of using 3 different instances
-        resourceStateTracker->FlushResourceBarriers();
-        switch (Args::AntialiasingMode)
-        {
-        case DownsampleFilter::BoxFilter2x2:
-            m_downsampleBoxFilter2x2Kernel.Run(
-                commandList,
-                m_GBufferWidth,
-                m_GBufferHeight,
-                m_cbvSrvUavHeap->GetHeap(),
-                m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
-                m_raytracingOutput.gpuDescriptorWriteAccess);
-            break;
-        case DownsampleFilter::GaussianFilter9Tap:
-            m_downsampleGaussian9TapFilterKernel.Run(
-                commandList,
-                m_GBufferWidth,
-                m_GBufferHeight,
-                m_cbvSrvUavHeap->GetHeap(),
-                m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
-                m_raytracingOutput.gpuDescriptorWriteAccess);
-            break;
-        case DownsampleFilter::GaussianFilter25Tap:
-            m_downsampleGaussian25TapFilterKernel.Run(
-                commandList,
-                m_GBufferWidth,
-                m_GBufferHeight,
-                m_cbvSrvUavHeap->GetHeap(),
-                m_raytracingOutputIntermediate.gpuDescriptorReadAccess,
-                m_raytracingOutput.gpuDescriptorWriteAccess);
-            break;
-        }
-
-        resourceStateTracker->TransitionResource(&m_raytracingOutputIntermediate, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-#else
-        ThrowIfFalse(0, L"ToDo");
 #endif
     }
 

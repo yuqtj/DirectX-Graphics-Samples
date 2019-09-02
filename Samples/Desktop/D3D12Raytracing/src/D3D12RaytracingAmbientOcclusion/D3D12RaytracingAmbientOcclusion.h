@@ -111,16 +111,7 @@ namespace Sample
         // Raytracing output
         // ToDo use the struct
         GpuResource m_raytracingOutput;
-        GpuResource m_raytracingOutputIntermediate;   // ToDo, low res res too?
-
-        GpuKernels::DownsampleBoxFilter2x2	m_downsampleBoxFilter2x2Kernel;
-        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian9TapFilterKernel;
-        GpuKernels::DownsampleGaussianFilter	m_downsampleGaussian25TapFilterKernel;
     private:
-#if ENABLE_SSAA
-        UINT m_GBufferWidth;
-        UINT m_GBufferHeight;
-#endif
 
         UINT m_raytracingWidth;
         UINT m_raytracingHeight;
@@ -137,8 +128,7 @@ namespace Sample
         bool m_isRecreateRaytracingResourcesRequested;
 
         // ToDo cleanup
-        // Utility functions
-        void DownsampleRaytracingOutput();        // ToDo standardize const& vs *
+        // Utility functions      // ToDo standardize const& vs *
         void ParseCommandLineArgs(WCHAR* argv[], int argc);
         void RecreateD3D();
         void UpdateUI();

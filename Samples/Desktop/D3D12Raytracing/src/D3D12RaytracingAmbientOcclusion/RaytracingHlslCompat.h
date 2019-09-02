@@ -151,7 +151,6 @@ Incompatible macros
 // ToDo
 #define ENABLE_PROFILING 0
 #define ENABLE_LAZY_RENDER 0
-#define ENABLE_SSAA 0
 
 #define DISTANCE_ON_MISS 65504  // ~FLT_MAX within 16 bit format // ToDo explain
 

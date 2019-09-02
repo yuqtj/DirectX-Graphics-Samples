@@ -26,7 +26,6 @@
 
 namespace Composition_Args
 {
-    extern EnumVar AntialiasingMode;
     extern EnumVar CompositionMode;
 }
 
