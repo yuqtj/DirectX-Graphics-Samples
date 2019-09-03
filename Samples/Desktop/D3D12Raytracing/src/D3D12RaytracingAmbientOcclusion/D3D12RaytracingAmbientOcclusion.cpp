@@ -697,9 +697,6 @@ namespace Sample
                 }
                 m_composition.Render(&m_raytracingOutput, m_scene, m_pathtracer, m_RTAO, m_denoiser, m_width, m_height);
 
-#if RENDER_RNG_SAMPLE_VISUALIZATION
-                RenderRNGVisualizations();
-#endif
                 // UILayer will transition backbuffer to a present state.
                 CopyRaytracingOutputToBackbuffer(m_enableUI ? D3D12_RESOURCE_STATE_RENDER_TARGET : D3D12_RESOURCE_STATE_PRESENT);
             }

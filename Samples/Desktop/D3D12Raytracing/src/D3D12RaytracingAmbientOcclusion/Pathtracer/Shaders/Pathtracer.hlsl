@@ -22,12 +22,7 @@
 #include "BxDF.hlsli"
 #define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS
 
-// ToDo split to Raytracing for GBUffer and AO?
-
-// ToDo excise non-GBuffer parts out for separate timings? Such as 
-
 // ToDo dedupe code triangle normal calc,..
-// ToDo pix doesn't show output for AO pass
 
 //***************************************************************************
 //*****------ Shader resources bound via root signatures -------*************
@@ -156,7 +151,6 @@ float3 ReflectFrontPointThroughPlane(
 {
     if (!IsPointOnTheNormalSideOfPlane(p, mirrorNormal, mirrorSurfacePoint))
     {
-        // ToDo attempt direct lookup using hit position in raygen instead of reflected point?
         return FLT_MAX; // ToDo is this safe?
     }
 
@@ -291,6 +285,14 @@ bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in float3 N, in UI
         return TraceShadowRayAndReportIfHit(tHit, ray, currentRayRecursionDepth, retrieveTHit, TMax);
     }
     return false;
+}
+
+bool TraceShadowRayAndReportIfHit(in float3 hitPosition, in float3 direction, in float3 N, in GBufferRayPayload rayPayload, in float TMax = 10000)
+{
+    float tOffset = 0.001f;
+    Ray visibilityRay = { hitPosition + tOffset * N, direction };
+    float dummyTHit;    // ToDo remove
+    return TraceShadowRayAndReportIfHit(dummyTHit, visibilityRay, N, rayPayload.rayRecursionDepth, false, TMax);
 }
 
 // Trace a camera ray into the scene.
@@ -456,8 +458,10 @@ float3 TraceRefractedGBufferRay(in float3 hitPosition, in float3 wt, in float3 N
 
     // Performance vs visual quality trade-off:
     // Cull transparent surfaces when casting a transmission ray for a transparent surface.
-    // Spaceship in particular has multiple layer glass causing a substantial perf hit (30ms on closeup) with multiple bounces along the way.
-    // This can cause visual pop ins however, such as in a case of looking at the spaceship's glass cockpit through a window in the house. The cockpit will be skipped in this case.
+    // Spaceship in particular has multiple layer glass causing a substantial perf hit 
+    // (30ms on closeup) with multiple bounces along the way.
+    // This can cause visual pop ins however, such as in a case of looking at the spaceship's
+    // glass cockpit through a window in the house. The cockpit will be skipped in this case.
     bool cullNonOpaque = true;
 
 #if USE_UV_DERIVATIVES
@@ -473,16 +477,6 @@ float3 TraceRefractedGBufferRay(in float3 hitPosition, in float3 wt, in float3 N
 
     return rayPayload.radiance;
 }
-
-
-bool TraceShadowRayAndReportIfHit(in float3 hitPosition, in float3 direction, in float3 N, in GBufferRayPayload rayPayload, in float TMax = 10000)
-{
-    float tOffset = 0.001f;
-    Ray visibilityRay = { hitPosition + tOffset * N, direction };
-    float dummyTHit;    // ToDo remove
-    return TraceShadowRayAndReportIfHit(dummyTHit, visibilityRay, N, rayPayload.rayRecursionDepth, false, TMax);
-}
-
 
 // Update AO GBuffer with the hit that has the largest diffuse component.
 // Prioritize larger diffuse component hits as it is a direct scale of the AO contribution to the final color value.
@@ -636,12 +630,9 @@ void MyRayGenShader_GBuffer()
     rayPayload.AOGBuffer.tHit = hasNonZeroDiffuse ? rayPayload.AOGBuffer.tHit : HitDistanceOnMiss;
     bool hasCameraRayHitGeometry = rayPayload.AOGBuffer.tHit > 0;   // ToDo use helper fcn
 
-
 	// Write out GBuffer information to rendertargets.
 	// ToDo Test conditional write on all output 
 	g_rtGBufferCameraRayHits[DTid] = hasCameraRayHitGeometry ? 1 : 0;   // ToDo should this be 1 if we hit a perfect mirror reflecting into skybox?
-
-    // g_rtGBufferMaterialInfo[DTid] = rayPayload.materialInfo;
 
     // ToDo Use calculated hitposition based on distance from GBuffer instead?
     g_rtGBufferPosition[DTid] = float4(rayPayload.AOGBuffer.hitPosition, 1);
@@ -809,13 +800,11 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         float3 bitangent = normalize(cross(tangent, normal));
 
         CalculateUVDerivatives(normal, tangent, bitangent, hitPosition, px, py, ddx, ddy);
-        // ToDo. Lower by 0.5 to sharpen texture filtering.
-        //ddx *= 0.5;
-        //ddy *= 0.5;
     }
 #endif
     if (CB.useNormalMaps && material.hasNormalTexture)
     {
+        // ToDo normal map is incorrect in squid room.
         normal = NormalMap(normal, texCoord, ddx, ddy, vertices, material, attr);
     }
 
@@ -826,31 +815,16 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
 
     if (material.type == MaterialType::AnalyticalCheckerboardTexture)
     {
-#if 0 
-        float2 ddx_uv;
-        float2 ddy_uv;
-        float2 uv = TexCoords(hitPosition);
-
-        CalculateRayDifferentials(ddx_uv, ddy_uv, uv, hitPosition, normal, CB.cameraPosition, CB.projectionToWorldWithCameraEyeAtOrigin);
-        material.Kd = CheckersTextureBoxFilter(uv, ddx_uv, ddy_uv, 25);
-#else // ToDo fix derivatives
         float2 uv = hitPosition.xz / 2;
         float checkers = CheckersTextureBoxFilter(uv, ddx, ddy);
         if (length(uv) < 45 && (checkers > 0.5))
         {
-#if 1
             material.Kd = float3(21, 33, 45) / 255;
-#else
-            material.Kr = 1;
-            material.Kd = 0;
-#endif
         }
-#endif
     }
 
     rayPayload.AOGBuffer.tHit = RayTCurrent();
     rayPayload.AOGBuffer.hitPosition = hitPosition;
-    //rayPayload.materialInfo = EncodeMaterial16b(materialID, diffuse);
     rayPayload.AOGBuffer.encodedNormal = EncodeNormal(normal);
 
     // Calculate hit position and normal for the current hit in the previous frame.
@@ -895,6 +869,5 @@ void MyMissShader_ShadowRay(inout ShadowRayPayload rayPayload)
 {
     rayPayload.tHit = HitDistanceOnMiss;
 }
-
 
 #endif // PATHTRACER_HLSL

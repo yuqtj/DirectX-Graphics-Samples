@@ -47,10 +47,7 @@ public:
 private:
     void CreateComposeRenderPassesCSResources();
     void CreateDeviceDependentResources();
-    void CreateConstantBuffers();
     void CreateAuxilaryDeviceResources();
-    void RenderRNGVisualizations();
-    void CreateSamplesRNGVisualization();
     void CreateTextureResources();
     void CreateResolutionDependentResources();
     void BilateralUpsample(

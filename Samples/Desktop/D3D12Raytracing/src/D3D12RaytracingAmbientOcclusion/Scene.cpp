@@ -490,12 +490,11 @@ void Scene::LoadSceneGeometry()
 {
 #if LOAD_PBRT_SCENE
     LoadPBRTScene();
-#else
-    LoadSquidRoom();
-#endif
-
 #if USE_GRASS_GEOMETRY
     InitializeGrassGeometry();
+#endif
+#else
+    LoadSquidRoom();
 #endif
 }
 
@@ -775,7 +774,6 @@ void Scene::InitializeAccelerationStructures()
     //m_accelerationStructure->GetBottomLevelASInstance(5).SetTransform(XMMatrixTranslationFromVector(XMVectorSet(-10, 4, -10, 0)));
 
 #if GENERATE_GRASS
-#if GRASS_NO_DEGENERATE_INSTANCES
     UINT grassInstanceIndex = 0;
     for (int i = 0; i < NumGrassPatchesZ; i++)
         for (int j = 0; j < NumGrassPatchesX; j++)
@@ -791,20 +789,6 @@ void Scene::InitializeAccelerationStructures()
                 grassInstanceIndex++;
             }
         }
-#else
-    for (UINT i = 0; i < NumGrassPatchesX * NumGrassPatchesZ; i++)
-    {
-        // Initialize all grass patches to be "inactive" by way of making them to contain only degenerate triangles.
-        // Triangle is a degenerate if it forms a point or a line after applying all transforms.
-        // Degenerate triangles do not generate any intersections.
-        XMMATRIX degenerateTransform = XMMatrixSet(
-            0.f, 0.f, 0.f, 0.f,
-            0.f, 0.f, 0.f, 0.f,
-            0.f, 0.f, 0.f, 0.f,
-            0.f, 0.f, 0.f, 0.f);
-        m_grassInstanceIndices[i] = m_accelerationStructure->AddBottomLevelASInstance(L"Grass Patch LOD 0", UINT_MAX, degenerateTransform);
-    }
-#endif
 #endif
 
     // Initialize the top-level AS.
@@ -905,9 +889,7 @@ void Scene::GenerateGrassGeometry()
         XMVECTOR patchOffset = XMLoadFloat3(&g_UIparameters.GrassCommon.PatchOffset);
         float width = g_UIparameters.GrassCommon.PatchWidth;
 
-#if GRASS_NO_DEGENERATE_INSTANCES
         UINT grassInstanceIndex = 0;
-#endif
         for (int i = 0; i < NumGrassPatchesZ; i++)
             for (int j = 0; j < NumGrassPatchesX; j++)
             {
@@ -918,10 +900,6 @@ void Scene::GenerateGrassGeometry()
                     (IsInRange(x, -2, 3) && IsInRange(z, -3, 2)))
 
                 {
-#if !GRASS_NO_DEGENERATE_INSTANCES
-                    UINT grassInstanceIndex = i * NumGrassPatchesX + j;
-#endif
-
                     auto& BLASinstance = m_accelerationStructure->GetBottomLevelASInstance(m_grassInstanceIndices[grassInstanceIndex]);
 
                     float jitterX = 2 * GetRandomFloat01inclusive() - 1;
@@ -972,9 +950,7 @@ void Scene::GenerateGrassGeometry()
                     BLASinstance.AccelerationStructure = grassBottomLevelAS[LOD]->GetResource()->GetGPUVirtualAddress();
 
                     m_prevFrameLODs[grassInstanceIndex] = LOD;
-#if GRASS_NO_DEGENERATE_INSTANCES
                     grassInstanceIndex++;
-#endif
                 }
             }
     }

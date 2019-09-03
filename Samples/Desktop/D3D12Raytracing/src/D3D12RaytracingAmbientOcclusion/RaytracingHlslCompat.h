@@ -105,9 +105,6 @@ Optimization
 
 
 */
-// Workarounds - ToDo remove/document
-#define REPRO_DEVICE_REMOVAL_ON_HARD_CODED_AO_COEF 0
-#define REPRO_INVISIBLE_WALL 0
 
 //**********************************************************************************************
 //
@@ -142,8 +139,6 @@ Incompatible macros
 
 // ToDo TAO is swimming in reflections
 #define CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN 0
-#define USE_UV_DERIVATIVES 0
-#define HACK_CLAMP_DDXY_TO_BE_SMALL 1
 
 //#define SAMPLER_FILTER D3D12_FILTER_MIN_MAG_MIP_LINEAR
 #define SAMPLER_FILTER D3D12_FILTER_ANISOTROPIC  // TODo blurry at various angles
@@ -176,7 +171,6 @@ typedef uint NormalDepthTexFormat;
 
 #define ATROUS_DENOISER 1
 #define ATROUS_DENOISER_MAX_PASSES 10
-#define RENDER_RNG_SAMPLE_VISUALIZATION 0   // ToDo doesn't render for all AA settings
 #define ATROUS_ONELEVEL_ONLY 0
 
 #define APPLY_SRGB_CORRECTION 0
@@ -184,27 +178,29 @@ typedef uint NormalDepthTexFormat;
 // ToDO this wasn't necessary before..
 #define VBIB_AS_NON_PIXEL_SHADER_RESOURCE 0 // ToDo spec requires it but it works without it?
 
-#define USE_GRASS_GEOMETRY 1
-#define GRASS_NO_DEGENERATE_INSTANCES 1 // Degenerate instances cause long trace ray times
-
 #define LOAD_PBRT_SCENE 1       // loads PBRT(1) or SquidRoom(0)
 #ifdef _DEBUG
 #define LOAD_ONLY_ONE_PBRT_MESH 1  // for LOAD_PBRT_SCENE == 1 only
 #else
 #define LOAD_ONLY_ONE_PBRT_MESH 0  // for LOAD_PBRT_SCENE == 1 only
 #endif
-#define FACE_CULLING !LOAD_PBRT_SCENE
 
 #if LOAD_PBRT_SCENE
 #define DISTANCE_FALLOFF 0.000000005
 #define AO_RAY_T_MAX 22
 #define SCENE_SCALE 300     
+#define USE_GRASS_GEOMETRY 1
 #define GENERATE_GRASS 1
+#define FACE_CULLING 0
+#define USE_UV_DERIVATIVES 0 // Disabled due large perf hit. Slows down pathtracer by 60%.
 #else
+#define USE_GRASS_GEOMETRY 0
 #define GENERATE_GRASS 0
 #define DISTANCE_FALLOFF 0
 #define AO_RAY_T_MAX 150
 #define SCENE_SCALE 2000
+#define FACE_CULLING 1
+#define USE_UV_DERIVATIVES 1
 #endif
 #define INDEX_FORMAT_UINT 1
 
@@ -458,7 +454,6 @@ namespace SortRays {
         enum Enum { Width = 64, Height = 16, Size = Width * Height };
     }
 
-
     // ToDo comment ray group's heigh can only go up to 64 as the most significant bit is used to test if the cached value is valid.
     namespace RayGroup {
         enum Enum { NumElementPairsPerThread = 4, Width = ThreadGroup::Width, Height = NumElementPairsPerThread * 2 * ThreadGroup::Height, Size = Width * Height };
@@ -472,7 +467,6 @@ namespace SortRays {
 #endif
 
 
-// ToDo split CB?
 // ToDo capitalize?
 // ToDo padding? or force align.
 // ToDo remove unused
@@ -768,17 +762,6 @@ struct GenerateGrassStrawsConstantBuffer
     float padding2;
     GenerateGrassStrawsConstantBuffer_AppParams p;
 };
-
-
-namespace BxDFType {
-    enum Type {
-        BSDF_DIFFUSE        = 1 << 0,
-        BSDF_SPECULAR       = 1 << 1,
-        BSDF_REFLECTION     = 1 << 2,
-        BSDF_TRANSMISSION   = 1 << 3,
-        BSDF_ALL            = BSDF_DIFFUSE | BSDF_SPECULAR | BSDF_REFLECTION | BSDF_TRANSMISSION
-    };
-}
 
 
 // Attributes per primitive type.

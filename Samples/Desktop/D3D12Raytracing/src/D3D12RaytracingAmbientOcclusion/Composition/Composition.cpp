@@ -297,115 +297,6 @@ void Composition::BilateralUpsample(
 }
 
 
-// ToDo remove?
-void Composition::RenderRNGVisualizations()
-{
-#if 0
-    auto device = m_deviceResources->GetD3DDevice();
-    auto commandList = m_deviceResources->GetCommandList();
-    auto frameIndex = m_deviceResources->GetCurrentFrameIndex();
-
-    // Update constant buffer.
-    XMUINT2 rngWindowSize(256, 256);
-    {
-        m_csHemisphereVisualizationCB->dispatchDimensions = rngWindowSize;
-
-        static UINT seed = 0;
-        UINT NumFramesPerIter = 400;
-        static UINT frameID = NumFramesPerIter * 4;
-        m_csHemisphereVisualizationCB->numSamplesToShow = m_randomSampler.NumSamples();// (frameID++ / NumFramesPerIter) % m_randomSampler.NumSamples();
-        m_csHemisphereVisualizationCB->sampleSetBase = ((seed++ / NumFramesPerIter) % m_randomSampler.NumSampleSets()) * m_randomSampler.NumSamples();
-        m_csHemisphereVisualizationCB->stratums = XMUINT2(static_cast<UINT>(sqrt(m_randomSampler.NumSamples())),
-            static_cast<UINT>(sqrt(m_randomSampler.NumSamples())));
-        m_csHemisphereVisualizationCB->grid = XMUINT2(m_randomSampler.NumSamples(), m_randomSampler.NumSamples());
-        m_csHemisphereVisualizationCB->uavOffset = XMUINT2(0 /*ToDo remove m_renderingWidth - rngWindowSize.x*/, m_renderingHeight - rngWindowSize.y);
-        m_csHemisphereVisualizationCB->numSamples = m_randomSampler.NumSamples();
-        m_csHemisphereVisualizationCB->numSampleSets = m_randomSampler.NumSampleSets();
-    }
-
-    // Copy dynamic buffers to GPU
-    {
-        m_csHemisphereVisualizationCB.CopyStagingToGpu(frameIndex);
-        m_samplesGPUBuffer.CopyStagingToGpu(frameIndex);
-    }
-
-    // Set pipeline state.
-    {
-        using namespace ComputeShader::RootSignature::HemisphereSampleSetVisualization;
-
-        commandList->SetDescriptorHeaps(1, m_cbvSrvUavHeap->GetAddressOf());
-        commandList->SetComputeRootSignature(m_computeRootSigs[CSType::HemisphereSampleSetVisualization].Get());
-        commandList->SetPipelineState(m_computePSOs[CSType::HemisphereSampleSetVisualization].Get());
-
-        commandList->SetComputeRootConstantBufferView(Slot::SceneConstant, m_csHemisphereVisualizationCB.GpuVirtualAddress(frameIndex));
-        commandList->SetComputeRootShaderResourceView(Slot::SampleBuffers, m_samplesGPUBuffer.GpuVirtualAddress(frameIndex));
-        commandList->SetComputeRootDescriptorTable(Slot::Output, m_raytracingOutput.gpuDescriptorWriteAccess);
-    }
-
-    // Dispatch.
-    resourceStateTracker->FlushResourceBarriers();
-    commandList->Dispatch(rngWindowSize.x, rngWindowSize.y, 1);
-#endif
-}
-
-
-void Composition::CreateSamplesRNGVisualization()
-{
-#if 0
-    auto device = m_deviceResources->GetD3DDevice();
-    auto FrameCount = m_deviceResources->GetBackBufferCount();
-
-    UINT samplesPerSet = m_sppAO * Composition_Args::AOSampleSetDistributedAcrossPixels * Composition_Args::AOSampleSetDistributedAcrossPixels;
-    UINT NumSampleSets = 83;
-    m_randomSampler.Reset(samplesPerSet, NumSampleSets, Samplers::HemisphereDistribution::Cosine);
-
-    // Create root signature.
-    {
-        using namespace ComputeShader::RootSignature::HemisphereSampleSetVisualization;
-
-        CD3DX12_DESCRIPTOR_RANGE ranges[1]; // Perfomance TIP: Order from most frequent to least frequent.
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-
-        CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-        rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
-        rootParameters[Slot::SampleBuffers].InitAsShaderResourceView(1);
-        rootParameters[Slot::SceneConstant].InitAsConstantBufferView(0);
-
-        CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
-        SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_computeRootSigs[CSType::HemisphereSampleSetVisualization], L"Root signature: CS hemisphere sample set visualization");
-    }
-
-    // Create compute pipeline state.
-    {
-        D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
-        descComputePSO.pRootSignature = m_computeRootSigs[CSType::HemisphereSampleSetVisualization].Get();
-        descComputePSO.CS = CD3DX12_SHADER_BYTECODE((void*)g_pRNGVisualizerCS, ARRAYSIZE(g_pRNGVisualizerCS));
-
-        ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_computePSOs[CSType::HemisphereSampleSetVisualization])));
-        m_computePSOs[CSType::HemisphereSampleSetVisualization]->SetName(L"PSO: CS hemisphere sample set visualization");
-    }
-
-
-    // Create shader resources
-    {
-        // ToDo rename GPU from resource names?
-        m_csHemisphereVisualizationCB.Create(device, FrameCount, L"GPU CB: RNG");
-        m_samplesGPUBuffer.Create(device, m_randomSampler.NumSamples() * m_randomSampler.NumSampleSets(), FrameCount, L"GPU buffer: Random unit square samples");
-        m_hemisphereSamplesGPUBuffer.Create(device, m_randomSampler.NumSamples() * m_randomSampler.NumSampleSets(), FrameCount, L"GPU buffer: Random hemisphere samples");
-
-        for (UINT i = 0; i < m_randomSampler.NumSamples() * m_randomSampler.NumSampleSets(); i++)
-        {
-            //sample.value = m_randomSampler.GetSample2D();
-            XMFLOAT3 p = m_randomSampler.GetHemisphereSample3D();
-            // Convert [-1,1] to [0,1].
-            m_samplesGPUBuffer[i].value = XMFLOAT2(p.x * 0.5f + 0.5f, p.y * 0.5f + 0.5f);
-            m_hemisphereSamplesGPUBuffer[i].value = p;
-        }
-    }
-#endif
-}
-
-
 
 // Composite results from multiple passed into a final image.
 void Composition::Render(
@@ -428,8 +319,6 @@ void Composition::Render(
     {
         UpsampleResourcesForRenderComposePass(pathtracer, rtao, denoiser, GBufferWidth, GBufferHeight);
     }
-
-
 
     // Update constant buffer.
     {
