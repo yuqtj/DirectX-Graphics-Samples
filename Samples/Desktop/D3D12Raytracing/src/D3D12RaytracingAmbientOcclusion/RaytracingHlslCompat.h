@@ -40,6 +40,10 @@ Optimization
 -- reflections
 
 
+AppSetup
+- Cleanup UI paths
+- Total GPU time >> sum of component gpu times??
+
 
 - Multi-scale denoiser
 - consider alternating min/max pattern on downsampling
@@ -83,7 +87,6 @@ Optimization
     - tighten texture format sizes
 
 - Glitches
-    - RayHitDistance is wrong behind tires.
     - clean up PIX /GPU validation warnings on Debug
     - Debug break on FS on 1080 display resolution.
     - Tearing with VSync on at 4K full res.
@@ -94,15 +97,13 @@ Optimization
 - Cleanup:
     - ToDo remove .f specifier from floating numbers in hlsl
     - ToDo clean up scoped timer names.
-    - Add/revise comments
-    - Add UAV barrier to SRV - UAV transitions. Remove post D3D barriers.
+    - Add/revise comments. Incl file decs
     - Move global defines in RaytracingSceneDefines.h locally for RTAO and Denoiser.
     - Add dtors/release . Wait on GPU?
     - Build with higher warning bar and cleanup
 
 - Sample generic
     - Add device removal support
-
 
 */
 
@@ -281,6 +282,7 @@ struct Ray
 
 struct AmbientOcclusionGBuffer
 {
+    // ToDo rearrange members for smaller size? ALignment of XMFLOAT3?
     float tHit;
     XMFLOAT3 hitPosition;           // Position of the hit for which to calculate Ambient coefficient.
     UINT diffuseByte3;              // Diffuse reflectivity of the hit surface.
@@ -300,7 +302,6 @@ struct GBufferRayPayload
 {
     UINT rayRecursionDepth;
     XMFLOAT3 radiance;
-	//XMUINT2 materialInfo;   // {materialID, 16b 2D texCoord}
     AmbientOcclusionGBuffer AOGBuffer;
 #if USE_UV_DERIVATIVES
     Ray rx;    // Auxilary camera ray offset by one pixel in x dimension in screen space.
@@ -791,7 +792,6 @@ struct PrimitiveMaterialBuffer
     XMFLOAT3 opacity;
     XMFLOAT3 eta;
     float roughness;
-    // ToDo use a bitmask?
     UINT hasDiffuseTexture; // ToDO use BOOL?
     UINT hasNormalTexture;
     UINT hasPerVertexTangents;
@@ -911,9 +911,6 @@ namespace RTAOTraceRayParameters
     }
 }
 
-
 static const XMFLOAT4 BackgroundColor = XMFLOAT4(0.79f, 0.88f, 0.98f, 1.0f);
-// ToDo
-static const float InShadowRadiance = 0.35f;
 
 #endif // RAYTRACINGHLSLCOMPAT_H

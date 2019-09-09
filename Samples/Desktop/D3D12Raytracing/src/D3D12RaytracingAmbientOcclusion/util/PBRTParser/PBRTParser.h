@@ -10,8 +10,10 @@
 //*********************************************************
 
 //
-// Original implementation: https://github.com/wallisc/DuosRenderer/tree/DXRRenderer/PBRTParser
+// Based on DuosRenderer [9/2018]
+// https://github.com/wallisc/DuosRenderer/tree/DXRRenderer/PBRTParser
 //
+
 
 #pragma once
 #include "SceneParser.h"

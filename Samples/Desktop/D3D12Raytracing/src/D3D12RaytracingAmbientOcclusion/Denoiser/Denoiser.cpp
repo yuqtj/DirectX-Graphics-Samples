@@ -646,7 +646,6 @@ void Denoiser::MultiPassBlur(Pathtracer& pathtracer)
     };
 
     GpuResource* OutResource = &m_temporalAOCoefficient[m_temporalCacheCurrentFrameTemporalAOCoefficientResourceIndex];
-    //GpuResource* OutResource = &AOResources[AOResource::Smoothed];
 
     bool readWriteUAV_and_skipPassthrough = false;// (numPasses % 2) == 1;
 
@@ -804,11 +803,9 @@ void Denoiser::ApplyAtrousWaveletTransformFilter(Pathtracer& pathtracer, RTAO& r
         DepthSigma = Denoiser_Args::Denoising_2ndPass_DepthSigma;
     }
 
-#if TWO_PASS_DENOISE
-    UINT numFilterPasses = Denoiser_Args::AtrousFilterPasses;// isFirstPass ? 1 : Denoiser_Args::AtrousFilterPasses - 1;
-#else
+
     UINT numFilterPasses = Denoiser_Args::AtrousFilterPasses;
-#endif
+
     bool cacheIntermediateDenoiseOutput =
         Denoiser_Args::TemporalSupersampling_CacheDenoisedOutput &&
         static_cast<UINT>(Denoiser_Args::TemporalSupersampling_CacheDenoisedOutputPassNumber) < numFilterPasses;
@@ -883,138 +880,4 @@ void Denoiser::ApplyAtrousWaveletTransformFilter(Pathtracer& pathtracer, RTAO& r
     // ToDo move these right before the call?
     resourceStateTracker->TransitionResource(&AOResources[AOResource::Smoothed], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     resourceStateTracker->TransitionResource(OutputIntermediateResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-}
-
-
-// ToDo move out
-void Denoiser::ApplyAtrousWaveletTransformFilter(
-    const GpuResource& inValueResource,
-    const GpuResource& inNormalDepthResource,
-    const GpuResource& inDepthResource,
-    const GpuResource& inRayHitDistanceResource,
-    const GpuResource& inPartialDistanceDerivativesResource,
-    GpuResource* outSmoothedValueResource,
-    GpuResource* varianceResource,
-    GpuResource* smoothedVarianceResource,
-    UINT calculateVarianceTimerId,      // ToDo remove obsolete
-    UINT smoothVarianceTimerId,
-    UINT atrousFilterTimerId
-)
-{
-    ThrowIfFalse(false, L"ToDo");
-
-#if 0
-    auto commandList = m_deviceResources->GetCommandList();
-
-    auto desc = inValueResource->GetDesc();
-    // ToDo cleanup widths on GPU kernels, it should be the one of input resource.
-    UINT width = static_cast<UINT>(desc.Width);
-    UINT height = static_cast<UINT>(desc.Height);
-
-#if 0
-    // Calculate local variance.
-    {
-        ScopedTimer _prof(L"CalculateVariance", commandList);
-        resourceStateTracker->FlushResourceBarriers();
-        m_calculateVarianceKernel.Run(
-            commandList,
-            m_cbvSrvUavHeap->GetHeap(),
-            width,
-            height,
-            static_cast<GpuKernels::CalculateVariance::FilterType>(static_cast<UINT>(Denoiser_Args::VarianceBilateralFilter)),
-            inValueResource.gpuDescriptorReadAccess,
-            inNormalDepthResource.gpuDescriptorReadAccess,
-            inDepthResource.gpuDescriptorReadAccess,
-            varianceResource->gpuDescriptorWriteAccess,
-            CD3DX12_GPU_DESCRIPTOR_HANDLE(),    // unused mean resource output
-            Denoiser_Args::AODenoiseDepthSigma,
-            Denoiser_Args::AODenoiseNormalSigma,
-            false,
-            Denoiser_Args::Denoising_Variance_UseDepthWeights,
-            Denoiser_Args::Denoising_Variance_UseNormalWeights,
-            Denoiser_Args::RTAOVarianceFilterKernelWidth);
-
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        resourceStateTracker->TransitionResource(&varianceResource->resource.Get(), after));
-    }
-
-    // ToDo, should the smoothing be applied after each pass?
-    // Smoothen the local variance which is prone to error due to undersampled input.
-    {
-        ScopedTimer _prof(L"VarianceSmoothing", commandList);
-        resourceStateTracker->FlushResourceBarriers();
-        m_gaussianSmoothingKernel.Run(
-            commandList,
-            width,
-            height,
-            GpuKernels::GaussianFilter::Filter3x3,
-            m_cbvSrvUavHeap->GetHeap(),
-            varianceResource->gpuDescriptorReadAccess,
-            smoothedVarianceResource->gpuDescriptorWriteAccess);
-    }
-
-    // Transition Variance resource to shader resource state.
-    // Also prepare smoothed AO resource for the next pass and transition it to UAV.
-    {
-        D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            resourceStateTracker->TransitionResource(&smoothedVarianceResource->resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
-            // ToDo Remove      resourceStateTracker->TransitionResource(&outSmoothedValueResource->resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-        };
-        commandList->ResourceBarrier(ARRAYSIZE(barriers), barriers);
-    }
-#endif
-
-#if RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS
-    UINT offsets[5] = {
-        static_cast<UINT>(Denoiser_Args::KernelStepShift0),
-        static_cast<UINT>(Denoiser_Args::KernelStepShift1),
-        static_cast<UINT>(Denoiser_Args::KernelStepShift2),
-        static_cast<UINT>(Denoiser_Args::KernelStepShift3),
-        static_cast<UINT>(Denoiser_Args::KernelStepShift4) };
-
-    UINT newStartId = 0;
-    for (UINT i = 0; i < 5; i++)
-    {
-        offsets[i] = newStartId + offsets[i];
-        newStartId = offsets[i] + 1;
-    }
-#endif
-    // A-trous edge-preserving wavelet tranform filter.
-    {
-        ScopedTimer _prof(L"AtrousWaveletTransformFilter", commandList);
-        resourceStateTracker->FlushResourceBarriers();
-        m_atrousWaveletTransformFilter.Run(
-            commandList,
-            m_cbvSrvUavHeap->GetHeap(),
-            static_cast<GpuKernels::AtrousWaveletTransformCrossBilateralFilter::FilterType>(static_cast<UINT>(Denoiser_Args::Denoising_Mode)),
-            inValueResource.gpuDescriptorReadAccess,
-            inNormalDepthResource.gpuDescriptorReadAccess,
-            inDepthResource.gpuDescriptorReadAccess,
-            smoothedVarianceResource->gpuDescriptorReadAccess,
-            inRayHitDistanceResource.gpuDescriptorReadAccess,
-            inPartialDistanceDerivativesResource.gpuDescriptorReadAccess,
-            m_temporalCache[m_temporalCacheCurrentFrameResourceIndex][TemporalSupersampling::FrameAge].gpuDescriptorReadAccess,
-            outSmoothedValueResource,
-            Denoiser_Args::AODenoiseValueSigma,
-            Denoiser_Args::AODenoiseDepthSigma,
-            Denoiser_Args::AODenoiseNormalSigma,
-            Denoiser_Args::Denoising_WeightScale,
-            static_cast<TextureResourceFormatRGB::Type>(static_cast<UINT>(Denoiser_Args::TemporalSupersampling_NormalDepthResourceFormat)),
-            offsets,
-            Denoiser_Args::AtrousFilterPasses,
-            GpuKernels::AtrousWaveletTransformCrossBilateralFilter::Mode::OutputFilteredValue,
-            Denoiser_Args::ReverseFilterOrder,
-            Denoiser_Args::UseSpatialVariance,
-            Denoiser_Args::Denoising_PerspectiveCorrectDepthInterpolation,
-            Denoiser_Args::Denoising_UseAdaptiveKernelSize,
-            Denoiser_Args::Denoising_AdaptiveKernelSize_MinHitDistanceScaleFactor,
-            Denoiser_Args::Denoising_FilterMinKernelWidth,
-            static_cast<UINT>((Denoiser_Args::Denoising_FilterMaxKernelWidthPercentage / 100) * m_denoisingWidth),
-            Denoiser_Args::Denoising_FilterVarianceSigmaScaleOnSmallKernels,
-            Denoiser_Args::QuarterResAO);
-    }
-#endif
 }

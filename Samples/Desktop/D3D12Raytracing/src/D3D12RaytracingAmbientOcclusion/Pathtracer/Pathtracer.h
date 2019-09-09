@@ -63,7 +63,6 @@ private:
     void CreateResolutionDependentResources();
     void BuildShaderTables(Scene& scene);
     void DispatchRays(ID3D12Resource* rayGenShaderTable, UINT width = 0, UINT height = 0);
-    void CalculateRayHitCount();
     void DownsampleGBuffer();
 
     std::shared_ptr<DX::DeviceResources> m_deviceResources;
@@ -104,7 +103,6 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_nullVertexBufferGPUhandle;
 
     GpuKernels::CalculatePartialDerivatives  m_calculatePartialDerivativesKernel;
-    GpuKernels::ReduceSum				m_reduceSumKernel;
     GpuKernels::DownsampleNormalDepthHitPositionGeometryHitBilateralFilter m_downsampleGBufferBilateralFilterKernel; //ToDo rename?
 
     bool m_isRecreateRaytracingResourcesRequested = false;

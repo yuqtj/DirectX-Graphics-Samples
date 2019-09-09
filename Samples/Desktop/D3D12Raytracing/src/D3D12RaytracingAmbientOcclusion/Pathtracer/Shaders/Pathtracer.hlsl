@@ -22,7 +22,7 @@
 #include "BxDF.hlsli"
 #define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS
 
-// ToDo dedupe code triangle normal calc,..
+// ToDo compact resource register # usage
 
 //***************************************************************************
 //*****------ Shader resources bound via root signatures -------*************
@@ -31,66 +31,42 @@
 //  g_* - bound via a global root signature.
 //  l_* - bound via a local root signature.
 RaytracingAccelerationStructure g_scene : register(t0, space0);
-RWTexture2D<float4> g_renderTarget : register(u0);			// ToDo remove
 
-// ToDo prune redundant
-// ToDo move this to local ray gen root sig
 RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
-// {MaterialId, 16b 2D texCoords}
-RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}. // ToDo compact to 8b?
+// ToDo rename to material like in composerenderpasses  
+RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}.
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
 RWTexture2D<NormalDepthTexFormat> g_rtGBufferNormalDepth : register(u8);
-RWTexture2D<float> g_rtGBufferDistance : register(u9); // ToDo dedupe with Depth u13
+RWTexture2D<float> g_rtGBufferDepth : register(u9); // ToDo dedupe with Depth u13
 
-Texture2D<uint> g_texGBufferPositionHits : register(t5); 
-Texture2D<uint2> g_texGBufferMaterialInfo : register(t6);     // 16b {1x Material Id, 3x Diffuse.RGB}       // ToDo rename to material like in composerenderpasses
-Texture2D<float4> g_texGBufferPositionRT : register(t7);
-Texture2D<NormalDepthTexFormat> g_texGBufferNormalDepth : register(t8);
-Texture2D<float4> g_texGBufferDistance : register(t9);  
-TextureCube<float4> g_texEnvironmentMap : register(t12);
-Texture2D<float> g_filterWeightSum : register(t13); // ToDo remove
-Texture2D<uint> g_texInputAOFrameAge : register(t14);
-Texture2D<float> g_texShadowMap : register(t21);
-Texture2D<float4> g_texAORaysDirectionOriginDepthHit : register(t22);
-Texture2D<uint2> g_texAOSourceToSortedRayIndex : register(t23);
-
-// ToDo remove AOcoefficient and use AO hits instead?
-//todo remove rt?
-RWTexture2D<float> g_rtAOcoefficient : register(u10);
-RWTexture2D<uint> g_rtAORayHits : register(u11);
-RWTexture2D<float> g_rtVisibilityCoefficient : register(u12);
-RWTexture2D<float> g_rtGBufferDepth : register(u13);
-RWTexture2D<float> g_rtAORayHitDistance : register(u15);
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
 RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
 #endif
-// ToDo pack motion vector, depth and normal into float4
+
 RWTexture2D<float2> g_rtTextureSpaceMotionVector : register(u17);
 RWTexture2D<NormalDepthTexFormat> g_rtReprojectedNormalDepth : register(u18); // ToDo rename
 RWTexture2D<float4> g_rtColor : register(u19);
 RWTexture2D<float4> g_rtAOSurfaceAlbedo : register(u20);
+
 // ToDo remove
 RWTexture2D<float4> g_texOutputDebug1 : register(u21);
 RWTexture2D<float4> g_texOutputDebug2 : register(u22);
 
+TextureCube<float4> g_texEnvironmentMap : register(t12);
 ConstantBuffer<PathtracerConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
-
 StructuredBuffer<float3x4> g_prevFrameBottomLevelASInstanceTransform : register(t15);
 
-
 SamplerState LinearWrapSampler : register(s0);
-SamplerComparisonState ShadowMapSamplerComp : register(s1);
-SamplerState ShadowMapSampler : register(s2);
 
-// ToDo: https://developer.nvidia.com/content/understanding-structured-buffer-performance
+
 /*******************************************************************************************************/
-// Per-object resources
+// Per-object resources bound via a local root signature.
 ConstantBuffer<PrimitiveConstantBuffer> l_materialCB : register(b0, space1);
 
 StructuredBuffer<Index> l_indices : register(t0, space1);
-StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices : register(t1, space1); // Current frame vertex buffer.
+StructuredBuffer<VertexPositionNormalTextureTangent> l_vertices : register(t1, space1);             // Current frame vertex buffer.
 StructuredBuffer<VertexPositionNormalTextureTangent> l_verticesPrevFrame : register(t2, space1); 
 
 Texture2D<float3> l_texDiffuse : register(t3, space1);
@@ -99,7 +75,6 @@ Texture2D<float3> l_texNormalMap : register(t4, space1);
 
 
 // ToDo move
-
 float GetPlaneConstant(in float3 planeNormal, in float3 pointOnThePlane)
 {
     // Given a plane equation N * P + d = 0
@@ -308,7 +283,6 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth, 
     rayPayload.radiance = 0;
     rayPayload.AOGBuffer.tHit = HitDistanceOnMiss;
     rayPayload.AOGBuffer.hitPosition = 0;
-    // rayPayload.materialInfo = 0;
     rayPayload.AOGBuffer.diffuseByte3 = 0;
     rayPayload.AOGBuffer.encodedNormal = 0;
     rayPayload.AOGBuffer._virtualHitPosition = 0;
@@ -683,12 +657,6 @@ void MyRayGenShader_GBuffer()
     // ToDo do we need both? Or just normal for high-fidelity one w/o depth?
         // ToDo remove the decode step
         g_rtGBufferNormalDepth[DTid] = EncodeNormalDepth(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), linearDepth);
-
-        g_texOutputDebug1[DTid] = float4(DecodeNormal(rayPayload.AOGBuffer.encodedNormal), linearDepth);
-        g_texOutputDebug2[DTid] = float4(DecodeNormal(rayPayload.AOGBuffer._encodedNormal), _depth);
-
-        g_rtGBufferDistance[DTid] = linearDepth;
-
         g_rtGBufferDepth[DTid] = linearDepth;
 
         g_rtAOSurfaceAlbedo[DTid] = float4(Byte3ToNormalizedFloat3(rayPayload.AOGBuffer.diffuseByte3), 0);
@@ -702,10 +670,6 @@ void MyRayGenShader_GBuffer()
         // Invalidate the motion vector - set it to move well out of texture bounds.
         g_rtTextureSpaceMotionVector[DTid] = 1e3f;
         g_rtReprojectedNormalDepth[DTid] = 0;
-
-        g_texOutputDebug1[DTid] = 0;
-        g_texOutputDebug2[DTid] = 0;
-
     }
 
     g_rtColor[DTid] = float4(rayPayload.radiance, 1);

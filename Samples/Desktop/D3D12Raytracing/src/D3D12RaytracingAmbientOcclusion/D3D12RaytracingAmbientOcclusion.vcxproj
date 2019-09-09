@@ -1037,11 +1037,6 @@
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">6.3</ShaderModel>
     </FxCompile>
   </ItemGroup>
-  <ItemGroup>
-    <Image Include="util\DXR_abbr_300dpi_4.5pt_rgb.dds">
-      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DeploymentContent>
-    </Image>
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\..\..\..\..\Packages\WinPixEventRuntime.1.0.180612001\build\WinPixEventRuntime.targets" Condition="Exists('..\..\..\..\..\Packages\WinPixEventRuntime.1.0.180612001\build\WinPixEventRuntime.targets')" />

@@ -236,9 +236,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
         float weightSum = 0;
 
         // For all rows in the kernel.
-        // ToDo Unroll
         for (uint r = 0; r < FilterKernel::Width; r++)
-            // ToDo test with skipping center value
         {
             uint rowID = GTid.y + r;
 
@@ -255,6 +253,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
                 float rWeightSum = rUnpackedRowResult.y;
 
                 float w = FilterKernel::Kernel1D[r];
+                // ToDo explain
                 float depthThreshold = 0.01 + cb.step * 0.001 * abs(int(FilterKernel::Radius) - int(r));
                 float w_d = abs(kcDepth - rDepth) <= depthThreshold * kcDepth;
 
@@ -277,6 +276,7 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
 void main(uint2 Gid : SV_GroupID, uint2 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
 {
     uint2 sDTid = GetPixelIndex(Gid, GTid);
+
     // Pass through if all pixels have 0 blur strength set.
     float blurStrength;
     {

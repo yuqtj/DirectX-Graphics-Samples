@@ -68,7 +68,6 @@ private:
     void CreateAuxilaryDeviceResources();
     void CreateTextureResources();
     void ApplyAtrousWaveletTransformFilter(Pathtracer& pathtracer, RTAO& rtao, bool isFirstPass);
-    void ApplyAtrousWaveletTransformFilter(const  GpuResource& inValueResource, const  GpuResource& inNormalDepthResource, const  GpuResource& inDepthResource, const  GpuResource& inRayHitDistanceResource, const  GpuResource& inPartialDistanceDerivativesResource, GpuResource* outSmoothedValueResource, GpuResource* varianceResource, GpuResource* smoothedVarianceResource, UINT calculateVarianceTimerId, UINT smoothVarianceTimerId, UINT atrousFilterTimerId);
     void CreateResolutionDependentResources();
 
     std::shared_ptr<DX::DeviceResources> m_deviceResources;

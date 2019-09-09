@@ -1,4 +1,3 @@
-
 //*********************************************************
 //
 // Copyright (c) Microsoft. All rights reserved.
@@ -115,7 +114,7 @@ float4 RenderVariance(in uint2 DTid)
             variance = g_texVariance[DTid].x;
         else
             variance = g_texLocalMeanVariance[DTid].y;
-        // ToDo why is minHitDistance 0 or very dark on outer edges?
+
         float3 minSampleColor = float3(20, 20, 20) / 255;
         float3 maxSampleColor = float3(255, 255, 255) / 255;
         if (g_CB.variance_visualizeStdDeviation)

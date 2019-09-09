@@ -8,7 +8,7 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
-
+// ToDO remove
 #include "../stdafx.h"
 #include "DXSampleHelper.h"
 #include "..\RaytracingSceneDefines.h"

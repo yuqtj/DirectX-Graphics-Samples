@@ -436,9 +436,4 @@
       <Filter>Assets\Scene</Filter>
     </CustomBuild>
   </ItemGroup>
-  <ItemGroup>
-    <Image Include="util\DXR_abbr_300dpi_4.5pt_rgb.dds">
-      <Filter>Assets\Scene</Filter>
-    </Image>
-  </ItemGroup>
 </Project>

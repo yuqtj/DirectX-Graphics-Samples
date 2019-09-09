@@ -37,12 +37,11 @@ RWTexture2D<float4> g_outDebug2 : register(u4);
 ConstantBuffer<BilateralFilterConstantBuffer> cb: register(b0);
 
 // Group shared memory cache for the row aggregated results.
-// ToDo parameterize SMEM based on kernel dims.
 static const uint NumValuesToLoadPerRowOrColumn =
-DefaultComputeShaderParams::ThreadGroup::Width
-+ (FilterKernel::Width - 1);
-groupshared uint PackedValueDepthCache[NumValuesToLoadPerRowOrColumn][8];         // 16bit float value, depth.
-groupshared float FilteredResultCache[NumValuesToLoadPerRowOrColumn][8];     // 32 bit float filteredValue.
+    DefaultComputeShaderParams::ThreadGroup::Width
+    + (FilterKernel::Width - 1);
+groupshared uint PackedValueDepthCache[NumValuesToLoadPerRowOrColumn][8];   // 16bit float value, depth.
+groupshared float FilteredResultCache[NumValuesToLoadPerRowOrColumn][8];    // 32 bit float filteredValue.
 
 uint2 GetPixelIndex(in uint2 Gid, in uint2 GTid)
 {
@@ -217,7 +216,6 @@ void FilterVertically(uint2 DTid, in uint2 GTid, in float blurStrength)
         // For all rows in the kernel.
         [unroll]
         for (uint r = 0; r < FilterKernel::Width; r++)
-            // ToDo test with skipping center value
         {
             uint rowID = GTid.y + r;
 

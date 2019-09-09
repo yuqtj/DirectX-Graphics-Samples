@@ -102,11 +102,11 @@ namespace GeometryType {
 namespace GBufferResource {
 	enum Enum {
 		Hit = 0,		// Geometry hit or not.
+        // ToDo rename to AORay hit members?
 		Material,		// Material of the object hit ~ {MaterialID, texCoord}.
 		HitPosition,	// 3D position of hit.
 		SurfaceNormalDepth,	// Encoded normal.
-        Distance,       // Length along ray of hit. // ToDo update (depth?)
-        Depth,          // Non-linear depth of the hit. // ToDo remove
+        Depth,          // Linear depth of the hit.
         PartialDepthDerivatives,
         MotionVector,
         ReprojectedNormalDepth,

@@ -10,7 +10,6 @@
 //
 // Author:  James Stanard 
 //
-// ToDo fix up headers
 
 #include "stdafx.h"
 #include "PerformanceTimers.h"
@@ -117,7 +116,6 @@ void GpuTimeManager::ReleaseDevice()
 
 void GpuTimeManager::Start(ID3D12GraphicsCommandList4* commandList, UINT timerid)
 {
-    // ToDo move this to the caller?
     if (timerid == UINT_MAX)
     {
         return;
@@ -128,7 +126,6 @@ void GpuTimeManager::Start(ID3D12GraphicsCommandList4* commandList, UINT timerid
 
 void GpuTimeManager::Stop(ID3D12GraphicsCommandList4* commandList, UINT timerid)
 {
-    // ToDo move this to the caller?
     if (timerid == UINT_MAX)
     {
         return;

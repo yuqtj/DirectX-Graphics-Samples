@@ -24,10 +24,6 @@ using namespace DirectX;
 using namespace SceneEnums;
 using namespace GameCore;
 
-// ToDo tighten shader visibility in Root Sigs - CS + DXR
-
-#define TWO_PASS_DENOISE 0
-
 namespace Sample_Args
 {
 }
