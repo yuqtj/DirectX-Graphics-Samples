@@ -9,9 +9,11 @@
 //
 //*********************************************************
 
-// Desc: Generates AO rays for RTAO
-// Supports 1 rays per pixel (rpp) and 0.5 rpp (via checkerboard pattern) 
-//
+// Desc: Generates AO rays for each pixel
+// Supports 1 rays per pixel (rpp) and 0.5 rpp (via checkerboard distribution).
+// 0.5 rpp:
+//  - generates 1 rpp for every other pixel in a checkerboard distribution.
+
 #define HLSL
 #include "RaytracingHlslCompat.h"
 #include "RaytracingShaderHelper.hlsli"
@@ -21,13 +23,10 @@
 Texture2D<NormalDepthTexFormat> g_texRayOriginSurfaceNormalDepth : register(t0);
 Texture2D<float4> g_texRayOriginPosition : register(t1);
 
-// ToDo use higher bit format?
 RWTexture2D<NormalDepthTexFormat> g_rtRaysDirectionOriginDepth : register(u0);
 
 ConstantBuffer<AdaptiveRayGenConstantBuffer> CB: register(b0);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t3);
-
-groupshared uint FrameAgeCache[DefaultComputeShaderParams::ThreadGroup::Height][DefaultComputeShaderParams::ThreadGroup::Width];
 
 float3 GetRandomRayDirection(in uint2 srcRayIndex, in float3 surfaceNormal)
 {
@@ -36,16 +35,10 @@ float3 GetRandomRayDirection(in uint2 srcRayIndex, in float3 surfaceNormal)
     float3 u, v, w;
     w = surfaceNormal;
 
-    // ToDo revisit this
     // Get a vector that's not parallel to w;
-#if 0
-    float3 right = float3(0.0072f, 0.999994132f, 0.0034f);
-#else
     float3 right = 0.3f * w + float3(-0.72f, 0.56f, -0.34f);
-#endif
     v = normalize(cross(w, right));
     u = cross(v, w);
-
 
     // Calculate offsets to the pregenerated sample set.
     uint sampleSetJump;     // Offset to the start of the sample set
@@ -81,26 +74,16 @@ float3 GetRandomRayDirection(in uint2 srcRayIndex, in float3 surfaceNormal)
 
     // Load a pregenerated random sample from the sample set.
     float3 sample = g_sampleSets[sampleSetJump + (sampleJump % CB.numSamplesPerSet)].value;
-
-    // ToDo remove unnecessary normalize()
     float3 rayDirection = normalize(sample.x * u + sample.y * v + sample.z * w);
 
     return rayDirection;
 }
 
-
-// ToDo
-// Limitations:
-// -    TextureDim and CsDim must be a multiple of QuadDim
-// Address:
-// - pixel neighborhood sampling. Carry sample set id with each pixel?
-// - support 2+ spp per ray
-// Comment
-// - rename frameAge to numTemporalSamples?
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
 {
     uint2 DTidFullRes = DTid;
+
     if (CB.doCheckerboardRayGeneration)
     {
         UINT pixelStepX = 2;
@@ -108,7 +91,6 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 GTid : SV_GroupThreadID)
         UINT pixelOffsetX = isEvenPixelY != CB.checkerboardGenerateRaysForEvenPixels;
         DTidFullRes.x = DTid.x * pixelStepX + pixelOffsetX;
     }
-
 
     float3 surfaceNormal;
     float rayOriginDepth;

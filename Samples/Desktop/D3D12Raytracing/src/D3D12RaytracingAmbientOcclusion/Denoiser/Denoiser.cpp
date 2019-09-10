@@ -492,7 +492,7 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
 #if 0
     // ToDo?
     Denoiser_Args::Denoising_LowTsppFillMissingValues
-        && rtao.GetSpp() < 1;
+        && rtao.GetRpp() < 1;
 #endif
     GpuResource* TemporalOutCoefficient = fillInMissingValues ? &m_temporalSupersampling_blendedAOCoefficient[0] : &m_temporalAOCoefficient[m_temporalCacheCurrentFrameTemporalAOCoefficientResourceIndex];
 
@@ -829,7 +829,7 @@ void Denoiser::ApplyAtrousWaveletTransformFilter(Pathtracer& pathtracer, RTAO& r
     }
 
 
-    float staleNeighborWeightScale = Denoiser_Args::Denoising_LowerWeightForStaleSamples ? rtao.GetSpp() : 1;
+    float staleNeighborWeightScale = Denoiser_Args::Denoising_LowerWeightForStaleSamples ? RTAO_Args::Rpp : 1.f;
     bool forceDenoisePass = Denoiser_Args::Denoising_ForceDenoisePass;
 
     if (forceDenoisePass)

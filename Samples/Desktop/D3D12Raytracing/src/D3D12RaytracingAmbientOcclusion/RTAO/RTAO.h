@@ -34,6 +34,7 @@ namespace RTAORayGenShaderType {
 namespace RTAO_Args
 {
     extern BoolVar QuarterResAO;
+    extern NumVar Rpp;
 }
 
 
@@ -59,8 +60,7 @@ public:
     GpuResource(&AOResources())[AOResource::Count]{ return m_AOResources; }
     static DXGI_FORMAT ResourceFormat(ResourceType resourceType);
     float MaxRayHitTime();
-    void SetMaxRayHitTime(float maxRayHitTime); 
-    float GetSpp();
+    void SetMaxRayHitTime(float maxRayHitTime);
     void GetRayGenParameters(bool* isCheckerboardSamplingEnabled, bool* checkerboardLoadEvenPixels);
 
     UINT RaytracingWidth() { return m_raytracingWidth; }
@@ -104,7 +104,6 @@ private:
     GpuResource   m_sortedToSourceRayIndexOffset;   // Index of a ray in the source array given a sorted index.
     
     // ToDo remove
-    GpuResource   m_sourceToSortedRayIndexOffset;   // Index of a ray in the sorted array given a source index.
     ConstantBuffer<RTAOConstantBuffer> m_CB;
     Samplers::MultiJittered m_randomSampler;
     StructuredBuffer<AlignedUnitSquareSample2D> m_samplesGPUBuffer;

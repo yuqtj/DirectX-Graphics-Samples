@@ -391,9 +391,6 @@
     <FxCompile Include="RTAO\Shaders\Denoising\EdgeStoppingSeparableGaussian3x3FilterCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Denoising</Filter>
     </FxCompile>
-    <FxCompile Include="RTAO\Shaders\Ray sorting\AdaptiveRayGenCS.hlsl">
-      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
-    </FxCompile>
     <FxCompile Include="util\UpsampleBilateralFilter2x2Float2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
@@ -429,6 +426,9 @@
     </FxCompile>
     <FxCompile Include="Composition\Shaders\CompositionCS.hlsl">
       <Filter>Assets\Shaders\Composition</Filter>
+    </FxCompile>
+    <FxCompile Include="RTAO\Shaders\Ray sorting\AORayGenCS.hlsl">
+      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

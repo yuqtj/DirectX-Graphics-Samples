@@ -708,11 +708,6 @@ namespace GpuKernels
     class SortRays
     {
     public:
-        // ToDo remove
-        enum FilterType {
-            CountingSort = 0,
-            Count
-        };
 
         void Release()
         {
@@ -725,34 +720,24 @@ namespace GpuKernels
             float binDepthSize,
             UINT width,
             UINT height,
-            FilterType type,
             bool useOctahedralRayDirectionQuantization,
             ID3D12DescriptorHeap* descriptorHeap,
             const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputSortedToSourceRayIndexOffsetResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputSourceToSortedRayIndexOffsetResourceHandle,
             const D3D12_GPU_DESCRIPTOR_HANDLE& outputDebugResourceHandle);
 
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
-        ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
+        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
 
         ConstantBuffer<SortRaysConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
     };
 
-    // ToDo rename/strip adaptive part.
-    // ToDo rename to VariableRateRay...
     /// ToDo add header desc to each kernel.
     class AORayGenerator
     {
     public:
-        enum AdaptiveQuadSizeType {
-            Quad1x1 = 0,
-            Quad2x2,
-            Quad4x4,
-            Count
-        };
 
 
         void Release()
@@ -765,11 +750,6 @@ namespace GpuKernels
             ID3D12GraphicsCommandList4* commandList,
             UINT width,
             UINT height,
-            AdaptiveQuadSizeType adaptiveQuadSizetype,
-            UINT maxFrameAge,
-            UINT minFrameAgeForAdaptiveSampling,
-            UINT maxFrameAgeToGenerateRaysFor,
-            UINT maxRaysPerQuad,
             UINT seed,
             UINT numSamplesPerSet,
             UINT numSampleSets,

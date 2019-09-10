@@ -399,22 +399,13 @@ struct CalculateMeanVarianceConstantBuffer
 struct AdaptiveRayGenConstantBuffer
 {
     XMUINT2 textureDim;
-    XMUINT2 QuadDim;
-
-    UINT MaxFrameAge;
-    UINT MinFrameAgeForAdaptiveSampling;    // Frame age at which the adaptive sampling kicks in.
-    UINT FrameID;       // Looping FrameID within <0, QuadDim.size - 1>
-    UINT MaxRaysPerQuad;
-
+    BOOL doCheckerboardRayGeneration;
+    BOOL checkerboardGenerateRaysForEvenPixels;
+    
     UINT seed;
     UINT numSamplesPerSet;
     UINT numSampleSets;
     UINT numPixelsPerDimPerSet;
-
-    UINT MaxFrameAgeToGenerateRaysFor;
-    BOOL doCheckerboardRayGeneration;
-    BOOL checkerboardGenerateRaysForEvenPixels;
-    float padding;
 };
 
 struct SortRaysConstantBuffer

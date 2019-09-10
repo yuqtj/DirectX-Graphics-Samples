@@ -42,7 +42,7 @@
 #include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
 #include "CompiledShaders\GenerateGrassStrawsCS.hlsl.h"
 #include "CompiledShaders\CountingSort_SortRays_128x64rayGroupCS.hlsl.h"
-#include "CompiledShaders\AdaptiveRayGenCS.hlsl.h"
+#include "CompiledShaders\AORayGenCS.hlsl.h"
 #include "CompiledShaders\FillInMissingValuesFilter_SeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\FillInMissingValuesFilter_DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
 #include "CompiledShaders\DepthAwareSeparableGaussianFilterCS_AnyToAnyWaveReadLaneAt.hlsl.h"
@@ -2573,7 +2573,6 @@ namespace GpuKernels
             namespace Slot {
                 enum Enum {
                     OutputSortedToSourceRayIndexOffset = 0,
-                    OutputSourceToSortedRayIndexOffset,
                     Input,
                     OutputDebug,
                     ConstantBuffer,
@@ -2592,13 +2591,11 @@ namespace GpuKernels
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; 
             ranges[Slot::Input].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input texture
             ranges[Slot::OutputSortedToSourceRayIndexOffset].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-            ranges[Slot::OutputSourceToSortedRayIndexOffset].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // 1 output texture
             ranges[Slot::OutputDebug].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // 1 output texture
 
             CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
             rootParameters[Slot::Input].InitAsDescriptorTable(1, &ranges[Slot::Input]);
             rootParameters[Slot::OutputSortedToSourceRayIndexOffset].InitAsDescriptorTable(1, &ranges[Slot::OutputSortedToSourceRayIndexOffset]);
-            rootParameters[Slot::OutputSourceToSortedRayIndexOffset].InitAsDescriptorTable(1, &ranges[Slot::OutputSourceToSortedRayIndexOffset]);
             rootParameters[Slot::OutputDebug].InitAsDescriptorTable(1, &ranges[Slot::OutputDebug]);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
@@ -2610,19 +2607,10 @@ namespace GpuKernels
         {
             D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
             descComputePSO.pRootSignature = m_rootSignature.Get();
+            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCountingSort_SortRays_128x64rayGroupCS), ARRAYSIZE(g_pCountingSort_SortRays_128x64rayGroupCS));
 
-            for (UINT i = 0; i < FilterType::Count; i++)
-            {
-                switch (i)
-                {
-                case CountingSort:
-                    descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pCountingSort_SortRays_128x64rayGroupCS), ARRAYSIZE(g_pCountingSort_SortRays_128x64rayGroupCS));
-                    break;
-                }
-
-                ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObjects[i])));
-                m_pipelineStateObjects[i]->SetName(L"Pipeline state object: Sort Rays");
-            }
+            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
+            m_pipelineStateObject->SetName(L"Pipeline state object: Sort Rays");
         }
 
         // Create shader resources
@@ -2631,19 +2619,16 @@ namespace GpuKernels
         }
     }
 
-    // Blurs input resource with a Gaussian filter.
     // width, height - dimensions of the input resource.
     void SortRays::Run(
         ID3D12GraphicsCommandList4* commandList,
         float binDepthSize,
         UINT width,
         UINT height,
-        FilterType type,
         bool useOctahedralRayDirectionQuantization,
         ID3D12DescriptorHeap* descriptorHeap,
         const D3D12_GPU_DESCRIPTOR_HANDLE& inputRayDirectionOriginDepthResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputSortedToSourceRayIndexOffsetResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputSourceToSortedRayIndexOffsetResourceHandle,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputDebugResourceHandle)
     {
         using namespace RootSignature::SortRays;
@@ -2662,11 +2647,10 @@ namespace GpuKernels
             commandList->SetDescriptorHeaps(1, &descriptorHeap);
             commandList->SetComputeRootSignature(m_rootSignature.Get());
             commandList->SetComputeRootDescriptorTable(Slot::Input, inputRayDirectionOriginDepthResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::OutputSourceToSortedRayIndexOffset, outputSourceToSortedRayIndexOffsetResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputSortedToSourceRayIndexOffset, outputSortedToSourceRayIndexOffsetResourceHandle);
             commandList->SetComputeRootDescriptorTable(Slot::OutputDebug, outputDebugResourceHandle);
             commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
-            commandList->SetPipelineState(m_pipelineStateObjects[type].Get());
+            commandList->SetPipelineState(m_pipelineStateObject.Get());
         }
 
         // Dispatch.
@@ -2705,26 +2689,26 @@ namespace GpuKernels
             rootParameters[Slot::InputRayOriginSurfaceNormalDepth].InitAsDescriptorTable(1, &ranges[Slot::InputRayOriginSurfaceNormalDepth]);
             rootParameters[Slot::InputRayOriginPosition].InitAsDescriptorTable(1, &ranges[Slot::InputRayOriginPosition]);
             rootParameters[Slot::OutputRayDirectionOriginDepth].InitAsDescriptorTable(1, &ranges[Slot::OutputRayDirectionOriginDepth]);
-           rootParameters[Slot::InputAlignedHemisphereSamples].InitAsShaderResourceView(3);
+            rootParameters[Slot::InputAlignedHemisphereSamples].InitAsShaderResourceView(3);
             rootParameters[Slot::ConstantBuffer].InitAsConstantBufferView(0);
 
             CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
-            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: Adaptive Ray Generator Rays");
+            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: AO Ray Generator Rays");
         }
 
         // Create compute pipeline state.
         {
             D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
             descComputePSO.pRootSignature = m_rootSignature.Get();
-            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pAdaptiveRayGenCS), ARRAYSIZE(g_pAdaptiveRayGenCS));
+            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pAORayGenCS), ARRAYSIZE(g_pAORayGenCS));
 
             ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-            m_pipelineStateObject->SetName(L"Pipeline state object: Adaptive Ray Generator");
+            m_pipelineStateObject->SetName(L"Pipeline state object: AO Ray Generator");
         }
 
         // Create shader resources
         {
-            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: Adaptive Ray Generator");
+            m_CB.Create(device, frameCount * numCallsPerFrame, L"Constant Buffer: AO Ray Generator");
         }
     }
 
@@ -2733,11 +2717,6 @@ namespace GpuKernels
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
-        AdaptiveQuadSizeType adaptiveQuadSizetype,
-        UINT maxFrameAge,
-        UINT minFrameAgeForAdaptiveSampling,
-        UINT maxFrameAgeToGenerateRaysFor,
-        UINT maxRaysPerQuad,
         UINT seed,
         UINT numSamplesPerSet,
         UINT numSampleSets,
@@ -2753,23 +2732,13 @@ namespace GpuKernels
         using namespace RootSignature::AORayGenerator;
         using namespace DefaultComputeShaderParams;
 
-        ScopedTimer _prof(L"Adaptive Ray Gen", commandList);
+        ScopedTimer _prof(L"AO Ray Generator", commandList);
 
         m_CB->textureDim = XMUINT2(width, height);
-        switch (adaptiveQuadSizetype)
-        {
-        case Quad1x1: m_CB->QuadDim = XMUINT2(1, 1); break;
-        case Quad2x2: m_CB->QuadDim = XMUINT2(2, 2); break;
-        case Quad4x4: m_CB->QuadDim = XMUINT2(4, 4); break;
-        }
-        m_CB->MaxFrameAge = maxFrameAge;
-        m_CB->MinFrameAgeForAdaptiveSampling = minFrameAgeForAdaptiveSampling;
-        m_CB->MaxRaysPerQuad = maxRaysPerQuad;
         m_CB->seed = seed;
         m_CB->numSamplesPerSet = numSamplesPerSet;
         m_CB->numPixelsPerDimPerSet = numPixelsPerDimPerSet;
         m_CB->numSampleSets = numSampleSets;
-        m_CB->MaxFrameAgeToGenerateRaysFor = maxFrameAgeToGenerateRaysFor;
         m_CB->doCheckerboardRayGeneration = doCheckerboardRayGeneration;
         m_CB->checkerboardGenerateRaysForEvenPixels = checkerboardGenerateRaysForEvenPixels;
 

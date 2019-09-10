@@ -67,8 +67,8 @@ namespace RTAO_Args
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
 
-    const WCHAR* RayGenAdaptiveQuadSizeTypes[GpuKernels::AORayGenerator::AdaptiveQuadSizeType::Count] = { L"1x1", L"2x2", L"4x4" };
-    EnumVar RTAORayGenAdaptiveQuadSize(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Ray Count Pixel Window", GpuKernels::AORayGenerator::AdaptiveQuadSizeType::Quad2x2, GpuKernels::AORayGenerator::AdaptiveQuadSizeType::Count, RayGenAdaptiveQuadSizeTypes);
+    // ToDO remove obsolete
+    NumVar Rpp(L"Render/AO/RTAO/Rays per pixel", 1, 0.5f, 1, 0.5f);
     IntVar RTAORayGen_MaxFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max frame age", 32, 1, 32, 1); // ToDo link this to smoothing factor?
     IntVar RTAORayGen_MinAdaptiveFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Min frame age for adaptive sampling", 16, 1, 32, 1);
     IntVar RTAORayGen_MaxRaysPerQuad(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max rays per quad", 2, 1, 16, 1);
@@ -350,7 +350,6 @@ void RTAO::CreateTextureResources()
     }
 
 
-    CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sourceToSortedRayIndexOffset, initialResourceState, L"Source To Sorted Ray Index");
     CreateRenderTargetResource(device, DXGI_FORMAT_R8G8_UINT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_sortedToSourceRayIndexOffset, initialResourceState, L"Sorted To Source Ray Index"); // ToDo remove
     CreateRenderTargetResource(device, COMPACT_NORMAL_DEPTH_DXGI_FORMAT, m_raytracingWidth, m_raytracingHeight, m_cbvSrvUavHeap.get(), &m_AORayDirectionOriginDepth, initialResourceState, L"AO Rays Direction, Origin Depth and Hit");
 }
@@ -475,23 +474,9 @@ void RTAO::CreateSamplesRNG()
     }
 }
 
-float RTAO::GetSpp()
-{
-    if (RTAO_Args::RTAOUseRaySorting)
-    {
-        int MaxRaysPerQuad = RTAO_Args::RTAORayGen_MaxRaysPerQuad;
-        switch (RTAO_Args::RTAORayGenAdaptiveQuadSize)
-        {
-        case GpuKernels::AORayGenerator::Quad2x2: return min(MaxRaysPerQuad, 4) / 4.0f;
-        case GpuKernels::AORayGenerator::Quad4x4: return min(MaxRaysPerQuad, 16) / 16.0f;
-        }
-    }
-    return 1;
-}
-
 void RTAO::GetRayGenParameters(bool* isCheckerboardSamplingEnabled, bool* checkerboardLoadEvenPixels)
 {
-    *isCheckerboardSamplingEnabled = GetSpp() != 1;
+    *isCheckerboardSamplingEnabled = RTAO_Args::Rpp != 1;
     *checkerboardLoadEvenPixels = m_checkerboardGenerateRaysForEvenPixels;
 }
 
@@ -549,7 +534,7 @@ void RTAO::UpdateConstantBuffer(UINT frameIndex)
 
     m_CB->RTAO_UseSortedRays = RTAO_Args::RTAOUseRaySorting;
 
-    bool doCheckerboardRayGeneration = GetSpp() != 1;
+    bool doCheckerboardRayGeneration = RTAO_Args::Rpp != 1;
     m_checkerboardGenerateRaysForEvenPixels = !m_checkerboardGenerateRaysForEvenPixels;
     m_CB->doCheckerboardSampling = doCheckerboardRayGeneration;
     m_CB->areEvenPixelsActive = m_checkerboardGenerateRaysForEvenPixels;
@@ -613,7 +598,6 @@ void RTAO::Run(
             resourceStateTracker->TransitionResource(&m_AOResources[AOResource::HitCount], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             resourceStateTracker->TransitionResource(&m_AOResources[AOResource::Coefficient], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             resourceStateTracker->TransitionResource(&m_AOResources[AOResource::RayHitDistance], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            resourceStateTracker->TransitionResource(&m_sourceToSortedRayIndexOffset, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             resourceStateTracker->TransitionResource(&m_sortedToSourceRayIndexOffset, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             resourceStateTracker->TransitionResource(&Sample::g_debugOutput[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             resourceStateTracker->TransitionResource(&m_AORayDirectionOriginDepth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -651,13 +635,9 @@ void RTAO::Run(
         DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOFullRes].Get());
     }
 
-    // ToDo Remove
-    //DispatchRays(m_rayGenShaderTables[RTAO_Args::QuarterResAO ? RTAORayGenShaderType::AOQuarterRes : RTAORayGenShaderType::AOFullRes].Get(),
-    //    &m_gpuTimers[GpuTimers::Raytracing_AO], m_raytracingWidth, m_raytracingHeight);
-
     if (RTAO_Args::RTAOUseRaySorting)
     {
-        bool doCheckerboardRayGeneration = GetSpp() != 1;
+        bool doCheckerboardRayGeneration = RTAO_Args::Rpp != 1;
 
         // Todo verify odd width resolutions when using CB
         UINT activeRaytracingWidth =
@@ -669,11 +649,6 @@ void RTAO::Run(
             commandList,
             activeRaytracingWidth,
             m_raytracingHeight,
-            static_cast<GpuKernels::AORayGenerator::AdaptiveQuadSizeType>(static_cast<UINT>(RTAO_Args::RTAORayGenAdaptiveQuadSize)),
-            RTAO_Args::RTAORayGen_MaxFrameAge,
-            RTAO_Args::RTAORayGen_MinAdaptiveFrameAge,
-            RTAO_Args::RTAORayGen_MaxFrameAgeToGenerateRaysFor,
-            RTAO_Args::RTAORayGen_MaxRaysPerQuad,
             m_CB->seed, // ToDo retrieve from a nonCB variable
             m_randomSampler.NumSamples(),
             m_randomSampler.NumSampleSets(),
@@ -696,18 +671,14 @@ void RTAO::Run(
             rayBinDepthSize,
             activeRaytracingWidth,
             m_raytracingHeight,
-            GpuKernels::SortRays::FilterType::CountingSort,
             RTAO_Args::RTAORaySortingUseOctahedralRayDirectionQuantization,
             m_cbvSrvUavHeap->GetHeap(),
             m_AORayDirectionOriginDepth.gpuDescriptorReadAccess,
             m_sortedToSourceRayIndexOffset.gpuDescriptorWriteAccess,
-            m_sourceToSortedRayIndexOffset.gpuDescriptorWriteAccess,
             Sample::g_debugOutput[0].gpuDescriptorWriteAccess);
 
-        resourceStateTracker->TransitionResource(&m_sourceToSortedRayIndexOffset, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         resourceStateTracker->TransitionResource(&m_sortedToSourceRayIndexOffset, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         resourceStateTracker->TransitionResource(&Sample::g_debugOutput[0], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        resourceStateTracker->InsertUAVBarrier(&m_sourceToSortedRayIndexOffset);
         resourceStateTracker->InsertUAVBarrier(&m_sortedToSourceRayIndexOffset);
 
         {

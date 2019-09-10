@@ -344,12 +344,7 @@ void RayGenShader_sortedRays()
         ambientCoef = CalculateAO(tHit, srcRayIndexFullRes, AORay, surfaceNormal);
     }
 
-#if AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS
-    ToDo is sortedRayIndex correct?
-    uint2 outPixel = sortedRayIndex;
-#else
     uint2 outPixel = srcRayIndexFullRes;
-#endif
 
     g_rtAOcoefficient[outPixel] = ambientCoef;
     g_rtAORayHitDistance[outPixel] = RTAO::HasAORayHitAnyGeometry(tHit) ? tHit : CB.RTAO_maxTheoreticalShadowRayHitTime;

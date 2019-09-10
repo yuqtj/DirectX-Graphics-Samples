@@ -17,8 +17,6 @@
 #define MIN_VALID_RAY_DEPTH FLT_10BIT_MIN
 #define MAX_RAYS 8192
 
-#define AVOID_SCATTER_WRITES_FOR_SORTED_RAY_RESULTS 0
-
 #define KEY_NUM_BITS (DEPTH_HASH_KEY_BITS + 2*RAY_DIRECTION_HASH_KEY_BITS_1D + INDEX_HASH_KEY_BITS)
 #define NUM_KEYS (1 << KEY_NUM_BITS)        // Largest key is reserved for an invalid key.
 
