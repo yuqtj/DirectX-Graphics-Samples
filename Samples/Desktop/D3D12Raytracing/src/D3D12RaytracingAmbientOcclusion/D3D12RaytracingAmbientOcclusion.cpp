@@ -378,79 +378,9 @@ namespace Sample
 
     void D3D12RaytracingAmbientOcclusion::UpdateUI()
     {
-        // ToDo average/smoothen numbers of 1/4 second.
         vector<wstring> labels;
 
-#if 0
-        // Main runtime information.
-        {
-            wstringstream wLabel;
-            wLabel.precision(1);
-            wLabel << L" GPU[" << m_deviceResources->GetAdapterID() << L"]: "
-                << m_deviceResources->GetAdapterDescription() << L"\n";
-            wLabel << fixed << L" FPS: " << m_fps << L"\n";
-            wLabel.precision(2);
-            wLabel << fixed << L" CameraRay DispatchRays: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_GBuffer) << L"ms  ~" <<
-                0.001f * NumMPixelsPerSecond(GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_GBuffer), m_GBufferWidth, m_GBufferHeight) << " GigaRay/s\n";
-            // ToDo use profiler from MiniEngine
-            float numAOGigaRays = 1e-6f * m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] * (RTAO::Args::QuarterResAO ? 0.25f : 1) * m_sppAO / GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_AO);
-            wLabel << fixed << L" AORay DispatchRays: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_AO) << L"ms  ~" << numAOGigaRays << " GigaRay/s\n";
-            wLabel << fixed << L" - AORay Adaptive Sampling ImportanceMap: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_FilterWeightSum) << L"ms  ~" << numAOGigaRays << " GigaRay/s\n";
-            wLabel << fixed << L" AO Denoising: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Denoising) << L"ms\n";
-            wLabel << fixed << L" - AO Blurring: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_BlurAO) << L"ms\n";
-            wLabel << fixed << L" - Variance: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_Variance) << L"ms\n";
-            wLabel << fixed << L" - Var Smoothing: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_VarianceSmoothing) << L"ms\n";
-            wLabel << fixed << L" - AO downsample: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::DownsampleGBuffer) << L"ms\n";
-            wLabel << fixed << L" - AO upsample: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::UpsampleAOBilateral) << L"ms\n";
-
-            float numVisibilityRays = 1e-6f * m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] / GpuTimeManager::instance().GetAverageMS(GpuTimers::Raytracing_Visibility);
-            //wLabel << fixed << L" VisibilityRay DispatchRays: " << m_gpuTimers[GpuTimers::Raytracing_Visibility].GetAverageMS() << L"ms  ~" << numVisibilityRays << " GigaRay/s\n";
-            //wLabel << fixed << L" Shading: " << m_gpuTimers[GpuTimers::CompositionCS].GetAverageMS() << L"ms\n";
-
-
-            wLabel << fixed << L" Downsample SSAA: " << GpuTimeManager::instance().GetAverageMS(GpuTimers::DownsampleToBackbuffer) << L"ms\n";
-            wLabel.precision(1);
-            /*
-                    wLabel << fixed << L" AS update (BLAS / TLAS / Total): "
-                           << m_gpuTimers[GpuTimers::UpdateBLAS].GetElapsedMS() << L"ms / "
-                           << m_gpuTimers[GpuTimers::UpdateTLAS].GetElapsedMS() << L"ms / "
-                           << m_gpuTimers[GpuTimers::UpdateBLAS].GetElapsedMS() +
-                              m_gpuTimers[GpuTimers::UpdateTLAS].GetElapsedMS() << L"ms\n";
-                    wLabel << fixed << L" CameraRayGeometryHits: #/%%/time "
-                           << m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] << "/"
-                           << ((m_GBufferWidth * m_GBufferHeight) > 0 ? (100.f * m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits]) / (m_GBufferWidth * m_GBufferHeight) : 0) << "%%/"
-                           << 1000.0f * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::CameraRayHits) << L"us \n";
-                    wLabel << fixed << L" AORayGeometryHits: #/%%/time "
-                           << m_numCameraRayGeometryHits[ReduceSumCalculations::AORayHits] << "/"
-                        // ToDo fix up for raytracing at quarter res
-                           << ((m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO) > 0 ?
-                               (100.0f * m_numCameraRayGeometryHits[ReduceSumCalculations::AORayHits]) / (m_numCameraRayGeometryHits[ReduceSumCalculations::CameraRayHits] * m_sppAO) : 0) << "%%/"
-                           << 1000.0f * m_gpuTimers[GpuTimers::ReduceSum].GetAverageMS(ReduceSumCalculations::AORayHits) << L"us \n";
-                */
-            labels.push_back(wLabel.str());
-        }
-
-        // Parameters.
-        labels.push_back(L"\n");
-        {
-            wstringstream wLabel;
-            wLabel << L"Scene:" << L"\n";
-            wLabel << L" " << L"AS update mode: " << Args::ASUpdateMode << L"\n";
-            wLabel.precision(3);
-            wLabel << L" " << L"AS memory footprint: " << static_cast<double>(m_ASmemoryFootprint) / (1024 * 1024) << L"MB\n";
-            // wLabel << L" " << L" # triangles per geometry: " << m_numTrianglesInTheScene << L"\n";
-             //wLabel << L" " << L" # geometries per BLAS: " << Args::NumGeometriesPerBLAS << L"\n";
-            // wLabel << L" " << L" # Sphere BLAS: " << Args::NumSphereBLAS << L"\n";	// ToDo fix
-            wLabel << L" " << L" # total triangles: " << m_numTrianglesInTheScene << L"\n";// Args::NumSphereBLAS * Args::NumGeometriesPerBLAS* m_numTriangles[Args::SceneType] << L"\n";
-            // ToDo AS memory
-            labels.push_back(wLabel.str());
-        }
-#endif
-
         // ToDo fix Window Tab and UI showing the same FPS.
-
-
-  
 
         // Header information
         {
@@ -511,17 +441,6 @@ namespace Sample
             }
         }
 
-#if 0 // ToDo
-        // Sampling info:
-        {
-            wstringstream wLabel;
-            wLabel << L"\n";
-            wLabel << L"Num samples: " << m_randomSampler.NumSamples() << L"\n";
-            wLabel << L"Sample set: " << m_csHemisphereVisualizationCB->sampleSetBase / m_randomSampler.NumSamples() << " / " << m_randomSampler.NumSampleSets() << L"\n";
-
-            labels.push_back(wLabel.str());
-        }
-#endif
         wstring uiText = L"";
         for (auto s : labels)
         {

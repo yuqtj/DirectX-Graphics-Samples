@@ -39,7 +39,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     // Calculates partial derivatives as the min of absolute backward and forward differences. 
 
-#if SIGNED_DDXY
     // Find the absolute minimum of the backward and foward differences in each axis
     // while preserving the sign of the difference.
     float2 ddx = float2(backwardDifferences.x, forwardDifferences.x);
@@ -53,20 +52,9 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     // Clamp ddxy to a reasonable value to avoid ddxy going over surface boundaries
     // on thin geometry and getting background/foreground blended together on blur.
-    float2 _sign = sign(ddxy);
     float maxDdxy = 1;
+    float2 _sign = sign(ddxy);
     ddxy = _sign * min(abs(ddxy), maxDdxy);
-#else
-
-    // The min is taken to handle edges when calculating partial distance derivatives.
-    // The min avoids the distance derivative slope being to that of another surface behind/in front of it on surface edges.
-    float2 ddxy = min(abs(backwardDifferences), abs(forwardDifferences));
-
-    // Clamp ddxy to a reasonable value to avoid ddxy going over surface boundaries
-    // on thin geometry and getting background/foreground blended together on blur.
-    const float MaxDdxy = 1;
-    ddxy = min(ddxy, MaxDdxy);
-#endif
 
     g_outValue[DTid] = ddxy;
 }

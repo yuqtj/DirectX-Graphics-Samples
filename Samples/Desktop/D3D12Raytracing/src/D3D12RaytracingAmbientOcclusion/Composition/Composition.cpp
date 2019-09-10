@@ -16,7 +16,6 @@
 #include "EngineProfiling.h"
 #include "GpuTimeManager.h"
 #include "Composition.h"
-#include "CompiledShaders\RNGVisualizerCS.hlsl.h"
 #include "CompiledShaders\CompositionCS.hlsl.h"
 #include "D3D12RaytracingAmbientOcclusion.h"
 
@@ -28,10 +27,7 @@ using namespace SceneEnums;
 
 namespace Composition_Args
 {
-    // ToDo don't render redundant passes?
-    // ToDo Modularize parameters?
     // ToDO standardize capitalization
-
     const WCHAR* CompositionModes[CompositionType::Count] = {
         L"Specular Pathtracer",
         L"Denoised AO",

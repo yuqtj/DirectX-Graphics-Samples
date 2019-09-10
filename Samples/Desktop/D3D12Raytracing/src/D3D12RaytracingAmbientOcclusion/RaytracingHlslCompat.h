@@ -128,8 +128,6 @@ AppSetup
 #define AO_SPP_N 1
 #define AO_SPP_N_MAX 1          // ToDo Uses no loop on 1 => saves 0.3 ms on TitanXp at 1080p
 
-#define SIGNED_DDXY 1           // Preserve the sign of ddxy
-
 #define MOVE_ONCE_ON_STRAFE 1
 
 

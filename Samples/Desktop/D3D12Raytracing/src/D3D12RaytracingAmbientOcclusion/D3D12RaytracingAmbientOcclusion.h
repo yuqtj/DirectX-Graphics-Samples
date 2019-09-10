@@ -78,15 +78,7 @@ namespace Sample
         void RequestRecreateRaytracingResources() { m_isRecreateRaytracingResourcesRequested = true; }
 
     private:
-
-        // ToDo change ID3D12Resourcs with views to GpuResource
-
         std::mt19937 m_generatorURNG;
-
-        // ToDo combine kernels to an array
-
-        const UINT c_SupersamplingScale = 2;
-        UINT								m_numCameraRayGeometryHits;
                 
         ComPtr<ID3D12Fence>                 m_fence;
         UINT64                              m_fenceValues[FrameCount];
@@ -101,7 +93,7 @@ namespace Sample
         UINT m_numRemainingFramesToProfile = 0;
         std::map<std::wstring, std::list<std::wstring>> m_profilingResults;
 
-        // Game components
+        // Sample components
         Pathtracer m_pathtracer;
         RTAO m_RTAO;
         Denoiser m_denoiser;
@@ -127,7 +119,6 @@ namespace Sample
         bool m_isSceneInitializationRequested;
         bool m_isRecreateRaytracingResourcesRequested;
 
-        // ToDo cleanup
         // Utility functions      // ToDo standardize const& vs *
         void ParseCommandLineArgs(WCHAR* argv[], int argc);
         void RecreateD3D();
@@ -143,7 +134,6 @@ namespace Sample
         void CopyRaytracingOutputToBackbuffer(D3D12_RESOURCE_STATES outRenderTargetState = D3D12_RESOURCE_STATE_PRESENT);
         void CalculateFrameStats();
         void WriteProfilingResultsToFile();
-        //float NumCameraRaysPerSecondNumCameraRaysPerSecond() { return NumMPixelsPerSecond(m_gpuTimeManager.GetAverageMS(GpuTimers::Raytracing_GBuffer), m_raytracingWidth, m_raytracingHeight); }
     };
 
 }

@@ -293,9 +293,6 @@
     <None Include="EdgeStoppingFilterCS.hlsli">
       <Filter>Assets\Shaders</Filter>
     </None>
-    <None Include="RTAO\Shaders\Ray sorting\RayGen.hlsli">
-      <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
-    </None>
     <None Include="RTAO\Shaders\Ray sorting\RaySorting.hlsli">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </None>
@@ -313,11 +310,11 @@
       <Filter>Assets\Shaders\Pathtracer</Filter>
     </None>
     <None Include="packages.config" />
+    <None Include="RTAO\Shaders\RayGen.hlsli">
+      <Filter>Assets\Shaders\RTAO</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="RNGVisualizerCS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="util\PerPixelMeanSquareErrorCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>

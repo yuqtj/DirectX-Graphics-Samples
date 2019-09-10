@@ -17,18 +17,10 @@
 #include "RaytracingShaderHelper.hlsli"
 #include "RandomNumberGenerator.hlsli"
 #include "Ray Sorting/RaySorting.hlsli"
-#include "Ray sorting/RayGen.hlsli"
 #include "RTAO.hlsli"
 
 // ToDo pix doesn't show output for AO pass
 
-//***************************************************************************
-//*****------ Shader resources bound via root signatures -------*************
-//***************************************************************************
-
-// Scene wide resources.
-//  g_* - bound via a global root signature.
-//  l_* - bound via a local root signature.
 RaytracingAccelerationStructure g_scene : register(t0);
 
 // ToDo remove unneccessary, move ray computation to CS
@@ -38,7 +30,6 @@ Texture2D<NormalDepthTexFormat> g_texRayOriginSurfaceNormalDepth : register(t8);
 Texture2D<NormalDepthTexFormat> g_texAORaysDirectionOriginDepth : register(t22);
 Texture2D<uint2> g_texAOSortedToSourceRayIndexOffset : register(t23);
 Texture2D<float4> g_texAOSurfaceAlbedo : register(t24);
-
 
 // ToDo remove ? 
 Texture2D<uint> g_texInputAOFrameAge : register(t14);
@@ -53,8 +44,8 @@ RWTexture2D<NormalDepthTexFormat> g_rtAORaysDirectionOriginDepth : register(u22)
 ConstantBuffer<RTAOConstantBuffer> cb : register(b0);          // ToDo standardize cb var naming
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
 
-
-
+// Delay the include so that resource references resolve.
+#include "RayGen.hlsli"
 
 
 //***************************************************************************
@@ -120,68 +111,6 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float TMax, in floa
     // Report a hit if Miss Shader didn't set the value to HitDistanceOnMiss.
     return RTAO::HasAORayHitAnyGeometry(tHit);
 }
-
-Ray GenerateRandomAORay(in uint2 srcRayIndex, in float3 hitPosition, in float3 surfaceNormal)
-{
-    // Calculate coordinate system for the hemisphere.
-    // ToDo AO has square alias due to same hemisphere
-    float3 u, v, w;
-    w = surfaceNormal;
-
-    // ToDo revisit this
-    // Get a vector that's not parallel to w;
-#if 0
-    float3 right = float3(0.0072f, 0.999994132f, 0.0034f);
-#else
-    float3 right = 0.3f * w + float3(-0.72f, 0.56f, -0.34f);
-#endif
-    v = normalize(cross(w, right));
-    u = cross(v, w);
-
-
-    // Calculate offsets to the pregenerated sample set.
-    uint sampleSetJump;     // Offset to the start of the sample set
-    uint sampleJump;        // Offset to the first sample for this pixel within a sample set.
-    {
-        // Neighboring samples NxN share a sample set, but use different samples within a set.
-        // Sharing a sample set lets the pixels in the group get a better coverage of the hemisphere 
-        // than if each pixel used a separate sample set with less samples pregenerated per set.
-
-        // Get a common sample set ID and seed shared across neighboring pixels.
-        uint numSampleSetsInX = (DispatchRaysDimensions().x + cb.numPixelsPerDimPerSet - 1) / cb.numPixelsPerDimPerSet;
-        uint2 sampleSetId = srcRayIndex / cb.numPixelsPerDimPerSet;
-
-        // Get a common hitPosition to adjust the sampleSeed by. 
-        // This breaks noise correlation on camera movement which otherwise results 
-        // in noise pattern swimming across the screen on camera movement.
-        uint2 pixelZeroId = sampleSetId * cb.numPixelsPerDimPerSet;
-        float3 pixelZeroHitPosition = g_texRayOriginPosition[pixelZeroId].xyz;      // ToDo remove?
-        uint sampleSetSeed = (sampleSetId.y * numSampleSetsInX + sampleSetId.x) * hash(pixelZeroHitPosition) + cb.seed;
-        uint RNGState = RNG::SeedThread(sampleSetSeed);
-
-        sampleSetJump = RNG::Random(RNGState, 0, cb.numSampleSets - 1) * cb.numSamplesPerSet;
-
-        // Get a pixel ID within the shared set across neighboring pixels.
-        uint2 pixeIDPerSet2D = srcRayIndex % cb.numPixelsPerDimPerSet;
-        uint pixeIDPerSet = pixeIDPerSet2D.y * cb.numPixelsPerDimPerSet + pixeIDPerSet2D.x;
-
-        // Randomize starting sample position within a sample set per neighbor group 
-        // to break group to group correlation resulting in square alias.
-        uint numPixelsPerSet = cb.numPixelsPerDimPerSet * cb.numPixelsPerDimPerSet;
-        sampleJump = pixeIDPerSet + RNG::Random(RNGState, 0, numPixelsPerSet - 1);
-    }
-
-    // Load a pregenerated random sample from the sample set.
-    float3 sample = g_sampleSets[sampleSetJump + (sampleJump % cb.numSamplesPerSet)].value;
-
-    // ToDo remove unnecessary normalize()
-    float3 rayDirection = normalize(sample.x * u + sample.y * v + sample.z * w);
-
-    Ray AORay = { hitPosition, rayDirection };
-
-    return AORay;
-}
-
 
 // Traces a given AO ray. 
 // Returns its tHit and a calculated ambient coefficient.
@@ -252,8 +181,9 @@ void RayGenShader()
     float ambientCoef = RTAO::InvalidAOValue;
 	if (hit)
 	{
-		float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;      
-        Ray AORay = GenerateRandomAORay(srcRayIndex, hitPosition, surfaceNormal);
+		float3 hitPosition = g_texRayOriginPosition[srcRayIndex].xyz;     
+        float3 rayDirection = GetRandomRayDirection(srcRayIndex, surfaceNormal, cb.raytracingDim);
+        Ray AORay = { hitPosition, rayDirection };
         ambientCoef = CalculateAO(tHit, srcRayIndex, AORay, surfaceNormal);
     }
 #endif
