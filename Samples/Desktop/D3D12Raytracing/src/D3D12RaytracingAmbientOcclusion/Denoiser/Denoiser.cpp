@@ -207,7 +207,7 @@ void Denoiser::Run(Scene& scene, Pathtracer& pathtracer, RTAO& rtao, DenoiseStag
 
         if (Denoiser_Args::Denoising_LowTspp)
         {
-            MultiPassBlur(pathtracer);
+            BlurDisocclusions(pathtracer);
         }
     }
 }
@@ -631,7 +631,7 @@ void Denoiser::TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao)
     resourceStateTracker->TransitionResource(TemporalOutCoefficient, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 }
 
-void Denoiser::MultiPassBlur(Pathtracer& pathtracer)
+void Denoiser::BlurDisocclusions(Pathtracer& pathtracer)
 {
     auto commandList = m_deviceResources->GetCommandList();
     auto resourceStateTracker = m_deviceResources->GetGpuResourceStateTracker();
@@ -649,6 +649,8 @@ void Denoiser::MultiPassBlur(Pathtracer& pathtracer)
 
     bool readWriteUAV_and_skipPassthrough = false;// (numPasses % 2) == 1;
 
+    // ToDo remove the flush. It's done to avoid two same resource transitions since prev atrous pass sets the resource to SRV.
+    resourceStateTracker->FlushResourceBarriers();
     if (Denoiser_Args::Denoising_LowTsppUseUAVReadWrite)
     {
         readWriteUAV_and_skipPassthrough = true;
@@ -674,11 +676,12 @@ void Denoiser::MultiPassBlur(Pathtracer& pathtracer)
 
     for (UINT i = 0; i < numPasses; i++)
     {
-        // filterStep = FilterSteps[i];
+        // ToDo
+        //filterStep = FilterSteps[i];
         wstring passName = L"Depth Aware Gaussian Blur with a pixel step " + to_wstring(filterStep);
         ScopedTimer _prof(passName.c_str(), commandList);
 
-
+        // TODO remove one path
         if (Denoiser_Args::Denoising_LowTsppUseUAVReadWrite)
         {
             resourceStateTracker->InsertUAVBarrier(OutResource);

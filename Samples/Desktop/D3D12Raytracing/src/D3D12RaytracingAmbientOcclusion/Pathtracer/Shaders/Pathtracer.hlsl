@@ -22,8 +22,6 @@
 #include "BxDF.hlsli"
 #define HitDistanceOnMiss -1        // ToDo unify with DISTANCE_ON_MISS
 
-// ToDo compact resource register # usage
-
 //***************************************************************************
 //*****------ Shader resources bound via root signatures -------*************
 //***************************************************************************
@@ -37,7 +35,7 @@ RWTexture2D<uint> g_rtGBufferCameraRayHits : register(u5);
 RWTexture2D<uint2> g_rtGBufferMaterialInfo : register(u6);  // 16b {1x Material Id, 3x Diffuse.RGB}.
 RWTexture2D<float4> g_rtGBufferPosition : register(u7);
 RWTexture2D<NormalDepthTexFormat> g_rtGBufferNormalDepth : register(u8);
-RWTexture2D<float> g_rtGBufferDepth : register(u9); // ToDo dedupe with Depth u13
+RWTexture2D<float> g_rtGBufferDepth : register(u9);
 
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
 RWTexture2D<float2> g_rtPartialDepthDerivatives : register(u16);
@@ -118,7 +116,7 @@ float3 ReflectPointThroughPlane(in float3 P, in float3 planeNormal, in float3 po
 
 
 // Reflects a point across a planar mirror. 
-// Returns FLT_MAX if the point is behind the mirror.
+// Returns FLT_MAX if the input point is already behind the mirror.
 float3 ReflectFrontPointThroughPlane(
     in float3 p,
     in float3 mirrorSurfacePoint,

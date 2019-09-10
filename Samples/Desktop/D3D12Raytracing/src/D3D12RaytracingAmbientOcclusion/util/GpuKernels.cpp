@@ -2676,7 +2676,7 @@ namespace GpuKernels
 
 
     namespace RootSignature {
-        namespace AdaptiveRayGenerator {
+        namespace AORayGenerator {
             namespace Slot {
                 enum Enum {
                     OutputRayDirectionOriginDepth = 0,
@@ -2690,11 +2690,11 @@ namespace GpuKernels
         }
     }
 
-    void AdaptiveRayGenerator::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
+    void AORayGenerator::Initialize(ID3D12Device5* device, UINT frameCount, UINT numCallsPerFrame)
     {
         // Create root signature.
         {
-            using namespace RootSignature::AdaptiveRayGenerator;
+            using namespace RootSignature::AORayGenerator;
 
             CD3DX12_DESCRIPTOR_RANGE ranges[Slot::Count]; 
             ranges[Slot::InputRayOriginSurfaceNormalDepth].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
@@ -2729,7 +2729,7 @@ namespace GpuKernels
     }
 
     // width, height - dimensions of the input resource.
-    void AdaptiveRayGenerator::Run(
+    void AORayGenerator::Run(
         ID3D12GraphicsCommandList4* commandList,
         UINT width,
         UINT height,
@@ -2750,7 +2750,7 @@ namespace GpuKernels
         const D3D12_GPU_VIRTUAL_ADDRESS& inputAlignedHemisphereSamplesBufferAddress,
         const D3D12_GPU_DESCRIPTOR_HANDLE& outputRayDirectionOriginDepthResourceHandle)
     {
-        using namespace RootSignature::AdaptiveRayGenerator;
+        using namespace RootSignature::AORayGenerator;
         using namespace DefaultComputeShaderParams;
 
         ScopedTimer _prof(L"Adaptive Ray Gen", commandList);

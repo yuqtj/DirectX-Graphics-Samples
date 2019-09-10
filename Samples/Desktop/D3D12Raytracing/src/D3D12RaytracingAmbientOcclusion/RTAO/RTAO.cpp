@@ -67,8 +67,8 @@ namespace RTAO_Args
     BoolVar RTAORaySortingUseOctahedralRayDirectionQuantization(L"Render/AO/RTAO/Ray Sorting/Octahedral ray direction quantization", true);
 
 
-    const WCHAR* RayGenAdaptiveQuadSizeTypes[GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Count] = { L"1x1", L"2x2", L"4x4" };
-    EnumVar RTAORayGenAdaptiveQuadSize(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Ray Count Pixel Window", GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Quad2x2, GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType::Count, RayGenAdaptiveQuadSizeTypes);
+    const WCHAR* RayGenAdaptiveQuadSizeTypes[GpuKernels::AORayGenerator::AdaptiveQuadSizeType::Count] = { L"1x1", L"2x2", L"4x4" };
+    EnumVar RTAORayGenAdaptiveQuadSize(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Ray Count Pixel Window", GpuKernels::AORayGenerator::AdaptiveQuadSizeType::Quad2x2, GpuKernels::AORayGenerator::AdaptiveQuadSizeType::Count, RayGenAdaptiveQuadSizeTypes);
     IntVar RTAORayGen_MaxFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max frame age", 32, 1, 32, 1); // ToDo link this to smoothing factor?
     IntVar RTAORayGen_MinAdaptiveFrameAge(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Min frame age for adaptive sampling", 16, 1, 32, 1);
     IntVar RTAORayGen_MaxRaysPerQuad(L"Render/AO/RTAO/Ray Sorting/Adaptive Ray Gen/Max rays per quad", 2, 1, 16, 1);
@@ -272,24 +272,12 @@ void RTAO::CreateHitGroupSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipelin
 
 // Create a raytracing pipeline state object (RTPSO).
 // An RTPSO represents a full set of shaders reachable by a DispatchRays() call,
-// with all configuration options resolved, such as local signatures and other state.
+// with all configuration options resolved, such as local root signatures and other state.
 void RTAO::CreateRaytracingPipelineStateObject()
 {
     auto device = m_deviceResources->GetD3DDevice();
     // Ambient Occlusion state object.
     {
-        // ToDo review
-        // Create 18 subobjects that combine into a RTPSO:
-        // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
-        // Default association applies to every exported shader entrypoint that doesn't have any of the same type of subobject associated with it.
-        // This simple sample utilizes default shader association except for local root signature subobject
-        // which has an explicit association specified purely for demonstration purposes.
-        // 1 - DXIL library
-        // 8 - Hit group types - 4 geometries (1 triangle, 3 aabb) x 2 ray types (ray, shadowRay)
-        // 1 - Shader config
-        // 6 - 3 x Local root signature and association
-        // 1 - Global root signature
-        // 1 - Pipeline config
         CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
 
         // DXIL library
@@ -299,15 +287,12 @@ void RTAO::CreateRaytracingPipelineStateObject()
         CreateHitGroupSubobjects(&raytracingPipeline);
 
         // ToDo try 2B float payload
-#define AO_4B_RAYPAYLOAD 1
-    // Shader config
-    // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
+
+        // Shader config
+        // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
         auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-#if AO_4B_RAYPAYLOAD
-        UINT payloadSize = static_cast<UINT>(sizeof(ShadowRayPayload));		// ToDo revise
-#else
-        UINT payloadSize = static_cast<UINT>(max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload)));		// ToDo revise
-#endif
+        UINT payloadSize = static_cast<UINT>(sizeof(ShadowRayPayload));	
+
         UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics  - ToDo ref the struct directly?
         shaderConfig->Config(payloadSize, attributeSize);
 
@@ -407,30 +392,6 @@ void RTAO::BuildShaderTables(Scene& scene)
     GetShaderIDs(stateObjectProperties.Get());
     shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 
-    // ToDo review
-    /*************--------- Shader table layout -------*******************
-    | -------------------------------------------------------------------
-    | -------------------------------------------------------------------
-    |Shader table - RayGenShaderTable: 32 | 32 bytes
-    | [0]: MyRaygenShader, 32 + 0 bytes
-    | -------------------------------------------------------------------
-
-    | -------------------------------------------------------------------
-    |Shader table - MissShaderTable: 32 | 64 bytes
-    | [0]: MyMissShader, 32 + 0 bytes
-    | [1]: MyMissShader_ShadowRay, 32 + 0 bytes
-    | -------------------------------------------------------------------
-
-    | -------------------------------------------------------------------
-    |Shader table - HitGroupShaderTable: 96 | 196800 bytes
-    | [0]: MyHitGroup_Triangle, 32 + 56 bytes
-    | [1]: MyHitGroup_Triangle_ShadowRay, 32 + 56 bytes
-    | [2]: MyHitGroup_Triangle, 32 + 56 bytes
-    | [3]: MyHitGroup_Triangle_ShadowRay, 32 + 56 bytes
-    | ...
-    | --------------------------------------------------------------------
-    **********************************************************************/
-
     // RayGen shader tables.
     {
         UINT numShaderRecords = 1;
@@ -521,8 +482,8 @@ float RTAO::GetSpp()
         int MaxRaysPerQuad = RTAO_Args::RTAORayGen_MaxRaysPerQuad;
         switch (RTAO_Args::RTAORayGenAdaptiveQuadSize)
         {
-        case GpuKernels::AdaptiveRayGenerator::Quad2x2: return min(MaxRaysPerQuad, 4) / 4.0f;
-        case GpuKernels::AdaptiveRayGenerator::Quad4x4: return min(MaxRaysPerQuad, 16) / 16.0f;
+        case GpuKernels::AORayGenerator::Quad2x2: return min(MaxRaysPerQuad, 4) / 4.0f;
+        case GpuKernels::AORayGenerator::Quad4x4: return min(MaxRaysPerQuad, 16) / 16.0f;
         }
     }
     return 1;
@@ -708,7 +669,7 @@ void RTAO::Run(
             commandList,
             activeRaytracingWidth,
             m_raytracingHeight,
-            static_cast<GpuKernels::AdaptiveRayGenerator::AdaptiveQuadSizeType>(static_cast<UINT>(RTAO_Args::RTAORayGenAdaptiveQuadSize)),
+            static_cast<GpuKernels::AORayGenerator::AdaptiveQuadSizeType>(static_cast<UINT>(RTAO_Args::RTAORayGenAdaptiveQuadSize)),
             RTAO_Args::RTAORayGen_MaxFrameAge,
             RTAO_Args::RTAORayGen_MinAdaptiveFrameAge,
             RTAO_Args::RTAORayGen_MaxFrameAgeToGenerateRaysFor,
@@ -756,7 +717,6 @@ void RTAO::Run(
 
 
             // Bind inputs.
-            // ToDo use [enum] instead of [0]
             commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::RayOriginPosition, rayOriginSurfaceHitPositionResource);
             commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::RayOriginSurfaceNormalDepth, rayOriginSurfaceNormalDepthResource);
             commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
@@ -776,12 +736,8 @@ void RTAO::Run(
             // ToDo dedupe calls
             commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::AccelerationStructure, accelerationStructure);
 
-#if RTAO_RAY_SORT_1DRAYTRACE
             UINT NumRays = activeRaytracingWidth * m_raytracingHeight;
             DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOSortedRays].Get(), NumRays, 1);
-#else
-            DispatchRays(m_rayGenShaderTables[RTAORayGenShaderType::AOSortedRays].Get(), m_raytracingWidth, m_raytracingHeight);
-#endif
         }
 
     }
@@ -792,12 +748,14 @@ void RTAO::Run(
     resourceStateTracker->InsertUAVBarrier(&m_AOResources[AOResource::Coefficient]);
     resourceStateTracker->InsertUAVBarrier(&m_AOResources[AOResource::RayHitDistance]);
 
+#if GBUFFER_AO_COUNT_AO_HITS
     // Calculate AO ray hit count.
     if (m_calculateRayHitCounts)
     {
         ScopedTimer _prof(L"CalculateAORayHitCount", commandList);
         CalculateRayHitCount();
     }
+#endif
 }
 
 void RTAO::CalculateRayHitCount()

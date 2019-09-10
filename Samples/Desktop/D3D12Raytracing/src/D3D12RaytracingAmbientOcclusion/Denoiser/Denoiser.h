@@ -61,7 +61,7 @@ public:
 private:
     void TemporalReverseReproject(Scene& scene, Pathtracer& pathtracer);
     void TemporalSupersamplingBlendWithCurrentFrame(RTAO& rtao);
-    void MultiPassBlur(Pathtracer& pathtracer);
+    void BlurDisocclusions(Pathtracer& pathtracer);
 
     void CreateDeviceDependentResources();
     void CreateConstantBuffers();

@@ -360,24 +360,12 @@ void Pathtracer::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* r
 
 // Create a raytracing pipeline state object (RTPSO).
 // An RTPSO represents a full set of shaders reachable by a DispatchRays() call,
-// with all configuration options resolved, such as local signatures and other state.
+// with all configuration options resolved, such as local root signatures and other state.
 void Pathtracer::CreateRaytracingPipelineStateObject()
 {
     auto device = m_deviceResources->GetD3DDevice();
     // Pathracing state object.
     {
-        // ToDo review
-        // Create 18 subobjects that combine into a RTPSO:
-        // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
-        // Default association applies to every exported shader entrypoint that doesn't have any of the same type of subobject associated with it.
-        // This simple sample utilizes default shader association except for local root signature subobject
-        // which has an explicit association specified purely for demonstration purposes.
-        // 1 - DXIL library
-        // 8 - Hit group types - 4 geometries (1 triangle, 3 aabb) x 2 ray types (ray, shadowRay)
-        // 1 - Shader config
-        // 6 - 3 x Local root signature and association
-        // 1 - Global root signature
-        // 1 - Pipeline config
         CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
 
         // DXIL library
@@ -389,7 +377,7 @@ void Pathtracer::CreateRaytracingPipelineStateObject()
         // Shader config
         // Defines the maximum sizes in bytes for the ray rayPayload and attribute structure.
         auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-        UINT payloadSize = static_cast<UINT>(max(max(sizeof(RayPayload), sizeof(ShadowRayPayload)), sizeof(GBufferRayPayload)));		// ToDo revise
+        UINT payloadSize = static_cast<UINT>(max(sizeof(ShadowRayPayload), sizeof(GBufferRayPayload)));		// ToDo revise
 
         UINT attributeSize = sizeof(XMFLOAT2);  // float2 barycentrics
         shaderConfig->Config(payloadSize, attributeSize);
@@ -458,30 +446,7 @@ void Pathtracer::BuildShaderTables(Scene& scene)
     ThrowIfFailed(m_dxrStateObject.As(&stateObjectProperties));
     GetShaderIDs(stateObjectProperties.Get());
     shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-
-    /*************--------- Shader table layout -------*******************
-    | -------------------------------------------------------------------
-    | -------------------------------------------------------------------
-    |Shader table - RayGenShaderTable: 32 | 32 bytes
-    | [0]: MyRaygenShader, 32 + 0 bytes
-    | -------------------------------------------------------------------
-
-    | -------------------------------------------------------------------
-    |Shader table - MissShaderTable: 32 | 64 bytes
-    | [0]: MyMissShader, 32 + 0 bytes
-    | [1]: MyMissShader_ShadowRay, 32 + 0 bytes
-    | -------------------------------------------------------------------
-
-    | -------------------------------------------------------------------
-    |Shader table - HitGroupShaderTable: 96 | 196800 bytes
-    | [0]: MyHitGroup_Triangle, 32 + 56 bytes
-    | [1]: MyHitGroup_Triangle_ShadowRay, 32 + 56 bytes
-    | [2]: MyHitGroup_Triangle, 32 + 56 bytes
-    | [3]: MyHitGroup_Triangle_ShadowRay, 32 + 56 bytes
-    | ...
-    | --------------------------------------------------------------------
-    **********************************************************************/
-
+    
     // RayGen shader tables.
     {
         UINT numShaderRecords = 1;

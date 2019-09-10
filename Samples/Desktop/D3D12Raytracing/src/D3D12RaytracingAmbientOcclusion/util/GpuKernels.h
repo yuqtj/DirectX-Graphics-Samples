@@ -744,7 +744,7 @@ namespace GpuKernels
     // ToDo rename/strip adaptive part.
     // ToDo rename to VariableRateRay...
     /// ToDo add header desc to each kernel.
-    class AdaptiveRayGenerator
+    class AORayGenerator
     {
     public:
         enum AdaptiveQuadSizeType {

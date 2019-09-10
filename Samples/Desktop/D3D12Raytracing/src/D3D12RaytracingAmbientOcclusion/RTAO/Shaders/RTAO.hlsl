@@ -20,11 +20,6 @@
 #include "Ray sorting/RayGen.hlsli"
 #include "RTAO.hlsli"
 
-// ToDo split to Raytracing for GBUffer and AO?
-
-// ToDo excise non-GBuffer parts out for separate timings? Such as 
-
-// ToDo dedupe code triangle normal calc,..
 // ToDo pix doesn't show output for AO pass
 
 //***************************************************************************
@@ -83,7 +78,6 @@ bool TraceAORayAndReportIfHit(out float tHit, in Ray ray, in float TMax, in floa
 
     // Initialize shadow ray payload.
     // Set the initial value to a hit at TMax. 
-    // Miss shader will set it to HitDistanceOnMiss.
     // This way closest and any hit shaders can be skipped if true tHit is not needed. 
     ShadowRayPayload shadowPayload = { TMax };
 
@@ -273,8 +267,6 @@ void RayGenShader()
 #endif
 }
 
-#define SKIP_INVALID_RAYS 0
-
 // Retrieves 2D source and sorted ray indices from a 1D ray index where
 // - every valid (i.e. is within ray tracing buffer dimensions) 1D index maps to a valid 2D index.
 // - pixels are row major within a ray group.
@@ -286,27 +278,6 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
 {
     uint2 rayGroupDim = uint2(SortRays::RayGroup::Width, SortRays::RayGroup::Height);
 
-#if SKIP_INVALID_RAYS
-        ToDo CB support.
-    uint rayGroupSize = rayGroupDim.y * rayGroupDim.x;
-    uint indexMultiplier = 2;
-    uint _index1D = index1D * indexMultiplier;
-
-    uint2 rayGroupIndex;
-    uint2 rayThreadIndex;
-    if (_index1D < CB.raytracingDim.y * CB.raytracingDim.x)
-    {
-        uint rayGroupIndex1D = _index1D / rayGroupSize;
-        uint2 rayGroups = CB.raytracingDim / rayGroupDim;
-        rayGroupIndex = uint2(rayGroupIndex1D % rayGroups.x, rayGroupIndex1D / rayGroups.x);
-        uint rayThreadIndex1D = (_index1D % rayGroupSize) / indexMultiplier;
-        rayThreadIndex = uint2(rayThreadIndex1D % rayGroupDim.x, rayThreadIndex1D / rayGroupDim.x);
-    }
-    else
-    {
-        return false;
-    }
-#else
     // Find the ray group row index.
     uint numValidPixelsInRow = CB.raytracingDim.x;
     uint rowOfRayGroupSize = rayGroupDim.y * numValidPixelsInRow;
@@ -326,7 +297,6 @@ bool Get2DRayIndices(out uint2 sortedRayIndex2D, out uint2 srcRayIndex2D, in uin
     uint rayThreadRowIndex = currentRayGroup_index1D / currentRayGroupWidth;
     uint rayThreadColumnIndex = currentRayGroup_index1D - rayThreadRowIndex * currentRayGroupWidth;
     uint2 rayThreadIndex = uint2(rayThreadColumnIndex, rayThreadRowIndex);
-#endif
 
     // Get the corresponding source index
     sortedRayIndex2D = rayGroupIndex * rayGroupDim + rayThreadIndex;
@@ -354,13 +324,10 @@ void RayGenShader_sortedRays()
         srcRayIndexFullRes.x = srcRayIndex.x * pixelStepX + pixelOffsetX;
     }
 
-
     float tHit = RTAO::RayHitDistanceOnMiss;
     float ambientCoef = RTAO::InvalidAOValue;
     if (isActiveRay)
     {
-        // ToDo use higher res normal, ray direction?
-        // ToDo split raydirection and origin into two resources?
         float dummy;
         float3 rayDirection;
         DecodeNormalDepth(g_texAORaysDirectionOriginDepth[srcRayIndex], rayDirection, dummy);

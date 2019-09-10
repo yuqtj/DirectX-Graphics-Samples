@@ -130,7 +130,7 @@ private:
 
     // Compute shader & resources.
     GpuKernels::ReduceSum		m_reduceSumKernel;
-    GpuKernels::AdaptiveRayGenerator m_rayGen;
+    GpuKernels::AORayGenerator m_rayGen;
     GpuKernels::SortRays        m_raySorter;
 
 

@@ -101,6 +101,8 @@ AppSetup
     - Move global defines in RaytracingSceneDefines.h locally for RTAO and Denoiser.
     - Add dtors/release . Wait on GPU?
     - Build with higher warning bar and cleanup
+    - purge obsolete gpukernels
+    - move shader dependencies to components?
 
 - Sample generic
     - Add device removal support
@@ -268,12 +270,6 @@ struct ProceduralPrimitiveAttributes
     XMFLOAT3 normal;
 };
 
-struct RayPayload
-{
-    XMFLOAT4 color;
-    UINT   recursionDepth; // encode?
-};
-
 struct Ray
 {
     XMFLOAT3 origin;
@@ -431,25 +427,6 @@ struct SortRaysConstantBuffer
     float binDepthSize;
 };
 
-#define RTAO_RAY_SORT_1DRAYTRACE 1
-#define RTAO_RAY_SORT_ENUMERATE_ELEMENT_ID_IN_MORTON_CODE 0
-#define RTAO_RAY_SORT_STORE_RAYS_IN_MORTON_ORDER_X_MAJOR 0
-#define RTAO_RAY_SORT_MORTON_MIRROR 0
-#define RTAO_RAY_SORT_Y_AXIS_MAJOR 0
-
-#define RTAO_RAY_SORT_NO_SMEM 0
-#if RTAO_RAY_SORT_NO_SMEM
-namespace SortRays {
-    namespace ThreadGroup {
-        enum Enum { Width = 256, Height = 128, Size = Width * Height };
-    }
-    namespace RayGroup {
-        enum Enum { Width = ThreadGroup::Width, Height = 2 * ThreadGroup::Height, Size = Width * Height };
-    }
-}
-#else
-
-
 namespace SortRays {
     namespace ThreadGroup {
         enum Enum { Width = 64, Height = 16, Size = Width * Height };
@@ -465,7 +442,6 @@ namespace SortRays {
                 && RayGroup::Size <= 8192, "Ray group dimensions are outside the supported limits set by the Counting Sort shader.");
 #endif
 }
-#endif
 
 
 // ToDo capitalize?
@@ -897,10 +873,6 @@ namespace RTAOTraceRayParameters
         };
         // Since there is only one closest hit shader across shader records in RTAO, 
         // always access the first shader record of each BLAS instance shader record range.
-        // Optimally, we should specify just a single shader record, but because
-        // the TLAS is reused with other RTPSOs and per 2+ BLAS instance shader records,
-        // we have to make sure indexing due InstanceContributionToHitGroupIndex > 0 lands on
-        // a valid shader record.
         static const UINT GeometryStride = 0;
     }
     namespace MissShader {
