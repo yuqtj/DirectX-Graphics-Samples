@@ -342,9 +342,6 @@
     <FxCompile Include="util\DownsampleNormalDepthHitPositionGeometryHitBilateralFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="util\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="util\DownsampleValueDepthNormal_PointSamplingBilateralFilter2x2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>

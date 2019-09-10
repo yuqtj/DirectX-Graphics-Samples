@@ -25,7 +25,7 @@ Texture2D<float2> g_inPartialDistanceDerivatives : register(t7);   // ToDo remov
 
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
-ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> g_CB: register(b0);
+ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
 
 float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float depthDelta)
@@ -36,7 +36,7 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float dept
     // ToDo use a common helper
     // ToDo rename to: Perspective correct interpolation
     // Pespective correction for the non-linear interpolation
-    if (g_CB.perspectiveCorrectDepthInterpolation)
+    if (cb.perspectiveCorrectDepthInterpolation)
     {
         // Calculate depth via interpolation with perspective correction.
         // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
@@ -72,15 +72,15 @@ void AddFilterContribution(
     in uint col,
     in uint2 DTid)
 {
-    const float valueSigma = g_CB.valueSigma;
-    const float normalSigma = g_CB.normalSigma;
-    const float depthSigma = g_CB.depthSigma; 
+    const float valueSigma = cb.valueSigma;
+    const float normalSigma = cb.normalSigma;
+    const float depthSigma = cb.depthSigma; 
     float kernelWidth;
 
     int2 pixelOffset = int2(row - FilterKernel::Radius, col - FilterKernel::Radius);
     int2 id = int2(DTid) + pixelOffset;
 
-    if (IsWithinBounds(id, g_CB.textureDim))
+    if (IsWithinBounds(id, cb.textureDim))
     {
         float iValue = g_inValues[id];
         float iVariance = g_inVariance[id];
@@ -99,7 +99,7 @@ void AddFilterContribution(
         {        
             float2 pixelOffsetForDepthTreshold = abs(pixelOffset);
             // Account for sample offset in bilateral downsampled partial depth derivative buffer.
-            if (g_CB.usingBilateralDownsampledBuffers)
+            if (cb.usingBilateralDownsampledBuffers)
             {
                 pixelOffsetForDepthTreshold += float2(0.5, 0.5);
             }
@@ -107,7 +107,7 @@ void AddFilterContribution(
 
             // Account for input resource value precision.
             // ToDo why is 2x needed to get rid of banding?
-            float depthFloatPrecision = 2.0f * FloatPrecision(max(depth, iDepth), g_CB.DepthNumMantissaBits);
+            float depthFloatPrecision = 2.0f * FloatPrecision(max(depth, iDepth), cb.DepthNumMantissaBits);
             depthTolerance += depthFloatPrecision;
             
             // ToDo compare to exp version from SVGF.
@@ -130,7 +130,7 @@ void AddFilterContribution(
         weightedValueSum += w * iValue;
         weightSum += w;
 
-        if (g_CB.outputFilteredVariance)
+        if (cb.outputFilteredVariance)
         {
             weightedVarianceSum += w * w * iVariance;   // ToDo rename to sqWeight...
         }
@@ -144,7 +144,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
 {
     // ToDo add early exit if this pixel is processing inactive result.
     // ToDo double check all CS for out of bounds.
-    if (DTid.x >= g_CB.textureDim.x || DTid.y >= g_CB.textureDim.y)
+    if (DTid.x >= cb.textureDim.x || DTid.y >= cb.textureDim.y)
         return;
 
     // Initialize values to the current pixel / center filter kernel value.
@@ -169,11 +169,11 @@ void main(uint2 DTid : SV_DispatchThreadID, uint2 Gid : SV_GroupID)
         if (r != FilterKernel::Radius || c != FilterKernel::Radius)
              AddFilterContribution(weightedValueSum, weightedVarianceSum, weightSum, value, stdDeviation, depth, normal, ddxy, r, c, DTid);
 
-    float outputValue = (g_CB.outputFilterWeightSum) ? weightSum : weightedValueSum / weightSum;
+    float outputValue = (cb.outputFilterWeightSum) ? weightSum : weightedValueSum / weightSum;
     g_outFilteredValues[DTid] = outputValue;
 
 
-    if (g_CB.outputFilteredVariance)
+    if (cb.outputFilteredVariance)
     {
         g_outFilteredVariance[DTid] = weightedVarianceSum / (weightSum * weightSum);
     }

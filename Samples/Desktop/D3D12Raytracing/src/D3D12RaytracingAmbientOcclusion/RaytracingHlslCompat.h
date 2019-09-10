@@ -438,7 +438,7 @@ namespace SortRays {
 // ToDo capitalize?
 // ToDo padding? or force align.
 // ToDo remove unused
-// ToDo PIX shows empty rows (~as many as valid rows) in between entries in multi frame CB.
+// ToDo PIX shows empty rows (~as many as valid rows) in between entries in multi frame cb.
 struct PathtracerConstantBuffer
 {
     // ToDo rename to world to view matrix and drop (0,0,0) note.
@@ -462,7 +462,7 @@ struct PathtracerConstantBuffer
 
 };
 
-// ToDo split CB?
+// ToDo split cb?
 // ToDo capitalize?
 // ToDo cleanup padding?
 // ToDo remove RTAO prefix
@@ -605,7 +605,7 @@ struct TextureDimConstantBuffer
 };
 
 
-// ToDo capitalize CB members?
+// ToDo capitalize cb members?
 struct FilterConstantBuffer
 {
     XMUINT2 textureDim;

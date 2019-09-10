@@ -48,7 +48,7 @@ RWTexture2D<uint2> g_outSortedToSourceRayIndexOffset : register(u0);
 
 RWTexture2D<float4> g_outDebug : register(u2);  // Thread group per-pixel index offsets within each 128x64 pixel group.
 
-ConstantBuffer<SortRaysConstantBuffer> CB: register(b0);
+ConstantBuffer<SortRaysConstantBuffer> cb: register(b0);
 
 // ToDo remove or replace defines
 namespace HashKey {
@@ -323,7 +323,7 @@ void InitializeSharedMemory(in uint GI)
 uint CreateRayDirectionHashKey(in float2 encodedRayDirection)
 {
     float2 rayDirectionKey;
-    if (CB.useOctahedralRayDirectionQuantization)
+    if (cb.useOctahedralRayDirectionQuantization)
     {
         rayDirectionKey = encodedRayDirection;
     }
@@ -359,7 +359,7 @@ uint CreateDepthHashKey(in float rayOriginDepth, in float2 rayGroupMinMaxDepth)
     float rayGroupDepthRange = rayGroupMinMaxDepth.y - rayGroupMinMaxDepth.x;
     const uint DepthHashKeyBins = 1 << DEPTH_HASH_KEY_BITS;
     const uint MaxDepthHashKeyBinValue = DepthHashKeyBins - 1;
-    float binDepthSize = max(rayGroupDepthRange / MaxDepthHashKeyBinValue, CB.binDepthSize);
+    float binDepthSize = max(rayGroupDepthRange / MaxDepthHashKeyBinValue, cb.binDepthSize);
     uint depthHashKey = min(rayOriginDepth / binDepthSize, MaxDepthHashKeyBinValue);
 
     return depthHashKey;
@@ -424,7 +424,7 @@ void CalculatePartialRayDirectionHashKeyAndCacheDepth(in uint2 Gid, in uint GI)
     uint2 NextGroupStart = GroupStart + RayGroupDim;
 
     // Trim the Ray Group Dim to valid dims.
-    RayGroupDim = min(NextGroupStart, CB.dim) - GroupStart;
+    RayGroupDim = min(NextGroupStart, cb.dim) - GroupStart;
     uint NumRays = RayGroupDim.y * RayGroupDim.x;
 
     for (uint ray = GI; ray < NumRays; ray += NUM_THREADS)
@@ -489,7 +489,7 @@ float2 CalculateRayGroupMinMaxDepth(in uint GI, uint2 Gid)
     uint2 NextGroupStart = GroupStart + RayGroupDim;
 
     // Trim the Ray Group Dim to valid dims.
-    RayGroupDim = min(NextGroupStart, CB.dim) - GroupStart;
+    RayGroupDim = min(NextGroupStart, cb.dim) - GroupStart;
     uint NumRays = RayGroupDim.y * RayGroupDim.x;
 
 #if SAMPLED_RAY_GROUP_RAY_ORIGIN_DEPTH_MIN_MAX_ESTIMATE
@@ -617,7 +617,7 @@ void FinalizeHashKeyAndCalculateKeyHistogram(in uint GI, in uint2 Gid, in float2
     uint2 NextGroupStart = GroupStart + RayGroupDim;
 
     // Trim the Ray Group Dim to valid dims.
-    RayGroupDim = min(NextGroupStart, CB.dim) - GroupStart;
+    RayGroupDim = min(NextGroupStart, cb.dim) - GroupStart;
     uint NumRays = RayGroupDim.y * RayGroupDim.x;
 
     for (uint ray = GI; ray < NumRays; ray += NUM_THREADS)
@@ -726,7 +726,7 @@ void ScatterWriteSortedIndicesToSharedMemory(in uint2 Gid, in uint GI, in float2
     uint2 NextGroupStart = GroupStart + RayGroupDim;
 
     // Trim the Ray Group Dim to valid dims.
-    RayGroupDim = min(NextGroupStart, CB.dim) - GroupStart;
+    RayGroupDim = min(NextGroupStart, cb.dim) - GroupStart;
     uint NumRays = RayGroupDim.y * RayGroupDim.x;
 
     for (uint ray = GI; ray < NumRays; ray += NUM_THREADS)
@@ -788,7 +788,7 @@ void SpillCachedIndicesToVRAMAndCacheInvertedSortedIndices(in uint2 Gid, in uint
     uint2 NextGroupStart = GroupStart + RayGroupDim;
 
     // Trim the Ray Group Dim to valid dims.
-    RayGroupDim = min(NextGroupStart, CB.dim) - GroupStart;
+    RayGroupDim = min(NextGroupStart, cb.dim) - GroupStart;
     uint NumRays = RayGroupDim.y * RayGroupDim.x;
 
     // Sequentially spill cached source indices into VRAM.

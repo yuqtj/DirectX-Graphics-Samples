@@ -38,7 +38,7 @@ Texture2D<float2> g_inPartialDistanceDerivatives : register(t7);   // ToDo remov
 
 RWTexture2D<float> g_outFilteredValues : register(u0);
 RWTexture2D<float> g_outFilteredVariance : register(u1);
-ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> g_CB: register(b0);
+ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
 #define OUTPUT_FILTERED_VARIANCE 0
 
@@ -50,7 +50,7 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float dept
     // ToDo use a common helper
     // ToDo rename to: Perspective correct interpolation
     // Pespective correction for the non-linear interpolation
-    if (g_CB.perspectiveCorrectDepthInterpolation)
+    if (cb.perspectiveCorrectDepthInterpolation)
     {
         // Calculate depth via interpolation with perspective correction.
         // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
@@ -87,9 +87,9 @@ void CalculateFilterWeight(
     in float iVariance,
     in float iFilterKernelWeight)
 {
-    const float valueSigma = g_CB.valueSigma;
-    const float normalSigma = g_CB.normalSigma;
-    const float depthSigma = g_CB.depthSigma;
+    const float valueSigma = cb.valueSigma;
+    const float normalSigma = cb.normalSigma;
+    const float depthSigma = cb.depthSigma;
 
     // Calculate normal difference based weight.
     float w_n;
@@ -101,7 +101,7 @@ void CalculateFilterWeight(
     float w_d;
     {
         // Account for sample offset in bilateral downsampled partial depth derivative buffer.
-        if (g_CB.usingBilateralDownsampledBuffers)
+        if (cb.usingBilateralDownsampledBuffers)
         {
             pixelOffset += float2(0.5, 0.5);
         }
@@ -109,7 +109,7 @@ void CalculateFilterWeight(
 
         // Account for input resource value precision.
         // ToDo why is 2x needed to get rid of banding?
-        float depthFloatPrecision = 2.0f * FloatPrecision(max(depth, iDepth), g_CB.DepthNumMantissaBits);
+        float depthFloatPrecision = 2.0f * FloatPrecision(max(depth, iDepth), cb.DepthNumMantissaBits);
         depthTolerance += depthFloatPrecision;
 
         // ToDo compare to exp version from SVGF.
@@ -229,7 +229,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
                 weightSum += weight;
 
 #if OUTPUT_FILTERED_VARIANCE
-                if (g_CB.outputFilteredVariance)
+                if (cb.outputFilteredVariance)
                 {
                     weightedVarianceSum += weight * weight * iVariance;   // ToDo rename to sqWeight...
                 }
@@ -259,7 +259,7 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
                 g_outFilteredValues[DTid] = weightedValueSum / weightSum;
 
 #if OUTPUT_FILTERED_VARIANCE
-                if (g_CB.outputFilteredVariance)
+                if (cb.outputFilteredVariance)
                 {
                     g_outFilteredVariance[DTid] = weightedVarianceSum / (weightSum * weightSum);
                 }

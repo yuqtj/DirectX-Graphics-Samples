@@ -639,7 +639,7 @@ void RTAO::Run(
     {
         bool doCheckerboardRayGeneration = RTAO_Args::Rpp != 1;
 
-        // Todo verify odd width resolutions when using CB
+        // Todo verify odd width resolutions when using cb
         UINT activeRaytracingWidth =
             doCheckerboardRayGeneration
             ? CeilDivide(m_raytracingWidth, 2)
@@ -691,7 +691,7 @@ void RTAO::Run(
             commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::RayOriginPosition, rayOriginSurfaceHitPositionResource);
             commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::RayOriginSurfaceNormalDepth, rayOriginSurfaceNormalDepthResource);
             commandList->SetComputeRootShaderResourceView(GlobalRootSignature::Slot::SampleBuffers, m_hemisphereSamplesGPUBuffer.GpuVirtualAddress(frameIndex));
-            commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::ConstantBuffer, m_CB.GpuVirtualAddress(frameIndex));   // ToDo let AO have its own CB.
+            commandList->SetComputeRootConstantBufferView(GlobalRootSignature::Slot::ConstantBuffer, m_CB.GpuVirtualAddress(frameIndex));   // ToDo let AO have its own cb.
             commandList->SetComputeRootDescriptorTable(GlobalRootSignature::Slot::AOSurfaceAlbedo, rayOriginSurfaceAlbedoResource);
 
             // ToDo remove

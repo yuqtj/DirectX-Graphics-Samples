@@ -51,7 +51,7 @@ RWTexture2D<float4> g_texOutputDebug1 : register(u21);
 RWTexture2D<float4> g_texOutputDebug2 : register(u22);
 
 TextureCube<float4> g_texEnvironmentMap : register(t12);
-ConstantBuffer<PathtracerConstantBuffer> CB : register(b0);          // ToDo standardize CB var naming
+ConstantBuffer<PathtracerConstantBuffer> g_cb : register(b0);
 StructuredBuffer<PrimitiveMaterialBuffer> g_materials : register(t3);
 StructuredBuffer<AlignedHemisphereSample3D> g_sampleSets : register(t4);
 StructuredBuffer<float3x4> g_prevFrameBottomLevelASInstanceTransform : register(t15);
@@ -166,12 +166,12 @@ float2 CalculateMotionVector(
     in uint2 DTid)
 {
     // Variables prefixed with underscore _ denote values in the previous frame.
-    float3 _hitViewPosition = _hitPosition - CB.prevCameraPosition;
-    float3 _cameraDirection = GenerateForwardCameraRayDirection(CB.prevProjToWorldWithCameraEyeAtOrigin);
+    float3 _hitViewPosition = _hitPosition - g_cb.prevCameraPosition;
+    float3 _cameraDirection = GenerateForwardCameraRayDirection(g_cb.prevProjToWorldWithCameraEyeAtOrigin);
     _depth = dot(_hitViewPosition, _cameraDirection);
 
     // Calculate screen space position of the hit in the previous frame.
-    float4 _clipSpacePosition = mul(float4(_hitPosition, 1), CB.prevViewProj);
+    float4 _clipSpacePosition = mul(float4(_hitPosition, 1), g_cb.prevViewProj);
     float2 _texturePosition = ClipSpaceToTexturePosition(_clipSpacePosition);
 
     // ToDO pass in inverted dimensions?
@@ -193,7 +193,7 @@ float2 CalculateMotionVector(
 // Trace a shadow ray and return true if it hits any geometry.
 bool TraceShadowRayAndReportIfHit(out float tHit, in Ray ray, in UINT currentRayRecursionDepth, in bool retrieveTHit = true, in float TMax = 10000, in bool acceptFirstHit = false)
 {
-    if (currentRayRecursionDepth >= CB.maxShadowRayRecursionDepth)
+    if (currentRayRecursionDepth >= g_cb.maxShadowRayRecursionDepth)
     {
         return false;
     }
@@ -290,7 +290,7 @@ GBufferRayPayload TraceGBufferRay(in Ray ray, in UINT currentRayRecursionDepth, 
     rayPayload.ry = ry;
 #endif
 
-    if (currentRayRecursionDepth >= CB.maxRadianceRayRecursionDepth)
+    if (currentRayRecursionDepth >= g_cb.maxRadianceRayRecursionDepth)
     {
         return rayPayload;
     }
@@ -492,7 +492,7 @@ float3 Shade(
     if (!BxDF::IsBlack(material.Kd) || !BxDF::IsBlack(material.Ks))
     {
         // ToDo dedupe wi calculation
-        float3 wi = normalize(CB.lightPosition.xyz - hitPosition);
+        float3 wi = normalize(g_cb.lightPosition.xyz - hitPosition);
 
         // Raytraced shadows.
         bool isInShadow = TraceShadowRayAndReportIfHit(hitPosition, wi, N, rayPayload);
@@ -502,7 +502,7 @@ float3 Shade(
             material.type,
             Kd,
             Ks,
-            CB.lightColor.xyz,
+            g_cb.lightColor.xyz,
             isInShadow,
             roughness,
             N,
@@ -514,7 +514,7 @@ float3 Shade(
     // Add a default ambient contribution to all hits. 
     // This will be subtracted for hitPositions with 
     // calculated Ambient coefficient in the composition pass.
-    L += CB.defaultAmbientIntensity * Kd;
+    L += g_cb.defaultAmbientIntensity * Kd;
 
     // Specular Indirect Illumination
     bool isReflective = !BxDF::IsBlack(Kr);
@@ -580,11 +580,11 @@ void MyRayGenShader_GBuffer()
     // ToDo make sure all pixels get written to or clear buffers beforehand. 
 
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
-	Ray ray = GenerateCameraRay(DTid, CB.cameraPosition, CB.projectionToWorldWithCameraEyeAtOrigin);
+	Ray ray = GenerateCameraRay(DTid, g_cb.cameraPosition, g_cb.projectionToWorldWithCameraEyeAtOrigin);
 
 #if USE_UV_DERIVATIVES
     Ray rx, ry;
-    GetAuxilaryCameraRays(CB.cameraPosition, CB.projectionToWorldWithCameraEyeAtOrigin, rx, ry);
+    GetAuxilaryCameraRays(g_cb.cameraPosition, g_cb.projectionToWorldWithCameraEyeAtOrigin, rx, ry);
 #endif
 
 	// Cast a ray into the scene and retrieve GBuffer information.
@@ -612,10 +612,8 @@ void MyRayGenShader_GBuffer()
     float rayLength = DISTANCE_ON_MISS;
     float obliqueness = 0;
 
-    
     // 
     // ToDo dedupe
-    //float4 viewSpaceHitPosition = float4(rayPayload.hitPosition - CB.cameraPosition, 1);
     if (hasCameraRayHitGeometry)
     {
         rayLength = rayPayload.AOGBuffer.tHit;
@@ -634,7 +632,7 @@ void MyRayGenShader_GBuffer()
         float linearDistance = rayLength;
 
         // Calculate z-depth
-        float3 cameraDirection = GenerateForwardCameraRayDirection(CB.projectionToWorldWithCameraEyeAtOrigin);
+        float3 cameraDirection = GenerateForwardCameraRayDirection(g_cb.projectionToWorldWithCameraEyeAtOrigin);
         float linearDepth = linearDistance * dot(ray.direction, cameraDirection);
 
 #if CALCULATE_PARTIAL_DEPTH_DERIVATIVES_IN_RAYGEN
@@ -754,7 +752,7 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
     py = RayPlaneIntersection(hitPosition, normal, rayPayload.ry.origin, rayPayload.ry.direction);
 
     if (material.hasDiffuseTexture ||
-        (CB.useNormalMaps && material.hasNormalTexture) ||
+        (g_cb.useNormalMaps && material.hasNormalTexture) ||
         (material.type == MaterialType::AnalyticalCheckerboardTexture))
     {
         float3 vertexTangents[3] = { vertices[0].tangent, vertices[1].tangent, vertices[2].tangent };
@@ -764,13 +762,13 @@ void MyClosestHitShader_GBuffer(inout GBufferRayPayload rayPayload, in BuiltInTr
         CalculateUVDerivatives(normal, tangent, bitangent, hitPosition, px, py, ddx, ddy);
     }
 #endif
-    if (CB.useNormalMaps && material.hasNormalTexture)
+    if (g_cb.useNormalMaps && material.hasNormalTexture)
     {
         // ToDo normal map is incorrect in squid room.
         normal = NormalMap(normal, texCoord, ddx, ddy, vertices, material, attr);
     }
 
-    if (material.hasDiffuseTexture && !CB.useDiffuseFromMaterial)
+    if (material.hasDiffuseTexture && !g_cb.useDiffuseFromMaterial)
     {
         material.Kd = RemoveSRGB(l_texDiffuse.SampleGrad(LinearWrapSampler, texCoord, ddx, ddy).xyz);
     }

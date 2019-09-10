@@ -18,7 +18,7 @@
 RWTexture2D<float4> g_renderTarget : register(u0);
 
 // Input.
-ConstantBuffer<ComposeRenderPassesConstantBuffer> g_CB : register(b0);
+ConstantBuffer<ComposeRenderPassesConstantBuffer> cb : register(b0);
 Texture2D<uint> g_texGBufferPositionHits : register(t0);
 Texture2D<uint2> g_texGBufferMaterial : register(t1);    // 16b {1x Material Id, 3x Diffuse.RGB}
 Texture2D<float4> g_texGBufferPositionRT : register(t2);
@@ -51,8 +51,8 @@ float4 RenderPBRResult(in uint2 DTid)
         float3 phongColor = g_texColor[DTid].xyz;
 
         // Subtract the default ambient illumination that has already been added to the color in raytrace pass.
-        float ambientCoef = g_CB.isAOEnabled ? g_texAO[DTid] : g_CB.defaultAmbientIntensity;
-        ambientCoef -= g_CB.defaultAmbientIntensity;
+        float ambientCoef = cb.isAOEnabled ? g_texAO[DTid] : cb.defaultAmbientIntensity;
+        ambientCoef -= cb.defaultAmbientIntensity;
 
         float3 ambientColor = ambientCoef * g_texAOSurfaceAlbedo[DTid].xyz;
         color = float4(phongColor + ambientColor, 1);
@@ -87,7 +87,7 @@ float4 RenderAOResult(in uint2 DTid)
         float4 albedo = float4(1, 1, 1, 1);
         color *= albedo;
 
-        if (g_CB.compositionType == AmbientOcclusionAndDisocclusionMap)
+        if (cb.compositionType == AmbientOcclusionAndDisocclusionMap)
         {
             uint frameAge = g_texTemporalSupersamplingDisocclusionMap[DTid].x;
             color = frameAge == 1 ? float4(1, 0, 0, 1) : color;
@@ -110,16 +110,16 @@ float4 RenderVariance(in uint2 DTid)
     if (hit)
     {
         float variance;
-        if (g_CB.compositionType == CompositionType::AmbientOcclusionVariance)
+        if (cb.compositionType == CompositionType::AmbientOcclusionVariance)
             variance = g_texVariance[DTid].x;
         else
             variance = g_texLocalMeanVariance[DTid].y;
 
         float3 minSampleColor = float3(20, 20, 20) / 255;
         float3 maxSampleColor = float3(255, 255, 255) / 255;
-        if (g_CB.variance_visualizeStdDeviation)
+        if (cb.variance_visualizeStdDeviation)
             variance = sqrt(variance);
-        variance *= g_CB.variance_scale;
+        variance *= cb.variance_scale;
         color = float4(lerp(minSampleColor, maxSampleColor, variance), 1);
     }
 
@@ -136,7 +136,7 @@ float4 RenderRayHitDistance(in uint2 DTid)
         float3 minDistanceColor = float3(15, 18, 153) / 255;
         float3 maxDistanceColor = float3(170, 220, 200) / 255;
         float hitDistance = g_texRayHitDistance[DTid].x;
-        float hitCoef = hitDistance / g_CB.RTAO_MaxRayHitDistance;
+        float hitCoef = hitDistance / cb.RTAO_MaxRayHitDistance;
         color = hitCoef >= 0.0f ? float4(lerp(minDistanceColor, maxDistanceColor, hitCoef), 1) : float4(1, 1, 1, 1);
     }
 
@@ -153,7 +153,7 @@ float4 RenderNormalOrDepth(in uint2 DTid)
         float3 surfaceNormal;
         DecodeNormalDepth(g_texGBufferNormalDepth[DTid], surfaceNormal, depth);
 
-        if (g_CB.compositionType == CompositionType::NormalsOnly)
+        if (cb.compositionType == CompositionType::NormalsOnly)
             color = float4(surfaceNormal, 1);
         else 
             color = depth / 80; // ToDo
@@ -195,7 +195,7 @@ float4 RenderDisocclusionMap(in uint2 DTid)
 void main(uint2 DTid : SV_DispatchThreadID )
 {
     float4 color;
-    switch(g_CB.compositionType)
+    switch(cb.compositionType)
     {
     case CompositionType::PBRShading: 
         color = RenderPBRResult(DTid);

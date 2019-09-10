@@ -17,7 +17,7 @@
 Texture2D<float> g_inValue : register(t0);
 RWTexture2D<float2> g_outValue : register(u0);
 
-ConstantBuffer<CalculatePartialDerivativesConstantBuffer> g_CB : register(b0);
+ConstantBuffer<CalculatePartialDerivativesConstantBuffer> cb : register(b0);
 
 [numthreads(DefaultComputeShaderParams::ThreadGroup::Width, DefaultComputeShaderParams::ThreadGroup::Height, 1)]
 void main(uint2 DTid : SV_DispatchThreadID)
@@ -28,10 +28,10 @@ void main(uint2 DTid : SV_DispatchThreadID)
     // y  |  [left]   DTiD   [right]
     //    v    x    [bottom]   x
     //
-    uint2 top = clamp(DTid.xy + uint2(0, -1), 0, g_CB.textureDim - 1);
-    uint2 bottom = clamp(DTid.xy + uint2(0, 1), 0, g_CB.textureDim - 1);
-    uint2 left = clamp(DTid.xy + uint2(-1, 0), 0, g_CB.textureDim - 1);
-    uint2 right = clamp(DTid.xy + uint2(1, 0), 0, g_CB.textureDim - 1);
+    uint2 top = clamp(DTid.xy + uint2(0, -1), 0, cb.textureDim - 1);
+    uint2 bottom = clamp(DTid.xy + uint2(0, 1), 0, cb.textureDim - 1);
+    uint2 left = clamp(DTid.xy + uint2(-1, 0), 0, cb.textureDim - 1);
+    uint2 right = clamp(DTid.xy + uint2(1, 0), 0, cb.textureDim - 1);
 
     float centerValue = g_inValue[DTid.xy];
     float2 backwardDifferences = centerValue - float2(g_inValue[left], g_inValue[top]);

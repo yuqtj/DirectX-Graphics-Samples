@@ -20,8 +20,7 @@ Texture2D<NormalDepthTexFormat> g_inHiResNormalDepth : register(t2);
 Texture2D<float2> g_inHiResPartialDepthDerivative : register(t3);
 RWTexture2D<ValueType> g_outValue : register(u0);
 
-// ToDo standardize cb vs g_CB
-ConstantBuffer<DownAndUpsampleFilterConstantBuffer> g_CB : register(b0);
+ConstantBuffer<DownAndUpsampleFilterConstantBuffer> cb : register(b0);
 
 SamplerState ClampSampler : register(s0);
 
@@ -77,7 +76,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     
     float4  vHiResDepths;
     float3 hiResNormals[4];
-    float2 hiResTexturePos = (topLeftHiResIndex + 0.5) * g_CB.invHiResTextureDim;
+    float2 hiResTexturePos = (topLeftHiResIndex + 0.5) * cb.invHiResTextureDim;
     {
         uint4 packedEncodedNormalDepths = g_inHiResNormalDepth.GatherRed(ClampSampler, hiResTexturePos).wzxy;
         [unroll]
@@ -89,7 +88,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
 
     float4  vLowResDepths;
     float3 lowResNormals[4];
-    float2 lowResTexturePos = (topLeftLowResIndex + 0.5) * g_CB.invLowResTextureDim;
+    float2 lowResTexturePos = (topLeftLowResIndex + 0.5) * cb.invLowResTextureDim;
     {
         uint4 packedEncodedNormalDepths = g_inLowResNormalDepth.GatherRed(ClampSampler, lowResTexturePos).wzxy;
         [unroll]
@@ -119,7 +118,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     
     // ToDO standarddize ddxy vs dxdy
     float2x4 ddxy2x4 = 0;
-    if (g_CB.useDepthWeights && g_CB.useDynamicDepthThreshold)
+    if (cb.useDepthWeights && cb.useDynamicDepthThreshold)
     {
         ddxy2x4[0] = g_inHiResPartialDepthDerivative.GatherRed(ClampSampler, hiResTexturePos).wzxy;
         ddxy2x4[1] = g_inHiResPartialDepthDerivative.GatherGreen(ClampSampler, hiResTexturePos).wzxy;

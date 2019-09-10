@@ -100,10 +100,11 @@ namespace GpuKernels
         UINT                                m_CBinstanceID = 0;
     };
 
+    // ToDo remove?
     class DownsampleValueNormalDepthBilateralFilter
     {
     public:
-        enum Type { // ToDo remove?
+        enum Type { 
             FilterPointSampling2x2 = 0,
             FilterDepthWeighted2x2,
             FilterDepthNormalWeighted2x2,
@@ -169,38 +170,6 @@ namespace GpuKernels
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
         ConstantBuffer<DownAndUpsampleFilterConstantBuffer> m_CB;
         UINT                                m_CBinstanceID = 0;
-    };
-
-    // ToDo rename
-    class MultiScale_UpsampleBilateralFilterAndCombine
-    {
-    public:
-        enum Type {
-            Filter2x2 = 0,
-        };
-
-        void Release()
-        {
-            assert(0 && L"ToDo");
-        }
-
-        void Initialize(ID3D12Device5* device, Type type);
-        void Run(
-            ID3D12GraphicsCommandList4* commandList,
-            UINT width,
-            UINT height,
-            ID3D12DescriptorHeap* descriptorHeap,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValue1ResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValue2ResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResValueResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDistanceDerivativeResourceHandle,
-            const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle);
-
-    private:
-        ComPtr<ID3D12RootSignature>         m_rootSignature;
-        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
     };
 
     class GaussianFilter
@@ -503,7 +472,7 @@ namespace GpuKernels
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
-        ConstantBuffer<CalculateVariance_BilateralFilterConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
+        ConstantBuffer<CalculateVariance_BilateralFilterConstantBuffer> m_CB;    // ToDo use a cb specific to CalculateVariance?
         UINT                                m_CBinstanceID = 0;
     };
 
@@ -535,7 +504,7 @@ namespace GpuKernels
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
-        ConstantBuffer<CalculateMeanVarianceConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
+        ConstantBuffer<CalculateMeanVarianceConstantBuffer> m_CB;    // ToDo use a cb specific to CalculateVariance?
         UINT                                m_CBinstanceID = 0;
     };
 
@@ -573,7 +542,7 @@ namespace GpuKernels
     private:
         ComPtr<ID3D12RootSignature>         m_rootSignature;
         ComPtr<ID3D12PipelineState>         m_pipelineStateObjects[FilterType::Count];
-        ConstantBuffer<CalculateMeanVarianceConstantBuffer> m_CB;    // ToDo use a CB specific to CalculateVariance?
+        ConstantBuffer<CalculateMeanVarianceConstantBuffer> m_CB;    // ToDo use a cb specific to CalculateVariance?
         UINT                                m_CBinstanceID = 0;
     };
 

@@ -45,7 +45,7 @@ Texture2D<float4> g_windMap : register(t0);
 // ToDo split the output?
 RWStructuredBuffer<VertexPositionNormalTextureTangent> g_outVertexBuffer : register(u0);
 
-ConstantBuffer<GenerateGrassStrawsConstantBuffer> CB : register(b0);
+ConstantBuffer<GenerateGrassStrawsConstantBuffer> cb : register(b0);
 
 SamplerState WrapLinearSampler : register(s0);
 
@@ -100,25 +100,25 @@ void GenerateGrassStraw(
     float3 up = float3(0, 1, 0);
     float3 tangent = (noiseUV.x * base_u + noiseUV.y * base_v);
     rootPos = rootPos 
-            + CB.p.positionJitterStrength * tangent 
-            - 0.001 * CB.p.grassHeight * up;           // Root it in the ground a bit for bottom vertices not to stick out.
+            + cb.p.positionJitterStrength * tangent 
+            - 0.001 * cb.p.grassHeight * up;           // Root it in the ground a bit for bottom vertices not to stick out.
     
-    float2 windCoord = frac(texCoord + CB.p.timeOffset);
+    float2 windCoord = frac(texCoord + cb.p.timeOffset);
     float3 windNoise = g_windMap.SampleLevel(WrapLinearSampler, windCoord, 0).rbg;      // RGB -> RBG
     windNoise = 2 * windNoise - 1;                    // [0, 1] -> [-1, 1]
-    float3 gradient = CB.p.windStrength * (0.5 * CB.p.windDirection + 2.5 * windNoise);
+    float3 gradient = cb.p.windStrength * (0.5 * cb.p.windDirection + 2.5 * windNoise);
     
     // ToDo simplify
     gradient -= up * dot(up, gradient);             // Project onto xz-plane.
     float3 nTangent = normalize(tangent);
-    gradient -= (1 - CB.p.bendStrengthAlongTangent) * nTangent * dot(nTangent, gradient);   // Restrain bending along tangent.
+    gradient -= (1 - cb.p.bendStrengthAlongTangent) * nTangent * dot(nTangent, gradient);   // Restrain bending along tangent.
 
     float3 vertexPos[N_GRASS_VERTICES];
     for (uint i = 0; i < N_GRASS_VERTICES; i++) 
     {
         float bendInterp = pow(grassY[i] / grassY[N_GRASS_VERTICES - 1], 1.5);
-        float3 y = CB.p.grassScale * CB.p.grassHeight * inNormal *  grassY[i];
-        float3 xz = CB.p.grassScale * CB.p.grassThickness * (grassX[i] * tangent + bendInterp * gradient);
+        float3 y = cb.p.grassScale * cb.p.grassHeight * inNormal *  grassY[i];
+        float3 xz = cb.p.grassScale * cb.p.grassThickness * (grassX[i] * tangent + bendInterp * gradient);
 
         vertexPos[i] = rootPos + xz + y;
     }
@@ -175,22 +175,22 @@ void GenerateGrassStraw(
 void main(uint2 DTid : SV_DispatchThreadID)
 {
     // ToDo double check bounds in all CS
-    if (any(DTid >= CB.p.maxPatchDim))
+    if (any(DTid >= cb.p.maxPatchDim))
     {
        return;
     }
 
-    if (all(DTid < CB.p.activePatchDim))
+    if (all(DTid < cb.p.activePatchDim))
     {
-        float ddu = CB.invActivePatchDim.x;
-        float ddv = CB.invActivePatchDim.y;
-        float3 base_u = ddu * CB.p.patchSize.x * float3(1, 0, 0);
-        float3 base_v = ddv * CB.p.patchSize.z * float3(0, 0, 1);
+        float ddu = cb.invActivePatchDim.x;
+        float ddv = cb.invActivePatchDim.y;
+        float3 base_u = ddu * cb.p.patchSize.x * float3(1, 0, 0);
+        float3 base_v = ddv * cb.p.patchSize.z * float3(0, 0, 1);
         float2 rootUV = float2((DTid.x + 0.5f) * ddu, (DTid.y + 0.5f) * ddv); // Center the uv at the root center.
-        float3 rootPos = CB.p.patchSize * float3(rootUV.x, 0, rootUV.y);
+        float3 rootPos = cb.p.patchSize * float3(rootUV.x, 0, rootUV.y);
 
         float3 surfaceNormal = float3(0, 1, 0);
-        uint threadID = DTid.x + DTid.y * CB.p.maxPatchDim.x;
+        uint threadID = DTid.x + DTid.y * cb.p.maxPatchDim.x;
         uint baseVertexID = threadID * N_GRASS_VERTICES;
 
         // ToDO fix overlapped triangels in double grass or remove
@@ -202,7 +202,7 @@ void main(uint2 DTid : SV_DispatchThreadID)
     {
         VertexPositionNormalTextureTangent vertex;
         vertex.position = 0;
-        uint threadID = DTid.x + DTid.y * CB.p.maxPatchDim.x;
+        uint threadID = DTid.x + DTid.y * cb.p.maxPatchDim.x;
         uint baseVertexID = threadID * N_GRASS_VERTICES;
 
         for (uint v = 0; v < N_GRASS_VERTICES; v++)

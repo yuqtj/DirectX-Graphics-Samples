@@ -24,7 +24,6 @@
 #include "CompiledShaders\DownsampleValueDepthNormal_DepthNormalWeightedBilateralFilter2x2CS.hlsl.h"
 #include "CompiledShaders\UpsampleBilateralFilter2x2FloatCS.hlsl.h"
 #include "CompiledShaders\UpsampleBilateralFilter2x2Float2CS.hlsl.h"
-#include "CompiledShaders\MultiScale_UpsampleBilateralAndCombine2x2CS.hlsl.h"
 #include "CompiledShaders\GaussianFilter3x3CS.hlsl.h"
 #include "CompiledShaders\GaussianFilterRG3x3CS.hlsl.h"
 #include "CompiledShaders\PerPixelMeanSquareErrorCS.hlsl.h"
@@ -660,115 +659,6 @@ namespace GpuKernels
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
     }
 
-
-
-    namespace RootSignature {
-        namespace MultiScale_UpsampleBilateralFilterAndCombine {
-            namespace Slot {
-                enum Enum {
-                    Output = 0,
-                    InputLowResValue1,
-                    InputLowResValue2,
-                    InputLowResNormal,
-                    InputHiResValue,
-                    InputHiResNormal,
-                    InputHiResPartialDistanceDerivative,
-                    Count
-                };
-            }
-        }
-    }
-
-    // ToDo test downsample,upsample on odd resolution
-    void MultiScale_UpsampleBilateralFilterAndCombine::Initialize(ID3D12Device5* device, Type type)
-    {
-        // Create root signature.
-        {
-            using namespace RootSignature::MultiScale_UpsampleBilateralFilterAndCombine;
-
-            CD3DX12_DESCRIPTOR_RANGE ranges[7]; 
-            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 input low res value 1
-            ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 input low res value 2
-            ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 input low res normal
-            ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 input hi res value
-            ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 input hi res normal
-            ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // 1 input hi res partial distance derivatives
-            ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-
-            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-            rootParameters[Slot::InputLowResValue1].InitAsDescriptorTable(1, &ranges[0]);
-            rootParameters[Slot::InputLowResValue2].InitAsDescriptorTable(1, &ranges[1]);
-            rootParameters[Slot::InputLowResNormal].InitAsDescriptorTable(1, &ranges[2]);
-            rootParameters[Slot::InputHiResValue].InitAsDescriptorTable(1, &ranges[3]);
-            rootParameters[Slot::InputHiResNormal].InitAsDescriptorTable(1, &ranges[4]);
-            rootParameters[Slot::InputHiResPartialDistanceDerivative].InitAsDescriptorTable(1, &ranges[5]);
-            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[6]);
-
-            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
-            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: MultiScale_UpsampleBilateralFilterAndCombine");
-        }
-
-        // Create compute pipeline state.
-        {
-            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
-            descComputePSO.pRootSignature = m_rootSignature.Get();
-            switch (type)
-            {
-            case Filter2x2:
-                descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pMultiScale_UpsampleBilateralAndCombine2x2CS), ARRAYSIZE(g_pMultiScale_UpsampleBilateralAndCombine2x2CS));
-                break;
-            }
-
-            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-            m_pipelineStateObject->SetName(L"Pipeline state object: MultiScale_UpsampleBilateralFilterAndCombine");
-        }
-    }
-
-    // Resamples input resource.
-    // width, height - dimensions of the input resource.
-    void MultiScale_UpsampleBilateralFilterAndCombine::Run(
-        ID3D12GraphicsCommandList4* commandList,
-        UINT width,
-        UINT height,
-        ID3D12DescriptorHeap* descriptorHeap,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValue1ResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResValue2ResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputLowResNormalResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResValueResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResNormalResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& inputHiResPartialDistanceDerivativeResourceHandle,
-        const D3D12_GPU_DESCRIPTOR_HANDLE& outputResourceHandle)
-    {
-        using namespace RootSignature::MultiScale_UpsampleBilateralFilterAndCombine;
-        using namespace DefaultComputeShaderParams;
-
-        // Each shader execution processes 2x2 hiRes pixels
-        width = CeilDivide(width, 2);
-        height = CeilDivide(height, 2);
-
-        ScopedTimer _prof(L"MultiScale_UpsampleBilateralFilterAndCombine", commandList);
-
-        // Set pipeline state.
-        {
-            commandList->SetDescriptorHeaps(1, &descriptorHeap);
-            commandList->SetComputeRootSignature(m_rootSignature.Get());
-            commandList->SetComputeRootDescriptorTable(Slot::InputLowResValue1, inputLowResValue1ResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::InputLowResValue2, inputLowResValue2ResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::InputLowResNormal, inputLowResNormalResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::InputHiResValue, inputHiResValueResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::InputHiResNormal, inputHiResNormalResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::InputHiResPartialDistanceDerivative, inputHiResPartialDistanceDerivativeResourceHandle);
-            commandList->SetComputeRootDescriptorTable(Slot::Output, outputResourceHandle);
-            commandList->SetPipelineState(m_pipelineStateObject.Get());
-        }
-
-        // ToDo handle misaligned input
-        // Start from -1,-1 pixel to account for high-res pixel border around low-res pixel border.
-        XMUINT2 groupSize(CeilDivide(width + 1, ThreadGroup::Width), CeilDivide(height + 1, ThreadGroup::Height));
-
-        // Dispatch.
-        commandList->Dispatch(groupSize.x, groupSize.y, 1);
-    }
 
 
     namespace RootSignature {
@@ -1419,7 +1309,7 @@ namespace GpuKernels
         XMUINT2 resourceDim(static_cast<UINT>(resourceDesc.Width), static_cast<UINT>(resourceDesc.Height));
 
         // ToDo split these into separate GpuKernels?
-        auto& CB = filterMode == OutputFilteredValue ? m_CB : m_CBfilterWeight;
+        auto& cb = filterMode == OutputFilteredValue ? m_CB : m_CBfilterWeight;
         // Update the Constant Buffers.
         for (UINT i = 0; i < numFilterPasses; i++)
         {
@@ -1435,42 +1325,42 @@ namespace GpuKernels
                 _i = i;
             if (useCalculatedVariance)
             {
-                CB->valueSigma = valueSigma;
+                cb->valueSigma = valueSigma;
             }
             else
             {
-                CB->valueSigma = _i > 0 ? valueSigma * powf(2.f, -float(i)) : 1;
+                cb->valueSigma = _i > 0 ? valueSigma * powf(2.f, -float(i)) : 1;
             }
-            CB->depthSigma = depthSigma;
-            CB->normalSigma = normalSigma;
-            CB->weightScale = weightScale;
+            cb->depthSigma = depthSigma;
+            cb->normalSigma = normalSigma;
+            cb->weightScale = weightScale;
 #if RAYTRACING_MANUAL_KERNEL_STEP_SHIFTS
-            CB->kernelStepShift = kernelStepShifts[_i];
+            cb->kernelStepShift = kernelStepShifts[_i];
 #else
-            CB->kernelStepShift = _i;
+            cb->kernelStepShift = _i;
 #endif
             // Move vars not changing inside loop outside of it.
-            CB->useCalculatedVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
-            CB->outputFilteredVariance = numFilterPasses > 1 && filterMode == OutputFilteredValue && useCalculatedVariance;
-            CB->outputFilteredValue = filterMode == OutputFilteredValue;
-            CB->outputFilterWeightSum = filterMode == OutputPerPixelFilterWeightSum;
-            CB->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
-            CB->useAdaptiveKernelSize = useAdaptiveKernelSize;
-            CB->minHitDistanceToKernelWidthScale = minHitDistanceToKernelWidthScale;
-            CB->minKernelWidth = minKernelWidth;
-            CB->maxKernelWidth = maxKernelWidth;
-            CB->varianceSigmaScaleOnSmallKernels = varianceSigmaScaleOnSmallKernels;
-            CB->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
-            CB->textureDim = resourceDim;
-            CB->minVarianceToDenoise = minVarianceToDenoise;
-            CB->staleNeighborWeightScale = _i == 0 ? staleNeighborWeightScale : 1;  // ToDo revise
-            CB->depthWeightCutoff = depthWeightCutoff;
-            CB->useProjectedDepthTest = useProjectedDepthTest;
-            CB->forceDenoisePass = forceDenoisePass;
+            cb->useCalculatedVariance = filterMode == OutputFilteredValue && useCalculatedVariance;
+            cb->outputFilteredVariance = numFilterPasses > 1 && filterMode == OutputFilteredValue && useCalculatedVariance;
+            cb->outputFilteredValue = filterMode == OutputFilteredValue;
+            cb->outputFilterWeightSum = filterMode == OutputPerPixelFilterWeightSum;
+            cb->perspectiveCorrectDepthInterpolation = perspectiveCorrectDepthInterpolation;
+            cb->useAdaptiveKernelSize = useAdaptiveKernelSize;
+            cb->minHitDistanceToKernelWidthScale = minHitDistanceToKernelWidthScale;
+            cb->minKernelWidth = minKernelWidth;
+            cb->maxKernelWidth = maxKernelWidth;
+            cb->varianceSigmaScaleOnSmallKernels = varianceSigmaScaleOnSmallKernels;
+            cb->usingBilateralDownsampledBuffers = usingBilateralDownsampledBuffers;
+            cb->textureDim = resourceDim;
+            cb->minVarianceToDenoise = minVarianceToDenoise;
+            cb->staleNeighborWeightScale = _i == 0 ? staleNeighborWeightScale : 1;  // ToDo revise
+            cb->depthWeightCutoff = depthWeightCutoff;
+            cb->useProjectedDepthTest = useProjectedDepthTest;
+            cb->forceDenoisePass = forceDenoisePass;
 
             // ToDo pass precision
             m_CB->DepthNumMantissaBits = NumMantissaBitsInFloatFormat(16);            
-            CB.CopyStagingToGpu(m_CBinstanceID + i);
+            cb.CopyStagingToGpu(m_CBinstanceID + i);
         }
 
         //
@@ -1509,7 +1399,7 @@ namespace GpuKernels
             for (UINT i = 0; i < numFilterPasses; i++)
 #endif
             {
-                commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, CB.GpuVirtualAddress(m_CBinstanceID + i));
+                commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, cb.GpuVirtualAddress(m_CBinstanceID + i));
                                 
                 // Dispatch.
                 commandList->Dispatch(groupSize.x, groupSize.y, 1);
@@ -1920,7 +1810,7 @@ namespace GpuKernels
         m_CB->doCheckerboardSampling = doCheckerboardSampling;
         m_CB->pixelStepY = doCheckerboardSampling ? 2 : 1;
         m_CB->areEvenPixelsActive = checkerboardLoadEvenPixels;
-        //ToDo move instance id tracking to the CB class.
+        //ToDo move instance id tracking to the cb class.
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
         commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
@@ -2029,9 +1919,9 @@ namespace GpuKernels
 
         // Update the Constant Buffer.
         m_CB->textureDim = XMUINT2(width, height);
-        // ToDo use custom CB
+        // ToDo use custom cb
         m_CB->areEvenPixelsActive = !fillEvenPixels;
-        //ToDo move instance id tracking to the CB class.
+        //ToDo move instance id tracking to the cb class.
         m_CBinstanceID = (m_CBinstanceID + 1) % m_CB.NumInstances();
         m_CB.CopyStagingToGpu(m_CBinstanceID);
         commandList->SetComputeRootConstantBufferView(Slot::ConstantBuffer, m_CB.GpuVirtualAddress(m_CBinstanceID));
