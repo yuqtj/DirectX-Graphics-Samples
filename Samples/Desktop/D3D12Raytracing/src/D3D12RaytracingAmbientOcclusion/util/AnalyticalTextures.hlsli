@@ -45,7 +45,6 @@
 #include "RaytracingShaderHelper.hlsli"
 
 // Analytically integrated checkerboard (box filter).
-// Ref: http://iquilezles.org/www/articles/filterableprocedurals/filterableprocedurals.htm
 float CheckersTextureBoxFilter(in float2 uv, in float2 dpdx, in float2 dpdy)
 {
     float2 w = max(abs(dpdx), abs(dpdy));   // Filter kernel
@@ -60,7 +59,6 @@ float CheckersTextureBoxFilter(in float2 uv, in float2 dpdx, in float2 dpdy)
 
 
 // Analytically integrated checkerboard grid (box filter).
-// Ref: http://iquilezles.org/www/articles/filterableprocedurals/filterableprocedurals.htm
 // ratio - Center fill to border ratio.
 float CheckersGridTextureBoxFilter(in float2 uv, in float2 dpdx, in float2 dpdy, in uint ratio)
 {

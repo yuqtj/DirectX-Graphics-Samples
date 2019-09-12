@@ -122,7 +122,21 @@ namespace CrossBilateral
         // ToDo Should there be a Depth falloff with a cutoff below 1?
         // ToDo revise the coefficient
         depthWeights *= depthWeights >= 0.5;   // ToDo revise - this is same as comparing to depth tolerance
-    */
+
+        
+        if (cb.useProjectedDepthTest)
+        {
+            float zC = GetDepthAtPixelOffset(depth, ddxy, pixelOffsetForDepth);
+            float depthThreshold = abs(zC - depth);
+            float depthTolerance = depthSigma * depthThreshold + depthFloatPrecision;
+            w_d = min(depthTolerance / (abs(zC - iDepth) + FLT_EPSILON), 1);
+
+            if (pixelOffset.x == 0 && pixelOffset.y - 1)
+            {
+                //g_outDebug1[DTid] = float4(zC, depthThreshold, depthTolerance, w_d);
+            }
+        }
+        */
     }
 
     namespace Bilinear

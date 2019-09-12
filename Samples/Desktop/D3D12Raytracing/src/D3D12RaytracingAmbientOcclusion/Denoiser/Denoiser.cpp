@@ -91,7 +91,7 @@ namespace Denoiser_Args
     NumVar Denoising_MinVarianceToDenoise(L"Render/AO/RTAO/Denoising_/Min Variance to denoise", 0.0f, 0.0f, 1.f, 0.01f);
     // ToDo specify which variance - local or temporal
     BoolVar Denoising_UseSmoothedVariance(L"Render/AO/RTAO/Denoising_/Use smoothed variance", false);
-    BoolVar Denoising_UseProjectedDepthTest(L"Render/AO/RTAO/Denoising_/Use projected depth test", true);
+    BoolVar Denoising_UseProjectedDepthTest(L"Render/AO/RTAO/Denoising_/Use projected depth test", true);   // ToDo test
 
     BoolVar Denoising_LowerWeightForStaleSamples(L"Render/AO/RTAO/Denoising_/Scale down stale samples weight", false);
 

@@ -95,6 +95,7 @@ AppSetup
     - RTAO invisible wall inside kitchen on long rays
 
 - Cleanup:
+    // ToDo double check all CS for out of bounds.
     - ToDo remove .f specifier from floating numbers in hlsl
     - ToDo clean up scoped timer names.
     - Add/revise comments. Incl file decs

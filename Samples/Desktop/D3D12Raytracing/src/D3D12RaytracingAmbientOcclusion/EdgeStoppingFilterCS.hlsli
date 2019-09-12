@@ -28,17 +28,14 @@ RWTexture2D<float> g_outFilteredVariance : register(u1);
 ConstantBuffer<AtrousWaveletTransformFilterConstantBuffer> cb: register(b0);
 
 
-float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float depthDelta)
+float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset)
 {
     float depthThreshold;
 
-    // Todo rename ddxy to dxdy?
-    // ToDo use a common helper
-    // ToDo rename to: Perspective correct interpolation
     // Pespective correction for the non-linear interpolation
     if (cb.perspectiveCorrectDepthInterpolation)
     {
-        // Calculate depth via interpolation with perspective correction.
+        // Calculate depth with perspective correction.
         // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
         // Given depth buffer interpolation for finding z at offset q along z0 to z1
         //      z =  1 / (1 / z0 * (1 - q) + 1 / z1 * q)
@@ -53,6 +50,7 @@ float DepthThreshold(float distance, float2 ddxy, float2 pixelOffset, float dept
     }
     else
     {
+        // ToDo explain
         depthThreshold = dot(1, abs(pixelOffset * ddxy));
     }
 
@@ -88,34 +86,46 @@ void AddFilterContribution(
         float iDepth;
         DecodeNormalDepth(g_inNormalDepth[id], iNormal, iDepth);
 
-        // Calculate normal difference based weight.
-        float w_n;
+        bool iIsValidValue = iValue != RTAO::InvalidAOValue;
+        if (!iIsValidValue || iDepth == 0)
+        {
+            return;
+        }
+        
+        // Normal based weight.
+        float w_n = 1;
+        if (normalSigma > 0)
         {
             w_n = pow(max(0, dot(normal, iNormal)), normalSigma);
         }
 
-        // Calculate depth difference based weight.
-        float w_d;
-        {        
+        // Depth based weight.
+        float w_d = 1;
+        if (depthSigma > 0)
+        {
+            // ToDo dedupe with CrossBilateralWeights.hlsli?
+            // ToDo why is 2x needed to get rid of banding?
+            // ToDo test perf overhead
+            float depthFloatPrecision = 2.0f * FloatPrecision(max(depth, iDepth), cb.DepthNumMantissaBits);
+
             float2 pixelOffsetForDepthTreshold = abs(pixelOffset);
             // Account for sample offset in bilateral downsampled partial depth derivative buffer.
             if (cb.usingBilateralDownsampledBuffers)
             {
                 pixelOffsetForDepthTreshold += float2(0.5, 0.5);
             }
-            float depthTolerance = depthSigma * DepthThreshold(depth, ddxy, pixelOffsetForDepthTreshold, depth - iDepth);
+            float depthTolerance = depthSigma * DepthThreshold(depth, ddxy, pixelOffsetForDepthTreshold) + depthFloatPrecision;
 
-            // Account for input resource value precision.
-            // ToDo why is 2x needed to get rid of banding?
-            float depthFloatPrecision = 2.0f * FloatPrecision(max(depth, iDepth), cb.DepthNumMantissaBits);
-            depthTolerance += depthFloatPrecision;
-            
             // ToDo compare to exp version from SVGF.
             w_d = min(depthTolerance / (abs(depth - iDepth) + FLT_EPSILON), 1);
+
+            // ToDo Explain
+            w_d *= w_d >= cb.depthWeightCutoff;
         }
 
-        // Calculate value difference based weight.
-        float w_x;
+        // Value based weight.
+        float w_x = 1;
+        if (valueSigma > 0)
         {
             const float errorOffset = 0.005f;
             float e_x = -abs(value - iValue) / (valueSigma * stdDeviation + errorOffset);
