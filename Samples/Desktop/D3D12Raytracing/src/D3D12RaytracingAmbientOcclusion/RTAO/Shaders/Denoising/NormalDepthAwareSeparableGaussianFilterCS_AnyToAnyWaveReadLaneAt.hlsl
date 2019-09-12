@@ -81,7 +81,6 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
     const uint NumRowsToLoadPerThread = 4;
     const uint Row_BaseWaveLaneIndex = (WaveGetLaneIndex() / 16) * 16;
 
-    // ToDo load 8x8 center values to cache and skip if none of the values are missing.
     // ToDo blend low frame age values too with a falloff?
 
     [unroll]
@@ -193,7 +192,6 @@ void FilterHorizontally(in uint2 Gid, in uint GI)
             // Store only the valid results, i.e. first GroupDim columns.
             if (GTid16x4.x < GroupDim.x)
             {
-                // ToDo offset row start by rowIndex to avoid bank conflicts on read
                 PackedRowResultCache[GTid16x4.y][GTid16x4.x] = Float2ToHalf(float2(weightedValueSum, weightSum));
             }
         }

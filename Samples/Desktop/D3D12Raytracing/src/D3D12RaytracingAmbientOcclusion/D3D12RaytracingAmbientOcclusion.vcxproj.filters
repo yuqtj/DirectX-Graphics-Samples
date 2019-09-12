@@ -296,7 +296,6 @@
     <None Include="RTAO\Shaders\Ray sorting\RaySorting.hlsli">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
     </None>
-    <None Include="util\DownsampleDepthAwareBilateralFilter2x2CS.hlsli" />
     <None Include="util\UpsampleBilateralFilter2x2CS.hlsli">
       <Filter>Assets\Shaders\Util</Filter>
     </None>
@@ -312,6 +311,9 @@
     <None Include="packages.config" />
     <None Include="RTAO\Shaders\RayGen.hlsli">
       <Filter>Assets\Shaders\RTAO</Filter>
+    </None>
+    <None Include="util\DownsampleDepthAwareBilateralFilter2x2CS.hlsli">
+      <Filter>Assets\Shaders\Util</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
@@ -351,13 +353,9 @@
     <FxCompile Include="util\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="util\WriteValueToTextureCS.hlsl">
-      <Filter>Assets\Shaders\Util</Filter>
-    </FxCompile>
     <FxCompile Include="util\GenerateGrassStrawsCS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
-    <FxCompile Include="util\AnalyticalTextures.hlsli" />
     <FxCompile Include="CalculateVariance_BilateralFilterCS.hlsl">
       <Filter>Assets\Shaders\RTAO\VarianceMean</Filter>
     </FxCompile>
@@ -381,9 +379,6 @@
     </FxCompile>
     <FxCompile Include="RTAO\Shaders\CountingSort_SortRays_128x64rayGroupCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
-    </FxCompile>
-    <FxCompile Include="RTAO\Shaders\Denoising\EdgeStoppingSeparableGaussian3x3FilterCS.hlsl">
-      <Filter>Assets\Shaders\RTAO\Denoising</Filter>
     </FxCompile>
     <FxCompile Include="util\UpsampleBilateralFilter2x2Float2CS.hlsl">
       <Filter>Assets\Shaders\Util</Filter>
@@ -423,6 +418,9 @@
     </FxCompile>
     <FxCompile Include="RTAO\Shaders\Ray sorting\AORayGenCS.hlsl">
       <Filter>Assets\Shaders\RTAO\Ray Sorting</Filter>
+    </FxCompile>
+    <FxCompile Include="util\AnalyticalTextures.hlsli">
+      <Filter>Assets\Shaders\Util</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

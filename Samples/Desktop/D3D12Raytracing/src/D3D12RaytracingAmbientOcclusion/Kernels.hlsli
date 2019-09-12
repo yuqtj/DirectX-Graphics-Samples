@@ -11,14 +11,10 @@
 
 #define HLSL
 
-
-// ToDo
 // Note: [3/12/2019] DXC fails to compile with both /Od /Zi specified when a global symbol is defined under a namespace. Workaround: remove /Od.
 
 namespace FilterKernel
 {
-
-    // ToDo remove unused ones
 #if defined(BOX_KERNEL_3X3)
     static const unsigned int Radius = 1;
     static const unsigned int Width = 1 + 2 * Radius;

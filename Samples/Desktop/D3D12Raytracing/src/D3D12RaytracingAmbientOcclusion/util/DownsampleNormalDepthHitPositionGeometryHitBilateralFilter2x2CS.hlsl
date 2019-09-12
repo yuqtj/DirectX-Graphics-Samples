@@ -14,7 +14,6 @@
 #include "..\RaytracingShaderHelper.hlsli"
 
 // ToDo update the name or split file for different resources?
-// ToDo strip _tex from names
 // ToDo remove unused input/ouput
 Texture2D<float> g_texInput : register(t0);
 Texture2D<float4> g_inNormal : register(t1);        // ToDo rename to normal and depth everywhere
@@ -40,10 +39,6 @@ SamplerState ClampSampler : register(s0);
 ConstantBuffer<TextureDimConstantBuffer> cb : register(b0);
 
 
-// ToDo use wave intrinsics instead to get
-groupshared uint Cache[DefaultComputeShaderParams::ThreadGroup::Height][DefaultComputeShaderParams::ThreadGroup::Width];
-
-
     // ToDo remove duplicate downsampling with the other ValudeDepthNormal
 
 void LoadDepthAndEncodedNormal(in uint2 texIndex, out float4 encodedNormalDepth, out float depth)
@@ -57,7 +52,7 @@ void LoadDepthAndEncodedNormal(in uint2 texIndex, out float4 encodedNormalDepth,
 // Returns a selected depth index when bilateral downsapling.
 uint GetIndexFromDepthAwareBilateralDownsample2x2(in float4 vDepths, in uint2 DTid)
 {
-    // Choose a alternate min max depth sample in a checkerboard 2x2 pattern to improve depth correlations for bilateral 2x2 upsampling.
+    // Alternate between min max depth sample in a checkerboard 2x2 pattern to improve depth correlations for bilateral 2x2 upsampling.
     // Ref: http://c0de517e.blogspot.com/2016/02/downsampled-effects-with-depth-aware.html
     bool checkerboardTakeMin = ((DTid.x + DTid.y) & 1) == 0;
 

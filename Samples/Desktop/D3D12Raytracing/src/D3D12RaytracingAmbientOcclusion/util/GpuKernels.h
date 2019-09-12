@@ -387,29 +387,6 @@ namespace GpuKernels
         UINT                                m_maxFilterPasses = 0;
     };
 
-
-    // ToDo remove
-    class WriteValueToTexture
-    {
-    public:
-
-        void Release()
-        {
-            assert(0 && L"ToDo");
-        }
-
-        void Initialize(ID3D12Device5* device, DX::DescriptorHeap* descriptorHeap);
-        void Run(ID3D12GraphicsCommandList4* commandList, ID3D12DescriptorHeap* descriptorHeap, D3D12_GPU_DESCRIPTOR_HANDLE* outputResourceHandle);
-
-    private:
-        ComPtr<ID3D12RootSignature>         m_rootSignature;
-        ComPtr<ID3D12PipelineState>         m_pipelineStateObject;
-        GpuResource			            m_output;
-        UINT m_width = 3840;
-        UINT m_height = 2160;
-    };
-
-
     // ToDo use template / inheritance
     class CalculatePartialDerivatives
     {

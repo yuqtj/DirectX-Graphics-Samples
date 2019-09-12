@@ -98,7 +98,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
         }
     }
 
-    // ToDo use gather
 #if VALUE_NUM_COMPONENTS == 1
     float4 vLowResValues = g_inValue.GatherRed(ClampSampler, lowResTexturePos).wzxy;
 #elif VALUE_NUM_COMPONENTS == 2
@@ -116,7 +115,6 @@ void main(uint2 DTid : SV_DispatchThreadID)
         float2(1 - offset, 1 - offset)
     };
     
-    // ToDO standarddize ddxy vs dxdy
     float2x4 ddxy2x4 = 0;
     if (cb.useDepthWeights && cb.useDynamicDepthThreshold)
     {

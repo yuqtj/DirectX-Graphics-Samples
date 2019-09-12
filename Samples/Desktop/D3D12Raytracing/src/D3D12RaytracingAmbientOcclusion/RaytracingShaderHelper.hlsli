@@ -66,7 +66,6 @@ bool IsWithinBounds(in int2 index, in int2 dimensions)
     return index.x >= 0 && index.y >= 0 && index.x < dimensions.x && index.y < dimensions.y;
 }
 
-// ToDo rename to albedo
 void DecodeMaterial16b(in uint2 material, out uint materialID, out float3 diffuse)
 {
     materialID = material.x & 0xffff;
@@ -188,7 +187,7 @@ inline float3 GenerateForwardCameraRayDirection(in float4x4 projectionToWorldWit
 	
 	// Unproject the pixel coordinate into a world positon.
 	float4 world = mul(float4(screenPos, 0, 1), projectionToWorldWithCameraEyeAtOrigin);
-	return normalize(world.xyz);   // ToDo is this normalization needed? - yes but maybe it could be done via /zNear instead?
+	return normalize(world.xyz);
 }
 
 inline Ray GenerateForwardCameraRay(in float3 cameraPosition, in float4x4 projectionToWorldWithCameraEyeAtOrigin)
@@ -235,24 +234,6 @@ float3 ScreenPosToWorldPos(in uint2 index, in float linearDepth, in uint2 screen
     return cameraPosition + linearDepth * rayDirection.xyz; // ToDo doesn't this need to be adjusted for zNear?
 }
 
-
-// ToDo rename to LogToLinearDepth?
-float LogToViewDepth(float logDepth, float zNear, float zFar)
-{
-    return zNear * zFar / (zFar - logDepth * (zFar - zNear));
-}
-
-float ViewToLogDepth(float viewDepth, float zNear, float zFar)
-{
-    // ToDo pass A, B from cb instead.
-    return zFar / (zFar - zNear) - zNear * zFar / ((zFar - zNear) * viewDepth);
-}
-
-inline float NormalizeToRange(in float value, in float min, in float max)
-{
-    return (value - min) / (max - min);
-}
-
 // Calculate depth via interpolation with perspective correction
 // Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation
 // Given depth buffer interpolation for finding z at offset q along z0 to z1
@@ -289,25 +270,6 @@ inline Ray GenerateCameraRay(uint2 index, in float3 cameraPosition, in float4x4 
 	ray.direction = normalize(world.xyz);
 
     return ray;
-}
-
-// Test if a hit is culled based on specified RayFlags.
-bool IsCulled(in Ray ray, in float3 hitSurfaceNormal)
-{
-    float rayDirectionNormalDot = dot(ray.direction, hitSurfaceNormal);
-
-    bool isCulled = 
-        ((RayFlags() & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) && (rayDirectionNormalDot > 0))
-        ||
-        ((RayFlags() & RAY_FLAG_CULL_FRONT_FACING_TRIANGLES) && (rayDirectionNormalDot < 0));
-
-    return isCulled; 
-}
-
-// Test if a hit is valid based on specified RayFlags and <RayTMin, RayTCurrent> range.
-bool IsAValidHit(in Ray ray, in float thit, in float3 hitSurfaceNormal)
-{
-    return IsInRange(thit, RayTMin(), RayTCurrent()) && !IsCulled(ray, hitSurfaceNormal);
 }
 
 // Texture coordinates on a horizontal plane.
@@ -416,53 +378,15 @@ float FloatPrecisionR32(in float x)
     return FloatPrecision(x, 23);
 }
 
-// TODo
-/***************************************************************/
-// Normal encoding
-// The MIT License
-// Copyright © 2017 Inigo Quilez
-// Ref: https://www.shadertoy.com/view/Mtfyzl
-uint octahedral_32(in float3 nor, uint sh)
-{
-    nor /= (abs(nor.x) + abs(nor.y) + abs(nor.z));
-    nor.xy = (nor.z >= 0.0) ? nor.xy : (1.0 - abs(nor.yx))*sign(nor.xy);
-    float2 v = 0.5 + 0.5*nor.xy;
-
-    uint mu = (1u << sh) - 1u;
-    uint2 d = uint2(floor(v*float(mu) + 0.5));
-    return (d.y << sh) | d.x;
-}
-
-float3 i_octahedral_32(uint data, uint sh)
-{
-    uint mu = (1u << sh) - 1u;
-
-    uint2 d = uint2(data, data >> sh) & mu;
-    float2 v = float2(d) / float(mu);
-
-    v = -1.0 + 2.0*v;
-
-    // Rune Stubbe's version, much faster than original
-    float3 nor = float3(v, 1.0 - abs(v.x) - abs(v.y));
-    float t = max(-nor.z, 0.0);
-    nor.x += (nor.x > 0.0) ? -t : t;
-    nor.y += (nor.y > 0.0) ? -t : t;
-
-    return normalize(nor);
-}
-/***************************************************************/
-
 
 /***************************************************************/
 // Normal encoding
-// ToDO comment
 // Ref: https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
 float2 OctWrap(float2 v)
 {
     return (1.0 - abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
 }
 
-// TODo rename to EncodeUnitVector?
 // Converts a 3D unit vector to a 2D vector with <0,1> range. 
 float2 EncodeNormal(float3 n)
 {
@@ -529,8 +453,6 @@ float3 Unpack_R8G8B16_FLOAT(uint rgb)
     return float3(r, g, b);
 }
 
-// ToDO rename to unit float
-// ToDo consider MiNiEngine's packing to full 32 bit extent
 uint NormalizedFloat3ToByte3(float3 v)
 {
     return
@@ -587,34 +509,17 @@ void UnpackEncodedNormalDepth(in uint packedEncodedNormalDepth, out float2 encod
 }
 
 /***************************************************************/
-// ToDo
 // 3D value noise
 // Ref: https://www.shadertoy.com/view/XsXfRH
-#if 1
-float hash(float3 p)  // replace this by something better
+// The MIT License
+// Copyright © 2017 Inigo Quilez
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+float hash(float3 p)
 {
     p = frac(p*0.3183099 + .1);
     p *= 17.0;
     return frac(p.x*p.y*p.z*(p.x + p.y + p.z));
 }
-
-float noise(in float3 x)
-{
-    float3 p = floor(x);
-    float3 f = frac(x);
-    f = f * f*(3.0 - 2.0*f);
-
-    return lerp(lerp(lerp(hash(p + float3(0, 0, 0)),
-        hash(p + float3(1, 0, 0)), f.x),
-        lerp(hash(p + float3(0, 1, 0)),
-            hash(p + float3(1, 1, 0)), f.x), f.y),
-        lerp(lerp(hash(p + float3(0, 0, 1)),
-            hash(p + float3(1, 0, 1)), f.x),
-            lerp(hash(p + float3(0, 1, 1)),
-                hash(p + float3(1, 1, 1)), f.x), f.y), f.z);
-}
-#endif
-
 /***************************************************************/
 
 
@@ -673,7 +578,7 @@ bool Inverse2x2(float2x2 mat, out float2x2 inverse)
 }
 
 
-/* TODO: Could be precalculated per triangle
+/*
  Using implementation described in PBRT, finding the partial derivative of the (change in position)/(change in UV coordinates)
  a.k.a dp/du and dp/dv
 
@@ -806,39 +711,11 @@ float max4(in float4 v)
     return max(max(v.x, v.y), max(v.z, v.w));
 }
 
-
-uint Encode2bitTo8bit(in uint4 v)
-{
-    v &= 0x3;
-    uint x = v.x;
-    uint y = v.y << 2;
-    uint z = v.z << 4;
-    uint w = v.w << 6;
-
-    return x | y | z | w;
-}
-
-uint4 Decode8bitTo2bit(in uint v)
-{
-    uint x = v;
-    uint y = v >> 2;
-    uint z = v >> 4;
-    uint w = v >> 6;
-
-    return uint4(x, y, z, w) & 0x3;
-}
-
 uint2 Get2DQuadIndexOffset(in uint i)
 {
     const uint2 indexOffsets[4] = { {0, 0}, {1, 0}, {0, 1}, {1, 1} };
     return indexOffsets[i];
 }
-
-uint Get1DQuadIndex(in uint2 id)
-{
-    return id.x + id.y * 2;
-}
-
 
 uint GetIndexOfValueClosestToTheReference(in float refValue, in float2 vValues)
 {
@@ -859,10 +736,6 @@ uint GetIndexOfValueClosestToTheReference(in float refValue, in float4 vValues)
 
     return outIndex;
 }
-
-// ToDo replace local implementations with this
-
-
 
 // ToDo replace local implementations with this
 // Remap partial depth derivatives at z0 from [1,1] pixel offset to a new pixel offset.
@@ -922,9 +795,10 @@ float2 GetProjectedSurfaceDimensionsPerPixel(in float z, in float2 ddxy, in floa
 float InterpolateValidValues(
     in float4 weights,
     in float4 SampleValues,
-    in float minWeight = 1e-6)
+    in float minWeight = 1e-6,
+    in float invalidValue = RTAO::InvalidAOValue)
 {
-    float4 validSamples = SampleValues != RTAO::InvalidAOValue;
+    float4 validSamples = SampleValues != invalidValue;
     weights *= validSamples;
     float weightSum = dot(weights, 1);
     if (weightSum < minWeight)
@@ -936,7 +810,7 @@ float InterpolateValidValues(
         }
         else
         {
-            return RTAO::InvalidAOValue;
+            return invalidValue;
         }
     }
 

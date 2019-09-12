@@ -38,7 +38,6 @@
 #include "CompiledShaders\CalculatePartialDerivativesViaCentralDifferencesCS.hlsl.h"
 #include "CompiledShaders\TemporalSupersampling_BlendWithCurrentFrameCS.hlsl.h"
 #include "CompiledShaders\TemporalSupersampling_ReverseReprojectCS.hlsl.h"
-#include "CompiledShaders\WriteValueToTextureCS.hlsl.h"
 #include "CompiledShaders\GenerateGrassStrawsCS.hlsl.h"
 #include "CompiledShaders\CountingSort_SortRays_128x64rayGroupCS.hlsl.h"
 #include "CompiledShaders\AORayGenCS.hlsl.h"
@@ -2269,88 +2268,6 @@ namespace GpuKernels
         XMUINT2 groupSize(CeilDivide(width, ThreadGroup::Width), CeilDivide(height, ThreadGroup::Height));
         commandList->Dispatch(groupSize.x, groupSize.y, 1);
     }
-
-
-    // ToDo prune
-    namespace RootSignature {
-        namespace WriteValueToTexture {
-            namespace Slot {
-                enum Enum {
-                    Output = 0,
-                    Count
-                };
-            }
-        }
-    }
-
-    // ToDo move type to execute
-    void WriteValueToTexture::Initialize(ID3D12Device5* device, DX::DescriptorHeap* descriptorHeap)
-    {
-        // Create root signature.
-        {
-            using namespace RootSignature::WriteValueToTexture;
-
-            // ToDo reorganize slots and descriptors
-            CD3DX12_DESCRIPTOR_RANGE ranges[1];
-            ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // output
-
-            CD3DX12_ROOT_PARAMETER rootParameters[Slot::Count];
-            rootParameters[Slot::Output].InitAsDescriptorTable(1, &ranges[0]);
-
-            CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
-            SerializeAndCreateRootSignature(device, rootSignatureDesc, &m_rootSignature, L"Compute root signature: WriteValueToTexture");
-        }
-
-        // Create compute pipeline state.
-        {
-            D3D12_COMPUTE_PIPELINE_STATE_DESC descComputePSO = {};
-            descComputePSO.pRootSignature = m_rootSignature.Get();
-
-            descComputePSO.CS = CD3DX12_SHADER_BYTECODE(static_cast<const void*>(g_pWriteValueToTextureCS), ARRAYSIZE(g_pWriteValueToTextureCS));
-
-
-            ThrowIfFailed(device->CreateComputePipelineState(&descComputePSO, IID_PPV_ARGS(&m_pipelineStateObject)));
-            m_pipelineStateObject->SetName(L"Pipeline state object: WriteValueToTexture");
-        }
-
-        // Create shader resources
-        {
-            CreateRenderTargetResource(device, DXGI_FORMAT_R8_UINT, m_width, m_height, descriptorHeap,
-                &m_output, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, L"UAV texture: WriteValueToTexture intermediate value output");
-
-        }
-    }
-
-    void WriteValueToTexture::Run(
-        ID3D12GraphicsCommandList4* commandList,
-        ID3D12DescriptorHeap* descriptorHeap,
-        D3D12_GPU_DESCRIPTOR_HANDLE* outputResourceHandle)
-    {
-        using namespace RootSignature::WriteValueToTexture;
-        using namespace DefaultComputeShaderParams;
-
-        ScopedTimer _prof(L"WriteValueToTexture", commandList);
-
-        // Set pipeline state.
-        {
-            commandList->SetDescriptorHeaps(1, &descriptorHeap);
-            commandList->SetComputeRootSignature(m_rootSignature.Get());
-            commandList->SetComputeRootDescriptorTable(Slot::Output, m_output.gpuDescriptorWriteAccess);
-            commandList->SetPipelineState(m_pipelineStateObject.Get());
-        }
-
-        // ToDo use non_pixel_shader_Resource everywherE?
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_output.resource.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
-
-        // Dispatch.
-        XMUINT2 groupSize(CeilDivide(m_width, ThreadGroup::Width), CeilDivide(m_height, ThreadGroup::Height));
-        commandList->Dispatch(groupSize.x, groupSize.y, 1);
-
-        commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_output.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-
-        *outputResourceHandle = m_output.gpuDescriptorReadAccess;
-    }
-
 
 
     namespace RootSignature {

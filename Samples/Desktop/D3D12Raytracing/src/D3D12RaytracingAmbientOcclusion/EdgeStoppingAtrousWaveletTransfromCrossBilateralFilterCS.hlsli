@@ -16,11 +16,7 @@
 #include "RTAO/Shaders/RTAO.hlsli"
 
 
-// ToDo
-// Optimization
-// - Frontload/limit to indices of valid neighbors to avoid stalling threads randomly on sparse inputs.
-
-Texture2D<float> g_inValues : register(t0); // ToDo input is 3841x2161 instead of 2160p..
+Texture2D<float> g_inValues : register(t0);
 
 Texture2D<NormalDepthTexFormat> g_inNormalDepth : register(t1);
 Texture2D<float> g_inVariance : register(t4);   // ToDo remove
@@ -195,7 +191,7 @@ void AddFilterContribution(
         const float errorOffset = 0.005f;
         float e_x = valueSigma  > 0.001f ? -abs(value - iValue) / (varianceScale * valueSigma * stdDeviation + errorOffset) : 0;
  
-        // ToDo loosen up weights for low frameAge? and/or 2nd+ pass
+        //   loosen up weights for low frameAge? and/or 2nd+ pass
         // ToDo standardize index vs id
         // Ref: SVGF
         // ToDo

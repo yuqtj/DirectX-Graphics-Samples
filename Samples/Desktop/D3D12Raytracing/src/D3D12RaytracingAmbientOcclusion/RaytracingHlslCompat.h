@@ -103,6 +103,8 @@ AppSetup
     - Build with higher warning bar and cleanup
     - purge obsolete gpukernels
     - move shader dependencies to components?
+    // ToDO standarddize ddxy vs dxdy
+// ToDo strip _tex from names
 
 - Sample generic
     - Add device removal support

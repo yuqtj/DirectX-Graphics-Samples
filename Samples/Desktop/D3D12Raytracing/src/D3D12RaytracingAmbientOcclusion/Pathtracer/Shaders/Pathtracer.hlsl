@@ -174,8 +174,6 @@ float2 CalculateMotionVector(
     float4 _clipSpacePosition = mul(float4(_hitPosition, 1), g_cb.prevViewProj);
     float2 _texturePosition = ClipSpaceToTexturePosition(_clipSpacePosition);
 
-    // ToDO pass in inverted dimensions?
-    // ToDo should this add 0.5f?
     float2 xy = DispatchRaysIndex().xy + 0.5f;   // Center in the middle of the pixel.
     float2 texturePosition = xy / DispatchRaysDimensions().xy;
 
